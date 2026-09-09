@@ -1,0 +1,302 @@
+/**
+ * AWS Pricing Provider — Phase 2D
+ *
+ * IMPORTANT: This implementation uses AWS public list prices sourced from
+ * AWS pricing documentation (https://aws.amazon.com/pricing/).
+ * Prices are stored as static data tables per resource type and region.
+ *
+ * LIMITATIONS:
+ * - These are on-demand list prices as of late 2024. Actual AWS bills may
+ *   differ due to reserved instances, savings plans, spot pricing,
+ *   enterprise discounts, support charges, or data transfer.
+ * - The AWS Price List API (https://pricing.us-east-1.amazonaws.com/) requires
+ *   no authentication for public resources but returns very large JSON files
+ *   unsuitable for per-request loading. Live API calls are not implemented in
+ *   Phase 2D; that is a Phase 2E enhancement.
+ * - Prices labelled "estimate" are based on typical instance configurations.
+ *   Storage and transfer costs use average assumptions documented per resource.
+ */
+
+import type { PricingProvider, CostLineItem } from './types';
+import type { DbArchitectureResource } from '@/lib/repositories/architectureRepository';
+
+// ─── Static price tables (USD/hour, on-demand, Linux, us-east-1 base) ────────
+
+/** EC2 on-demand hourly prices (Linux, us-east-1) — AWS public list price */
+const EC2_HOURLY_USD: Record<string, number> = {
+  // General purpose
+  't3.nano':     0.0052,
+  't3.micro':    0.0104,
+  't3.small':    0.0208,
+  't3.medium':   0.0416,
+  't3.large':    0.0832,
+  't3.xlarge':   0.1664,
+  't3.2xlarge':  0.3328,
+  // M5
+  'm5.large':    0.096,
+  'm5.xlarge':   0.192,
+  'm5.2xlarge':  0.384,
+  'm5.4xlarge':  0.768,
+  // C5
+  'c5.large':    0.085,
+  'c5.xlarge':   0.170,
+  'c5.2xlarge':  0.340,
+  // R5
+  'r5.large':    0.126,
+  'r5.xlarge':   0.252,
+  'r5.2xlarge':  0.504,
+};
+
+/** RDS on-demand hourly prices (Single-AZ, db instance class, us-east-1) */
+const RDS_HOURLY_USD: Record<string, number> = {
+  'db.t3.micro':    0.017,
+  'db.t3.small':    0.034,
+  'db.t3.medium':   0.068,
+  'db.t3.large':    0.136,
+  'db.m5.large':    0.240,
+  'db.m5.xlarge':   0.480,
+  'db.r5.large':    0.300,
+  'db.r5.xlarge':   0.600,
+};
+
+/** Regional price multipliers relative to us-east-1 */
+const REGION_MULTIPLIER: Record<string, number> = {
+  'us-east-1':      1.00,
+  'us-east-2':      1.00,
+  'us-west-1':      1.10,
+  'us-west-2':      1.00,
+  'eu-west-1':      1.10,
+  'eu-central-1':   1.12,
+  'ap-southeast-1': 1.15,
+  'ap-northeast-1': 1.15,
+};
+
+function regionMultiplier(region: string): number {
+  return REGION_MULTIPLIER[region] ?? 1.10;
+}
+
+function toMonthly(hourly: number): number {
+  return hourly * 730; // AWS uses 730 hours/month
+}
+
+// ─── AWS Pricing Provider ─────────────────────────────────────────────────────
+
+export class AwsPricingProvider implements PricingProvider {
+  readonly name = 'aws-static-list-price';
+
+  estimateResource(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+  ): CostLineItem | null {
+    const mult = regionMultiplier(region);
+
+    switch (resource.resourceType) {
+      case 'aws_ec2': return this._ec2(resource, config, region, mult);
+      case 'aws_rds': return this._rds(resource, config, region, mult);
+      case 'aws_s3':  return this._s3(resource, config, region, mult);
+      case 'aws_alb': return this._alb(resource, config, region, mult);
+      case 'aws_nat': return this._nat(resource, config, region, mult);
+      case 'aws_vpc':
+      case 'aws_subnet':
+      case 'aws_igw':
+      case 'aws_sg':
+        return null; // No direct charges
+      default:
+        return this._unknown(resource, region);
+    }
+  }
+
+  private _ec2(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const instanceType = (config['instanceType'] as string) ?? 't3.micro';
+    const baseHourly = EC2_HOURLY_USD[instanceType] ?? EC2_HOURLY_USD['t3.medium']!;
+    const hourly = baseHourly * mult;
+    const monthly = toMonthly(hourly);
+    const storageGb = (config['storageGb'] as number) ?? 20;
+    const storageMonthlyCost = storageGb * 0.10; // gp3 ~$0.10/GB/mo
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: monthly + storageMonthlyCost,
+      breakdown: [
+        { label: `EC2 ${instanceType} (on-demand, Linux)`, monthlyUsd: monthly },
+        { label: `EBS gp3 storage (${storageGb}GB)`, monthlyUsd: storageMonthlyCost },
+      ],
+      assumptions: [
+        'On-demand pricing, Linux OS',
+        `${storageGb}GB EBS gp3 root volume assumed`,
+        'No data transfer charges included',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-ec2-ondemand-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _rds(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const instanceClass = (config['instanceClass'] as string) ?? 'db.t3.micro';
+    const engine = (config['engine'] as string) ?? 'mysql';
+    const multiAz = config['multiAz'] === true;
+    const storageGb = (config['allocatedStorage'] as number) ?? 20;
+    const baseHourly = RDS_HOURLY_USD[instanceClass] ?? RDS_HOURLY_USD['db.t3.micro']!;
+    const hourly = baseHourly * mult * (multiAz ? 2 : 1);
+    const monthly = toMonthly(hourly);
+    const storageMonthly = storageGb * 0.115 * (multiAz ? 2 : 1); // gp2 RDS storage
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: monthly + storageMonthly,
+      breakdown: [
+        { label: `RDS ${instanceClass} ${engine}${multiAz ? ' (Multi-AZ)' : ''}`, monthlyUsd: monthly },
+        { label: `Storage gp2 (${storageGb}GB${multiAz ? ' x2 Multi-AZ' : ''})`, monthlyUsd: storageMonthly },
+      ],
+      assumptions: [
+        `Engine: ${engine}, instance class: ${instanceClass}`,
+        multiAz ? 'Multi-AZ: doubles instance cost and storage' : 'Single-AZ deployment',
+        `${storageGb}GB gp2 storage assumed`,
+        'Backup storage not included',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-rds-ondemand-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _s3(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    _mult: number,
+  ): CostLineItem {
+    const storageGb = (config['estimatedStorageGb'] as number) ?? 50;
+    const requestsPerMonth = (config['estimatedRequestsPerMonth'] as number) ?? 100_000;
+    const storageCost = storageGb * 0.023;  // S3 Standard first 50TB
+    const requestCost = (requestsPerMonth / 1000) * 0.0004; // PUT/COPY/POST
+    const monthly = storageCost + requestCost;
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: monthly / 730,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: `S3 Standard storage (${storageGb}GB)`, monthlyUsd: storageCost },
+        { label: `S3 PUT/POST requests (~${requestsPerMonth.toLocaleString()}/mo)`, monthlyUsd: requestCost },
+      ],
+      assumptions: [
+        `${storageGb}GB S3 Standard storage assumed (set estimatedStorageGb to override)`,
+        `${requestsPerMonth.toLocaleString()} requests/month assumed`,
+        'Data transfer costs not included',
+        'S3 Standard storage tier',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-s3-standard-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _alb(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const lbType = (config['lbType'] as string) ?? 'application';
+    const hourly = 0.008 * mult; // ALB base hourly
+    const lcuMonthly = 5 * mult;  // Estimated 5 LCU/month minimum
+    const monthly = toMonthly(hourly) + lcuMonthly;
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: `${lbType === 'network' ? 'NLB' : 'ALB'} base hourly`, monthlyUsd: toMonthly(hourly) },
+        { label: 'LCU/NLCU charges (estimated min)', monthlyUsd: lcuMonthly },
+      ],
+      assumptions: [
+        `${lbType} load balancer type`,
+        'Minimum LCU estimated; actual depends on connection count and throughput',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-elb-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _nat(
+    resource: DbArchitectureResource,
+    _config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const hourly = 0.045 * mult; // NAT Gateway hourly
+    const dataProcessingMonthly = 4.5 * mult; // ~100GB/mo @ $0.045/GB assumed
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: toMonthly(hourly) + dataProcessingMonthly,
+      breakdown: [
+        { label: 'NAT Gateway hourly charge', monthlyUsd: toMonthly(hourly) },
+        { label: 'Data processing (~100GB assumed)', monthlyUsd: dataProcessingMonthly },
+      ],
+      assumptions: [
+        '~100GB/month outbound data processing assumed',
+        'Actual data transfer cost depends on usage',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-nat-gateway-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _unknown(resource: DbArchitectureResource, region: string): CostLineItem {
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: 0,
+      monthlyUsd: 0,
+      breakdown: [],
+      assumptions: [`No pricing data available for resource type: ${resource.resourceType}`],
+      pricingSource: 'none',
+      confidence: 'unsupported',
+    };
+  }
+}
+
+export const awsPricingProvider = new AwsPricingProvider();

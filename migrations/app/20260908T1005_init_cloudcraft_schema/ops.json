@@ -1,0 +1,1513 @@
+[
+  {
+    "id": "schema.public",
+    "label": "Create schema \"public\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres"
+    },
+    "precheck": [],
+    "execute": [
+      {
+        "description": "Create schema \"public\"",
+        "sql": "CREATE SCHEMA IF NOT EXISTS \"public\"",
+        "params": []
+      }
+    ],
+    "postcheck": []
+  },
+  {
+    "id": "table.architecture",
+    "label": "Create table \"architecture\"",
+    "summary": "Creates table \"architecture\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "architecture"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"architecture\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architecture\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"architecture\"",
+        "sql": "CREATE TABLE \"public\".\"architecture\" (\n  \"createdAt\" text NOT NULL,\n  \"environmentId\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"updatedAt\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"architecture\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architecture\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.architectureConnection",
+    "label": "Create table \"architectureConnection\"",
+    "summary": "Creates table \"architectureConnection\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "architectureConnection"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"architectureConnection\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureConnection\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"architectureConnection\"",
+        "sql": "CREATE TABLE \"public\".\"architectureConnection\" (\n  \"architectureId\" text NOT NULL,\n  \"edgeType\" text,\n  \"id\" text NOT NULL,\n  \"label\" text,\n  \"sourceId\" text NOT NULL,\n  \"targetId\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"architectureConnection\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureConnection\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.architectureResource",
+    "label": "Create table \"architectureResource\"",
+    "summary": "Creates table \"architectureResource\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "architectureResource"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"architectureResource\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureResource\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"architectureResource\"",
+        "sql": "CREATE TABLE \"public\".\"architectureResource\" (\n  \"architectureId\" text NOT NULL,\n  \"configJson\" text NOT NULL,\n  \"groupId\" text,\n  \"id\" text NOT NULL,\n  \"label\" text NOT NULL,\n  \"locked\" bool DEFAULT false NOT NULL,\n  \"positionX\" float8 DEFAULT 0 NOT NULL,\n  \"positionY\" float8 DEFAULT 0 NOT NULL,\n  \"provider\" text NOT NULL,\n  \"region\" text,\n  \"resourceType\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"architectureResource\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureResource\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.architectureVersion",
+    "label": "Create table \"architectureVersion\"",
+    "summary": "Creates table \"architectureVersion\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "architectureVersion"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"architectureVersion\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureVersion\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"architectureVersion\"",
+        "sql": "CREATE TABLE \"public\".\"architectureVersion\" (\n  \"architectureId\" text NOT NULL,\n  \"author\" text DEFAULT 'Unknown' NOT NULL,\n  \"createdAt\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"label\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"snapshotJson\" text NOT NULL,\n  \"summary\" text NOT NULL,\n  \"versionNumber\" int4 NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"architectureVersion\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureVersion\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.environment",
+    "label": "Create table \"environment\"",
+    "summary": "Creates table \"environment\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "environment"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"environment\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"environment\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"environment\"",
+        "sql": "CREATE TABLE \"public\".\"environment\" (\n  \"createdAt\" text NOT NULL,\n  \"envKey\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"label\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"region\" text NOT NULL,\n  \"updatedAt\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"environment\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"environment\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.orgMember",
+    "label": "Create table \"orgMember\"",
+    "summary": "Creates table \"orgMember\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "orgMember"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"orgMember\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"orgMember\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"orgMember\"",
+        "sql": "CREATE TABLE \"public\".\"orgMember\" (\n  \"id\" text NOT NULL,\n  \"orgId\" text NOT NULL,\n  \"role\" text DEFAULT 'member' NOT NULL,\n  \"userId\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"orgMember\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"orgMember\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.organization",
+    "label": "Create table \"organization\"",
+    "summary": "Creates table \"organization\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "organization"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"organization\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"organization\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"organization\"",
+        "sql": "CREATE TABLE \"public\".\"organization\" (\n  \"createdAt\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"name\" text NOT NULL,\n  \"slug\" text NOT NULL,\n  \"updatedAt\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"organization\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"organization\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.project",
+    "label": "Create table \"project\"",
+    "summary": "Creates table \"project\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "project"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"project\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"project\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"project\"",
+        "sql": "CREATE TABLE \"public\".\"project\" (\n  \"createdAt\" text NOT NULL,\n  \"description\" text DEFAULT '' NOT NULL,\n  \"id\" text NOT NULL,\n  \"name\" text NOT NULL,\n  \"orgId\" text NOT NULL,\n  \"ownerId\" text NOT NULL,\n  \"provider\" text NOT NULL,\n  \"region\" text NOT NULL,\n  \"tags\" text DEFAULT '[]' NOT NULL,\n  \"updatedAt\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"project\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"project\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.user",
+    "label": "Create table \"user\"",
+    "summary": "Creates table \"user\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "user"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"user\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"user\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"user\"",
+        "sql": "CREATE TABLE \"public\".\"user\" (\n  \"avatarUrl\" text,\n  \"createdAt\" text NOT NULL,\n  \"email\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"name\" text,\n  \"updatedAt\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"user\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"user\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.architecture.architecture_environmentId_key",
+    "label": "Add unique constraint on \"architecture\" (environmentId)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "architecture_environmentId_key",
+        "table": "architecture"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"architecture_environmentId_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "architecture_environmentId_key",
+          "public",
+          "\"public\".\"architecture\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"architecture_environmentId_key\"",
+        "sql": "ALTER TABLE \"public\".\"architecture\" ADD CONSTRAINT \"architecture_environmentId_key\" UNIQUE (\"environmentId\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"architecture_environmentId_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "architecture_environmentId_key",
+          "public",
+          "\"public\".\"architecture\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.environment.environment_projectId_envKey_key",
+    "label": "Add unique constraint on \"environment\" (projectId, envKey)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "environment_projectId_envKey_key",
+        "table": "environment"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"environment_projectId_envKey_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "environment_projectId_envKey_key",
+          "public",
+          "\"public\".\"environment\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"environment_projectId_envKey_key\"",
+        "sql": "ALTER TABLE \"public\".\"environment\" ADD CONSTRAINT \"environment_projectId_envKey_key\" UNIQUE (\"projectId\", \"envKey\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"environment_projectId_envKey_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "environment_projectId_envKey_key",
+          "public",
+          "\"public\".\"environment\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.orgMember.orgMember_orgId_userId_key",
+    "label": "Add unique constraint on \"orgMember\" (orgId, userId)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "orgMember_orgId_userId_key",
+        "table": "orgMember"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"orgMember_orgId_userId_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "orgMember_orgId_userId_key",
+          "public",
+          "\"public\".\"orgMember\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"orgMember_orgId_userId_key\"",
+        "sql": "ALTER TABLE \"public\".\"orgMember\" ADD CONSTRAINT \"orgMember_orgId_userId_key\" UNIQUE (\"orgId\", \"userId\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"orgMember_orgId_userId_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "orgMember_orgId_userId_key",
+          "public",
+          "\"public\".\"orgMember\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.organization.organization_slug_key",
+    "label": "Add unique constraint on \"organization\" (slug)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "organization_slug_key",
+        "table": "organization"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"organization_slug_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "organization_slug_key",
+          "public",
+          "\"public\".\"organization\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"organization_slug_key\"",
+        "sql": "ALTER TABLE \"public\".\"organization\" ADD CONSTRAINT \"organization_slug_key\" UNIQUE (\"slug\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"organization_slug_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "organization_slug_key",
+          "public",
+          "\"public\".\"organization\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.user.user_email_key",
+    "label": "Add unique constraint on \"user\" (email)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "user_email_key",
+        "table": "user"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"user_email_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "user_email_key",
+          "public",
+          "\"public\".\"user\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"user_email_key\"",
+        "sql": "ALTER TABLE \"public\".\"user\" ADD CONSTRAINT \"user_email_key\" UNIQUE (\"email\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"user_email_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "user_email_key",
+          "public",
+          "\"public\".\"user\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.architectureConnection.architectureConnection_architectureId_idx_a096837f",
+    "label": "Create index \"architectureConnection_architectureId_idx_a096837f\" on \"architectureConnection\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "architectureConnection_architectureId_idx_a096837f",
+        "table": "architectureConnection"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"architectureConnection_architectureId_idx_a096837f\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureConnection_architectureId_idx_a096837f\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"architectureConnection_architectureId_idx_a096837f\"",
+        "sql": "CREATE INDEX \"architectureConnection_architectureId_idx_a096837f\" ON \"public\".\"architectureConnection\" (\"architectureId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"architectureConnection_architectureId_idx_a096837f\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureConnection_architectureId_idx_a096837f\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.architectureConnection.architectureConnection_sourceId_idx_d92a2571",
+    "label": "Create index \"architectureConnection_sourceId_idx_d92a2571\" on \"architectureConnection\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "architectureConnection_sourceId_idx_d92a2571",
+        "table": "architectureConnection"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"architectureConnection_sourceId_idx_d92a2571\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureConnection_sourceId_idx_d92a2571\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"architectureConnection_sourceId_idx_d92a2571\"",
+        "sql": "CREATE INDEX \"architectureConnection_sourceId_idx_d92a2571\" ON \"public\".\"architectureConnection\" (\"sourceId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"architectureConnection_sourceId_idx_d92a2571\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureConnection_sourceId_idx_d92a2571\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.architectureConnection.architectureConnection_targetId_idx_9852d518",
+    "label": "Create index \"architectureConnection_targetId_idx_9852d518\" on \"architectureConnection\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "architectureConnection_targetId_idx_9852d518",
+        "table": "architectureConnection"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"architectureConnection_targetId_idx_9852d518\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureConnection_targetId_idx_9852d518\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"architectureConnection_targetId_idx_9852d518\"",
+        "sql": "CREATE INDEX \"architectureConnection_targetId_idx_9852d518\" ON \"public\".\"architectureConnection\" (\"targetId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"architectureConnection_targetId_idx_9852d518\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureConnection_targetId_idx_9852d518\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.architectureResource.architectureResource_architectureId_idx_a096837f",
+    "label": "Create index \"architectureResource_architectureId_idx_a096837f\" on \"architectureResource\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "architectureResource_architectureId_idx_a096837f",
+        "table": "architectureResource"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"architectureResource_architectureId_idx_a096837f\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureResource_architectureId_idx_a096837f\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"architectureResource_architectureId_idx_a096837f\"",
+        "sql": "CREATE INDEX \"architectureResource_architectureId_idx_a096837f\" ON \"public\".\"architectureResource\" (\"architectureId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"architectureResource_architectureId_idx_a096837f\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureResource_architectureId_idx_a096837f\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.architectureVersion.architectureVersion_architectureId_idx_a096837f",
+    "label": "Create index \"architectureVersion_architectureId_idx_a096837f\" on \"architectureVersion\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "architectureVersion_architectureId_idx_a096837f",
+        "table": "architectureVersion"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"architectureVersion_architectureId_idx_a096837f\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureVersion_architectureId_idx_a096837f\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"architectureVersion_architectureId_idx_a096837f\"",
+        "sql": "CREATE INDEX \"architectureVersion_architectureId_idx_a096837f\" ON \"public\".\"architectureVersion\" (\"architectureId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"architectureVersion_architectureId_idx_a096837f\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureVersion_architectureId_idx_a096837f\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.architectureVersion.architectureVersion_projectId_idx_a96e4d92",
+    "label": "Create index \"architectureVersion_projectId_idx_a96e4d92\" on \"architectureVersion\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "architectureVersion_projectId_idx_a96e4d92",
+        "table": "architectureVersion"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"architectureVersion_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureVersion_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"architectureVersion_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"architectureVersion_projectId_idx_a96e4d92\" ON \"public\".\"architectureVersion\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"architectureVersion_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureVersion_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.environment.environment_projectId_idx_a96e4d92",
+    "label": "Create index \"environment_projectId_idx_a96e4d92\" on \"environment\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "environment_projectId_idx_a96e4d92",
+        "table": "environment"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"environment_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"environment_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"environment_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"environment_projectId_idx_a96e4d92\" ON \"public\".\"environment\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"environment_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"environment_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.orgMember.orgMember_orgId_idx_c5e5aabe",
+    "label": "Create index \"orgMember_orgId_idx_c5e5aabe\" on \"orgMember\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "orgMember_orgId_idx_c5e5aabe",
+        "table": "orgMember"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"orgMember_orgId_idx_c5e5aabe\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"orgMember_orgId_idx_c5e5aabe\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"orgMember_orgId_idx_c5e5aabe\"",
+        "sql": "CREATE INDEX \"orgMember_orgId_idx_c5e5aabe\" ON \"public\".\"orgMember\" (\"orgId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"orgMember_orgId_idx_c5e5aabe\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"orgMember_orgId_idx_c5e5aabe\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.orgMember.orgMember_userId_idx_a489d58a",
+    "label": "Create index \"orgMember_userId_idx_a489d58a\" on \"orgMember\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "orgMember_userId_idx_a489d58a",
+        "table": "orgMember"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"orgMember_userId_idx_a489d58a\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"orgMember_userId_idx_a489d58a\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"orgMember_userId_idx_a489d58a\"",
+        "sql": "CREATE INDEX \"orgMember_userId_idx_a489d58a\" ON \"public\".\"orgMember\" (\"userId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"orgMember_userId_idx_a489d58a\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"orgMember_userId_idx_a489d58a\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.project.project_orgId_idx_c5e5aabe",
+    "label": "Create index \"project_orgId_idx_c5e5aabe\" on \"project\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "project_orgId_idx_c5e5aabe",
+        "table": "project"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"project_orgId_idx_c5e5aabe\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"project_orgId_idx_c5e5aabe\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"project_orgId_idx_c5e5aabe\"",
+        "sql": "CREATE INDEX \"project_orgId_idx_c5e5aabe\" ON \"public\".\"project\" (\"orgId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"project_orgId_idx_c5e5aabe\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"project_orgId_idx_c5e5aabe\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.project.project_ownerId_idx_e2d0c1ef",
+    "label": "Create index \"project_ownerId_idx_e2d0c1ef\" on \"project\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "project_ownerId_idx_e2d0c1ef",
+        "table": "project"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"project_ownerId_idx_e2d0c1ef\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"project_ownerId_idx_e2d0c1ef\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"project_ownerId_idx_e2d0c1ef\"",
+        "sql": "CREATE INDEX \"project_ownerId_idx_e2d0c1ef\" ON \"public\".\"project\" (\"ownerId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"project_ownerId_idx_e2d0c1ef\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"project_ownerId_idx_e2d0c1ef\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.architecture.architecture_environmentId_fkey",
+    "label": "Add foreign key \"architecture_environmentId_fkey\" on \"architecture\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "architecture_environmentId_fkey",
+        "table": "architecture"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"architecture_environmentId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "architecture_environmentId_fkey",
+          "public",
+          "\"public\".\"architecture\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"architecture_environmentId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"architecture\"\nADD CONSTRAINT \"architecture_environmentId_fkey\"\nFOREIGN KEY (\"environmentId\")\nREFERENCES \"public\".\"environment\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"architecture_environmentId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "architecture_environmentId_fkey",
+          "public",
+          "\"public\".\"architecture\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.architectureConnection.architectureConnection_architectureId_fkey",
+    "label": "Add foreign key \"architectureConnection_architectureId_fkey\" on \"architectureConnection\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "architectureConnection_architectureId_fkey",
+        "table": "architectureConnection"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"architectureConnection_architectureId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "architectureConnection_architectureId_fkey",
+          "public",
+          "\"public\".\"architectureConnection\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"architectureConnection_architectureId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"architectureConnection\"\nADD CONSTRAINT \"architectureConnection_architectureId_fkey\"\nFOREIGN KEY (\"architectureId\")\nREFERENCES \"public\".\"architecture\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"architectureConnection_architectureId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "architectureConnection_architectureId_fkey",
+          "public",
+          "\"public\".\"architectureConnection\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.architectureConnection.architectureConnection_sourceId_fkey",
+    "label": "Add foreign key \"architectureConnection_sourceId_fkey\" on \"architectureConnection\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "architectureConnection_sourceId_fkey",
+        "table": "architectureConnection"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"architectureConnection_sourceId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "architectureConnection_sourceId_fkey",
+          "public",
+          "\"public\".\"architectureConnection\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"architectureConnection_sourceId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"architectureConnection\"\nADD CONSTRAINT \"architectureConnection_sourceId_fkey\"\nFOREIGN KEY (\"sourceId\")\nREFERENCES \"public\".\"architectureResource\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"architectureConnection_sourceId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "architectureConnection_sourceId_fkey",
+          "public",
+          "\"public\".\"architectureConnection\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.architectureConnection.architectureConnection_targetId_fkey",
+    "label": "Add foreign key \"architectureConnection_targetId_fkey\" on \"architectureConnection\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "architectureConnection_targetId_fkey",
+        "table": "architectureConnection"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"architectureConnection_targetId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "architectureConnection_targetId_fkey",
+          "public",
+          "\"public\".\"architectureConnection\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"architectureConnection_targetId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"architectureConnection\"\nADD CONSTRAINT \"architectureConnection_targetId_fkey\"\nFOREIGN KEY (\"targetId\")\nREFERENCES \"public\".\"architectureResource\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"architectureConnection_targetId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "architectureConnection_targetId_fkey",
+          "public",
+          "\"public\".\"architectureConnection\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.architectureResource.architectureResource_architectureId_fkey",
+    "label": "Add foreign key \"architectureResource_architectureId_fkey\" on \"architectureResource\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "architectureResource_architectureId_fkey",
+        "table": "architectureResource"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"architectureResource_architectureId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "architectureResource_architectureId_fkey",
+          "public",
+          "\"public\".\"architectureResource\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"architectureResource_architectureId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"architectureResource\"\nADD CONSTRAINT \"architectureResource_architectureId_fkey\"\nFOREIGN KEY (\"architectureId\")\nREFERENCES \"public\".\"architecture\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"architectureResource_architectureId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "architectureResource_architectureId_fkey",
+          "public",
+          "\"public\".\"architectureResource\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.architectureVersion.architectureVersion_projectId_fkey",
+    "label": "Add foreign key \"architectureVersion_projectId_fkey\" on \"architectureVersion\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "architectureVersion_projectId_fkey",
+        "table": "architectureVersion"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"architectureVersion_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "architectureVersion_projectId_fkey",
+          "public",
+          "\"public\".\"architectureVersion\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"architectureVersion_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"architectureVersion\"\nADD CONSTRAINT \"architectureVersion_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"architectureVersion_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "architectureVersion_projectId_fkey",
+          "public",
+          "\"public\".\"architectureVersion\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.architectureVersion.architectureVersion_architectureId_fkey",
+    "label": "Add foreign key \"architectureVersion_architectureId_fkey\" on \"architectureVersion\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "architectureVersion_architectureId_fkey",
+        "table": "architectureVersion"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"architectureVersion_architectureId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "architectureVersion_architectureId_fkey",
+          "public",
+          "\"public\".\"architectureVersion\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"architectureVersion_architectureId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"architectureVersion\"\nADD CONSTRAINT \"architectureVersion_architectureId_fkey\"\nFOREIGN KEY (\"architectureId\")\nREFERENCES \"public\".\"architecture\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"architectureVersion_architectureId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "architectureVersion_architectureId_fkey",
+          "public",
+          "\"public\".\"architectureVersion\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.environment.environment_projectId_fkey",
+    "label": "Add foreign key \"environment_projectId_fkey\" on \"environment\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "environment_projectId_fkey",
+        "table": "environment"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"environment_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "environment_projectId_fkey",
+          "public",
+          "\"public\".\"environment\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"environment_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"environment\"\nADD CONSTRAINT \"environment_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"environment_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "environment_projectId_fkey",
+          "public",
+          "\"public\".\"environment\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.orgMember.orgMember_orgId_fkey",
+    "label": "Add foreign key \"orgMember_orgId_fkey\" on \"orgMember\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "orgMember_orgId_fkey",
+        "table": "orgMember"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"orgMember_orgId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "orgMember_orgId_fkey",
+          "public",
+          "\"public\".\"orgMember\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"orgMember_orgId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"orgMember\"\nADD CONSTRAINT \"orgMember_orgId_fkey\"\nFOREIGN KEY (\"orgId\")\nREFERENCES \"public\".\"organization\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"orgMember_orgId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "orgMember_orgId_fkey",
+          "public",
+          "\"public\".\"orgMember\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.orgMember.orgMember_userId_fkey",
+    "label": "Add foreign key \"orgMember_userId_fkey\" on \"orgMember\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "orgMember_userId_fkey",
+        "table": "orgMember"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"orgMember_userId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "orgMember_userId_fkey",
+          "public",
+          "\"public\".\"orgMember\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"orgMember_userId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"orgMember\"\nADD CONSTRAINT \"orgMember_userId_fkey\"\nFOREIGN KEY (\"userId\")\nREFERENCES \"public\".\"user\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"orgMember_userId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "orgMember_userId_fkey",
+          "public",
+          "\"public\".\"orgMember\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.project.project_orgId_fkey",
+    "label": "Add foreign key \"project_orgId_fkey\" on \"project\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "project_orgId_fkey",
+        "table": "project"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"project_orgId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "project_orgId_fkey",
+          "public",
+          "\"public\".\"project\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"project_orgId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"project\"\nADD CONSTRAINT \"project_orgId_fkey\"\nFOREIGN KEY (\"orgId\")\nREFERENCES \"public\".\"organization\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"project_orgId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "project_orgId_fkey",
+          "public",
+          "\"public\".\"project\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.project.project_ownerId_fkey",
+    "label": "Add foreign key \"project_ownerId_fkey\" on \"project\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "project_ownerId_fkey",
+        "table": "project"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"project_ownerId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "project_ownerId_fkey",
+          "public",
+          "\"public\".\"project\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"project_ownerId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"project\"\nADD CONSTRAINT \"project_ownerId_fkey\"\nFOREIGN KEY (\"ownerId\")\nREFERENCES \"public\".\"user\" (\"id\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"project_ownerId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "project_ownerId_fkey",
+          "public",
+          "\"public\".\"project\""
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,242 @@
+[
+  {
+    "id": "table.cloudAccount",
+    "label": "Create table \"cloudAccount\"",
+    "summary": "Creates table \"cloudAccount\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "cloudAccount"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"cloudAccount\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"cloudAccount\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"cloudAccount\"",
+        "sql": "CREATE TABLE \"public\".\"cloudAccount\" (\n  \"createdAt\" text NOT NULL,\n  \"credentialsJson\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"identityJson\" text DEFAULT '{}' NOT NULL,\n  \"lastValidatedAt\" text,\n  \"name\" text NOT NULL,\n  \"orgId\" text NOT NULL,\n  \"provider\" text NOT NULL,\n  \"status\" text DEFAULT 'pending' NOT NULL,\n  \"updatedAt\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"cloudAccount\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"cloudAccount\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.discoveryRun",
+    "label": "Create table \"discoveryRun\"",
+    "summary": "Creates table \"discoveryRun\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "discoveryRun"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"discoveryRun\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"discoveryRun\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"discoveryRun\"",
+        "sql": "CREATE TABLE \"public\".\"discoveryRun\" (\n  \"cloudAccountId\" text NOT NULL,\n  \"completedAt\" text,\n  \"error\" text,\n  \"id\" text NOT NULL,\n  \"resourcesJson\" text DEFAULT '[]' NOT NULL,\n  \"startedAt\" text NOT NULL,\n  \"status\" text DEFAULT 'pending' NOT NULL,\n  \"summaryJson\" text DEFAULT '{}' NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"discoveryRun\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"discoveryRun\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.cloudAccount.cloudAccount_orgId_idx_c5e5aabe",
+    "label": "Create index \"cloudAccount_orgId_idx_c5e5aabe\" on \"cloudAccount\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "cloudAccount_orgId_idx_c5e5aabe",
+        "table": "cloudAccount"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"cloudAccount_orgId_idx_c5e5aabe\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"cloudAccount_orgId_idx_c5e5aabe\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"cloudAccount_orgId_idx_c5e5aabe\"",
+        "sql": "CREATE INDEX \"cloudAccount_orgId_idx_c5e5aabe\" ON \"public\".\"cloudAccount\" (\"orgId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"cloudAccount_orgId_idx_c5e5aabe\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"cloudAccount_orgId_idx_c5e5aabe\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.discoveryRun.discoveryRun_cloudAccountId_idx_b72ac661",
+    "label": "Create index \"discoveryRun_cloudAccountId_idx_b72ac661\" on \"discoveryRun\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "discoveryRun_cloudAccountId_idx_b72ac661",
+        "table": "discoveryRun"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"discoveryRun_cloudAccountId_idx_b72ac661\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"discoveryRun_cloudAccountId_idx_b72ac661\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"discoveryRun_cloudAccountId_idx_b72ac661\"",
+        "sql": "CREATE INDEX \"discoveryRun_cloudAccountId_idx_b72ac661\" ON \"public\".\"discoveryRun\" (\"cloudAccountId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"discoveryRun_cloudAccountId_idx_b72ac661\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"discoveryRun_cloudAccountId_idx_b72ac661\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.cloudAccount.cloudAccount_orgId_fkey",
+    "label": "Add foreign key \"cloudAccount_orgId_fkey\" on \"cloudAccount\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "cloudAccount_orgId_fkey",
+        "table": "cloudAccount"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"cloudAccount_orgId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "cloudAccount_orgId_fkey",
+          "public",
+          "\"public\".\"cloudAccount\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"cloudAccount_orgId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"cloudAccount\"\nADD CONSTRAINT \"cloudAccount_orgId_fkey\"\nFOREIGN KEY (\"orgId\")\nREFERENCES \"public\".\"organization\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"cloudAccount_orgId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "cloudAccount_orgId_fkey",
+          "public",
+          "\"public\".\"cloudAccount\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.discoveryRun.discoveryRun_cloudAccountId_fkey",
+    "label": "Add foreign key \"discoveryRun_cloudAccountId_fkey\" on \"discoveryRun\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "discoveryRun_cloudAccountId_fkey",
+        "table": "discoveryRun"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"discoveryRun_cloudAccountId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "discoveryRun_cloudAccountId_fkey",
+          "public",
+          "\"public\".\"discoveryRun\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"discoveryRun_cloudAccountId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"discoveryRun\"\nADD CONSTRAINT \"discoveryRun_cloudAccountId_fkey\"\nFOREIGN KEY (\"cloudAccountId\")\nREFERENCES \"public\".\"cloudAccount\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"discoveryRun_cloudAccountId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "discoveryRun_cloudAccountId_fkey",
+          "public",
+          "\"public\".\"discoveryRun\""
+        ]
+      }
+    ]
+  }
+]

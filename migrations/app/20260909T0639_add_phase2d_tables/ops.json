@@ -1,0 +1,926 @@
+[
+  {
+    "id": "table.archOptimization",
+    "label": "Create table \"archOptimization\"",
+    "summary": "Creates table \"archOptimization\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "archOptimization"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"archOptimization\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"archOptimization\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"archOptimization\"",
+        "sql": "CREATE TABLE \"public\".\"archOptimization\" (\n  \"architectureId\" text NOT NULL,\n  \"createdAt\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"recommendationsJson\" text DEFAULT '[]' NOT NULL,\n  \"scoreJson\" text DEFAULT '{}' NOT NULL,\n  \"versionId\" text,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"archOptimization\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"archOptimization\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.costEstimate",
+    "label": "Create table \"costEstimate\"",
+    "summary": "Creates table \"costEstimate\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "costEstimate"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"costEstimate\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"costEstimate\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"costEstimate\"",
+        "sql": "CREATE TABLE \"public\".\"costEstimate\" (\n  \"architectureId\" text NOT NULL,\n  \"assumptionsJson\" text DEFAULT '[]' NOT NULL,\n  \"confidence\" text DEFAULT 'estimate' NOT NULL,\n  \"createdAt\" text NOT NULL,\n  \"currency\" text DEFAULT 'USD' NOT NULL,\n  \"id\" text NOT NULL,\n  \"itemsJson\" text DEFAULT '[]' NOT NULL,\n  \"pricingSource\" text DEFAULT 'static-list-price' NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"totalHourly\" float8 DEFAULT 0 NOT NULL,\n  \"totalMonthly\" float8 DEFAULT 0 NOT NULL,\n  \"versionId\" text,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"costEstimate\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"costEstimate\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.securityFinding",
+    "label": "Create table \"securityFinding\"",
+    "summary": "Creates table \"securityFinding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "securityFinding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"securityFinding\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"securityFinding\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"securityFinding\"",
+        "sql": "CREATE TABLE \"public\".\"securityFinding\" (\n  \"createdAt\" text NOT NULL,\n  \"description\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"metaJson\" text DEFAULT '{}' NOT NULL,\n  \"provider\" text,\n  \"remediation\" text NOT NULL,\n  \"resourceId\" text,\n  \"resourceType\" text,\n  \"ruleId\" text NOT NULL,\n  \"scanId\" text NOT NULL,\n  \"severity\" text NOT NULL,\n  \"title\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"securityFinding\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"securityFinding\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.securityScan",
+    "label": "Create table \"securityScan\"",
+    "summary": "Creates table \"securityScan\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "securityScan"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"securityScan\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"securityScan\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"securityScan\"",
+        "sql": "CREATE TABLE \"public\".\"securityScan\" (\n  \"architectureId\" text NOT NULL,\n  \"completedAt\" text,\n  \"createdAt\" text NOT NULL,\n  \"findingsJson\" text DEFAULT '[]' NOT NULL,\n  \"id\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"score\" int4 DEFAULT 0 NOT NULL,\n  \"status\" text DEFAULT 'completed' NOT NULL,\n  \"versionId\" text,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"securityScan\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"securityScan\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.terraformGeneration",
+    "label": "Create table \"terraformGeneration\"",
+    "summary": "Creates table \"terraformGeneration\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "terraformGeneration"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"terraformGeneration\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"terraformGeneration\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"terraformGeneration\"",
+        "sql": "CREATE TABLE \"public\".\"terraformGeneration\" (\n  \"architectureId\" text NOT NULL,\n  \"createdAt\" text NOT NULL,\n  \"filesJson\" text DEFAULT '{}' NOT NULL,\n  \"id\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"resourceMapJson\" text DEFAULT '{}' NOT NULL,\n  \"versionId\" text,\n  \"warningsJson\" text DEFAULT '[]' NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"terraformGeneration\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"terraformGeneration\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.archOptimization.archOptimization_architectureId_idx_a096837f",
+    "label": "Create index \"archOptimization_architectureId_idx_a096837f\" on \"archOptimization\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "archOptimization_architectureId_idx_a096837f",
+        "table": "archOptimization"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"archOptimization_architectureId_idx_a096837f\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"archOptimization_architectureId_idx_a096837f\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"archOptimization_architectureId_idx_a096837f\"",
+        "sql": "CREATE INDEX \"archOptimization_architectureId_idx_a096837f\" ON \"public\".\"archOptimization\" (\"architectureId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"archOptimization_architectureId_idx_a096837f\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"archOptimization_architectureId_idx_a096837f\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.archOptimization.archOptimization_projectId_idx_a96e4d92",
+    "label": "Create index \"archOptimization_projectId_idx_a96e4d92\" on \"archOptimization\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "archOptimization_projectId_idx_a96e4d92",
+        "table": "archOptimization"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"archOptimization_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"archOptimization_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"archOptimization_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"archOptimization_projectId_idx_a96e4d92\" ON \"public\".\"archOptimization\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"archOptimization_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"archOptimization_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.costEstimate.costEstimate_architectureId_idx_a096837f",
+    "label": "Create index \"costEstimate_architectureId_idx_a096837f\" on \"costEstimate\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "costEstimate_architectureId_idx_a096837f",
+        "table": "costEstimate"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"costEstimate_architectureId_idx_a096837f\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"costEstimate_architectureId_idx_a096837f\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"costEstimate_architectureId_idx_a096837f\"",
+        "sql": "CREATE INDEX \"costEstimate_architectureId_idx_a096837f\" ON \"public\".\"costEstimate\" (\"architectureId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"costEstimate_architectureId_idx_a096837f\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"costEstimate_architectureId_idx_a096837f\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.costEstimate.costEstimate_projectId_idx_a96e4d92",
+    "label": "Create index \"costEstimate_projectId_idx_a96e4d92\" on \"costEstimate\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "costEstimate_projectId_idx_a96e4d92",
+        "table": "costEstimate"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"costEstimate_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"costEstimate_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"costEstimate_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"costEstimate_projectId_idx_a96e4d92\" ON \"public\".\"costEstimate\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"costEstimate_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"costEstimate_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.securityFinding.securityFinding_scanId_idx_7c201901",
+    "label": "Create index \"securityFinding_scanId_idx_7c201901\" on \"securityFinding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "securityFinding_scanId_idx_7c201901",
+        "table": "securityFinding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"securityFinding_scanId_idx_7c201901\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"securityFinding_scanId_idx_7c201901\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"securityFinding_scanId_idx_7c201901\"",
+        "sql": "CREATE INDEX \"securityFinding_scanId_idx_7c201901\" ON \"public\".\"securityFinding\" (\"scanId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"securityFinding_scanId_idx_7c201901\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"securityFinding_scanId_idx_7c201901\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.securityScan.securityScan_architectureId_idx_a096837f",
+    "label": "Create index \"securityScan_architectureId_idx_a096837f\" on \"securityScan\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "securityScan_architectureId_idx_a096837f",
+        "table": "securityScan"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"securityScan_architectureId_idx_a096837f\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"securityScan_architectureId_idx_a096837f\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"securityScan_architectureId_idx_a096837f\"",
+        "sql": "CREATE INDEX \"securityScan_architectureId_idx_a096837f\" ON \"public\".\"securityScan\" (\"architectureId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"securityScan_architectureId_idx_a096837f\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"securityScan_architectureId_idx_a096837f\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.securityScan.securityScan_projectId_idx_a96e4d92",
+    "label": "Create index \"securityScan_projectId_idx_a96e4d92\" on \"securityScan\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "securityScan_projectId_idx_a96e4d92",
+        "table": "securityScan"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"securityScan_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"securityScan_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"securityScan_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"securityScan_projectId_idx_a96e4d92\" ON \"public\".\"securityScan\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"securityScan_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"securityScan_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.terraformGeneration.terraformGeneration_architectureId_idx_a096837f",
+    "label": "Create index \"terraformGeneration_architectureId_idx_a096837f\" on \"terraformGeneration\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "terraformGeneration_architectureId_idx_a096837f",
+        "table": "terraformGeneration"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"terraformGeneration_architectureId_idx_a096837f\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"terraformGeneration_architectureId_idx_a096837f\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"terraformGeneration_architectureId_idx_a096837f\"",
+        "sql": "CREATE INDEX \"terraformGeneration_architectureId_idx_a096837f\" ON \"public\".\"terraformGeneration\" (\"architectureId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"terraformGeneration_architectureId_idx_a096837f\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"terraformGeneration_architectureId_idx_a096837f\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.terraformGeneration.terraformGeneration_projectId_idx_a96e4d92",
+    "label": "Create index \"terraformGeneration_projectId_idx_a96e4d92\" on \"terraformGeneration\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "terraformGeneration_projectId_idx_a96e4d92",
+        "table": "terraformGeneration"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"terraformGeneration_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"terraformGeneration_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"terraformGeneration_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"terraformGeneration_projectId_idx_a96e4d92\" ON \"public\".\"terraformGeneration\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"terraformGeneration_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"terraformGeneration_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.archOptimization.archOptimization_projectId_fkey",
+    "label": "Add foreign key \"archOptimization_projectId_fkey\" on \"archOptimization\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "archOptimization_projectId_fkey",
+        "table": "archOptimization"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"archOptimization_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "archOptimization_projectId_fkey",
+          "public",
+          "\"public\".\"archOptimization\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"archOptimization_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"archOptimization\"\nADD CONSTRAINT \"archOptimization_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"archOptimization_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "archOptimization_projectId_fkey",
+          "public",
+          "\"public\".\"archOptimization\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.archOptimization.archOptimization_architectureId_fkey",
+    "label": "Add foreign key \"archOptimization_architectureId_fkey\" on \"archOptimization\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "archOptimization_architectureId_fkey",
+        "table": "archOptimization"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"archOptimization_architectureId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "archOptimization_architectureId_fkey",
+          "public",
+          "\"public\".\"archOptimization\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"archOptimization_architectureId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"archOptimization\"\nADD CONSTRAINT \"archOptimization_architectureId_fkey\"\nFOREIGN KEY (\"architectureId\")\nREFERENCES \"public\".\"architecture\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"archOptimization_architectureId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "archOptimization_architectureId_fkey",
+          "public",
+          "\"public\".\"archOptimization\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.costEstimate.costEstimate_projectId_fkey",
+    "label": "Add foreign key \"costEstimate_projectId_fkey\" on \"costEstimate\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "costEstimate_projectId_fkey",
+        "table": "costEstimate"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"costEstimate_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "costEstimate_projectId_fkey",
+          "public",
+          "\"public\".\"costEstimate\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"costEstimate_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"costEstimate\"\nADD CONSTRAINT \"costEstimate_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"costEstimate_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "costEstimate_projectId_fkey",
+          "public",
+          "\"public\".\"costEstimate\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.costEstimate.costEstimate_architectureId_fkey",
+    "label": "Add foreign key \"costEstimate_architectureId_fkey\" on \"costEstimate\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "costEstimate_architectureId_fkey",
+        "table": "costEstimate"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"costEstimate_architectureId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "costEstimate_architectureId_fkey",
+          "public",
+          "\"public\".\"costEstimate\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"costEstimate_architectureId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"costEstimate\"\nADD CONSTRAINT \"costEstimate_architectureId_fkey\"\nFOREIGN KEY (\"architectureId\")\nREFERENCES \"public\".\"architecture\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"costEstimate_architectureId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "costEstimate_architectureId_fkey",
+          "public",
+          "\"public\".\"costEstimate\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.securityFinding.securityFinding_scanId_fkey",
+    "label": "Add foreign key \"securityFinding_scanId_fkey\" on \"securityFinding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "securityFinding_scanId_fkey",
+        "table": "securityFinding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"securityFinding_scanId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "securityFinding_scanId_fkey",
+          "public",
+          "\"public\".\"securityFinding\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"securityFinding_scanId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"securityFinding\"\nADD CONSTRAINT \"securityFinding_scanId_fkey\"\nFOREIGN KEY (\"scanId\")\nREFERENCES \"public\".\"securityScan\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"securityFinding_scanId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "securityFinding_scanId_fkey",
+          "public",
+          "\"public\".\"securityFinding\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.securityScan.securityScan_projectId_fkey",
+    "label": "Add foreign key \"securityScan_projectId_fkey\" on \"securityScan\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "securityScan_projectId_fkey",
+        "table": "securityScan"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"securityScan_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "securityScan_projectId_fkey",
+          "public",
+          "\"public\".\"securityScan\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"securityScan_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"securityScan\"\nADD CONSTRAINT \"securityScan_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"securityScan_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "securityScan_projectId_fkey",
+          "public",
+          "\"public\".\"securityScan\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.securityScan.securityScan_architectureId_fkey",
+    "label": "Add foreign key \"securityScan_architectureId_fkey\" on \"securityScan\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "securityScan_architectureId_fkey",
+        "table": "securityScan"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"securityScan_architectureId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "securityScan_architectureId_fkey",
+          "public",
+          "\"public\".\"securityScan\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"securityScan_architectureId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"securityScan\"\nADD CONSTRAINT \"securityScan_architectureId_fkey\"\nFOREIGN KEY (\"architectureId\")\nREFERENCES \"public\".\"architecture\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"securityScan_architectureId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "securityScan_architectureId_fkey",
+          "public",
+          "\"public\".\"securityScan\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.terraformGeneration.terraformGeneration_projectId_fkey",
+    "label": "Add foreign key \"terraformGeneration_projectId_fkey\" on \"terraformGeneration\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "terraformGeneration_projectId_fkey",
+        "table": "terraformGeneration"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"terraformGeneration_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "terraformGeneration_projectId_fkey",
+          "public",
+          "\"public\".\"terraformGeneration\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"terraformGeneration_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"terraformGeneration\"\nADD CONSTRAINT \"terraformGeneration_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"terraformGeneration_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "terraformGeneration_projectId_fkey",
+          "public",
+          "\"public\".\"terraformGeneration\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.terraformGeneration.terraformGeneration_architectureId_fkey",
+    "label": "Add foreign key \"terraformGeneration_architectureId_fkey\" on \"terraformGeneration\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "terraformGeneration_architectureId_fkey",
+        "table": "terraformGeneration"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"terraformGeneration_architectureId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "terraformGeneration_architectureId_fkey",
+          "public",
+          "\"public\".\"terraformGeneration\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"terraformGeneration_architectureId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"terraformGeneration\"\nADD CONSTRAINT \"terraformGeneration_architectureId_fkey\"\nFOREIGN KEY (\"architectureId\")\nREFERENCES \"public\".\"architecture\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"terraformGeneration_architectureId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "terraformGeneration_architectureId_fkey",
+          "public",
+          "\"public\".\"terraformGeneration\""
+        ]
+      }
+    ]
+  }
+]

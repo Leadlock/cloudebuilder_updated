@@ -1,0 +1,279 @@
+// use prisma-next
+
+// ─── Auth / Identity ───────────────────────────────────────────────────────────
+
+model User {
+  id        String  @id @default(uuid())
+  email     String  @unique
+  name      String?
+  avatarUrl String?
+  createdAt String
+  updatedAt String
+
+  memberships   OrgMember[]
+  ownedProjects Project[]   @relation("ProjectOwner")
+}
+
+model Organization {
+  id        String @id @default(uuid())
+  name      String
+  slug      String @unique
+  createdAt String
+  updatedAt String
+
+  members       OrgMember[]
+  projects      Project[]
+  cloudAccounts CloudAccount[]
+}
+
+model OrgMember {
+  id     String @id @default(uuid())
+  role   String @default("member")
+  orgId  String
+  userId String
+
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+}
+
+// ─── Projects ─────────────────────────────────────────────────────────────────
+
+model Project {
+  id          String @id @default(uuid())
+  name        String
+  description String @default("")
+  provider    String
+  region      String
+  tags        String @default("[]")
+  createdAt   String
+  updatedAt   String
+  orgId       String
+  ownerId     String
+
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  owner User         @relation("ProjectOwner", fields: [ownerId], references: [id])
+
+  environments         Environment[]
+  architectureVersions ArchitectureVersion[]
+  securityScans        SecurityScan[]
+  costEstimates        CostEstimate[]
+  optimizations        ArchOptimization[]
+  terraformGens        TerraformGeneration[]
+}
+
+// ─── Environments ─────────────────────────────────────────────────────────────
+
+model Environment {
+  id        String @id @default(uuid())
+  envKey    String
+  label     String
+  region    String
+  createdAt String
+  updatedAt String
+  projectId String
+
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  architectures Architecture[]
+
+  @@unique([projectId, envKey])
+}
+
+// ─── Architecture ─────────────────────────────────────────────────────────────
+
+model Architecture {
+  id            String @id @default(uuid())
+  createdAt     String
+  updatedAt     String
+  environmentId String @unique
+
+  environment Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+
+  resources   ArchitectureResource[]
+  connections ArchitectureConnection[]
+  versions    ArchitectureVersion[]
+  securityScans SecurityScan[]
+  costEstimates CostEstimate[]
+  optimizations ArchOptimization[]
+  terraformGens TerraformGeneration[]
+}
+
+// ─── ArchitectureResource ─────────────────────────────────────────────────────
+
+model ArchitectureResource {
+  id             String  @id @default(uuid())
+  resourceType   String
+  provider       String
+  label          String
+  positionX      Float   @default(0)
+  positionY      Float   @default(0)
+  configJson     String
+  region         String?
+  groupId        String?
+  locked         Boolean @default(false)
+  architectureId String
+
+  architecture      Architecture            @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+  sourceConnections ArchitectureConnection[] @relation("ConnectionSource")
+  targetConnections ArchitectureConnection[] @relation("ConnectionTarget")
+}
+
+// ─── ArchitectureConnection ───────────────────────────────────────────────────
+
+model ArchitectureConnection {
+  id             String  @id @default(uuid())
+  label          String?
+  edgeType       String?
+  architectureId String
+  sourceId       String
+  targetId       String
+
+  architecture Architecture         @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+  source       ArchitectureResource @relation("ConnectionSource", fields: [sourceId], references: [id], onDelete: Cascade)
+  target       ArchitectureResource @relation("ConnectionTarget", fields: [targetId], references: [id], onDelete: Cascade)
+}
+
+// ─── ArchitectureVersion ─────────────────────────────────────────────────────
+
+model ArchitectureVersion {
+  id             String @id @default(uuid())
+  versionNumber  Int
+  label          String
+  summary        String
+  author         String @default("Unknown")
+  snapshotJson   String
+  createdAt      String
+  projectId      String
+  architectureId String
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  architecture Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+}
+
+// ─── Cloud Accounts ───────────────────────────────────────────────────────────
+// SECURITY: credentialsJson stores credentials server-side only.
+// credentialsJson is NEVER returned to the browser through any API response.
+
+model CloudAccount {
+  id              String  @id @default(uuid())
+  orgId           String
+  provider        String
+  name            String
+  // Encrypted JSON: AWS role ARN + external ID, or Azure SP credentials. Never exposed.
+  credentialsJson String
+  // Sanitised identity info returned from provider (account ID, ARN, etc.)
+  identityJson    String  @default("{}")
+  // active | invalid | pending
+  status          String  @default("pending")
+  lastValidatedAt String?
+  createdAt       String
+  updatedAt       String
+
+  org           Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  discoveryRuns DiscoveryRun[]
+}
+
+// ─── Discovery Runs ───────────────────────────────────────────────────────────
+
+model DiscoveryRun {
+  id             String  @id @default(uuid())
+  cloudAccountId String
+  // pending | running | completed | failed
+  status         String  @default("pending")
+  startedAt      String
+  completedAt    String?
+  // JSON array of DiscoveredResource objects — sanitised, no credentials
+  resourcesJson  String  @default("[]")
+  // JSON summary counts by resource type
+  summaryJson    String  @default("{}")
+  error          String?
+
+  cloudAccount CloudAccount @relation(fields: [cloudAccountId], references: [id], onDelete: Cascade)
+}
+
+// ─── Phase 2D: Security Scans ─────────────────────────────────────────────────
+
+model SecurityScan {
+  id             String  @id @default(uuid())
+  projectId      String
+  architectureId String
+  versionId      String?
+  status         String  @default("completed")
+  score          Int     @default(0)
+  findingsJson   String  @default("[]")
+  createdAt      String
+  completedAt    String?
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  architecture Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+  findings     SecurityFinding[]
+}
+
+model SecurityFinding {
+  id           String @id @default(uuid())
+  scanId       String
+  ruleId       String
+  severity     String
+  title        String
+  description  String
+  resourceId   String?
+  provider     String?
+  resourceType String?
+  remediation  String
+  metaJson     String @default("{}")
+  createdAt    String
+
+  scan SecurityScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+}
+
+// ─── Phase 2D: Cost Estimates ─────────────────────────────────────────────────
+
+model CostEstimate {
+  id             String @id @default(uuid())
+  projectId      String
+  architectureId String
+  versionId      String?
+  currency       String @default("USD")
+  totalMonthly   Float  @default(0)
+  totalHourly    Float  @default(0)
+  itemsJson      String @default("[]")
+  assumptionsJson String @default("[]")
+  pricingSource  String @default("static-list-price")
+  confidence     String @default("estimate")
+  createdAt      String
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  architecture Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+}
+
+// ─── Phase 2D: Cost / Architecture Optimizations ──────────────────────────────
+
+model ArchOptimization {
+  id             String @id @default(uuid())
+  projectId      String
+  architectureId String
+  versionId      String?
+  recommendationsJson String @default("[]")
+  scoreJson      String @default("{}")
+  createdAt      String
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  architecture Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+}
+
+// ─── Phase 2D: Terraform Generations ─────────────────────────────────────────
+
+model TerraformGeneration {
+  id             String @id @default(uuid())
+  projectId      String
+  architectureId String
+  versionId      String?
+  filesJson      String @default("{}")
+  warningsJson   String @default("[]")
+  resourceMapJson String @default("{}")
+  createdAt      String
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  architecture Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+}
