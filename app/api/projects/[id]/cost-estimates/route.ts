@@ -16,6 +16,7 @@ export const dynamic = 'force-dynamic';
 const RequestSchema = z.object({
   env:       z.string().optional().default('production'),
   versionId: z.string().optional(),
+  currency:  z.string().optional(),
 });
 
 export async function POST(
@@ -31,6 +32,8 @@ export async function POST(
     const parsed = await parseBody(req, RequestSchema);
     if (!parsed.ok) return parsed.response;
     const body = parsed.data;
+    const queryCurrency = req.nextUrl.searchParams.get('currency');
+    const targetCurrency = (body.currency || queryCurrency || 'USD').toUpperCase();
 
     const orgId = await resolveOrgId(req);
     if (!orgId) return badRequest('orgId required');
@@ -43,7 +46,7 @@ export async function POST(
       if (ctx.error === 'project_not_found') return notFound('Project');
       if (ctx.error === 'architecture_not_found') return ok({
         items: [], totalMonthlyUsd: 0, totalHourlyUsd: 0,
-        currency: 'USD', estimateId: null,
+        currency: targetCurrency, estimateId: null,
         message: 'No architecture saved yet.',
       });
       return notFound('Environment');
@@ -51,33 +54,38 @@ export async function POST(
 
     const { arch, project } = ctx;
 
-    // Run the estimation
-    const result = costEstimator.estimate({
+    // Run real estimation with currency conversion
+    const result = await costEstimator.estimateAsync({
       architectureId: arch.id,
       projectId,
       versionId: body.versionId,
       resources: arch.resources,
       defaultRegion: project.region,
-    });
+      targetCurrency,
+    }, 'REAL');
 
     const now = new Date().toISOString();
     const estimateId = randomUUID();
 
-    // Persist estimate record
-    await db.orm.public.CostEstimate.create({
-      id: estimateId,
-      projectId,
-      architectureId: arch.id,
-      versionId: body.versionId ?? null,
-      currency: result.currency,
-      totalMonthly: result.totalMonthlyUsd,
-      totalHourly: result.totalHourlyUsd,
-      itemsJson: JSON.stringify(result.items),
-      assumptionsJson: JSON.stringify(result.assumptions),
-      pricingSource: result.pricingSource,
-      confidence: result.confidence,
-      createdAt: now,
-    });
+    // Persist estimate record (graceful offline fallback if DB is unavailable)
+    try {
+      await db.orm.public.CostEstimate.create({
+        id: estimateId,
+        projectId,
+        architectureId: arch.id,
+        versionId: body.versionId ?? null,
+        currency: result.currency,
+        totalMonthly: result.totalMonthlyConverted ?? result.totalMonthlyUsd,
+        totalHourly: result.totalHourlyConverted ?? result.totalHourlyUsd,
+        itemsJson: JSON.stringify(result.items),
+        assumptionsJson: JSON.stringify(result.assumptions),
+        pricingSource: result.pricingSource,
+        confidence: result.confidence,
+        createdAt: now,
+      });
+    } catch {
+      // Continue gracefully in offline/in-memory mode
+    }
 
     return created({
       estimateId,

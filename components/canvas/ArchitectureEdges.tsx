@@ -42,15 +42,26 @@ export const TrafficEdge = memo(({
         <animateMotion dur="2.5s" repeatCount="indefinite" path={edgePath} />
       </circle>
       {label && (
-        <text
-          x={labelX}
-          y={labelY}
-          className="fill-slate-300 text-[10px] font-mono font-medium"
-          textAnchor="middle"
-          dominantBaseline="central"
-        >
-          {label}
-        </text>
+        <g transform={`translate(${labelX}, ${labelY})`}>
+          <rect
+            x={-(String(label).length * 3.6 + 8)}
+            y={-9}
+            width={String(label).length * 7.2 + 16}
+            height={18}
+            rx={9}
+            fill="#0F172A"
+            stroke="#38BDF8"
+            strokeWidth={1}
+            className="filter drop-shadow-md"
+          />
+          <text
+            className="fill-sky-300 text-[10px] font-mono font-semibold"
+            textAnchor="middle"
+            dominantBaseline="central"
+          >
+            {label}
+          </text>
+        </g>
       )}
     </>
   );
@@ -93,15 +104,25 @@ export const AssociationEdge = memo(({
         markerEnd={markerEnd}
       />
       {label && (
-        <text
-          x={labelX}
-          y={labelY}
-          className="fill-slate-400 text-[9px] font-mono"
-          textAnchor="middle"
-          dominantBaseline="central"
-        >
-          {label}
-        </text>
+        <g transform={`translate(${labelX}, ${labelY})`}>
+          <rect
+            x={-(String(label).length * 3.3 + 6)}
+            y={-8}
+            width={String(label).length * 6.6 + 12}
+            height={16}
+            rx={8}
+            fill="#0F172A"
+            stroke="#64748B"
+            strokeWidth={1}
+          />
+          <text
+            className="fill-slate-300 text-[9px] font-mono font-medium"
+            textAnchor="middle"
+            dominantBaseline="central"
+          >
+            {label}
+          </text>
+        </g>
       )}
     </>
   );

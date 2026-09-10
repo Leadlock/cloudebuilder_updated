@@ -1,10 +1,11 @@
 import { CanvasNode, CostItem, CostOptimization } from '@/types';
 import { calculateCosts } from '@/lib/analysis';
 import { generateCostOptimizations } from '@/lib/generator';
+import { DETERMINISTIC_MOCK_RATES } from '@/lib/currency/providers/MockExchangeRateProvider';
 
 // ─── Interface ────────────────────────────────────────────────────────────────
 export interface ICostService {
-  calculateCosts(nodes: CanvasNode[]): Promise<CostItem[]>;
+  calculateCosts(nodes: CanvasNode[], currency?: string): Promise<CostItem[]>;
   generateOptimizations(nodes: CanvasNode[]): CostOptimization[];
   applyOptimization(nodes: CanvasNode[], optimizationId: string): CanvasNode[];
 }
@@ -21,9 +22,28 @@ const INSTANCE_DOWNSIZE: Record<string, string> = {
 
 // ─── Mock Implementation ──────────────────────────────────────────────────────
 class MockCostService implements ICostService {
-  async calculateCosts(nodes: CanvasNode[]): Promise<CostItem[]> {
+  async calculateCosts(nodes: CanvasNode[], currency: string = 'USD'): Promise<CostItem[]> {
     await Promise.resolve();
-    return calculateCosts(nodes);
+    const baseItems = calculateCosts(nodes);
+    const targetCurr = (currency || 'USD').toUpperCase();
+    if (targetCurr === 'USD') {
+      return baseItems;
+    }
+
+    const rate = DETERMINISTIC_MOCK_RATES[`USD:${targetCurr}`] ?? 1.0;
+    return baseItems.map((item) => ({
+      ...item,
+      monthlyCost: item.monthlyCost * rate,
+      currency: targetCurr,
+      providerCostUsd: item.monthlyCost,
+      exchangeRate: rate,
+      exchangeRateSource: 'mock-fixtures',
+      breakdown: item.breakdown.map((b) => ({
+        ...b,
+        cost: b.cost * rate,
+        originalCostUsd: b.cost,
+      })),
+    }));
   }
 
   generateOptimizations(nodes: CanvasNode[]): CostOptimization[] {

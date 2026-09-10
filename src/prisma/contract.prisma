@@ -277,3 +277,18 @@ model TerraformGeneration {
   project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   architecture Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
 }
+
+// ─── Multi-Currency & Live Exchange Rates Cache ──────────────────────────────
+
+model CurrencyExchangeRate {
+  id             String @id @default(uuid())
+  baseCurrency   String
+  targetCurrency String
+  rate           Float
+  source         String
+  retrievedAt    String
+  expiresAt      String
+
+  @@unique([baseCurrency, targetCurrency])
+  @@index([baseCurrency, targetCurrency])
+}

@@ -92,15 +92,25 @@ export class AwsPricingProvider implements PricingProvider {
     const mult = regionMultiplier(region);
 
     switch (resource.resourceType) {
-      case 'aws_ec2': return this._ec2(resource, config, region, mult);
-      case 'aws_rds': return this._rds(resource, config, region, mult);
-      case 'aws_s3':  return this._s3(resource, config, region, mult);
-      case 'aws_alb': return this._alb(resource, config, region, mult);
-      case 'aws_nat': return this._nat(resource, config, region, mult);
+      case 'aws_ec2':        return this._ec2(resource, config, region, mult);
+      case 'aws_rds':        return this._rds(resource, config, region, mult);
+      case 'aws_s3':         return this._s3(resource, config, region, mult);
+      case 'aws_alb':        return this._alb(resource, config, region, mult);
+      case 'aws_nat':        return this._nat(resource, config, region, mult);
+      case 'aws_lambda':     return this._lambda(resource, config, region, mult);
+      case 'aws_cloudfront': return this._cloudfront(resource, config, region, mult);
+      case 'aws_ebs':        return this._ebs(resource, config, region, mult);
+      case 'aws_dynamodb':   return this._dynamodb(resource, config, region, mult);
+      case 'aws_eks':        return this._eks(resource, config, region, mult);
       case 'aws_vpc':
       case 'aws_subnet':
       case 'aws_igw':
       case 'aws_sg':
+      case 'aws_route_table':
+      case 'aws_iam':
+      case 'aws_kms':
+      case 'aws_cloudwatch':
+      case 'aws_internet':
         return null; // No direct charges
       default:
         return this._unknown(resource, region);
@@ -278,6 +288,144 @@ export class AwsPricingProvider implements PricingProvider {
         `Region: ${region}`,
       ],
       pricingSource: 'aws-nat-gateway-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _lambda(
+    resource: DbArchitectureResource,
+    _config: Record<string, unknown>,
+    region: string,
+    _mult: number,
+  ): CostLineItem {
+    const monthly = 3.50;
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: monthly / 730,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: 'AWS Lambda execution & compute', monthlyUsd: monthly },
+      ],
+      assumptions: [
+        'Includes AWS Free Tier: 1,000,000 requests and 400,000 GB-seconds/mo',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-lambda-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _cloudfront(
+    resource: DbArchitectureResource,
+    _config: Record<string, unknown>,
+    region: string,
+    _mult: number,
+  ): CostLineItem {
+    const monthly = 12.0;
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: monthly / 730,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: 'CloudFront CDN data transfer & requests', monthlyUsd: monthly },
+      ],
+      assumptions: [
+        'Includes 1TB data egress and 10M requests free tier allowance',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-cloudfront-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _ebs(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const sizeGb = Number(config['sizeGb'] || 100);
+    const ratePerGb = 0.08 * mult;
+    const monthly = sizeGb * ratePerGb;
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: monthly / 730,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: `EBS gp3 volume (${sizeGb}GB)`, monthlyUsd: monthly },
+      ],
+      assumptions: [
+        `gp3 rate: $${ratePerGb.toFixed(4)}/GB-mo`,
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-ebs-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _dynamodb(
+    resource: DbArchitectureResource,
+    _config: Record<string, unknown>,
+    region: string,
+    _mult: number,
+  ): CostLineItem {
+    const monthly = 5.0;
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: monthly / 730,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: 'DynamoDB on-demand reads/writes & storage', monthlyUsd: monthly },
+      ],
+      assumptions: [
+        'Includes 25GB free tier storage',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-dynamodb-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _eks(
+    resource: DbArchitectureResource,
+    _config: Record<string, unknown>,
+    region: string,
+    _mult: number,
+  ): CostLineItem {
+    const hourly = 0.10;
+    const monthly = hourly * 730;
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: 'EKS cluster control plane ($0.10/hr)', monthlyUsd: monthly },
+      ],
+      assumptions: [
+        'Fixed control plane management fee',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-eks-list-price',
       confidence: 'estimate',
     };
   }

@@ -49,10 +49,26 @@ interface ApiCostLineItem {
   region: string;
   hourlyUsd: number;
   monthlyUsd: number;
-  breakdown: Array<{ label: string; monthlyUsd: number }>;
+  breakdown: Array<{ label: string; monthlyUsd: number; monthlyConverted?: number; currency?: string }>;
   assumptions: string[];
   pricingSource: string;
   confidence: string;
+  providerPrice?: {
+    unitPrice: number;
+    monthlyPrice: number;
+    currency: string;
+    unit?: string;
+  };
+  convertedPrice?: {
+    unitPrice: number;
+    monthlyPrice: number;
+    currency: string;
+    exchangeRate: number;
+    exchangeRateSource: string;
+    exchangeRateRetrievedAt: string;
+    isCachedRate?: boolean;
+    isStaleRate?: boolean;
+  };
 }
 
 interface CostEstimateResponse {
@@ -61,23 +77,53 @@ interface CostEstimateResponse {
   items: ApiCostLineItem[];
   totalMonthlyUsd: number;
   totalHourlyUsd: number;
+  totalMonthlyConverted?: number;
+  totalHourlyConverted?: number;
   currency: string;
   assumptions: string[];
   pricingSource: string;
   confidence: string;
+  exchangeRateMeta?: {
+    fromCurrency: string;
+    toCurrency: string;
+    rate: number;
+    source: string;
+    retrievedAt: string;
+    isCached: boolean;
+    isStale?: boolean;
+  };
   message?: string;
 }
 
 // ─── Mapper ───────────────────────────────────────────────────────────────────
 
 function mapItem(item: ApiCostLineItem): CostItem {
+  const isConverted = Boolean(item.convertedPrice && item.convertedPrice.currency !== 'USD');
+  const monthlyCost = isConverted ? item.convertedPrice!.monthlyPrice : item.monthlyUsd;
+  const hourlyCost = isConverted ? item.convertedPrice!.unitPrice : item.hourlyUsd;
+  const currency = isConverted ? item.convertedPrice!.currency : 'USD';
+
   return {
     nodeId: item.resourceId,
     nodeLabel: item.resourceLabel,
     resourceType: item.resourceType,
     provider: item.provider as 'aws' | 'azure',
-    monthlyCost: item.monthlyUsd,
-    breakdown: item.breakdown.map((b) => ({ label: b.label, cost: b.monthlyUsd })),
+    region: item.region,
+    monthlyCost,
+    hourlyCost,
+    currency,
+    providerCostUsd: item.providerPrice?.monthlyPrice ?? item.monthlyUsd,
+    providerHourlyUsd: item.providerPrice?.unitPrice ?? item.hourlyUsd,
+    exchangeRate: item.convertedPrice?.exchangeRate,
+    exchangeRateSource: item.convertedPrice?.exchangeRateSource,
+    exchangeRateRetrievedAt: item.convertedPrice?.exchangeRateRetrievedAt,
+    isCachedRate: item.convertedPrice?.isCachedRate,
+    isStaleRate: item.convertedPrice?.isStaleRate,
+    breakdown: item.breakdown.map((b) => ({
+      label: b.label,
+      cost: isConverted && b.monthlyConverted !== undefined ? b.monthlyConverted : b.monthlyUsd,
+      originalCostUsd: b.monthlyUsd,
+    })),
   };
 }
 
@@ -97,6 +143,7 @@ const INSTANCE_DOWNSIZE: Record<string, string> = {
 /** Module-level active project ID — set by AppContext when active project changes */
 let _activeProjectId: string | null = null;
 let _activeEnvironment = 'production';
+let _activeCurrency = 'USD';
 
 /**
  * Set the active project ID so the API service can scope its requests correctly.
@@ -110,21 +157,32 @@ export function setActiveEnvironment(env: string): void {
   _activeEnvironment = env;
 }
 
+export function setActiveCurrency(currency: string): void {
+  _activeCurrency = (currency || 'USD').toUpperCase();
+}
+
 // ─── ApiCostService ───────────────────────────────────────────────────────────
 
 class ApiCostServiceImpl implements ICostService {
 
-  async calculateCosts(nodes: CanvasNode[]): Promise<CostItem[]> {
+  async calculateCosts(nodes: CanvasNode[], currency?: string): Promise<CostItem[]> {
     const projectId = _activeProjectId;
     if (!projectId) {
       throw new Error('No active project context');
     }
 
+    const targetCurr = (currency || _activeCurrency || 'USD').toUpperCase();
+    const query = targetCurr !== 'USD' ? `?currency=${targetCurr}` : '';
+    const bodyPayload: Record<string, string> = { env: _activeEnvironment };
+    if (currency && currency.toUpperCase() !== 'USD') {
+      bodyPayload.currency = currency.toUpperCase();
+    }
+
     const data = await apiFetch<CostEstimateResponse>(
-      `/api/projects/${projectId}/cost-estimates`,
+      `/api/projects/${projectId}/cost-estimates${query}`,
       {
         method: 'POST',
-        body: JSON.stringify({ env: _activeEnvironment }),
+        body: JSON.stringify(bodyPayload),
       },
     );
 

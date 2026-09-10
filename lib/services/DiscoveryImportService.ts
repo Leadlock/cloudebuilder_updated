@@ -62,10 +62,35 @@ export const discoveryImportService = {
 
       const { nodes: currentNodes, edges: currentEdges } = toCanvas(existingResources, existingConnections);
 
-      // Deduplicate: new nodes override existing ones with same id
+      // Deduplicate: match by node ID or real cloud identifier (arn, resourceId, providerResourceId)
+      // This preserves user positioning on canvas while updating configuration & import state.
       const nodeMap = new Map<string, CanvasNode>();
-      for (const n of currentNodes) nodeMap.set(n.id, n);
-      for (const n of newNodes) nodeMap.set(n.id, n);
+      const cloudIdToNodeId = new Map<string, string>();
+
+      for (const n of currentNodes) {
+        nodeMap.set(n.id, n);
+        const cloudId = (n.config?.['resourceId'] as string) || (n.config?.['arn'] as string) || (n.config?.['providerResourceId'] as string);
+        if (cloudId) {
+          cloudIdToNodeId.set(cloudId, n.id);
+        }
+      }
+
+      for (const n of newNodes) {
+        const cloudId = (n.config?.['resourceId'] as string) || (n.config?.['arn'] as string) || (n.config?.['providerResourceId'] as string);
+        const matchedExistingId = cloudId ? cloudIdToNodeId.get(cloudId) : undefined;
+        if (matchedExistingId && matchedExistingId !== n.id) {
+          // Update existing node's configuration while keeping its canvas position
+          const existingNode = nodeMap.get(matchedExistingId)!;
+          nodeMap.set(matchedExistingId, {
+            ...existingNode,
+            label: n.label,
+            config: { ...existingNode.config, ...n.config },
+            importState: 'imported',
+          });
+        } else {
+          nodeMap.set(n.id, n);
+        }
+      }
 
       const edgeMap = new Map<string, CanvasEdge>();
       for (const e of currentEdges) edgeMap.set(`${e.source}->${e.target}`, e);

@@ -14,12 +14,14 @@ export interface ContainerNodeData {
   isDragTarget?: boolean;
   isValidDrop?: boolean;
   childCount?: number;
+  importState?: 'imported' | 'cloudcraft-managed' | 'new' | 'modified' | 'planned';
 }
 
 const ContainerNode = memo(({ data, selected }: NodeProps<ContainerNodeData>) => {
   const isVpc = data.resourceType === 'aws_vpc' || data.resourceType === 'azure_vnet' || data.resourceType === 'azure_resource_group';
   const isSubnet = data.resourceType === 'aws_subnet' || data.resourceType === 'azure_subnet';
   const provider = data.provider ?? (data.resourceType.startsWith('azure_') ? 'azure' : 'aws');
+  const isImported = data.importState === 'imported' || data.config?.imported === true || data.config?.importState === 'imported';
   
   const cidr = (data.config?.cidrBlock as string) || (data.config?.addressPrefix as string) || (data.config?.addressSpace as string) || '';
   const az = (data.config?.availabilityZone as string) || '';
@@ -38,6 +40,7 @@ const ContainerNode = memo(({ data, selected }: NodeProps<ContainerNodeData>) =>
         isVpc
           ? 'bg-purple-950/15 border-2 border-purple-500/40 shadow-2xl backdrop-blur-[2px]'
           : 'bg-emerald-950/10 border-2 border-dashed border-emerald-500/50 shadow-md',
+        isImported && '!border-cyan-500/40',
         selected && 'ring-2 ring-blue-400 border-blue-400 shadow-blue-500/20',
         data.isDragTarget && (data.isValidDrop !== false
           ? '!border-cyan-400 !ring-4 !ring-cyan-400/30 !bg-cyan-950/25'
@@ -74,6 +77,15 @@ const ContainerNode = memo(({ data, selected }: NodeProps<ContainerNodeData>) =>
               >
                 {isVpc ? (provider === 'azure' ? 'Virtual Network' : 'VPC') : (isPublic ? 'Public Subnet' : 'Private Subnet')}
               </span>
+              {isImported && (
+                <span
+                  className="inline-flex items-center gap-1 text-[8px] font-bold px-1.5 py-0.2 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 uppercase tracking-wider shrink-0"
+                  title="Imported Live Container"
+                >
+                  <span className="w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />
+                  Imported
+                </span>
+              )}
             </div>
           </div>
         </div>

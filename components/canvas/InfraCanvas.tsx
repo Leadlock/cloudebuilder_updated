@@ -13,6 +13,7 @@ import ReactFlow, {
   BackgroundVariant,
   ReactFlowInstance,
   NodePositionChange,
+  MarkerType,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useApp, useActiveProject } from '@/context/AppContext';
@@ -85,8 +86,9 @@ function toReactFlowNodes(
         width,
         height,
         groupId: n.groupId,
+        importState: n.importState ?? (n.config?.importState as any) ?? (n.config?.imported ? 'imported' : undefined),
         isDragTarget: activeDragTargetId === n.id,
-        isValidDrop,
+        isValidDrop: activeDragTargetId === n.id ? isValidDrop : true,
         childCount: childCountMap.get(n.id) || 0,
       },
       selected: n.selected,
@@ -98,6 +100,7 @@ function toReactFlowNodes(
 function toReactFlowEdges(canvasEdges: CanvasEdge[]): Edge[] {
   return canvasEdges.map((e) => {
     const isAssociation = e.edgeType === 'security' || e.edgeType === 'management';
+    const color = isAssociation ? '#64748B' : '#38BDF8';
     return {
       id: e.id,
       source: e.source,
@@ -105,7 +108,13 @@ function toReactFlowEdges(canvasEdges: CanvasEdge[]): Edge[] {
       label: e.label,
       type: isAssociation ? 'association' : 'traffic',
       animated: !isAssociation,
-      style: { stroke: isAssociation ? '#64748B' : '#38BDF8', strokeWidth: 2 },
+      style: { stroke: color, strokeWidth: 2 },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color,
+        width: 14,
+        height: 14,
+      },
       labelStyle: { fontSize: 10, fill: '#CBD5E1', fontFamily: 'monospace' },
     };
   });
@@ -245,22 +254,38 @@ export default function InfraCanvas() {
 
       if (tType === 'aws_sg' || tType === 'azure_nsg' || tType === 'aws_iam') {
         edgeType = 'association';
+      } else if (sType === 'aws_internet' && tType === 'aws_cloudfront') {
+        edgeType = 'traffic';
+        label = 'HTTPS / 443';
+      } else if (sType === 'aws_cloudfront' && tType === 'aws_alb') {
+        edgeType = 'traffic';
+        label = 'Origin HTTP/S';
       } else if (sType === 'aws_alb' && (tType === 'aws_ec2' || tType === 'aws_auto_scaling')) {
         edgeType = 'traffic';
-        label = 'HTTP/80';
+        label = 'HTTP / 80';
       } else if (sType === 'aws_ec2' && (tType === 'aws_rds' || tType === 'azure_sql')) {
         edgeType = 'traffic';
         label = 'Port 5432';
+      } else if (sType === 'aws_ec2' && tType === 'aws_s3') {
+        edgeType = 'association';
+        label = 'S3 API / IAM';
       }
     }
 
+    const color = edgeType === 'association' ? '#64748B' : '#38BDF8';
     const newEdges = addEdge(
       {
         ...connection,
         type: edgeType,
         label,
         animated: edgeType === 'traffic',
-        style: { stroke: edgeType === 'association' ? '#64748B' : '#38BDF8', strokeWidth: 2 },
+        style: { stroke: color, strokeWidth: 2 },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color,
+          width: 14,
+          height: 14,
+        },
       },
       edges
     );
@@ -327,9 +352,17 @@ export default function InfraCanvas() {
 
     if (!reactFlowInstance.current) return;
     const pos = reactFlowInstance.current.screenToFlowPosition({ x: event.clientX, y: event.clientY });
-    const resourceType = event.dataTransfer.types.includes('application/cloudcraft')
-      ? event.dataTransfer.getData('application/cloudcraft')
-      : undefined;
+
+    // Retrieve dragged resource type reliably
+    let resourceType: string | undefined = undefined;
+    if (typeof window !== 'undefined' && (window as any).__cloudcraft_dragged_type) {
+      resourceType = (window as any).__cloudcraft_dragged_type;
+    } else {
+      const mimeType = event.dataTransfer.types.find((t) => t.startsWith('application/cloudcraft-'));
+      if (mimeType) {
+        resourceType = mimeType.replace('application/cloudcraft-', '');
+      }
+    }
 
     const hit = findContainerAtPosition(pos, resourceType);
     if (hit) {
@@ -345,7 +378,10 @@ export default function InfraCanvas() {
   const onDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     setActiveDragTargetId(null);
-    const resourceType = event.dataTransfer.getData('application/cloudcraft');
+    let resourceType = event.dataTransfer.getData('application/cloudcraft');
+    if (!resourceType && typeof window !== 'undefined') {
+      resourceType = (window as any).__cloudcraft_dragged_type;
+    }
     if (!resourceType || !reactFlowInstance.current || !reactFlowWrapper.current) return;
     const def = getResourceDefinition(resourceType);
     if (!def) return;
@@ -390,7 +426,23 @@ export default function InfraCanvas() {
       },
     };
 
-    const newNodes = [...nodes, newNode];
+    // If placed in container, expand container bounds if necessary to guarantee generous padding
+    let adjustedNodes = [...nodes];
+    if (hit && hit.isAllowed) {
+      const containerNode = nodes.find((n) => n.id === hit.container.id);
+      if (containerNode) {
+        const pad = 35;
+        const neededWidth = Math.max(containerNode.data.width || (hit.container.data.resourceType.includes('vpc') ? 780 : 340), (pos.x - containerNode.position.x) + width + pad);
+        const neededHeight = Math.max(containerNode.data.height || (hit.container.data.resourceType.includes('vpc') ? 500 : 220), (pos.y - containerNode.position.y) + height + pad);
+        adjustedNodes = adjustedNodes.map((n) =>
+          n.id === containerNode.id
+            ? { ...n, data: { ...n.data, width: neededWidth, height: neededHeight } }
+            : n
+        );
+      }
+    }
+
+    const newNodes = [...adjustedNodes, newNode];
     pushHistory(nodes, edges);
     setNodes(newNodes);
 
@@ -420,11 +472,27 @@ export default function InfraCanvas() {
     setSelectedNodeId(null);
   }, []);
 
+  // ── Recursive Descendants Helper ─────────────────────────────────────────────
+  const getDescendantIds = useCallback((parentId: string, allNodes: Node[]): Set<string> => {
+    const descendants = new Set<string>();
+    const queue = [parentId];
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      for (const n of allNodes) {
+        if (n.data.groupId === curr && !descendants.has(n.id)) {
+          descendants.add(n.id);
+          queue.push(n.id);
+        }
+      }
+    }
+    return descendants;
+  }, []);
+
   // ── Drag Nodes & Move Child Nodes with Containers ────────────────────────────
   const onNodesChangeWrapped: typeof onNodesChange = useCallback((changes) => {
     onNodesChange(changes);
 
-    // If container node position changes, shift its children
+    // If container node position changes, shift ALL descendants (children & grandchildren)
     const positionChanges = changes.filter((c): c is NodePositionChange => c.type === 'position' && !!c.position);
     for (const change of positionChanges) {
       const targetNode = nodes.find((n) => n.id === change.id);
@@ -432,30 +500,58 @@ export default function InfraCanvas() {
         const deltaX = change.position.x - targetNode.position.x;
         const deltaY = change.position.y - targetNode.position.y;
         if (deltaX !== 0 || deltaY !== 0) {
-          // Shift children
-          setNodes((currentNodes) =>
-            currentNodes.map((n) => {
-              if (n.data.groupId === change.id) {
-                return {
-                  ...n,
-                  position: {
-                    x: n.position.x + deltaX,
-                    y: n.position.y + deltaY,
-                  },
-                };
-              }
-              return n;
-            })
-          );
+          const descendants = getDescendantIds(change.id, nodes);
+          if (descendants.size > 0) {
+            setNodes((currentNodes) =>
+              currentNodes.map((n) => {
+                if (descendants.has(n.id)) {
+                  return {
+                    ...n,
+                    position: {
+                      x: n.position.x + deltaX,
+                      y: n.position.y + deltaY,
+                    },
+                  };
+                }
+                return n;
+              })
+            );
+          }
         }
       }
     }
 
     const isDragStop = changes.some((c) => c.type === 'position' && !c.dragging);
     if (isDragStop) {
+      // Re-evaluate container hierarchy for moved leaf/subnet nodes
+      const movedChanges = positionChanges.filter((c) => !c.dragging);
+      setNodes((currentNodes) => {
+        let updated = [...currentNodes];
+        for (const change of movedChanges) {
+          const movedNode = updated.find((n) => n.id === change.id);
+          if (!movedNode) continue;
+          const isVpc = movedNode.data.resourceType?.includes('vpc') || movedNode.data.resourceType?.includes('vnet');
+          if (isVpc) continue;
+
+          const hit = findContainerAtPosition(movedNode.position, movedNode.data.resourceType);
+          if (hit && hit.isAllowed && hit.container.id !== movedNode.id) {
+            if (movedNode.data.groupId !== hit.container.id) {
+              updated = updated.map((n) =>
+                n.id === movedNode.id ? { ...n, data: { ...n.data, groupId: hit.container.id } } : n
+              );
+            }
+          } else if (!hit && movedNode.data.groupId) {
+            // Dragged out into canvas
+            updated = updated.map((n) =>
+              n.id === movedNode.id ? { ...n, data: { ...n.data, groupId: undefined } } : n
+            );
+          }
+        }
+        return updated;
+      });
       setTimeout(() => syncToStore(latestNodesRef.current), 0);
     }
-  }, [onNodesChange, syncToStore, nodes, setNodes]);
+  }, [onNodesChange, syncToStore, nodes, setNodes, getDescendantIds, findContainerAtPosition]);
 
   // ── Auto-layout (Logical Cloud Architecture) ─────────────────────────────────
   const handleAutoLayout = useCallback(() => {

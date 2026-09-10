@@ -30,6 +30,10 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
   const provider = node.provider ?? def.provider;
   const isVpc = node.resourceType === 'aws_vpc' || node.resourceType === 'azure_vnet';
   const isSubnet = node.resourceType === 'aws_subnet' || node.resourceType === 'azure_subnet';
+  const isImported = node.importState === 'imported' || node.config?.imported === true || node.config?.importState === 'imported';
+  const cloudArn = (node.config?.arn as string) || (node.config?.providerResourceId as string) || '';
+  const cloudRegion = (node.config?.region as string) || node.region || '';
+  const cloudSource = (node.config?.source as string) || (provider === 'azure' ? 'azure-arm' : 'aws-api');
 
   return (
     <div className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col shrink-0 select-none shadow-2xl z-20">
@@ -49,6 +53,11 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
             {isContainer && (
               <span className="text-[9px] px-1 py-0.2 rounded bg-purple-500/20 text-purple-300 font-medium">
                 Container
+              </span>
+            )}
+            {isImported && (
+              <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-medium">
+                Imported
               </span>
             )}
           </div>
@@ -109,6 +118,18 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
 
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+        {isImported && (
+          <div className="bg-cyan-950/40 border border-cyan-500/40 rounded-xl p-3 flex items-start gap-2.5 text-xs text-cyan-300">
+            <AlertTriangle className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-cyan-200">Imported Infrastructure (Read-Only)</p>
+              <p className="text-[11px] text-cyan-400/80 mt-0.5 leading-relaxed">
+                Discovered live from {provider.toUpperCase()} ({cloudRegion || 'cloud'}). Protected against destructive modification or deletion.
+              </p>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'config' && (
           <div className="space-y-3.5">
             {def.configSchema.map((field) => (
@@ -249,6 +270,30 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
                 </span>
               </div>
             </div>
+
+            {isImported && (
+              <div className="p-3 rounded-xl bg-slate-950/60 border border-cyan-500/30 space-y-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-cyan-400 block">
+                  Cloud Identity (Live)
+                </span>
+                {Boolean(cloudArn) && (
+                  <div className="text-xs text-slate-300">
+                    <span className="text-slate-500 block text-[10px]">Cloud Resource ID / ARN</span>
+                    <span className="font-mono text-[10px] text-cyan-300 break-all">{cloudArn}</span>
+                  </div>
+                )}
+                {Boolean(cloudRegion) && (
+                  <div className="text-xs text-slate-300 flex justify-between">
+                    <span className="text-slate-500">Cloud Region</span>
+                    <span className="font-mono text-cyan-300">{cloudRegion}</span>
+                  </div>
+                )}
+                <div className="text-xs text-slate-300 flex justify-between">
+                  <span className="text-slate-500">Source</span>
+                  <span className="font-mono text-slate-400">{cloudSource}</span>
+                </div>
+              </div>
+            )}
 
             {def.description && (
               <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">

@@ -20,6 +20,8 @@ import {
   AwsSgIcon,
   AwsEbsIcon,
   AwsDynamodbIcon,
+  AwsCloudFrontIcon,
+  AwsInternetIcon,
 } from './AwsIcons';
 import {
   AzureIcon,
@@ -67,6 +69,12 @@ export function CloudServiceIcon({
     ) : (
       <AwsSubnetIcon size={size} className={className} />
     );
+  }
+  if (type.includes('cloudfront') || type.includes('cdn')) {
+    return <AwsCloudFrontIcon size={size} className={className} />;
+  }
+  if (type.includes('internet') || type.includes('public_traffic') || type === 'aws_internet') {
+    return <AwsInternetIcon size={size} className={className} />;
   }
   if (type.includes('ec2') || type === 'aws_instance') {
     return <AwsEc2Icon size={size} className={className} />;

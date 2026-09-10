@@ -82,10 +82,17 @@ export class AzurePricingProvider implements PricingProvider {
       case 'azure_sql':             return this._sql(resource, config, region, mult);
       case 'azure_storage':         return this._storage(resource, config, region, mult);
       case 'azure_lb':              return this._lb(resource, config, region, mult);
+      case 'azure_app_gateway':     return this._appGateway(resource, config, region, mult);
+      case 'azure_functions':       return this._functions(resource, config, region, mult);
+      case 'azure_aks':             return this._aks(resource, config, region, mult);
+      case 'azure_key_vault':       return this._keyVault(resource, config, region, mult);
+      case 'azure_nat':             return this._nat(resource, config, region, mult);
       case 'azure_resource_group':
       case 'azure_vnet':
       case 'azure_subnet':
       case 'azure_nsg':
+      case 'azure_public_ip':
+      case 'azure_nic':
         return null; // No direct charges
       default:
         return this._unknown(resource, region);
@@ -236,6 +243,145 @@ export class AzurePricingProvider implements PricingProvider {
         `Region: ${region}`,
       ],
       pricingSource: 'azure-lb-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _appGateway(
+    resource: DbArchitectureResource,
+    _config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const hourly = 0.246 * mult;
+    const monthly = toMonthly(hourly);
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'azure',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: 'Application Gateway Standard_v2 fixed hourly', monthlyUsd: monthly },
+      ],
+      assumptions: [
+        'Standard_v2 fixed gateway capacity',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'azure-app-gateway-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _functions(
+    resource: DbArchitectureResource,
+    _config: Record<string, unknown>,
+    region: string,
+    _mult: number,
+  ): CostLineItem {
+    const monthly = 5.0;
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'azure',
+      region,
+      hourlyUsd: monthly / 730,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: 'Azure Functions consumption & memory executions', monthlyUsd: monthly },
+      ],
+      assumptions: [
+        'Includes 1M executions and 400,000 GB-s free tier grant',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'azure-functions-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _aks(
+    resource: DbArchitectureResource,
+    _config: Record<string, unknown>,
+    region: string,
+    _mult: number,
+  ): CostLineItem {
+    const hourly = 0.10;
+    const monthly = toMonthly(hourly);
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'azure',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: 'AKS cluster control plane Uptime SLA ($0.10/hr)', monthlyUsd: monthly },
+      ],
+      assumptions: [
+        'Cluster management with 99.95% SLA',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'azure-aks-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _keyVault(
+    resource: DbArchitectureResource,
+    _config: Record<string, unknown>,
+    region: string,
+    _mult: number,
+  ): CostLineItem {
+    const monthly = 3.0;
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'azure',
+      region,
+      hourlyUsd: monthly / 730,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: 'Key Vault standard operations & secret storage', monthlyUsd: monthly },
+      ],
+      assumptions: [
+        'Includes ~100k key and secret transactions',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'azure-keyvault-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _nat(
+    resource: DbArchitectureResource,
+    _config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const hourly = 0.045 * mult;
+    const monthly = toMonthly(hourly) + (4.5 * mult);
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'azure',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: 'Azure NAT Gateway hourly resource charge', monthlyUsd: toMonthly(hourly) },
+        { label: 'Data processed (100GB assumed)', monthlyUsd: 4.5 * mult },
+      ],
+      assumptions: [
+        'Assumes standard 100GB/mo data throughput',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'azure-nat-list-price',
       confidence: 'estimate',
     };
   }

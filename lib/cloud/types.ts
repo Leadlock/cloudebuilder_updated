@@ -41,19 +41,19 @@ export type CloudCredentials = AwsRoleCredentials | AzureSpCredentials;
 
 export type DiscoveredResourceType =
   // Networking
-  | 'vpc' | 'vnet' | 'subnet' | 'internet-gateway' | 'nat-gateway' | 'peering'
+  | 'vpc' | 'vnet' | 'subnet' | 'internet-gateway' | 'nat-gateway' | 'route-table' | 'peering'
   // Compute
-  | 'ec2-instance' | 'virtual-machine' | 'auto-scaling-group'
+  | 'ec2-instance' | 'virtual-machine' | 'auto-scaling-group' | 'aks' | 'functions'
   // Storage
   | 's3-bucket' | 'storage-account' | 'blob-container' | 'ebs-volume'
   // Database
   | 'rds-instance' | 'sql-database' | 'sql-server' | 'dynamodb-table'
   // Load balancing
-  | 'alb' | 'nlb' | 'load-balancer'
+  | 'alb' | 'nlb' | 'load-balancer' | 'application-gateway' | 'target-group'
   // Identity / security
-  | 'iam-role' | 'security-group' | 'network-security-group'
+  | 'iam-role' | 'security-group' | 'network-security-group' | 'key-vault'
   // Other
-  | 'resource-group' | 'unknown';
+  | 'resource-group' | 'public-ip' | 'network-interface' | 'unknown';
 
 export interface DiscoveredResource {
   /** Provider-assigned resource ID (e.g. ARN, Azure resource ID) */

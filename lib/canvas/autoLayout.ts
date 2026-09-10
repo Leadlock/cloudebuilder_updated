@@ -96,7 +96,19 @@ export function autoLayoutArchitecture(nodes: CanvasNode[], edges: CanvasEdge[])
   });
 
   const VPC_START_X = 80;
-  const VPC_START_Y = 160;
+  // Determine if we have top ingress nodes (Internet, CloudFront, IGW)
+  const hasInternet = uncontainedLeaves.some((n) => n.resourceType === 'aws_internet');
+  const hasCloudFront = uncontainedLeaves.some((n) => n.resourceType === 'aws_cloudfront');
+  const hasIgw = uncontainedLeaves.some((n) => n.resourceType === 'aws_igw' || n.resourceType === 'azure_public_ip');
+
+  let vpcStartY = 60;
+  if (hasInternet && hasCloudFront) {
+    vpcStartY = 310;
+  } else if (hasInternet || hasCloudFront || hasIgw) {
+    vpcStartY = 190;
+  }
+
+  const VPC_START_Y = vpcStartY;
   const VPC_PADDING_X = 35;
   const VPC_HEADER_H = 65;
   const SUB_GAP_Y = 30;
@@ -158,21 +170,58 @@ export function autoLayoutArchitecture(nodes: CanvasNode[], edges: CanvasEdge[])
     });
   }
 
-  // Layout Ingress / Top Gateways (IGW, Internet, Route53) above VPC
-  const ingressTypes = new Set(['aws_igw', 'azure_public_ip', 'aws_route_table']);
-  const ingressNodes = uncontainedLeaves.filter((n) => ingressTypes.has(n.resourceType));
-  const remainingLeaves = uncontainedLeaves.filter((n) => !ingressTypes.has(n.resourceType));
+  // Layout Ingress / Top Gateways (Internet -> CloudFront -> IGW) above VPC
+  const ingressOrder: Record<string, number> = {
+    aws_internet: 1,
+    aws_cloudfront: 2,
+    aws_igw: 3,
+    azure_public_ip: 3,
+    aws_route_table: 4,
+  };
 
-  ingressNodes.forEach((node, i) => {
-    updatedNodes.push({
-      ...node,
-      position: { x: VPC_START_X + VPC_PADDING_X + i * (LEAF_CARD_W + 30), y: 50 },
+  const ingressNodes = uncontainedLeaves
+    .filter((n) => ingressOrder[n.resourceType] !== undefined)
+    .sort((a, b) => (ingressOrder[a.resourceType] || 99) - (ingressOrder[b.resourceType] || 99));
+
+  const remainingLeaves = uncontainedLeaves.filter((n) => ingressOrder[n.resourceType] === undefined);
+
+  // Position ingress pipeline centered above the primary subnet entry
+  const ingressCenterX = VPC_START_X + VPC_PADDING_X + SUB_PADDING_X;
+  if (hasInternet && hasCloudFront) {
+    const internetNode = ingressNodes.find((n) => n.resourceType === 'aws_internet');
+    const cloudFrontNode = ingressNodes.find((n) => n.resourceType === 'aws_cloudfront');
+    const otherIngress = ingressNodes.filter((n) => n !== internetNode && n !== cloudFrontNode);
+
+    if (internetNode) {
+      updatedNodes.push({
+        ...internetNode,
+        position: { x: ingressCenterX, y: 30 },
+      });
+    }
+    if (cloudFrontNode) {
+      updatedNodes.push({
+        ...cloudFrontNode,
+        position: { x: ingressCenterX, y: 160 },
+      });
+    }
+    otherIngress.forEach((node, i) => {
+      updatedNodes.push({
+        ...node,
+        position: { x: ingressCenterX + (i + 1) * (LEAF_CARD_W + 30), y: 155 },
+      });
     });
-  });
+  } else {
+    ingressNodes.forEach((node, i) => {
+      updatedNodes.push({
+        ...node,
+        position: { x: VPC_START_X + VPC_PADDING_X + i * (LEAF_CARD_W + 30), y: 40 },
+      });
+    });
+  }
 
   // Layout Regional / External Services to the right of VPC (S3, KMS, IAM, CloudWatch)
   const rightFlankX = VPC_START_X + maxVpcWidth + 60;
-  let flankY = VPC_START_Y;
+  let flankY = Math.max(VPC_START_Y, 200);
 
   remainingLeaves.forEach((node) => {
     updatedNodes.push({

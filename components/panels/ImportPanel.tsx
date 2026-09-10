@@ -7,6 +7,7 @@ import { apiArchitectureService } from '@/lib/services/ApiArchitectureService';
 import {
   Upload, Cloud, FileCode2, CheckCircle2, Loader2,
   Server, Network, Database, HardDrive, AlertTriangle, RefreshCw,
+  Globe, Layers, ShieldCheck,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -77,11 +78,14 @@ const IMPORT_SOURCES = [
 ];
 
 const DISCOVERY_STEPS = [
-  { icon: Network, label: 'Scanning networks...' },
-  { icon: Server, label: 'Discovering compute instances...' },
-  { icon: Database, label: 'Discovering databases...' },
-  { icon: HardDrive, label: 'Discovering storage...' },
-  { icon: Cloud, label: 'Building architecture diagram...' },
+  { icon: Cloud, label: 'Connecting to Cloud Provider API...' },
+  { icon: Globe, label: 'Discovering accessible regions...' },
+  { icon: Network, label: 'Scanning VPCs & Virtual Networks...' },
+  { icon: Network, label: 'Scanning subnets, gateways & route tables...' },
+  { icon: Server, label: 'Scanning compute instances & load balancers...' },
+  { icon: Database, label: 'Scanning databases & storage accounts...' },
+  { icon: Layers, label: 'Reconstructing relationships & network topology...' },
+  { icon: CheckCircle2, label: 'Building CloudCraft architecture diagram...' },
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -99,6 +103,10 @@ export default function ImportPanel() {
   // Discovery state
   const [accounts, setAccounts] = useState<CloudAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [availableRegions, setAvailableRegions] = useState<string[]>([]);
+  const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
+  const [loadingRegions, setLoadingRegions] = useState(false);
+  const [allRegionsSelected, setAllRegionsSelected] = useState(true);
   const [discoveryRun, setDiscoveryRun] = useState<DiscoveryRun | null>(null);
   const [discoveryStep, setDiscoveryStep] = useState(-1);
   const [polling, setPolling] = useState(false);
@@ -121,6 +129,10 @@ export default function ImportPanel() {
     setSelected(null);
     setAccounts([]);
     setSelectedAccountId(null);
+    setAvailableRegions([]);
+    setSelectedRegions([]);
+    setLoadingRegions(false);
+    setAllRegionsSelected(true);
     setDiscoveryRun(null);
     setDiscoveryStep(-1);
     setPolling(false);
@@ -129,6 +141,27 @@ export default function ImportPanel() {
     setAzureForm({ tenantId: '', clientId: '', clientSecret: '', subscriptionId: '' });
     setAccountName('');
     setConnecting(false);
+  }
+
+  async function handleSelectAccount(accountId: string) {
+    setSelectedAccountId(accountId);
+    setLoadingRegions(true);
+    setAvailableRegions([]);
+    setSelectedRegions([]);
+    setAllRegionsSelected(true);
+    try {
+      const res = await fetch(`/api/cloud-accounts/${accountId}/regions`);
+      if (res.ok) {
+        const data = await res.json() as { ok: boolean; data?: { regions: string[] } };
+        if (data.ok && data.data?.regions?.length) {
+          setAvailableRegions(data.data.regions);
+        }
+      }
+    } catch {
+      // Non-fatal: user can still proceed with all accessible
+    } finally {
+      setLoadingRegions(false);
+    }
   }
 
   async function fetchAccounts(provider: string) {
@@ -250,7 +283,14 @@ export default function ImportPanel() {
     setDiscoveryStep(0);
 
     try {
-      const res = await fetch(`/api/cloud-accounts/${accountId}/discover`, { method: 'POST' });
+      const targetRegions = allRegionsSelected ? undefined : selectedRegions;
+      const res = await fetch(`/api/cloud-accounts/${accountId}/discover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          regions: targetRegions && targetRegions.length > 0 ? targetRegions : undefined,
+        }),
+      });
       const data = await res.json() as { ok: boolean; data: { runId: string; status: string }; error?: { message: string } };
       if (!data.ok) {
         setError(data.error?.message ?? 'Failed to start discovery');
@@ -334,7 +374,7 @@ export default function ImportPanel() {
             body: JSON.stringify({
               runId: discoveryRun.id,
               environmentId: activeProject.id,
-              merge: false,
+              merge: true, // Safe merge: preserves user's existing canvas nodes!
             }),
           });
           const data = await res.json() as { ok: boolean; data?: { nodes: CanvasNode[]; edges: CanvasEdge[] }; error?: { message: string } };
@@ -344,13 +384,29 @@ export default function ImportPanel() {
             return;
           }
         } catch {
-          // Fall through
+          // Fall through to client merge
         }
       }
 
-      dispatch({ type: 'UPDATE_CANVAS', nodes, edges });
+      // Client-side fallback merge
+      const currentProjectEnv = activeProject.environments[activeEnvironment] || activeProject.environments['production'];
+      const currentNodes = currentProjectEnv?.nodes ?? [];
+      const currentEdges = currentProjectEnv?.edges ?? [];
+
+      const nodeMap = new Map<string, CanvasNode>();
+      for (const n of currentNodes) nodeMap.set(n.id, n);
+      for (const n of nodes) nodeMap.set(n.id, n);
+
+      const edgeMap = new Map<string, CanvasEdge>();
+      for (const e of currentEdges) edgeMap.set(`${e.source}->${e.target}`, e);
+      for (const e of edges) edgeMap.set(`${e.source}->${e.target}`, e);
+
+      const mergedNodes = [...nodeMap.values()];
+      const mergedEdges = [...edgeMap.values()];
+
+      dispatch({ type: 'UPDATE_CANVAS', nodes: mergedNodes, edges: mergedEdges });
       dispatch({ type: 'SET_VIEW', view: 'canvas' });
-      apiArchitectureService.saveCanvas(activeProject.id, nodes, edges, activeEnvironment).catch(() => {});
+      apiArchitectureService.saveCanvas(activeProject.id, mergedNodes, mergedEdges, activeEnvironment).catch(() => {});
       return;
     }
 
@@ -445,7 +501,7 @@ export default function ImportPanel() {
                   {accounts.map((acct) => (
                     <button
                       key={acct.id}
-                      onClick={() => setSelectedAccountId(acct.id)}
+                      onClick={() => handleSelectAccount(acct.id)}
                       className={clsx(
                         'w-full flex items-center justify-between p-3 rounded-lg border transition-colors text-left',
                         selectedAccountId === acct.id
@@ -473,13 +529,88 @@ export default function ImportPanel() {
                     </button>
                   ))}
                 </div>
+
                 {selectedAccountId && (
-                  <button
-                    onClick={() => startDiscovery(selectedAccountId)}
-                    className="mt-4 w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition-colors"
-                  >
-                    Start Discovery →
-                  </button>
+                  <div className="mt-4 pt-4 border-t border-gray-700/80 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs text-gray-300 font-medium">
+                        <Globe className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Regions to Discover</span>
+                      </div>
+                      {loadingRegions ? (
+                        <span className="text-xs text-gray-500 flex items-center gap-1">
+                          <Loader2 className="w-3 h-3 animate-spin" /> Querying regions...
+                        </span>
+                      ) : availableRegions.length > 0 ? (
+                        <span className="text-xs text-gray-400">
+                          {availableRegions.length} accessible regions found
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="flex gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setAllRegionsSelected(true)}
+                        className={clsx(
+                          'px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors',
+                          allRegionsSelected
+                            ? 'bg-blue-600/30 border-blue-500 text-blue-200'
+                            : 'bg-gray-700/40 border-gray-600 text-gray-400 hover:text-gray-200'
+                        )}
+                      >
+                        All Accessible Regions
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAllRegionsSelected(false)}
+                        className={clsx(
+                          'px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors',
+                          !allRegionsSelected
+                            ? 'bg-blue-600/30 border-blue-500 text-blue-200'
+                            : 'bg-gray-700/40 border-gray-600 text-gray-400 hover:text-gray-200'
+                        )}
+                      >
+                        Select Specific Regions
+                      </button>
+                    </div>
+
+                    {!allRegionsSelected && availableRegions.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-2 bg-gray-900/60 rounded-lg border border-gray-700">
+                        {availableRegions.map((region) => {
+                          const isChecked = selectedRegions.includes(region);
+                          return (
+                            <button
+                              key={region}
+                              type="button"
+                              onClick={() => {
+                                setSelectedRegions((prev) =>
+                                  isChecked ? prev.filter((r) => r !== region) : [...prev, region]
+                                );
+                              }}
+                              className={clsx(
+                                'text-xs px-2.5 py-1 rounded-md border transition-colors',
+                                isChecked
+                                  ? 'bg-blue-600 text-white border-blue-500'
+                                  : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'
+                              )}
+                            >
+                              {region}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => startDiscovery(selectedAccountId)}
+                      disabled={!allRegionsSelected && selectedRegions.length === 0}
+                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Layers className="w-4 h-4" />
+                      Discover & Import Existing Infrastructure →
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -667,73 +798,105 @@ export default function ImportPanel() {
         )}
 
         {/* ── Step: results ────────────────────────────────────────────── */}
-        {step === 'results' && (
-          <div className="space-y-4">
-            {discoveryRun?.status === 'failed' ? (
-              <div className="bg-red-900/20 border border-red-800 rounded-xl p-4 flex items-center gap-3">
-                <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
-                <div>
-                  <p className="text-red-300 font-medium text-sm">Discovery Failed</p>
-                  <p className="text-red-500 text-xs mt-0.5">{discoveryRun.error ?? 'Unknown error'}</p>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-emerald-900/20 border border-emerald-800 rounded-xl p-4 flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                <div>
-                  <p className="text-emerald-300 font-medium text-sm">Discovery Complete</p>
-                  <p className="text-emerald-700 text-xs mt-0.5">
-                    {discoveryRun
-                      ? `${Object.values(discoveryRun.summary).reduce((a, b) => a + b, 0)} resources discovered`
-                      : '8 resources discovered across 2 availability zones'}
-                  </p>
-                </div>
-              </div>
-            )}
+        {step === 'results' && (() => {
+          const totalResources = discoveryRun?.resources?.length ?? (discoveryRun ? Object.values(discoveryRun.summary).reduce((a, b) => a + b, 0) : 0);
+          const unsupportedCount = discoveryRun?.resources?.filter((r) => r.resourceType.includes('unsupported')).length ?? 0;
+          const totalRelationships = discoveryRun?.resources?.reduce((acc, r) => {
+            const rels = r.metadata?.['relationships'];
+            return acc + (Array.isArray(rels) ? rels.length : 0);
+          }, 0) ?? 0;
 
-            {/* Resource summary */}
-            {discoveryRun && Object.keys(discoveryRun.summary).length > 0 && (
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-                <p className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-3">
-                  Discovered Resources
-                </p>
-                <div className="space-y-2 text-sm">
-                  {Object.entries(discoveryRun.summary).map(([type, count]) => (
-                    <div key={type} className="flex items-center gap-2 text-gray-300">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                      {count} × {type}
-                    </div>
-                  ))}
+          return (
+            <div className="space-y-4">
+              {discoveryRun?.status === 'failed' ? (
+                <div className="bg-red-900/20 border border-red-800 rounded-xl p-4 flex items-center gap-3">
+                  <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
+                  <div>
+                    <p className="text-red-300 font-medium text-sm">Discovery Failed</p>
+                    <p className="text-red-500 text-xs mt-0.5">{discoveryRun.error ?? 'Unknown error'}</p>
+                  </div>
                 </div>
-              </div>
-            )}
-
-            <div className="flex gap-3">
-              <button
-                onClick={reset}
-                className="flex-1 py-2 border border-gray-700 text-gray-400 hover:text-white rounded-xl text-sm transition-colors"
-              >
-                Start Over
-              </button>
-              {activeProject && (
-                <button
-                  onClick={() => handleImport('update')}
-                  disabled={discoveryRun?.status === 'failed'}
-                  className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl text-sm font-medium transition-colors"
-                >
-                  Import to Current
-                </button>
+              ) : (
+                <div className="bg-emerald-900/20 border border-emerald-800 rounded-xl p-4 flex items-center gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <div>
+                    <p className="text-emerald-300 font-medium text-sm">Discovery Complete</p>
+                    <p className="text-emerald-400/90 text-xs mt-0.5">
+                      Successfully inspected live cloud environment and reconstructed architecture topology.
+                    </p>
+                  </div>
+                </div>
               )}
-              <button
-                onClick={() => handleImport('new')}
-                disabled={discoveryRun?.status === 'failed'}
-                className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-xl text-sm font-medium transition-colors"
-              >
-                {activeProject ? 'Open as New Project' : 'Open in Canvas →'}
-              </button>
+
+              {/* Stat Counters */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-gray-800/80 border border-gray-700/80 rounded-xl p-3 text-center">
+                  <div className="text-2xl font-bold text-white">{totalResources}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">Resources Discovered</div>
+                </div>
+                <div className="bg-gray-800/80 border border-gray-700/80 rounded-xl p-3 text-center">
+                  <div className="text-2xl font-bold text-blue-400">{totalRelationships}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">Relationships Found</div>
+                </div>
+                <div className="bg-gray-800/80 border border-gray-700/80 rounded-xl p-3 text-center">
+                  <div className="text-2xl font-bold text-amber-400">{unsupportedCount}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">Unsupported / Fallback</div>
+                </div>
+              </div>
+
+              {/* Safety notice */}
+              <div className="bg-blue-950/40 border border-blue-800/60 rounded-xl p-3 flex items-start gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-blue-300">
+                  <strong>Read-Only Safety:</strong> Discovered resources will be imported with an &quot;Imported&quot; badge and live cloud metadata. They will generate Terraform data sources rather than destructive resources.
+                </p>
+              </div>
+
+              {/* Resource summary */}
+              {discoveryRun && Object.keys(discoveryRun.summary).length > 0 && (
+                <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+                  <p className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-3">
+                    Discovered Resources Breakdown
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {Object.entries(discoveryRun.summary).map(([type, count]) => (
+                      <div key={type} className="flex items-center gap-2 text-gray-300">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        <span>{count} × {type}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={reset}
+                  className="px-4 py-2.5 border border-gray-700 text-gray-400 hover:text-white rounded-xl text-sm transition-colors"
+                >
+                  Start Over
+                </button>
+                {activeProject && (
+                  <button
+                    onClick={() => handleImport('update')}
+                    disabled={discoveryRun?.status === 'failed'}
+                    className="flex-1 py-2.5 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Layers className="w-4 h-4" />
+                    Safe Merge to Current Architecture
+                  </button>
+                )}
+                <button
+                  onClick={() => handleImport('new')}
+                  disabled={discoveryRun?.status === 'failed'}
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-xl text-sm font-medium transition-colors"
+                >
+                  {activeProject ? 'Open as New Project' : 'Open in Canvas →'}
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

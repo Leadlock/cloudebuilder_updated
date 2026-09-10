@@ -14,6 +14,7 @@ import type {
   AccountValidationResult,
   CloudProviderKey,
 } from './types';
+import type { DiscoveredTopology, DiscoveryOptions } from './discovery/types';
 
 // ─── Base adapter ─────────────────────────────────────────────────────────────
 
@@ -47,7 +48,13 @@ export interface InfrastructureDiscoveryProvider extends CloudProviderAdapter {
    * Discover all supported resource types in the configured account/region(s).
    * Returns a structured result; never throws.
    */
-  discoverAll(): Promise<DiscoveryResult>;
+  discoverAll(regions?: string[]): Promise<DiscoveryResult>;
+
+  /** Discover accessible regions for this account/subscription */
+  discoverRegions?(): Promise<string[]>;
+
+  /** Full topology discovery with relationships and hierarchy */
+  discoverTopology?(options?: DiscoveryOptions): Promise<DiscoveredTopology>;
 }
 
 // ─── Factory ──────────────────────────────────────────────────────────────────

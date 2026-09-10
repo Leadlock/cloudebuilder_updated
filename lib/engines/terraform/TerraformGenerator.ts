@@ -119,69 +119,151 @@ class AwsTerraformGenerator {
     for (const r of resources) {
       const cfg = this._cfg(r);
       const name = resolver.tfNameOf(r.id) ?? tfName(r.label);
+      const isImported = Boolean(cfg.imported || cfg.importState === 'imported');
 
       switch (r.resourceType) {
         case 'aws_vpc': {
-          blocks.push(this._vpc(name, cfg));
-          resourceMap[r.id] = `aws_vpc.${name}`;
+          if (isImported) {
+            blocks.push(this._dataVpc(name, cfg));
+            resourceMap[r.id] = `data.aws_vpc.${name}`;
+          } else {
+            blocks.push(this._vpc(name, cfg));
+            resourceMap[r.id] = `aws_vpc.${name}`;
+          }
           break;
         }
         case 'aws_subnet': {
           const vpc = resolver.resolveParent(r.id, 'aws_vpc', connections, resources);
-          const vpcRef = vpc ? `aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id` : 'aws_vpc.main.id # WARNING: VPC not connected';
-          blocks.push(this._subnet(name, cfg, vpcRef));
-          resourceMap[r.id] = `aws_subnet.${name}`;
+          const isVpcImported = vpc && Boolean(this._cfg(vpc).imported || this._cfg(vpc).importState === 'imported');
+          const vpcRef = vpc
+            ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id`
+            : 'aws_vpc.main.id # WARNING: VPC not connected';
+
+          if (isImported) {
+            blocks.push(this._dataSubnet(name, cfg));
+            resourceMap[r.id] = `data.aws_subnet.${name}`;
+          } else {
+            blocks.push(this._subnet(name, cfg, vpcRef));
+            resourceMap[r.id] = `aws_subnet.${name}`;
+          }
           break;
         }
         case 'aws_ec2': {
           const subnet = resolver.resolveParent(r.id, 'aws_subnet', connections, resources);
-          const subnetRef = subnet ? `aws_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id` : null;
+          const isSubnetImported = subnet && Boolean(this._cfg(subnet).imported || this._cfg(subnet).importState === 'imported');
+          const subnetRef = subnet
+            ? `${isSubnetImported ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id`
+            : null;
           const sg = resolver.resolveParent(r.id, 'aws_sg', connections, resources);
-          const sgRef = sg ? `[aws_security_group.${resolver.tfNameOf(sg.id) ?? 'main'}.id]` : null;
-          blocks.push(this._ec2(name, cfg, subnetRef, sgRef));
-          resourceMap[r.id] = `aws_instance.${name}`;
+          const isSgImported = sg && Boolean(this._cfg(sg).imported || this._cfg(sg).importState === 'imported');
+          const sgRef = sg
+            ? `[${isSgImported ? 'data.' : ''}aws_security_group.${resolver.tfNameOf(sg.id) ?? 'main'}.id]`
+            : null;
+
+          if (isImported) {
+            blocks.push(this._dataEc2(name, cfg));
+            resourceMap[r.id] = `data.aws_instance.${name}`;
+          } else {
+            blocks.push(this._ec2(name, cfg, subnetRef, sgRef));
+            resourceMap[r.id] = `aws_instance.${name}`;
+          }
           break;
         }
         case 'aws_rds': {
           const subnet = resolver.resolveParent(r.id, 'aws_subnet', connections, resources);
+          const isSubnetImported = subnet && Boolean(this._cfg(subnet).imported || this._cfg(subnet).importState === 'imported');
           const sg = resolver.resolveParent(r.id, 'aws_sg', connections, resources);
-          const subnetRef = subnet ? `aws_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id` : null;
-          const sgRef = sg ? `[aws_security_group.${resolver.tfNameOf(sg.id) ?? 'main'}.id]` : null;
-          blocks.push(this._rds(name, cfg, subnetRef, sgRef));
-          resourceMap[r.id] = `aws_db_instance.${name}`;
+          const isSgImported = sg && Boolean(this._cfg(sg).imported || this._cfg(sg).importState === 'imported');
+          const subnetRef = subnet
+            ? `${isSubnetImported ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id`
+            : null;
+          const sgRef = sg
+            ? `[${isSgImported ? 'data.' : ''}aws_security_group.${resolver.tfNameOf(sg.id) ?? 'main'}.id]`
+            : null;
+
+          if (isImported) {
+            blocks.push(this._dataRds(name, cfg));
+            resourceMap[r.id] = `data.aws_db_instance.${name}`;
+          } else {
+            blocks.push(this._rds(name, cfg, subnetRef, sgRef));
+            resourceMap[r.id] = `aws_db_instance.${name}`;
+          }
           break;
         }
         case 'aws_s3': {
-          blocks.push(this._s3(name, cfg));
-          resourceMap[r.id] = `aws_s3_bucket.${name}`;
+          if (isImported) {
+            blocks.push(this._dataS3(name, cfg));
+            resourceMap[r.id] = `data.aws_s3_bucket.${name}`;
+          } else {
+            blocks.push(this._s3(name, cfg));
+            resourceMap[r.id] = `aws_s3_bucket.${name}`;
+          }
           break;
         }
         case 'aws_alb': {
           const sg = resolver.resolveParent(r.id, 'aws_sg', connections, resources);
-          const sgRef = sg ? `[aws_security_group.${resolver.tfNameOf(sg.id) ?? 'main'}.id]` : null;
-          blocks.push(this._alb(name, cfg, sgRef));
-          resourceMap[r.id] = `aws_lb.${name}`;
+          const isSgImported = sg && Boolean(this._cfg(sg).imported || this._cfg(sg).importState === 'imported');
+          const sgRef = sg
+            ? `[${isSgImported ? 'data.' : ''}aws_security_group.${resolver.tfNameOf(sg.id) ?? 'main'}.id]`
+            : null;
+
+          if (isImported) {
+            blocks.push(this._dataAlb(name, cfg));
+            resourceMap[r.id] = `data.aws_lb.${name}`;
+          } else {
+            blocks.push(this._alb(name, cfg, sgRef));
+            resourceMap[r.id] = `aws_lb.${name}`;
+          }
           break;
         }
         case 'aws_igw': {
           const vpc = resolver.resolveParent(r.id, 'aws_vpc', connections, resources);
-          const vpcRef = vpc ? `aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id` : 'aws_vpc.main.id # WARNING: VPC not connected';
+          const isVpcImported = vpc && Boolean(this._cfg(vpc).imported || this._cfg(vpc).importState === 'imported');
+          const vpcRef = vpc
+            ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id`
+            : 'aws_vpc.main.id # WARNING: VPC not connected';
           blocks.push(this._igw(name, cfg, vpcRef));
           resourceMap[r.id] = `aws_internet_gateway.${name}`;
           break;
         }
         case 'aws_nat': {
           const subnet = resolver.resolveParent(r.id, 'aws_subnet', connections, resources);
-          const subnetRef = subnet ? `aws_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id` : 'aws_subnet.main.id # WARNING: Subnet not connected';
+          const isSubnetImported = subnet && Boolean(this._cfg(subnet).imported || this._cfg(subnet).importState === 'imported');
+          const subnetRef = subnet
+            ? `${isSubnetImported ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id`
+            : 'aws_subnet.main.id # WARNING: Subnet not connected';
           blocks.push(this._nat(name, cfg, subnetRef));
           resourceMap[r.id] = `aws_nat_gateway.${name}`;
           break;
         }
         case 'aws_sg': {
           const vpc = resolver.resolveParent(r.id, 'aws_vpc', connections, resources);
-          const vpcRef = vpc ? `aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id` : 'aws_vpc.main.id # WARNING: VPC not connected';
-          blocks.push(this._sg(name, cfg, vpcRef));
-          resourceMap[r.id] = `aws_security_group.${name}`;
+          const isVpcImported = vpc && Boolean(this._cfg(vpc).imported || this._cfg(vpc).importState === 'imported');
+          const vpcRef = vpc
+            ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id`
+            : 'aws_vpc.main.id # WARNING: VPC not connected';
+
+          if (isImported) {
+            blocks.push(this._dataSg(name, cfg));
+            resourceMap[r.id] = `data.aws_security_group.${name}`;
+          } else {
+            blocks.push(this._sg(name, cfg, vpcRef));
+            resourceMap[r.id] = `aws_security_group.${name}`;
+          }
+          break;
+        }
+        case 'aws_cloudfront': {
+          const alb = resolver.resolveParent(r.id, 'aws_alb', connections, resources);
+          const isAlbImported = alb && Boolean(this._cfg(alb).imported || this._cfg(alb).importState === 'imported');
+          const originDns = alb
+            ? `${isAlbImported ? 'data.' : ''}aws_lb.${resolver.tfNameOf(alb.id) ?? 'main'}.dns_name`
+            : '"origin.example.com"';
+          blocks.push(this._cloudfront(name, cfg, originDns));
+          resourceMap[r.id] = `aws_cloudfront_distribution.${name}`;
+          break;
+        }
+        case 'aws_internet': {
+          // Public internet traffic entrypoint marker (no standalone terraform resource)
           break;
         }
         default: {
@@ -397,6 +479,119 @@ ${rules.join('\n')}
   }
 }`;
   }
+
+  private _cloudfront(name: string, cfg: Record<string, unknown>, originDns: string): string {
+    const priceClass = (cfg['priceClass'] as string) || 'PriceClass_100';
+    const defaultRoot = (cfg['defaultRootObject'] as string) || 'index.html';
+    const enabled = cfg['enabled'] !== false;
+
+    return `resource "aws_cloudfront_distribution" "${name}" {
+  enabled             = ${enabled}
+  price_class         = "${priceClass}"
+  default_root_object = "${defaultRoot}"
+
+  origin {
+    domain_name = ${originDns}
+    origin_id   = "${name}-alb-origin"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "match-viewer"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  default_cache_behavior {
+    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "${name}-alb-origin"
+
+    forwarded_values {
+      query_string = true
+      cookies {
+        forward = "all"
+      }
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 3600
+    max_ttl                = 86400
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+  }
+}`;
+  }
+
+  private _dataVpc(name: string, cfg: Record<string, unknown>): string {
+    const id = (cfg['resourceId'] as string) || (cfg['providerResourceId'] as string) || '';
+    return `# Existing AWS VPC (Imported)
+data "aws_vpc" "${name}" {
+  ${id ? `id = "${id}"` : `default = true`}
+}`;
+  }
+
+  private _dataSubnet(name: string, cfg: Record<string, unknown>): string {
+    const id = (cfg['resourceId'] as string) || (cfg['providerResourceId'] as string) || '';
+    return `# Existing AWS Subnet (Imported)
+data "aws_subnet" "${name}" {
+  ${id ? `id = "${id}"` : `cidr_block = "${cfg['cidrBlock'] ?? '10.0.1.0/24'}"`}
+}`;
+  }
+
+  private _dataEc2(name: string, cfg: Record<string, unknown>): string {
+    const id = (cfg['resourceId'] as string) || (cfg['providerResourceId'] as string) || '';
+    return `# Existing AWS EC2 Instance (Imported)
+data "aws_instance" "${name}" {
+  ${id ? `instance_id = "${id}"` : `filter {\n    name   = "tag:Name"\n    values = ["${name}"]\n  }`}
+}`;
+  }
+
+  private _dataRds(name: string, cfg: Record<string, unknown>): string {
+    const id = (cfg['name'] as string) || (cfg['resourceId'] as string) || name;
+    return `# Existing AWS RDS Instance (Imported)
+data "aws_db_instance" "${name}" {
+  db_instance_identifier = "${id}"
+}`;
+  }
+
+  private _dataS3(name: string, cfg: Record<string, unknown>): string {
+    const bucket = (cfg['bucketName'] as string) || (cfg['resourceId'] as string) || name;
+    return `# Existing AWS S3 Bucket (Imported)
+data "aws_s3_bucket" "${name}" {
+  bucket = "${bucket}"
+}`;
+  }
+
+  private _dataAlb(name: string, cfg: Record<string, unknown>): string {
+    const arn = (cfg['arn'] as string) || (cfg['providerResourceId'] as string);
+    return `# Existing AWS Load Balancer (Imported)
+data "aws_lb" "${name}" {
+  ${arn ? `arn = "${arn}"` : `name = "${name}"`}
+}`;
+  }
+
+  private _dataSg(name: string, cfg: Record<string, unknown>): string {
+    const id = (cfg['resourceId'] as string) || (cfg['providerResourceId'] as string) || '';
+    return `# Existing AWS Security Group (Imported)
+data "aws_security_group" "${name}" {
+  ${id ? `id = "${id}"` : `name = "${name}"`}
+}`;
+  }
 }
 
 // ─── Azure Terraform Generator ────────────────────────────────────────────────
@@ -415,60 +610,105 @@ class AzureTerraformGenerator {
     for (const r of resources) {
       const cfg = this._cfg(r);
       const name = resolver.tfNameOf(r.id) ?? tfName(r.label);
+      const isImported = Boolean(cfg.imported || cfg.importState === 'imported');
 
       switch (r.resourceType) {
         case 'azure_resource_group': {
-          blocks.push(this._rg(name, cfg));
-          resourceMap[r.id] = `azurerm_resource_group.${name}`;
+          if (isImported) {
+            blocks.push(this._dataRg(name, cfg));
+            resourceMap[r.id] = `data.azurerm_resource_group.${name}`;
+          } else {
+            blocks.push(this._rg(name, cfg));
+            resourceMap[r.id] = `azurerm_resource_group.${name}`;
+          }
           break;
         }
         case 'azure_vnet': {
           const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
-          const rgName = rg ? `azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
-          const rgLoc  = rg ? `azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
-          blocks.push(this._vnet(name, cfg, rgName, rgLoc));
-          resourceMap[r.id] = `azurerm_virtual_network.${name}`;
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          if (isImported) {
+            blocks.push(this._dataVnet(name, cfg, rgName));
+            resourceMap[r.id] = `data.azurerm_virtual_network.${name}`;
+          } else {
+            blocks.push(this._vnet(name, cfg, rgName, rgLoc));
+            resourceMap[r.id] = `azurerm_virtual_network.${name}`;
+          }
           break;
         }
         case 'azure_subnet': {
           const vnet = resolver.resolveParent(r.id, 'azure_vnet', connections, resources);
+          const isVnetImported = vnet && Boolean(this._cfg(vnet).imported || this._cfg(vnet).importState === 'imported');
+          const vnetPrefix = isVnetImported ? 'data.' : '';
           const rg   = vnet ? resolver.resolveParent(vnet.id, 'azure_resource_group', connections, resources) : undefined;
-          const vnetName = vnet ? `azurerm_virtual_network.${resolver.tfNameOf(vnet.id) ?? 'main'}.name` : 'azurerm_virtual_network.main.name # WARNING: VNet not connected';
-          const rgName   = rg   ? `azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name`  : 'azurerm_resource_group.main.name';
-          blocks.push(this._subnet(name, cfg, rgName, vnetName));
-          resourceMap[r.id] = `azurerm_subnet.${name}`;
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const vnetName = vnet ? `${vnetPrefix}azurerm_virtual_network.${resolver.tfNameOf(vnet.id) ?? 'main'}.name` : 'azurerm_virtual_network.main.name # WARNING: VNet not connected';
+          const rgName   = rg   ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name`  : 'azurerm_resource_group.main.name';
+          if (isImported) {
+            blocks.push(this._dataSubnet(name, cfg, rgName, vnetName));
+            resourceMap[r.id] = `data.azurerm_subnet.${name}`;
+          } else {
+            blocks.push(this._subnet(name, cfg, rgName, vnetName));
+            resourceMap[r.id] = `azurerm_subnet.${name}`;
+          }
           break;
         }
         case 'azure_vm': {
           const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
-          const rgName = rg ? `azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
-          const rgLoc  = rg ? `azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
-          blocks.push(this._vm(name, cfg, rgName, rgLoc));
-          resourceMap[r.id] = `azurerm_linux_virtual_machine.${name}`;
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          if (isImported) {
+            blocks.push(this._dataVm(name, cfg, rgName));
+            resourceMap[r.id] = `data.azurerm_virtual_machine.${name}`;
+          } else {
+            blocks.push(this._vm(name, cfg, rgName, rgLoc));
+            resourceMap[r.id] = `azurerm_linux_virtual_machine.${name}`;
+          }
           break;
         }
         case 'azure_storage': {
           const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
-          const rgName = rg ? `azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
-          const rgLoc  = rg ? `azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
-          blocks.push(this._storage(name, cfg, rgName, rgLoc));
-          resourceMap[r.id] = `azurerm_storage_account.${name}`;
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          if (isImported) {
+            blocks.push(this._dataStorage(name, cfg, rgName));
+            resourceMap[r.id] = `data.azurerm_storage_account.${name}`;
+          } else {
+            blocks.push(this._storage(name, cfg, rgName, rgLoc));
+            resourceMap[r.id] = `azurerm_storage_account.${name}`;
+          }
           break;
         }
         case 'azure_sql': {
           const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
-          const rgName = rg ? `azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
-          const rgLoc  = rg ? `azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
           blocks.push(this._sql(name, cfg, rgName, rgLoc));
           resourceMap[r.id] = `azurerm_mssql_server.${name}_server`;
           break;
         }
         case 'azure_nsg': {
           const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
-          const rgName = rg ? `azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
-          const rgLoc  = rg ? `azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
-          blocks.push(this._nsg(name, cfg, rgName, rgLoc));
-          resourceMap[r.id] = `azurerm_network_security_group.${name}`;
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          if (isImported) {
+            blocks.push(this._dataNsg(name, cfg, rgName));
+            resourceMap[r.id] = `data.azurerm_network_security_group.${name}`;
+          } else {
+            blocks.push(this._nsg(name, cfg, rgName, rgLoc));
+            resourceMap[r.id] = `azurerm_network_security_group.${name}`;
+          }
           break;
         }
         default: {
@@ -482,6 +722,60 @@ class AzureTerraformGenerator {
 
   private _cfg(r: DbArchitectureResource): Record<string, unknown> {
     try { return JSON.parse(r.configJson) as Record<string, unknown>; } catch { return {}; }
+  }
+
+  private _dataRg(name: string, cfg: Record<string, unknown>): string {
+    const rgName = (cfg['name'] as string) || (cfg['resourceGroup'] as string) || name;
+    return `# Existing Azure Resource Group (Imported)
+data "azurerm_resource_group" "${name}" {
+  name = "${rgName}"
+}`;
+  }
+
+  private _dataVnet(name: string, cfg: Record<string, unknown>, rgName: string): string {
+    const vnetName = (cfg['name'] as string) || name;
+    return `# Existing Azure Virtual Network (Imported)
+data "azurerm_virtual_network" "${name}" {
+  name                = "${vnetName}"
+  resource_group_name = ${rgName}
+}`;
+  }
+
+  private _dataSubnet(name: string, cfg: Record<string, unknown>, rgName: string, vnetName: string): string {
+    const subName = (cfg['name'] as string) || name;
+    return `# Existing Azure Subnet (Imported)
+data "azurerm_subnet" "${name}" {
+  name                 = "${subName}"
+  virtual_network_name = ${vnetName}
+  resource_group_name  = ${rgName}
+}`;
+  }
+
+  private _dataVm(name: string, cfg: Record<string, unknown>, rgName: string): string {
+    const vmName = (cfg['name'] as string) || name;
+    return `# Existing Azure Virtual Machine (Imported)
+data "azurerm_virtual_machine" "${name}" {
+  name                = "${vmName}"
+  resource_group_name = ${rgName}
+}`;
+  }
+
+  private _dataStorage(name: string, cfg: Record<string, unknown>, rgName: string): string {
+    const storageName = ((cfg['name'] as string) || name).replace(/_/g, '').toLowerCase().substring(0, 24);
+    return `# Existing Azure Storage Account (Imported)
+data "azurerm_storage_account" "${name}" {
+  name                = "${storageName}"
+  resource_group_name = ${rgName}
+}`;
+  }
+
+  private _dataNsg(name: string, cfg: Record<string, unknown>, rgName: string): string {
+    const nsgName = (cfg['name'] as string) || name;
+    return `# Existing Azure Network Security Group (Imported)
+data "azurerm_network_security_group" "${name}" {
+  name                = "${nsgName}"
+  resource_group_name = ${rgName}
+}`;
   }
 
   private _rg(name: string, cfg: Record<string, unknown>): string {

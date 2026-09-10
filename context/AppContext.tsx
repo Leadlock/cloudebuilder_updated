@@ -12,7 +12,7 @@ import { applyRuleRemediation } from '@/lib/engines/security/remediation';
 import { apiArchitectureService } from '@/lib/services/ApiArchitectureService';
 import type { IArchitectureService } from '@/lib/services/ArchitectureService';
 import { setActiveProjectId as setSecurityProjectId, setActiveEnvironment as setSecurityEnvironment } from '@/lib/services/ApiSecurityService';
-import { setActiveProjectId as setCostProjectId, setActiveEnvironment as setCostEnvironment } from '@/lib/services/ApiCostService';
+import { setActiveProjectId as setCostProjectId, setActiveEnvironment as setCostEnvironment, setActiveCurrency } from '@/lib/services/ApiCostService';
 import { setActiveProjectId as setTerraformProjectId, setActiveEnvironment as setTerraformEnvironment } from '@/lib/services/ApiTerraformService';
 import { setActiveProjectId as setAdvisorProjectId, setActiveEnvironment as setAdvisorEnvironment } from '@/lib/services/ApiAdvisorService';
 // MockArchitectureService remains available via @/lib/services (architectureService export)
@@ -25,6 +25,8 @@ export interface AppState {
   activeEnvironment: Environment;
   sidebarCollapsed: boolean;
   providerFilter: 'all' | 'aws' | 'azure';
+  /** User-selected display currency (e.g. 'USD', 'INR', 'EUR', etc.) */
+  displayCurrency: string;
   /** Incremented on RESTORE_VERSION to force InfraCanvas remount */
   canvasKey: number;
   /** Whether the initial API load has completed */
@@ -35,6 +37,7 @@ type Action =
   | { type: 'SET_VIEW'; view: AppView }
   | { type: 'SET_CANVAS_MODE'; mode: CanvasViewMode }
   | { type: 'SET_ACTIVE_PROJECT'; id: string | null }
+  | { type: 'SET_CURRENCY'; currency: string }
   | { type: 'UPDATE_CANVAS'; nodes: CanvasNode[]; edges: CanvasEdge[] }
   | { type: 'UPDATE_NODE_CONFIG'; nodeId: string; config: Record<string, unknown>; label: string }
   | { type: 'SAVE_PROJECT'; project: Project }
@@ -42,6 +45,7 @@ type Action =
   | { type: 'DELETE_PROJECT'; id: string }
   | { type: 'TOGGLE_SIDEBAR' }
   | { type: 'SET_ENVIRONMENT'; env: Environment }
+  | { type: 'SET_REGION'; region: Region }
   | { type: 'SET_PROVIDER_FILTER'; filter: 'all' | 'aws' | 'azure' }
   | { type: 'CLONE_ENVIRONMENT'; from: Environment; to: Environment }
   | { type: 'PROMOTE_ENVIRONMENT'; from: Environment; to: Environment }
@@ -98,6 +102,20 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, sidebarCollapsed: !state.sidebarCollapsed };
     case 'SET_PROVIDER_FILTER':
       return { ...state, providerFilter: action.filter };
+
+    case 'SET_CURRENCY': {
+      const currency = action.currency.toUpperCase();
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('cloudcraft_display_currency', currency); } catch {}
+      }
+      const projects = state.projects.map((p) => {
+        if (p.id === state.activeProjectId) {
+          return { ...p, currency };
+        }
+        return p;
+      });
+      return { ...state, displayCurrency: currency, projects };
+    }
 
     // ── Internal: replace project list from API ────────────────────────────────
     case '_LOAD_PROJECTS':
@@ -265,6 +283,31 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, projects };
     }
 
+    // ── SET_REGION: update region for current environment and active project ──
+    case 'SET_REGION': {
+      if (!state.activeProjectId) return state;
+      const projects = state.projects.map((p) => {
+        if (p.id !== state.activeProjectId) return p;
+        const currentEnv = p.environments[state.activeEnvironment];
+        const updatedNodes = p.nodes.map((n) => ({ ...n, region: action.region }));
+        const envs: Record<Environment, EnvironmentState> = {
+          ...p.environments,
+          [state.activeEnvironment]: {
+            ...currentEnv,
+            region: action.region,
+            nodes: updatedNodes,
+          },
+        };
+        const updated = computeProject(p, updatedNodes, p.edges);
+        return {
+          ...updated,
+          region: action.region,
+          environments: envs,
+        };
+      });
+      return { ...state, projects };
+    }
+
     // ── SET_ENVIRONMENT_CANVAS: update canvas for specific env from backend ──
     case 'SET_ENVIRONMENT_CANVAS': {
       if (!state.activeProjectId) return state;
@@ -420,6 +463,7 @@ const initialState: AppState = {
   activeEnvironment: 'production',
   sidebarCollapsed: false,
   providerFilter: 'all',
+  displayCurrency: 'USD',
   canvasKey: 0,
   apiLoaded: false,
 };
@@ -450,20 +494,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  // ── Sync active project ID to all API-backed services ──────────────────────
+  // ── Sync active project ID & currency to all API-backed services ──────────
   // This is the single source-of-truth sync: whenever AppContext's activeProjectId
-  // changes, we notify all API services so they can scope their requests correctly.
-  // No localStorage, no URL parsing — services read directly from this module state.
+  // or currency changes, we notify all API services.
   useEffect(() => {
     setSecurityProjectId(state.activeProjectId);
     setSecurityEnvironment(state.activeEnvironment);
     setCostProjectId(state.activeProjectId);
     setCostEnvironment(state.activeEnvironment);
+    setActiveCurrency(state.displayCurrency);
     setTerraformProjectId(state.activeProjectId);
     setTerraformEnvironment(state.activeEnvironment);
     setAdvisorProjectId(state.activeProjectId);
     setAdvisorEnvironment(state.activeEnvironment);
-  }, [state.activeProjectId, state.activeEnvironment]);
+  }, [state.activeProjectId, state.activeEnvironment, state.displayCurrency]);
+
+  // ── On mount: restore saved currency preference ────────────────────────────
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('cloudcraft_display_currency');
+        if (saved) {
+          dispatch({ type: 'SET_CURRENCY', currency: saved });
+        }
+      } catch {}
+    }
+  }, []);
 
   // ── On mount: load projects from the API ────────────────────────────────────
   useEffect(() => {

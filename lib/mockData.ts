@@ -5,21 +5,24 @@ function emptyEnv(id: Environment, label: string, region: Region): EnvironmentSt
 }
 
 const prodNodes1: CanvasNode[] = [
-  { id: 'n1', type: 'cloudNode', resourceType: 'aws_vpc', provider: 'aws', label: 'Production VPC', position: { x: 50, y: 50 }, config: { name: 'prod-vpc', cidrBlock: '10.0.0.0/16', enableDnsSupport: true, enableDnsHostnames: true } },
-  { id: 'n2', type: 'cloudNode', resourceType: 'aws_subnet', provider: 'aws', label: 'Public Subnet', position: { x: 250, y: 100 }, config: { name: 'public-subnet', cidrBlock: '10.0.1.0/24', availabilityZone: 'us-east-1a', mapPublicIpOnLaunch: true } },
-  { id: 'n3', type: 'cloudNode', resourceType: 'aws_subnet', provider: 'aws', label: 'Private Subnet', position: { x: 450, y: 100 }, config: { name: 'private-subnet', cidrBlock: '10.0.2.0/24', availabilityZone: 'us-east-1b', mapPublicIpOnLaunch: false } },
-  { id: 'n4', type: 'cloudNode', resourceType: 'aws_ec2', provider: 'aws', label: 'Web Server', position: { x: 250, y: 250 }, config: { name: 'web-server', instanceType: 'm5.large', ami: 'ami-0c55b159cbfafe1f0', keyName: 'prod-key' } },
-  { id: 'n5', type: 'cloudNode', resourceType: 'aws_rds', provider: 'aws', label: 'MySQL Database', position: { x: 500, y: 250 }, config: { name: 'prod-db', engine: 'mysql', instanceClass: 'db.t3.medium', multiAz: true, encrypted: true } },
-  { id: 'n6', type: 'cloudNode', resourceType: 'aws_alb', provider: 'aws', label: 'App Load Balancer', position: { x: 100, y: 150 }, config: { name: 'prod-alb', lbType: 'application', scheme: 'internet-facing' } },
-  { id: 'n7', type: 'cloudNode', resourceType: 'aws_s3', provider: 'aws', label: 'Assets Bucket', position: { x: 650, y: 100 }, config: { name: 'assets-s3', bucketName: 'prod-assets-bucket', versioning: true, encryption: true, publicAccess: false } },
-  { id: 'n8', type: 'cloudNode', resourceType: 'aws_sg', provider: 'aws', label: 'Web Security Group', position: { x: 350, y: 350 }, config: { name: 'web-sg', allowSsh: false, allowHttp: true, allowHttps: true } },
+  { id: 'n1', type: 'containerNode', resourceType: 'aws_vpc', provider: 'aws', label: 'Production VPC', position: { x: 80, y: 310 }, width: 440, height: 720, config: { name: 'prod-vpc', cidrBlock: '10.0.0.0/16', enableDnsSupport: true, enableDnsHostnames: true } },
+  { id: 'n2', type: 'containerNode', resourceType: 'aws_subnet', provider: 'aws', label: 'Public Subnet', position: { x: 115, y: 375 }, width: 370, height: 190, groupId: 'n1', config: { name: 'public-subnet', cidrBlock: '10.0.1.0/24', availabilityZone: 'us-east-1a', mapPublicIpOnLaunch: true } },
+  { id: 'n3', type: 'containerNode', resourceType: 'aws_subnet', provider: 'aws', label: 'Private App Subnet', position: { x: 115, y: 595 }, width: 370, height: 190, groupId: 'n1', config: { name: 'private-app-subnet', cidrBlock: '10.0.2.0/24', availabilityZone: 'us-east-1b', mapPublicIpOnLaunch: false } },
+  { id: 'n9', type: 'containerNode', resourceType: 'aws_subnet', provider: 'aws', label: 'Private DB Subnet', position: { x: 115, y: 815 }, width: 370, height: 190, groupId: 'n1', config: { name: 'private-db-subnet', cidrBlock: '10.0.3.0/24', availabilityZone: 'us-east-1c', mapPublicIpOnLaunch: false } },
+  { id: 'n0', type: 'cloudNode', resourceType: 'aws_internet', provider: 'aws', label: 'Internet', position: { x: 210, y: 30 }, config: { name: 'Internet' } },
+  { id: 'n10', type: 'cloudNode', resourceType: 'aws_cloudfront', provider: 'aws', label: 'CloudFront', position: { x: 210, y: 160 }, config: { name: 'my-cdn' } },
+  { id: 'n6', type: 'cloudNode', resourceType: 'aws_alb', provider: 'aws', label: 'App Load Balancer', position: { x: 210, y: 430 }, groupId: 'n2', config: { name: 'prod-alb', lbType: 'application', scheme: 'internet-facing' } },
+  { id: 'n4', type: 'cloudNode', resourceType: 'aws_ec2', provider: 'aws', label: 'App Web Server', position: { x: 210, y: 650 }, groupId: 'n3', config: { name: 'app-web-server', instanceType: 'm5.large', ami: 'ami-0c55b159cbfafe1f0', keyName: 'prod-key' } },
+  { id: 'n5', type: 'cloudNode', resourceType: 'aws_rds', provider: 'aws', label: 'Production DB Server', position: { x: 210, y: 870 }, groupId: 'n9', config: { name: 'prod-db', engine: 'mysql', instanceClass: 'db.t3.medium', multiAz: true, encrypted: true } },
+  { id: 'n7', type: 'cloudNode', resourceType: 'aws_s3', provider: 'aws', label: 'Assets Bucket', position: { x: 580, y: 430 }, config: { name: 'assets-s3', bucketName: 'prod-assets-bucket', versioning: true, encryption: true, publicAccess: false } },
+  { id: 'n8', type: 'cloudNode', resourceType: 'aws_sg', provider: 'aws', label: 'Web Security Group', position: { x: 580, y: 650 }, config: { name: 'web-sg', allowSsh: false, allowHttp: true, allowHttps: true } },
 ];
 const prodEdges1: CanvasEdge[] = [
-  { id: 'e1', source: 'n6', target: 'n4' },
-  { id: 'e2', source: 'n4', target: 'n5' },
-  { id: 'e3', source: 'n4', target: 'n7' },
-  { id: 'e4', source: 'n1', target: 'n2' },
-  { id: 'e5', source: 'n1', target: 'n3' },
+  { id: 'e0', source: 'n0', target: 'n10', label: 'HTTPS / 443' },
+  { id: 'e1', source: 'n10', target: 'n6', label: 'Origin HTTP/S' },
+  { id: 'e2', source: 'n6', target: 'n4', label: 'HTTP / 80' },
+  { id: 'e3', source: 'n4', target: 'n5', label: 'Port 5432' },
+  { id: 'e4', source: 'n4', target: 'n7', label: 'S3 API / IAM' },
 ];
 
 const v1: ArchitectureVersion = {

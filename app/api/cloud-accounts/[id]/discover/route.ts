@@ -82,12 +82,23 @@ export async function POST(
       return internalError('Stored credentials are malformed');
     }
 
+    // Parse optional regions from body
+    let regions: string[] | undefined;
+    try {
+      const body = await req.json();
+      if (Array.isArray(body?.regions) && body.regions.length > 0) {
+        regions = body.regions.map((r: unknown) => String(r).trim()).filter(Boolean);
+      }
+    } catch {
+      // Body is optional
+    }
+
     // Create the run record in 'pending' state
     const run = await discoveryRepository.create(id);
 
     // Run discovery asynchronously — do not block the HTTP response
     // The run is persisted; client polls GET /discover for completion
-    void runDiscoveryAsync(run.id, id, orgId, credentials);
+    void runDiscoveryAsync(run.id, id, orgId, credentials, regions);
 
     return created({ runId: run.id, status: 'pending' });
   } catch (err) {
@@ -109,12 +120,13 @@ async function runDiscoveryAsync(
   accountId: string,
   orgId: string,
   credentials: CloudCredentials,
+  regions?: string[],
 ): Promise<void> {
   await discoveryRepository.markRunning(runId);
 
   const provider = await createDiscoveryProvider(credentials);
   try {
-    const result = await provider.discoverAll();
+    const result = await provider.discoverAll(regions);
 
     if (result.status === 'completed') {
       await discoveryRepository.markCompleted(runId, result.resources, result.summary);

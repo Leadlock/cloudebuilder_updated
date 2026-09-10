@@ -323,3 +323,50 @@ export function AwsDynamodbIcon({ size = 24, className = '' }: IconProps) {
     </svg>
   );
 }
+
+// ─── AWS CloudFront (CDN) ─────────────────────────────────────────────────────
+export function AwsCloudFrontIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#8C4FFF" fillOpacity="0.18" />
+      {/* Central Global Edge Network Globe */}
+      <circle cx="24" cy="24" r="14" stroke="#8C4FFF" strokeWidth="2.5" fill="#8C4FFF" fillOpacity="0.12" />
+      {/* Longitudinal and Latitudinal Lines */}
+      <ellipse cx="24" cy="24" rx="7" ry="14" stroke="#8C4FFF" strokeWidth="1.8" />
+      <line x1="10" y1="24" x2="38" y2="24" stroke="#8C4FFF" strokeWidth="1.8" />
+      <path d="M12 17c4 3 8 4 12 4s8-1 12-4" stroke="#8C4FFF" strokeWidth="1.5" />
+      <path d="M12 31c4-3 8-4 12-4s8 1 12 4" stroke="#8C4FFF" strokeWidth="1.5" />
+      {/* Edge POP Location Indicators */}
+      <circle cx="17" cy="24" r="2.5" fill="#FF9900" />
+      <circle cx="31" cy="24" r="2.5" fill="#FF9900" />
+      <circle cx="24" cy="15" r="2.2" fill="#FF9900" />
+      <circle cx="24" cy="33" r="2.2" fill="#FF9900" />
+      {/* Radiating CDN Distribution Wave Markers */}
+      <path d="M8 12c2-2 5-3 8-3M32 9c3 0 6 1 8 3M40 36c-2 2-5 3-8 3M16 39c-3 0-6-1-8-3" stroke="#FF9900" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// ─── Internet / Public Traffic Ingress ────────────────────────────────────────
+export function AwsInternetIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#0284C7" fillOpacity="0.18" />
+      {/* Public Internet Cloud Shape */}
+      <path
+        d="M17 33h16a8 8 0 003.5-15.2A11 11 0 0015.5 19 8.5 8.5 0 0017 33z"
+        fill="#0284C7"
+        fillOpacity="0.3"
+        stroke="#0284C7"
+        strokeWidth="2.5"
+        strokeLinejoin="round"
+      />
+      {/* World / Ingress Grid Nodes inside Cloud */}
+      <circle cx="24" cy="24" r="5" stroke="#38BDF8" strokeWidth="1.8" fill="#0369A1" />
+      <path d="M19 24h10M24 19v10" stroke="#38BDF8" strokeWidth="1.6" strokeLinecap="round" />
+      {/* Ingress Downward Arrows */}
+      <path d="M24 33v5m-3-2l3 3 3-3" stroke="#38BDF8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+

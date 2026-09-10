@@ -132,7 +132,51 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
                       draggable
                       onDragStart={(e) => {
                         e.dataTransfer.setData('application/cloudcraft', res.type);
+                        e.dataTransfer.setData(`application/cloudcraft-${res.type}`, res.type);
                         e.dataTransfer.effectAllowed = 'copy';
+                        if (typeof window !== 'undefined') {
+                          (window as any).__cloudcraft_dragged_type = res.type;
+                        }
+
+                        // Set custom drag preview using actual service icon
+                        const existingGhost = document.getElementById('cloudcraft-drag-preview');
+                        if (existingGhost) existingGhost.remove();
+
+                        const ghost = document.createElement('div');
+                        ghost.id = 'cloudcraft-drag-preview';
+                        ghost.style.position = 'fixed';
+                        ghost.style.top = '-1000px';
+                        ghost.style.left = '-1000px';
+                        ghost.style.display = 'flex';
+                        ghost.style.alignItems = 'center';
+                        ghost.style.gap = '8px';
+                        ghost.style.padding = '6px 12px';
+                        ghost.style.background = '#0F172A';
+                        ghost.style.border = '2px solid #0EA5E9';
+                        ghost.style.borderRadius = '10px';
+                        ghost.style.boxShadow = '0 10px 25px rgba(0, 0, 0, 0.6)';
+                        ghost.style.color = '#FFFFFF';
+                        ghost.style.fontWeight = 'bold';
+                        ghost.style.fontSize = '12px';
+                        ghost.style.zIndex = '99999';
+
+                        const iconEl = e.currentTarget.querySelector('.shrink-0');
+                        if (iconEl) {
+                          ghost.appendChild(iconEl.cloneNode(true));
+                        }
+                        const labelEl = document.createElement('span');
+                        labelEl.innerText = res.label;
+                        ghost.appendChild(labelEl);
+
+                        document.body.appendChild(ghost);
+                        e.dataTransfer.setDragImage(ghost, 25, 20);
+                      }}
+                      onDragEnd={() => {
+                        if (typeof window !== 'undefined') {
+                          (window as any).__cloudcraft_dragged_type = null;
+                        }
+                        const ghost = document.getElementById('cloudcraft-drag-preview');
+                        if (ghost) ghost.remove();
                       }}
                       onClick={() => onAddResource && onAddResource(res.type)}
                       title={`${res.label} — Drag to canvas`}

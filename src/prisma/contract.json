@@ -32,6 +32,10 @@
       "model": "CostEstimate",
       "namespace": "public"
     },
+    "currencyExchangeRate": {
+      "model": "CurrencyExchangeRate",
+      "namespace": "public"
+    },
     "discoveryRun": {
       "model": "DiscoveryRun",
       "namespace": "public"
@@ -1075,6 +1079,87 @@
               },
               "namespaceId": "public",
               "table": "costEstimate"
+            }
+          },
+          "CurrencyExchangeRate": {
+            "fields": {
+              "baseCurrency": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "expiresAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "rate": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/float8@1",
+                  "kind": "scalar"
+                }
+              },
+              "retrievedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "source": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "targetCurrency": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "fields": {
+                "baseCurrency": {
+                  "column": "baseCurrency"
+                },
+                "expiresAt": {
+                  "column": "expiresAt"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "rate": {
+                  "column": "rate"
+                },
+                "retrievedAt": {
+                  "column": "retrievedAt"
+                },
+                "source": {
+                  "column": "source"
+                },
+                "targetCurrency": {
+                  "column": "targetCurrency"
+                }
+              },
+              "namespaceId": "public",
+              "table": "currencyExchangeRate"
             }
           },
           "DiscoveryRun": {
@@ -2994,6 +3079,70 @@
               },
               "uniques": []
             },
+            "currencyExchangeRate": {
+              "columns": {
+                "baseCurrency": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "expiresAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "rate": {
+                  "codecId": "pg/float8@1",
+                  "nativeType": "float8",
+                  "nullable": false
+                },
+                "retrievedAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "source": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "targetCurrency": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [],
+              "indexes": [
+                {
+                  "columns": [
+                    "baseCurrency",
+                    "targetCurrency"
+                  ],
+                  "name": "currencyExchangeRate_baseCurrency_targetCurrency_idx_7672893a",
+                  "prefix": "currencyExchangeRate_baseCurrency_targetCurrency_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": [
+                {
+                  "columns": [
+                    "baseCurrency",
+                    "targetCurrency"
+                  ]
+                }
+              ]
+            },
             "discoveryRun": {
               "columns": {
                 "cloudAccountId": {
@@ -3819,10 +3968,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "23bb7d5a29f34f260fe2e9debd7c874ef71935cf2f3d3410789bef7a87c3a9ae"
+    "storageHash": "a3c68150b6f8cc5b41312cd0b75cd50e75aaae354c23a20e7860b800e7bf7146"
   },
   "execution": {
-    "executionHash": "92cc56a67cb1a628cd61f778d001369fdfb7cdefc940fafe6d01bde490705d3a",
+    "executionHash": "70da85f61a6ba48ecfa04b6da2222209cd7601f0ef3d6dd21f34b2db0655c539",
     "mutations": {
       "defaults": [
         {
@@ -3900,6 +4049,17 @@
             "column": "id",
             "namespace": "public",
             "table": "costEstimate"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "currencyExchangeRate"
           }
         },
         {

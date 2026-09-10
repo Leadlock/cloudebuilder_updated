@@ -14,6 +14,7 @@ interface CloudNodeData {
   hasWarnings?: boolean;
   hasErrors?: boolean;
   status?: 'ready' | 'warning' | 'error' | 'unconfigured';
+  importState?: 'imported' | 'cloudcraft-managed' | 'new' | 'modified' | 'planned';
 }
 
 const zoomSelector = (s: { transform: [number, number, number] }) => s.transform[2];
@@ -27,6 +28,10 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
 
   // Extract key architectural specs based on resource type
   const config = data.config || {};
+  const isImported = data.importState === 'imported' || config.imported === true || config.importState === 'imported';
+  const isPlanned = data.importState === 'new' || data.importState === 'planned';
+  const rawId = (config.resourceId as string) || (config.providerResourceId as string) || '';
+
   const specs: string[] = [];
 
   if (data.resourceType === 'aws_ec2') {
@@ -79,6 +84,7 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
       className={clsx(
         'group relative rounded-xl transition-all select-none border',
         'bg-slate-900/95 shadow-xl backdrop-blur-md',
+        isImported && '!border-cyan-500/50 shadow-cyan-950/40',
         selected
           ? '!border-cyan-400 !shadow-cyan-500/25 ring-2 ring-cyan-400/40'
           : 'border-slate-700/80 hover:border-slate-500 hover:shadow-2xl',
@@ -113,9 +119,28 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
           <p className="text-white font-bold text-xs tracking-tight truncate leading-snug">
             {data.label}
           </p>
-          <p className="text-[10px] text-slate-400 truncate mt-0.5 font-medium">
-            {serviceTitle}
-          </p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <p className="text-[10px] text-slate-400 truncate font-medium">
+              {serviceTitle}
+            </p>
+            {isImported && (
+              <span
+                className="inline-flex items-center gap-1 text-[8px] font-bold text-cyan-300 bg-cyan-950/90 border border-cyan-500/40 px-1.5 py-0.2 rounded-full uppercase tracking-wider shrink-0"
+                title={rawId ? `Imported (${rawId})` : 'Imported Infrastructure'}
+              >
+                <span className="w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />
+                Imported
+              </span>
+            )}
+            {isPlanned && (
+              <span
+                className="inline-flex items-center gap-1 text-[8px] font-bold text-emerald-300 bg-emerald-950/90 border border-emerald-500/40 px-1.5 py-0.2 rounded-full uppercase tracking-wider shrink-0"
+              >
+                <span className="w-1 h-1 rounded-full bg-emerald-400" />
+                Proposed
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

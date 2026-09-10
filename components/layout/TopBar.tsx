@@ -1,8 +1,10 @@
 'use client';
 import { useApp, useActiveProject } from '@/context/AppContext';
-import { Bell } from 'lucide-react';
+import { Bell, Globe, Coins } from 'lucide-react';
 import clsx from 'clsx';
 import { AppView, Environment } from '@/types';
+import { cloudRegionService } from '@/lib/cloud/regions/CloudRegionService';
+import { SUPPORTED_CURRENCIES } from '@/lib/currency/types';
 
 const VIEW_LABELS: Partial<Record<AppView, string>> = {
   dashboard: 'Dashboard',
@@ -31,9 +33,10 @@ export default function TopBar() {
   const { state, dispatch } = useApp();
   const { activeView, activeEnvironment } = state;
   const activeProject = useActiveProject();
+  const activeRegion = activeProject?.environments[activeEnvironment]?.region ?? activeProject?.region ?? 'us-east-1';
 
   return (
-    <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center px-4 gap-4 shrink-0">
+    <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center px-4 gap-3 shrink-0">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm flex-1 min-w-0">
         <span className="text-gray-500 text-xs">CloudCraft</span>
@@ -49,6 +52,46 @@ export default function TopBar() {
           </>
         )}
         <span className="text-white font-medium text-xs">{VIEW_LABELS[activeView]}</span>
+      </div>
+
+      {/* Region Selector */}
+      {activeProject && (
+        <div className="flex items-center gap-1.5 shrink-0" title={`Cloud Region: ${activeRegion}`}>
+          <div className="flex items-center bg-gray-800/90 border border-gray-700 rounded-md px-2 py-1 gap-1.5 text-xs text-gray-300">
+            <Globe className="w-3.5 h-3.5 text-blue-400 shrink-0" aria-hidden="true" />
+            <select
+              aria-label="Cloud Region"
+              value={activeRegion}
+              onChange={(e) => dispatch({ type: 'SET_REGION', region: e.target.value })}
+              className="bg-transparent text-gray-200 text-xs font-medium focus:outline-none cursor-pointer pr-1"
+            >
+              {cloudRegionService.getRegions(activeProject.provider === 'azure' ? 'azure' : 'aws').map((r) => (
+                <option key={r.id} value={r.id} className="bg-gray-900 text-gray-200">
+                  {r.id} — {r.displayName}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* Currency Selector */}
+      <div className="flex items-center gap-1.5 shrink-0" title={`Display Currency: ${state.displayCurrency}`}>
+        <div className="flex items-center bg-gray-800/90 border border-gray-700 rounded-md px-2 py-1 gap-1.5 text-xs text-gray-300">
+          <Coins className="w-3.5 h-3.5 text-emerald-400 shrink-0" aria-hidden="true" />
+          <select
+            aria-label="Display Currency"
+            value={state.displayCurrency}
+            onChange={(e) => dispatch({ type: 'SET_CURRENCY', currency: e.target.value })}
+            className="bg-transparent text-gray-200 text-xs font-medium focus:outline-none cursor-pointer pr-1"
+          >
+            {Object.values(SUPPORTED_CURRENCIES).map((c) => (
+              <option key={c.code} value={c.code} className="bg-gray-900 text-gray-200">
+                {c.code} ({c.symbol})
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Env switcher (only when project is active) */}

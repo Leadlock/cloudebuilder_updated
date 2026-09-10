@@ -30,44 +30,106 @@ export type ResourceCategory =
   | 'monitoring';
 
 export type Region =
-  | 'us-east-1'
-  | 'us-east-2'
-  | 'us-west-1'
-  | 'us-west-2'
-  | 'eu-west-1'
-  | 'eu-central-1'
-  | 'ap-southeast-1'
-  | 'ap-northeast-1'
-  | 'eastus'
-  | 'eastus2'
-  | 'westus'
-  | 'westeurope'
-  | 'northeurope'
-  | 'southeastasia';
+  | 'us-east-1' | 'us-east-2' | 'us-west-1' | 'us-west-2' | 'ca-central-1' | 'ca-west-1' | 'mx-central-1'
+  | 'eu-west-1' | 'eu-west-2' | 'eu-west-3' | 'eu-central-1' | 'eu-central-2' | 'eu-north-1' | 'eu-south-1' | 'eu-south-2'
+  | 'ap-south-1' | 'ap-south-2' | 'ap-southeast-1' | 'ap-southeast-2' | 'ap-southeast-3' | 'ap-southeast-4'
+  | 'ap-northeast-1' | 'ap-northeast-2' | 'ap-northeast-3' | 'ap-east-1' | 'sa-east-1' | 'me-south-1' | 'me-central-1' | 'il-central-1' | 'af-south-1'
+  | 'eastus' | 'eastus2' | 'westus' | 'westus2' | 'westus3' | 'centralus' | 'northcentralus' | 'southcentralus' | 'canadacentral' | 'canadaeast' | 'mexicocentral'
+  | 'westeurope' | 'northeurope' | 'uksouth' | 'ukwest' | 'francecentral' | 'germanywestcentral' | 'switzerlandnorth' | 'norwayeast' | 'swedencentral' | 'polandcentral' | 'italynorth' | 'spaincentral'
+  | 'centralindia' | 'southindia' | 'westindia'
+  | 'southeastasia' | 'eastasia' | 'japaneast' | 'japanwest' | 'koreacentral' | 'koreasouth' | 'australiaeast' | 'australiasoutheast' | 'indonesiacentral'
+  | 'uaenorth' | 'southafricanorth' | 'israelcentral' | 'qatarcentral' | 'brazilsouth' | 'chilecentral'
+  | (string & {});
 
-export const REGION_LABELS: Record<Region, string> = {
+export const REGION_LABELS: Record<string, string> = {
+  // AWS
   'us-east-1': 'US East (N. Virginia)',
   'us-east-2': 'US East (Ohio)',
   'us-west-1': 'US West (N. California)',
   'us-west-2': 'US West (Oregon)',
+  'ca-central-1': 'Canada (Central)',
+  'ca-west-1': 'Canada West (Calgary)',
+  'mx-central-1': 'Mexico (Central)',
   'eu-west-1': 'EU (Ireland)',
+  'eu-west-2': 'EU (London)',
+  'eu-west-3': 'EU (Paris)',
   'eu-central-1': 'EU (Frankfurt)',
+  'eu-central-2': 'EU (Zurich)',
+  'eu-north-1': 'EU (Stockholm)',
+  'eu-south-1': 'EU (Milan)',
+  'eu-south-2': 'EU (Spain)',
+  'ap-south-1': 'Asia Pacific (Mumbai)',
+  'ap-south-2': 'Asia Pacific (Hyderabad)',
   'ap-southeast-1': 'Asia Pacific (Singapore)',
+  'ap-southeast-2': 'Asia Pacific (Sydney)',
+  'ap-southeast-3': 'Asia Pacific (Jakarta)',
+  'ap-southeast-4': 'Asia Pacific (Melbourne)',
   'ap-northeast-1': 'Asia Pacific (Tokyo)',
+  'ap-northeast-2': 'Asia Pacific (Seoul)',
+  'ap-northeast-3': 'Asia Pacific (Osaka)',
+  'ap-east-1': 'Asia Pacific (Hong Kong)',
+  'sa-east-1': 'South America (São Paulo)',
+  'me-south-1': 'Middle East (Bahrain)',
+  'me-central-1': 'Middle East (UAE)',
+  'il-central-1': 'Israel (Tel Aviv)',
+  'af-south-1': 'Africa (Cape Town)',
+  // Azure
   'eastus': 'East US',
   'eastus2': 'East US 2',
   'westus': 'West US',
+  'westus2': 'West US 2',
+  'westus3': 'West US 3',
+  'centralus': 'Central US',
+  'northcentralus': 'North Central US',
+  'southcentralus': 'South Central US',
+  'canadacentral': 'Canada Central',
+  'canadaeast': 'Canada East',
+  'mexicocentral': 'Mexico Central',
   'westeurope': 'West Europe',
   'northeurope': 'North Europe',
+  'uksouth': 'UK South',
+  'ukwest': 'UK West',
+  'francecentral': 'France Central',
+  'germanywestcentral': 'Germany West Central',
+  'switzerlandnorth': 'Switzerland North',
+  'norwayeast': 'Norway East',
+  'swedencentral': 'Sweden Central',
+  'polandcentral': 'Poland Central',
+  'italynorth': 'Italy North',
+  'spaincentral': 'Spain Central',
+  'centralindia': 'Central India',
+  'southindia': 'South India',
+  'westindia': 'West India',
   'southeastasia': 'Southeast Asia',
+  'eastasia': 'East Asia',
+  'japaneast': 'Japan East',
+  'japanwest': 'Japan West',
+  'koreacentral': 'Korea Central',
+  'koreasouth': 'Korea South',
+  'australiaeast': 'Australia East',
+  'australiasoutheast': 'Australia Southeast',
+  'indonesiacentral': 'Indonesia Central',
+  'uaenorth': 'UAE North',
+  'southafricanorth': 'South Africa North',
+  'israelcentral': 'Israel Central',
+  'qatarcentral': 'Qatar Central',
+  'brazilsouth': 'Brazil South',
+  'chilecentral': 'Chile Central',
 };
 
 export const AWS_REGIONS: Region[] = [
-  'us-east-1','us-east-2','us-west-1','us-west-2',
-  'eu-west-1','eu-central-1','ap-southeast-1','ap-northeast-1',
+  'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2', 'ca-central-1',
+  'eu-west-1', 'eu-west-2', 'eu-central-1', 'eu-north-1',
+  'ap-south-1', 'ap-southeast-1', 'ap-southeast-2', 'ap-northeast-1', 'ap-northeast-2',
+  'sa-east-1', 'me-south-1', 'af-south-1',
 ];
+
 export const AZURE_REGIONS: Region[] = [
-  'eastus','eastus2','westus','westeurope','northeurope','southeastasia',
+  'eastus', 'eastus2', 'westus', 'westus2', 'centralus', 'southcentralus', 'canadacentral',
+  'westeurope', 'northeurope', 'uksouth', 'francecentral', 'germanywestcentral',
+  'centralindia', 'southindia',
+  'southeastasia', 'eastasia', 'japaneast', 'australiaeast',
+  'uaenorth', 'southafricanorth', 'brazilsouth',
 ];
 
 export interface ResourceDefinition {
@@ -128,6 +190,7 @@ export interface CanvasNode {
   parentId?: string;
   width?: number;
   height?: number;
+  importState?: 'imported' | 'cloudcraft-managed' | 'new' | 'modified' | 'planned';
 }
 
 export interface CanvasEdge {
@@ -165,8 +228,18 @@ export interface CostItem {
   nodeLabel: string;
   resourceType: string;
   provider: 'aws' | 'azure';
+  region?: string;
   monthlyCost: number;
-  breakdown: { label: string; cost: number }[];
+  hourlyCost?: number;
+  currency?: string;
+  providerCostUsd?: number;
+  providerHourlyUsd?: number;
+  exchangeRate?: number;
+  exchangeRateSource?: string;
+  exchangeRateRetrievedAt?: string;
+  isCachedRate?: boolean;
+  isStaleRate?: boolean;
+  breakdown: { label: string; cost: number; originalCostUsd?: number }[];
 }
 
 export interface CostOptimization {
@@ -232,6 +305,7 @@ export interface Project {
   securityScore: number;
   architectureScore: number;
   estimatedMonthlyCost: number;
+  currency?: string;
   environment: Environment;
   region: Region;
   versions: ArchitectureVersion[];

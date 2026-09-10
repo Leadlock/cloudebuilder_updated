@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import {
   Plus, Box, Server, ShieldCheck, DollarSign, Clock, Trash2,
@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { CloudProvider } from '@/types';
+import { formatCurrency } from '@/lib/currency/formatter';
 
 function ScoreBadge({ score }: { score: number }) {
   const color = score >= 80 ? 'text-emerald-400' : score >= 60 ? 'text-yellow-400' : 'text-red-400';
@@ -29,15 +30,33 @@ type Tab = 'all' | 'aws' | 'azure' | 'multi';
 
 export default function Dashboard() {
   const { state, dispatch } = useApp();
-  const { projects } = state;
+  const { projects, displayCurrency } = state;
+  const activeCurrency = displayCurrency || 'USD';
+  const [exchangeRate, setExchangeRate] = useState<number>(1.0);
   const [showNewProject, setShowNewProject] = useState(false);
   const [newName, setNewName] = useState('');
   const [newProvider, setNewProvider] = useState<CloudProvider>('aws');
   const [tab, setTab] = useState<Tab>('all');
 
+  useEffect(() => {
+    if (activeCurrency === 'USD') {
+      setExchangeRate(1.0);
+      return;
+    }
+    fetch(`/api/currency/rates?from=USD&to=${activeCurrency}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.ok && data.data?.rate?.rate) {
+          setExchangeRate(data.data.rate.rate);
+        }
+      })
+      .catch(() => {});
+  }, [activeCurrency]);
+
   const totalResources = projects.reduce((a, p) => a + p.resourceCount, 0);
   const avgScore = projects.length ? Math.round(projects.reduce((a, p) => a + p.securityScore, 0) / projects.length) : 0;
-  const totalCost = projects.reduce((a, p) => a + p.estimatedMonthlyCost, 0);
+  const totalCostUsd = projects.reduce((a, p) => a + p.estimatedMonthlyCost, 0);
+  const totalCost = totalCostUsd * exchangeRate;
 
   const filteredProjects = projects.filter((p) => tab === 'all' || p.provider === tab);
 
@@ -77,7 +96,7 @@ export default function Dashboard() {
           { label: 'Total Projects', value: projects.length, icon: Box, color: 'text-blue-400', bg: 'bg-blue-900/30' },
           { label: 'Total Resources', value: totalResources, icon: Server, color: 'text-purple-400', bg: 'bg-purple-900/30' },
           { label: 'Avg Security Score', value: `${avgScore}/100`, icon: ShieldCheck, color: avgScore >= 80 ? 'text-emerald-400' : 'text-yellow-400', bg: avgScore >= 80 ? 'bg-emerald-900/30' : 'bg-yellow-900/30' },
-          { label: 'Est. Monthly Cost', value: `$${totalCost.toFixed(0)}`, icon: DollarSign, color: 'text-orange-400', bg: 'bg-orange-900/30' },
+          { label: `Est. Monthly Cost (${activeCurrency})`, value: formatCurrency(totalCost, activeCurrency), icon: DollarSign, color: 'text-orange-400', bg: 'bg-orange-900/30' },
         ].map(({ label, value, icon: Icon, color, bg }) => (
           <div key={label} className="bg-gray-800 rounded-xl p-4 border border-gray-700">
             <div className="flex items-start justify-between">
@@ -191,7 +210,7 @@ export default function Dashboard() {
                 </div>
                 <div className="text-center">
                   <p className="text-gray-500 text-[10px] uppercase tracking-wide mb-0.5">Cost</p>
-                  <p className="text-orange-400 font-semibold text-sm">${project.estimatedMonthlyCost.toFixed(0)}</p>
+                  <p className="text-orange-400 font-semibold text-sm">{formatCurrency(project.estimatedMonthlyCost * exchangeRate, activeCurrency)}</p>
                 </div>
               </div>
 

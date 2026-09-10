@@ -33,9 +33,9 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'23bb7d5a29f34f260fe2e9debd7c874ef71935cf2f3d3410789bef7a87c3a9ae'>;
+  StorageHashBase<'a3c68150b6f8cc5b41312cd0b75cd50e75aaae354c23a20e7860b800e7bf7146'>;
 export type ExecutionHash =
-  ExecutionHashBase<'92cc56a67cb1a628cd61f778d001369fdfb7cdefc940fafe6d01bde490705d3a'>;
+  ExecutionHashBase<'70da85f61a6ba48ecfa04b6da2222209cd7601f0ef3d6dd21f34b2db0655c539'>;
 export type ProfileHash =
   ProfileHashBase<'3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2'>;
 
@@ -314,6 +314,15 @@ export type FieldOutputTypes = {
       readonly confidence: CodecTypes['pg/text@1']['output'];
       readonly createdAt: CodecTypes['pg/text@1']['output'];
     };
+    readonly CurrencyExchangeRate: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly baseCurrency: CodecTypes['pg/text@1']['output'];
+      readonly targetCurrency: CodecTypes['pg/text@1']['output'];
+      readonly rate: CodecTypes['pg/float8@1']['output'];
+      readonly source: CodecTypes['pg/text@1']['output'];
+      readonly retrievedAt: CodecTypes['pg/text@1']['output'];
+      readonly expiresAt: CodecTypes['pg/text@1']['output'];
+    };
     readonly DiscoveryRun: {
       readonly id: CodecTypes['pg/text@1']['output'];
       readonly cloudAccountId: CodecTypes['pg/text@1']['output'];
@@ -477,6 +486,15 @@ export type FieldInputTypes = {
       readonly pricingSource: CodecTypes['pg/text@1']['input'];
       readonly confidence: CodecTypes['pg/text@1']['input'];
       readonly createdAt: CodecTypes['pg/text@1']['input'];
+    };
+    readonly CurrencyExchangeRate: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly baseCurrency: CodecTypes['pg/text@1']['input'];
+      readonly targetCurrency: CodecTypes['pg/text@1']['input'];
+      readonly rate: CodecTypes['pg/float8@1']['input'];
+      readonly source: CodecTypes['pg/text@1']['input'];
+      readonly retrievedAt: CodecTypes['pg/text@1']['input'];
+      readonly expiresAt: CodecTypes['pg/text@1']['input'];
     };
     readonly DiscoveryRun: {
       readonly id: CodecTypes['pg/text@1']['input'];
@@ -642,6 +660,15 @@ export type StorageColumnTypes = {
       readonly totalMonthly: CodecTypes['pg/float8@1']['output'];
       readonly versionId: CodecTypes['pg/text@1']['output'] | null;
     };
+    readonly currencyExchangeRate: {
+      readonly baseCurrency: CodecTypes['pg/text@1']['output'];
+      readonly expiresAt: CodecTypes['pg/text@1']['output'];
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly rate: CodecTypes['pg/float8@1']['output'];
+      readonly retrievedAt: CodecTypes['pg/text@1']['output'];
+      readonly source: CodecTypes['pg/text@1']['output'];
+      readonly targetCurrency: CodecTypes['pg/text@1']['output'];
+    };
     readonly discoveryRun: {
       readonly cloudAccountId: CodecTypes['pg/text@1']['output'];
       readonly completedAt: CodecTypes['pg/text@1']['output'] | null;
@@ -805,6 +832,15 @@ export type StorageColumnInputTypes = {
       readonly totalHourly: CodecTypes['pg/float8@1']['input'];
       readonly totalMonthly: CodecTypes['pg/float8@1']['input'];
       readonly versionId: CodecTypes['pg/text@1']['input'] | null;
+    };
+    readonly currencyExchangeRate: {
+      readonly baseCurrency: CodecTypes['pg/text@1']['input'];
+      readonly expiresAt: CodecTypes['pg/text@1']['input'];
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly rate: CodecTypes['pg/float8@1']['input'];
+      readonly retrievedAt: CodecTypes['pg/text@1']['input'];
+      readonly source: CodecTypes['pg/text@1']['input'];
+      readonly targetCurrency: CodecTypes['pg/text@1']['input'];
     };
     readonly discoveryRun: {
       readonly cloudAccountId: CodecTypes['pg/text@1']['input'];
@@ -1546,6 +1582,56 @@ type ContractBase = Omit<
                   };
                 },
               ];
+            };
+            readonly currencyExchangeRate: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly baseCurrency: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly targetCurrency: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly rate: {
+                  readonly nativeType: 'float8';
+                  readonly codecId: 'pg/float8@1';
+                  readonly nullable: false;
+                };
+                readonly source: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly retrievedAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly expiresAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [{ readonly columns: readonly ['baseCurrency', 'targetCurrency'] }];
+              indexes: readonly [
+                {
+                  readonly name: 'currencyExchangeRate_baseCurrency_targetCurrency_idx_7672893a';
+                  readonly prefix: 'currencyExchangeRate_baseCurrency_targetCurrency_idx';
+                  readonly columns: readonly ['baseCurrency', 'targetCurrency'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [];
             };
             readonly discoveryRun: {
               columns: {
@@ -2294,6 +2380,10 @@ type ContractBase = Omit<
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'TerraformGeneration';
     };
+    readonly currencyExchangeRate: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'CurrencyExchangeRate';
+    };
   };
   readonly domain: {
     readonly namespaces: {
@@ -2917,6 +3007,52 @@ type ContractBase = Omit<
                 readonly pricingSource: { readonly column: 'pricingSource' };
                 readonly confidence: { readonly column: 'confidence' };
                 readonly createdAt: { readonly column: 'createdAt' };
+              };
+            };
+          };
+          readonly CurrencyExchangeRate: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly baseCurrency: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly targetCurrency: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly rate: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/float8@1' };
+              };
+              readonly source: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly retrievedAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly expiresAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: {
+              readonly table: 'currencyExchangeRate';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly baseCurrency: { readonly column: 'baseCurrency' };
+                readonly targetCurrency: { readonly column: 'targetCurrency' };
+                readonly rate: { readonly column: 'rate' };
+                readonly source: { readonly column: 'source' };
+                readonly retrievedAt: { readonly column: 'retrievedAt' };
+                readonly expiresAt: { readonly column: 'expiresAt' };
               };
             };
           };
@@ -3710,6 +3846,14 @@ type ContractBase = Omit<
           readonly ref: {
             readonly namespace: 'public';
             readonly table: 'costEstimate';
+            readonly column: 'id';
+          };
+          readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };
+        },
+        {
+          readonly ref: {
+            readonly namespace: 'public';
+            readonly table: 'currencyExchangeRate';
             readonly column: 'id';
           };
           readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };

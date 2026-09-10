@@ -119,23 +119,33 @@ export default function Sidebar() {
           </div>
           <div className="space-y-0.5 max-h-36 overflow-y-auto">
             {projects.map((p) => (
-              <button
+              <div
                 key={p.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => { dispatch({ type: 'SET_ACTIVE_PROJECT', id: p.id }); dispatch({ type: 'SET_VIEW', view: 'canvas' }); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    dispatch({ type: 'SET_ACTIVE_PROJECT', id: p.id });
+                    dispatch({ type: 'SET_VIEW', view: 'canvas' });
+                  }
+                }}
                 className={clsx(
-                  'w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 group transition-colors',
+                  'w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 group transition-colors cursor-pointer select-none',
                   p.id === activeProjectId ? 'bg-blue-900/40 text-blue-300' : 'text-gray-500 hover:text-gray-200 hover:bg-gray-800'
                 )}
               >
                 <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', p.provider === 'aws' ? 'bg-orange-400' : p.provider === 'azure' ? 'bg-blue-400' : 'bg-purple-400')} />
                 <span className="truncate flex-1">{p.name}</span>
                 <button
+                  type="button"
                   onClick={(e) => { e.stopPropagation(); dispatch({ type: 'DELETE_PROJECT', id: p.id }); }}
-                  className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all"
+                  className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all p-0.5 rounded"
+                  title="Delete project"
                 >
                   <Trash2 className="w-3 h-3" />
                 </button>
-              </button>
+              </div>
             ))}
           </div>
         </div>
