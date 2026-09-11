@@ -94,6 +94,31 @@ export async function resolveArchitecture(
           connections: [],
         },
       };
+    } else if (projectId.startsWith('proj-')) {
+      return {
+        orgId,
+        project: {
+          id: projectId,
+          name: 'Development Architecture',
+          description: 'Dev fallback project',
+          provider: 'aws',
+          region: 'us-east-1',
+          tags: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          orgId,
+          ownerId: 'dev-user-id',
+          environments: [],
+        },
+        arch: {
+          id: `arch-${projectId}`,
+          environmentId: `env-${projectId}`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          resources: [],
+          connections: [],
+        },
+      };
     }
   }
   return { error: 'project_not_found' };

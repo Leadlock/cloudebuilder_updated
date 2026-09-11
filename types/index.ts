@@ -11,10 +11,12 @@ export type AppView =
   | 'templates'
   | 'ai-generator'
   | 'advisor'
+  | 'well-architected'
   | 'disaster-recovery'
   | 'import'
   | 'history'
-  | 'environments';
+  | 'environments'
+  | 'review';
 
 export type Environment = 'development' | 'staging' | 'production';
 export type ResourceCategory =
@@ -198,7 +200,7 @@ export interface CanvasEdge {
   source: string;
   target: string;
   label?: string;
-  edgeType?: 'data' | 'network' | 'security' | 'management';
+  edgeType?: 'data' | 'network' | 'security' | 'management' | 'cross-cloud';
 }
 
 export interface CanvasGroup {
@@ -388,3 +390,13 @@ export interface ImportSource {
   icon: string;
   description: string;
 }
+
+export type {
+  WaFinding,
+  WaAssessment,
+  WaPillar,
+  WaSeverity,
+  AnalysisSource,
+  ResourceState,
+  WaPillarScore,
+} from '@/lib/engines/wellArchitected/types';

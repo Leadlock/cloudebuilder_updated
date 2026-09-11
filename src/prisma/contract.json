@@ -71,6 +71,14 @@
     "user": {
       "model": "User",
       "namespace": "public"
+    },
+    "wellArchitectedAssessment": {
+      "model": "WellArchitectedAssessment",
+      "namespace": "public"
+    },
+    "wellArchitectedFinding": {
+      "model": "WellArchitectedFinding",
+      "namespace": "public"
     }
   },
   "domain": {
@@ -338,6 +346,21 @@
                 },
                 "to": {
                   "model": "ArchitectureVersion",
+                  "namespace": "public"
+                }
+              },
+              "wellArchitectedAssessments": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "architectureId"
+                  ]
+                },
+                "to": {
+                  "model": "WellArchitectedAssessment",
                   "namespace": "public"
                 }
               }
@@ -1763,6 +1786,21 @@
                   "model": "TerraformGeneration",
                   "namespace": "public"
                 }
+              },
+              "wellArchitectedAssessments": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "projectId"
+                  ]
+                },
+                "to": {
+                  "model": "WellArchitectedAssessment",
+                  "namespace": "public"
+                }
               }
             },
             "storage": {
@@ -2318,6 +2356,430 @@
               },
               "namespaceId": "public",
               "table": "user"
+            }
+          },
+          "WellArchitectedAssessment": {
+            "fields": {
+              "architectureId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "completedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "confidence": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "findingsJson": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "framework": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "frameworkVersion": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "isStale": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/bool@1",
+                  "kind": "scalar"
+                }
+              },
+              "overallScore": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
+              "pillarScoresJson": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "projectId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "provider": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "source": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "sourceLabel": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "architecture": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "architectureId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Architecture",
+                  "namespace": "public"
+                }
+              },
+              "findings": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "assessmentId"
+                  ]
+                },
+                "to": {
+                  "model": "WellArchitectedFinding",
+                  "namespace": "public"
+                }
+              },
+              "project": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "projectId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Project",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "architectureId": {
+                  "column": "architectureId"
+                },
+                "completedAt": {
+                  "column": "completedAt"
+                },
+                "confidence": {
+                  "column": "confidence"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "findingsJson": {
+                  "column": "findingsJson"
+                },
+                "framework": {
+                  "column": "framework"
+                },
+                "frameworkVersion": {
+                  "column": "frameworkVersion"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "isStale": {
+                  "column": "isStale"
+                },
+                "overallScore": {
+                  "column": "overallScore"
+                },
+                "pillarScoresJson": {
+                  "column": "pillarScoresJson"
+                },
+                "projectId": {
+                  "column": "projectId"
+                },
+                "provider": {
+                  "column": "provider"
+                },
+                "source": {
+                  "column": "source"
+                },
+                "sourceLabel": {
+                  "column": "sourceLabel"
+                }
+              },
+              "namespaceId": "public",
+              "table": "wellArchitectedAssessment"
+            }
+          },
+          "WellArchitectedFinding": {
+            "fields": {
+              "affectedResourceIds": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "assessmentId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "description": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "detectedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "evidenceJson": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "frameworkReference": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "pillar": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "pillarLabel": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "pillarRef": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "provider": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "recommendation": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "remediation": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "resourceState": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "ruleId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "severity": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "source": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "sourceLabel": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "title": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "assessment": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "assessmentId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "WellArchitectedAssessment",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "affectedResourceIds": {
+                  "column": "affectedResourceIds"
+                },
+                "assessmentId": {
+                  "column": "assessmentId"
+                },
+                "description": {
+                  "column": "description"
+                },
+                "detectedAt": {
+                  "column": "detectedAt"
+                },
+                "evidenceJson": {
+                  "column": "evidenceJson"
+                },
+                "frameworkReference": {
+                  "column": "frameworkReference"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "pillar": {
+                  "column": "pillar"
+                },
+                "pillarLabel": {
+                  "column": "pillarLabel"
+                },
+                "pillarRef": {
+                  "column": "pillarRef"
+                },
+                "provider": {
+                  "column": "provider"
+                },
+                "recommendation": {
+                  "column": "recommendation"
+                },
+                "remediation": {
+                  "column": "remediation"
+                },
+                "resourceState": {
+                  "column": "resourceState"
+                },
+                "ruleId": {
+                  "column": "ruleId"
+                },
+                "severity": {
+                  "column": "severity"
+                },
+                "source": {
+                  "column": "source"
+                },
+                "sourceLabel": {
+                  "column": "sourceLabel"
+                },
+                "title": {
+                  "column": "title"
+                }
+              },
+              "namespaceId": "public",
+              "table": "wellArchitectedFinding"
             }
           }
         }
@@ -3961,6 +4423,311 @@
                   ]
                 }
               ]
+            },
+            "wellArchitectedAssessment": {
+              "columns": {
+                "architectureId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "completedAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "confidence": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "design-time"
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "createdAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "findingsJson": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "[]"
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "framework": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "frameworkVersion": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "isStale": {
+                  "codecId": "pg/bool@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "nativeType": "bool",
+                  "nullable": false
+                },
+                "overallScore": {
+                  "codecId": "pg/int4@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "nativeType": "int4",
+                  "nullable": false
+                },
+                "pillarScoresJson": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "[]"
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "projectId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "provider": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "source": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "sourceLabel": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "Design-time assessment"
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "projectId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "wellArchitectedAssessment"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "project"
+                  }
+                },
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "architectureId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "wellArchitectedAssessment"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "architecture"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "architectureId"
+                  ],
+                  "name": "wellArchitectedAssessment_architectureId_idx_a096837f",
+                  "prefix": "wellArchitectedAssessment_architectureId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "projectId"
+                  ],
+                  "name": "wellArchitectedAssessment_projectId_idx_a96e4d92",
+                  "prefix": "wellArchitectedAssessment_projectId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
+            "wellArchitectedFinding": {
+              "columns": {
+                "affectedResourceIds": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "[]"
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "assessmentId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "description": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "detectedAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "evidenceJson": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "{}"
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "frameworkReference": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "pillar": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "pillarLabel": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "pillarRef": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "provider": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "recommendation": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "remediation": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "resourceState": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "ruleId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "severity": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "source": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "sourceLabel": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "title": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "assessmentId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "wellArchitectedFinding"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "wellArchitectedAssessment"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "assessmentId"
+                  ],
+                  "name": "wellArchitectedFinding_assessmentId_idx_1fe05216",
+                  "prefix": "wellArchitectedFinding_assessmentId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
             }
           }
         },
@@ -3968,10 +4735,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "a3c68150b6f8cc5b41312cd0b75cd50e75aaae354c23a20e7860b800e7bf7146"
+    "storageHash": "6e691b6e24681ab49c78750d9e5a5fc32bdb90284a069118a2d3547ded8d5450"
   },
   "execution": {
-    "executionHash": "70da85f61a6ba48ecfa04b6da2222209cd7601f0ef3d6dd21f34b2db0655c539",
+    "executionHash": "f0dd6e93fba0bf9901f3acbfe73314e7660c2b2c7d0bc236bea3c19c4e05406f",
     "mutations": {
       "defaults": [
         {
@@ -4159,6 +4926,28 @@
             "column": "id",
             "namespace": "public",
             "table": "user"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "wellArchitectedAssessment"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "wellArchitectedFinding"
           }
         }
       ]

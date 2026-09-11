@@ -5,6 +5,9 @@ import { ResourceDefinition, CloudProvider } from '@/types';
 export const allResources: ResourceDefinition[] = [...awsResources, ...azureResources];
 
 export function getResourcesByProvider(provider: CloudProvider): ResourceDefinition[] {
+  if (provider === 'multi') {
+    return allResources;
+  }
   return allResources.filter((r) => r.provider === provider);
 }
 

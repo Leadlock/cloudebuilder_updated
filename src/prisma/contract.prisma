@@ -61,6 +61,7 @@ model Project {
   costEstimates        CostEstimate[]
   optimizations        ArchOptimization[]
   terraformGens        TerraformGeneration[]
+  wellArchitectedAssessments WellArchitectedAssessment[]
 }
 
 // ─── Environments ─────────────────────────────────────────────────────────────
@@ -97,6 +98,7 @@ model Architecture {
   costEstimates CostEstimate[]
   optimizations ArchOptimization[]
   terraformGens TerraformGeneration[]
+  wellArchitectedAssessments WellArchitectedAssessment[]
 }
 
 // ─── ArchitectureResource ─────────────────────────────────────────────────────
@@ -291,4 +293,52 @@ model CurrencyExchangeRate {
 
   @@unique([baseCurrency, targetCurrency])
   @@index([baseCurrency, targetCurrency])
+}
+
+// ─── Well-Architected Assessments ─────────────────────────────────────────────
+
+model WellArchitectedAssessment {
+  id               String  @id @default(uuid())
+  projectId        String
+  architectureId   String
+  provider         String  // 'aws' | 'azure' | 'multi'
+  framework        String  // e.g. 'AWS Well-Architected Framework'
+  frameworkVersion String  // e.g. '2024'
+  overallScore     Int     @default(0)
+  pillarScoresJson String  @default("[]")
+  findingsJson     String  @default("[]")
+  source           String  // 'DESIGN_TIME' | 'LIVE_AWS_WAF' | 'LIVE_AZURE_ADVISOR'
+  sourceLabel      String  @default("Design-time assessment")
+  confidence       String  @default("design-time")
+  isStale          Boolean @default(false)
+  createdAt        String
+  completedAt      String?
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  architecture Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+  findings     WellArchitectedFinding[]
+}
+
+model WellArchitectedFinding {
+  id                  String  @id @default(uuid())
+  assessmentId        String
+  ruleId              String
+  provider            String
+  pillar              String
+  pillarLabel         String
+  pillarRef           String
+  severity            String
+  title               String
+  description         String
+  affectedResourceIds String  @default("[]")
+  evidenceJson        String  @default("{}")
+  recommendation      String
+  remediation         String
+  frameworkReference  String
+  source              String
+  sourceLabel         String
+  resourceState       String?
+  detectedAt          String
+
+  assessment WellArchitectedAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
 }

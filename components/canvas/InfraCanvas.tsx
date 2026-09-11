@@ -21,27 +21,33 @@ import { CanvasNode, CanvasEdge } from '@/types';
 import { getResourceDefinition } from '@/lib/resources';
 import CloudNode from './CloudNode';
 import ContainerNode from './ContainerNode';
-import { TrafficEdge, AssociationEdge } from './ArchitectureEdges';
+import CloudProviderBoundary from './CloudProviderBoundary';
+import { TrafficEdge, AssociationEdge, CrossCloudEdge } from './ArchitectureEdges';
 import ResourcePalette from './ResourcePalette';
 import PropertiesPanel from './PropertiesPanel';
 import CanvasToolbar from './CanvasToolbar';
 import AddResourceModal from './AddResourceModal';
 import { autoLayoutArchitecture } from '@/lib/canvas/autoLayout';
+import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedService';
 
 const nodeTypes = {
   cloudNode: CloudNode,
   containerNode: ContainerNode,
+  cloudProviderNode: CloudProviderBoundary,
 };
 
 const edgeTypes = {
   traffic: TrafficEdge,
   association: AssociationEdge,
+  crossCloud: CrossCloudEdge,
 };
 
 function toReactFlowNodes(
   canvasNodes: CanvasNode[],
   activeDragTargetId: string | null = null,
-  isValidDrop = true
+  isValidDrop = true,
+  findingsMap?: Map<string, { critical: number; high: number; medium: number; total: number }>,
+  showFindings = false
 ): Node[] {
   // Count children per container
   const childCountMap = new Map<string, number>();
@@ -51,8 +57,13 @@ function toReactFlowNodes(
     }
   }
 
-  // Order: VPC/VNet (-2) -> Subnet (-1) -> Leaf nodes (1)
+  // Order: Boundary (-3) -> VPC/VNet (-2) -> Subnet (-1) -> Leaf nodes (1)
   const sorted = [...canvasNodes].sort((a, b) => {
+    const aIsBoundary = a.resourceType === 'cloud_provider_boundary' || a.resourceType === 'aws_cloud_boundary' || a.resourceType === 'azure_cloud_boundary';
+    const bIsBoundary = b.resourceType === 'cloud_provider_boundary' || b.resourceType === 'aws_cloud_boundary' || b.resourceType === 'azure_cloud_boundary';
+    if (aIsBoundary && !bIsBoundary) return -1;
+    if (!aIsBoundary && bIsBoundary) return 1;
+
     const aIsVpc = a.resourceType === 'aws_vpc' || a.resourceType === 'azure_vnet' || a.resourceType === 'azure_resource_group';
     const bIsVpc = b.resourceType === 'aws_vpc' || b.resourceType === 'azure_vnet' || b.resourceType === 'azure_resource_group';
     if (aIsVpc && !bIsVpc) return -1;
@@ -67,16 +78,19 @@ function toReactFlowNodes(
 
   return sorted.map((n) => {
     const def = getResourceDefinition(n.resourceType);
-    const isContainer = def?.isContainer === true;
+    const isBoundary = n.resourceType === 'cloud_provider_boundary' || n.resourceType === 'aws_cloud_boundary' || n.resourceType === 'azure_cloud_boundary';
+    const isContainer = def?.isContainer === true || isBoundary;
     const isVpc = n.resourceType === 'aws_vpc' || n.resourceType === 'azure_vnet' || n.resourceType === 'azure_resource_group';
     const isSubnet = n.resourceType === 'aws_subnet' || n.resourceType === 'azure_subnet';
 
-    const width = n.width || def?.defaultWidth || (isVpc ? 780 : isSubnet ? 340 : 180);
-    const height = n.height || def?.defaultHeight || (isVpc ? 500 : isSubnet ? 220 : 100);
+    const width = n.width || def?.defaultWidth || (isBoundary ? 880 : isVpc ? 780 : isSubnet ? 340 : 180);
+    const height = n.height || def?.defaultHeight || (isBoundary ? 560 : isVpc ? 500 : isSubnet ? 220 : 100);
+
+    const nodeType = isBoundary ? 'cloudProviderNode' : isContainer ? 'containerNode' : 'cloudNode';
 
     return {
       id: n.id,
-      type: isContainer ? 'containerNode' : 'cloudNode',
+      type: nodeType,
       position: n.position,
       data: {
         label: n.label,
@@ -90,32 +104,36 @@ function toReactFlowNodes(
         isDragTarget: activeDragTargetId === n.id,
         isValidDrop: activeDragTargetId === n.id ? isValidDrop : true,
         childCount: childCountMap.get(n.id) || 0,
+        findingsSummary: findingsMap?.get(n.id),
+        showFindings,
+        region: (n.config?.region as string) || (n.provider === 'azure' ? 'eastus' : 'us-east-1'),
       },
       selected: n.selected,
-      zIndex: isVpc ? -2 : isSubnet ? -1 : 1,
+      zIndex: isBoundary ? -3 : isVpc ? -2 : isSubnet ? -1 : 1,
     };
   });
 }
 
 function toReactFlowEdges(canvasEdges: CanvasEdge[]): Edge[] {
   return canvasEdges.map((e) => {
+    const isCrossCloud = e.edgeType === 'cross-cloud';
     const isAssociation = e.edgeType === 'security' || e.edgeType === 'management';
-    const color = isAssociation ? '#64748B' : '#38BDF8';
+    const color = isCrossCloud ? '#F59E0B' : isAssociation ? '#64748B' : '#38BDF8';
     return {
       id: e.id,
       source: e.source,
       target: e.target,
       label: e.label,
-      type: isAssociation ? 'association' : 'traffic',
+      type: isCrossCloud ? 'crossCloud' : isAssociation ? 'association' : 'traffic',
       animated: !isAssociation,
-      style: { stroke: color, strokeWidth: 2 },
+      style: { stroke: color, strokeWidth: isCrossCloud ? 2.5 : 2 },
       markerEnd: {
         type: MarkerType.ArrowClosed,
         color,
         width: 14,
         height: 14,
       },
-      labelStyle: { fontSize: 10, fill: '#CBD5E1', fontFamily: 'monospace' },
+      labelStyle: { fontSize: 10, fill: isCrossCloud ? '#FCD34D' : '#CBD5E1', fontFamily: 'monospace' },
     };
   });
 }
@@ -150,6 +168,44 @@ export default function InfraCanvas() {
 
   // Provider filter for multi-cloud canvas
   const [canvasFilter, setCanvasFilter] = useState<'all' | 'aws' | 'azure'>('all');
+
+  // Well-Architected findings overlay state
+  const [showFindings, setShowFindings] = useState(false);
+  const [findingsMap, setFindingsMap] = useState<Map<string, { critical: number; high: number; medium: number; total: number }>>(new Map());
+
+  useEffect(() => {
+    if (!showFindings || !activeProject) return;
+    let isCancelled = false;
+    apiWellArchitectedService.getAssessment().then((assessment) => {
+      if (isCancelled || !assessment?.findings) return;
+      const fMap = new Map<string, { critical: number; high: number; medium: number; total: number }>();
+      for (const finding of assessment.findings) {
+        for (const resId of (finding.affectedResourceIds || [])) {
+          const current = fMap.get(resId) || { critical: 0, high: 0, medium: 0, total: 0 };
+          current.total++;
+          if (finding.severity === 'critical') current.critical++;
+          else if (finding.severity === 'high') current.high++;
+          else if (finding.severity === 'medium') current.medium++;
+          fMap.set(resId, current);
+        }
+      }
+      setFindingsMap(fMap);
+    }).catch(() => {});
+    return () => { isCancelled = true; };
+  }, [showFindings, activeProject?.id, state.activeEnvironment]);
+
+  useEffect(() => {
+    setNodes((prevNodes) =>
+      prevNodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          showFindings,
+          findingsSummary: findingsMap.get(node.id) || { critical: 0, high: 0, medium: 0, total: 0 },
+        },
+      }))
+    );
+  }, [showFindings, findingsMap, setNodes]);
 
   useEffect(() => {
     latestNodesRef.current = nodes;
@@ -309,10 +365,26 @@ export default function InfraCanvas() {
   const findContainerAtPosition = useCallback((pos: { x: number; y: number }, draggedType?: string) => {
     const containerNodes = nodes.filter((n) => {
       const def = getResourceDefinition(n.data.resourceType);
-      return def?.isContainer === true;
+      const isBoundary = n.data.resourceType === 'cloud_provider_boundary' || n.data.resourceType === 'aws_cloud_boundary' || n.data.resourceType === 'azure_cloud_boundary';
+      return def?.isContainer === true || isBoundary;
     });
 
-    // Check subnets first (inner containers)
+    const checkAllowed = (container: Node, def?: ReturnType<typeof getResourceDefinition>) => {
+      if (!draggedType) return true;
+      const draggedDef = getResourceDefinition(draggedType);
+      // Strict Cross-Cloud isolation: AWS resources never allowed in Azure containers, Azure never in AWS
+      if (draggedDef && def) {
+        if (def.provider !== draggedDef.provider) {
+          return false;
+        }
+      }
+      if (def?.allowedChildren) {
+        return def.allowedChildren.includes(draggedType);
+      }
+      return true;
+    };
+
+    // 1. Check Subnets first (innermost containers)
     const subnets = containerNodes.filter(
       (n) => n.data.resourceType === 'aws_subnet' || n.data.resourceType === 'azure_subnet'
     );
@@ -326,12 +398,12 @@ export default function InfraCanvas() {
         pos.y <= sub.position.y + height
       ) {
         const subDef = getResourceDefinition(sub.data.resourceType);
-        const isAllowed = draggedType ? subDef?.allowedChildren?.includes(draggedType) ?? true : true;
+        const isAllowed = checkAllowed(sub, subDef);
         return { container: sub, isAllowed };
       }
     }
 
-    // Check VPC / VNet (outer containers)
+    // 2. Check VPC / VNet / Resource Group (middle containers)
     const vpcs = containerNodes.filter(
       (n) =>
         n.data.resourceType === 'aws_vpc' ||
@@ -348,8 +420,30 @@ export default function InfraCanvas() {
         pos.y <= vpc.position.y + height
       ) {
         const vpcDef = getResourceDefinition(vpc.data.resourceType);
-        const isAllowed = draggedType ? vpcDef?.allowedChildren?.includes(draggedType) ?? true : true;
+        const isAllowed = checkAllowed(vpc, vpcDef);
         return { container: vpc, isAllowed };
+      }
+    }
+
+    // 3. Check Cloud Boundaries (outermost containers)
+    const boundaries = containerNodes.filter(
+      (n) =>
+        n.data.resourceType === 'cloud_provider_boundary' ||
+        n.data.resourceType === 'aws_cloud_boundary' ||
+        n.data.resourceType === 'azure_cloud_boundary'
+    );
+    for (const b of boundaries) {
+      const width = b.data.width || 880;
+      const height = b.data.height || 560;
+      if (
+        pos.x >= b.position.x &&
+        pos.x <= b.position.x + width &&
+        pos.y >= b.position.y &&
+        pos.y <= b.position.y + height
+      ) {
+        const bDef = getResourceDefinition(b.data.resourceType);
+        const isAllowed = checkAllowed(b, bDef);
+        return { container: b, isAllowed };
       }
     }
 
@@ -771,6 +865,8 @@ export default function InfraCanvas() {
           onDeleteSelected={handleDeleteSelected}
           onCopy={handleCopy}
           onOpenAddModal={() => setIsAddModalOpen(true)}
+          showFindings={showFindings}
+          onToggleFindings={() => setShowFindings((v) => !v)}
         />
 
         {/* Multi-cloud filter bar */}

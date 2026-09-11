@@ -15,7 +15,10 @@ import { setActiveProjectId as setSecurityProjectId, setActiveEnvironment as set
 import { setActiveProjectId as setCostProjectId, setActiveEnvironment as setCostEnvironment, setActiveCurrency } from '@/lib/services/ApiCostService';
 import { setActiveProjectId as setTerraformProjectId, setActiveEnvironment as setTerraformEnvironment } from '@/lib/services/ApiTerraformService';
 import { setActiveProjectId as setAdvisorProjectId, setActiveEnvironment as setAdvisorEnvironment } from '@/lib/services/ApiAdvisorService';
+import { setActiveProjectId as setWaProjectId, setActiveEnvironment as setWaEnvironment } from '@/lib/services/ApiWellArchitectedService';
 // MockArchitectureService remains available via @/lib/services (architectureService export)
+
+import type { AuthUser } from '@/lib/api/authService';
 
 export interface AppState {
   projects: Project[];
@@ -31,6 +34,10 @@ export interface AppState {
   canvasKey: number;
   /** Whether the initial API load has completed */
   apiLoaded: boolean;
+  /** Currently logged in user with role (admin vs user) */
+  currentUser: AuthUser | null;
+  /** Whether the login / role switch modal is open */
+  isLoginModalOpen: boolean;
 }
 
 type Action =
@@ -54,6 +61,8 @@ type Action =
   | { type: 'SAVE_VERSION'; summary: string }
   | { type: 'FIX_SECURITY_ISSUE'; nodeId: string; ruleId: string }
   | { type: 'APPLY_COST_OPTIMIZATION'; optimizationId: string; nodeId?: string }
+  | { type: 'SET_USER'; user: AuthUser | null }
+  | { type: 'SET_LOGIN_MODAL'; open: boolean }
   /** Internal: replaces project list after API load */
   | { type: '_LOAD_PROJECTS'; projects: Project[] }
   /** Internal: replaces a single project returned by the API after create */
@@ -102,6 +111,10 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, sidebarCollapsed: !state.sidebarCollapsed };
     case 'SET_PROVIDER_FILTER':
       return { ...state, providerFilter: action.filter };
+    case 'SET_USER':
+      return { ...state, currentUser: action.user };
+    case 'SET_LOGIN_MODAL':
+      return { ...state, isLoginModalOpen: action.open };
 
     case 'SET_CURRENCY': {
       const currency = action.currency.toUpperCase();
@@ -466,6 +479,14 @@ const initialState: AppState = {
   displayCurrency: 'USD',
   canvasKey: 0,
   apiLoaded: false,
+  currentUser: {
+    id: 'usr-admin-1',
+    email: 'admin@cloudcraft.io',
+    name: 'Cloud Administrator',
+    role: 'admin',
+    orgId: 'org-cloudcraft-prod',
+  },
+  isLoginModalOpen: false,
 };
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -509,6 +530,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTerraformEnvironment(state.activeEnvironment);
     setAdvisorProjectId(state.activeProjectId);
     setAdvisorEnvironment(state.activeEnvironment);
+    setWaProjectId(state.activeProjectId);
+    setWaEnvironment(state.activeEnvironment);
   }, [state.activeProjectId, state.activeEnvironment, state.displayCurrency]);
 
   // ── On mount: restore saved currency preference ────────────────────────────
@@ -521,6 +544,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       } catch {}
     }
+  }, []);
+
+  // ── On mount: restore user session ─────────────────────────────────────────
+  useEffect(() => {
+    fetch('/api/auth/session', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.user) {
+          dispatch({ type: 'SET_USER', user: data.user });
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // ── On mount: load projects from the API ────────────────────────────────────

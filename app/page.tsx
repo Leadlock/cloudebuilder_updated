@@ -15,6 +15,8 @@ import DisasterRecovery from '@/components/panels/DisasterRecovery';
 import ImportPanel from '@/components/panels/ImportPanel';
 import VersionHistory from '@/components/panels/VersionHistory';
 import EnvironmentsPanel from '@/components/panels/EnvironmentsPanel';
+import WellArchitectedReview from '@/components/panels/WellArchitectedReview';
+import ReviewWorkflowPanel from '@/components/panels/ReviewWorkflowPanel';
 import { useApp } from '@/context/AppContext';
 import { AppView } from '@/types';
 
@@ -27,6 +29,7 @@ function MainContent() {
     canvas:             <InfraCanvas />,
     terraform:          <TerraformPanel />,
     security:           <SecurityPanel />,
+    'well-architected': <WellArchitectedReview />,
     cost:               <CostPanel />,
     deploy:             <DeployPanel />,
     wizard:             <ArchitectureWizard />,
@@ -37,6 +40,7 @@ function MainContent() {
     import:             <ImportPanel />,
     history:            <VersionHistory />,
     environments:       <EnvironmentsPanel />,
+    review:             <ReviewWorkflowPanel />,
   };
 
   return <>{map[activeView] ?? <Dashboard />}</>;

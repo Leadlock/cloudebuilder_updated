@@ -69,6 +69,12 @@ export function toCanvas(
     })(),
     ...(r.region ? { region: r.region as Region } : {}),
     ...(r.groupId ? { groupId: r.groupId } : {}),
+    importState: (() => {
+      try {
+        const c = JSON.parse(r.configJson);
+        return ((c.importState as string) ?? (c.imported ? 'imported' : undefined)) as CanvasNode['importState'];
+      } catch { return undefined; }
+    })(),
     locked: r.locked,
   }));
 
@@ -187,6 +193,10 @@ export const architectureRepository = {
 
     // Insert new resources
     for (const node of nodes) {
+      const config = {
+        ...node.config,
+        ...(node.importState ? { importState: node.importState, imported: node.importState === 'imported' } : {}),
+      };
       await db.orm.public.ArchitectureResource.create({
         id: node.id,
         resourceType: node.resourceType,
@@ -194,7 +204,7 @@ export const architectureRepository = {
         label: node.label,
         positionX: node.position.x,
         positionY: node.position.y,
-        configJson: JSON.stringify(node.config),
+        configJson: JSON.stringify(config),
         region: node.region ?? null,
         groupId: node.groupId ?? null,
         locked: node.locked ?? false,

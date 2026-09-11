@@ -1,14 +1,16 @@
 'use client';
-import { useState } from 'react';
-import { useActiveProject } from '@/context/AppContext';
+import { useState, useEffect } from 'react';
+import { useApp, useActiveProject } from '@/context/AppContext';
 import { runSecurityScan, calculateCosts } from '@/lib/analysis';
 import { DeploymentStep } from '@/types';
 import {
   CheckCircle2, XCircle, Loader2, Play, RotateCcw, Rocket,
   ChevronRight, Terminal, Shield, DollarSign, Zap,
-  ThumbsUp, ThumbsDown, AlertTriangle
+  ThumbsUp, ThumbsDown, AlertTriangle, ShieldCheck, ShieldAlert
 } from 'lucide-react';
 import clsx from 'clsx';
+import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedService';
+import type { WaAssessment } from '@/lib/engines/wellArchitected/types';
 
 const AWS_STEPS: Omit<DeploymentStep, 'status' | 'output'>[] = [
   { id: 'validate',  label: 'Validate Architecture',  description: 'Check resource configuration and connectivity requirements', provider: 'aws' },
@@ -56,72 +58,84 @@ interface PipelineProps {
   badgeColor?: string;
 }
 
+import { ApiReviewService } from '@/lib/services/ApiReviewService';
+import type { ArchitectureReview, DeploymentRecord } from '@/lib/services/ArchitectureReviewService';
+
 function Pipeline({ steps: stepDefs, label, issues, costs, badge, badgeColor }: PipelineProps) {
+  const { state } = useApp();
+  const activeProject = useActiveProject();
   const [steps, setSteps] = useState<DeploymentStep[]>(stepDefs.map((s) => ({ ...s, status: 'pending' })));
   const [running, setRunning] = useState(false);
   const [currentStep, setCurrentStep] = useState(-1);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [approved, setApproved] = useState(false);
+  const [latestReview, setLatestReview] = useState<ArchitectureReview | null>(null);
+  const [deployError, setDeployError] = useState<string | null>(null);
+  const [deploySuccess, setDeploySuccess] = useState<DeploymentRecord | null>(null);
+
+  const currentUser = (state as any).currentUser ?? {
+    id: 'usr-admin-1',
+    role: 'admin',
+    name: 'Cloud Administrator',
+    email: 'admin@cloudcraft.io',
+  };
+  const isAdmin = currentUser.role === 'admin';
+
+  useEffect(() => {
+    if (!activeProject) return;
+    ApiReviewService.getReviews(activeProject.id, state.activeEnvironment)
+      .then((data) => setLatestReview(data.latest))
+      .catch(() => {});
+  }, [activeProject?.id, state.activeEnvironment]);
 
   const hasCritical = issues.some((i) => i.severity === 'critical');
   const allDone = steps.every((s) => s.status === 'success');
-  const hasFailure = steps.some((s) => s.status === 'failed');
-  const pendingApproval = steps.some((s) => s.id === 'approval' && s.status === 'awaiting_approval');
+  const hasFailure = steps.some((s) => s.status === 'failed') || !!deployError;
+  const isApproved = latestReview?.status === 'approved';
 
   async function runDeployment() {
+    if (!activeProject) return;
     setRunning(true);
-    setApproved(false);
+    setDeployError(null);
+    setDeploySuccess(null);
     const newSteps = stepDefs.map((s) => ({ ...s, status: 'pending' as const, output: undefined }));
     setSteps(newSteps);
 
-    for (let i = 0; i < stepDefs.length; i++) {
-      const step = stepDefs[i];
-      setCurrentStep(i);
-      setSteps((prev) => prev.map((s, idx) => idx === i ? { ...s, status: 'running' } : s));
-      await new Promise((r) => setTimeout(r, 900 + Math.random() * 700));
+    // Call server API for deployment
+    try {
+      // Step 1: Validate architecture & role
+      setCurrentStep(0);
+      setSteps((prev) => prev.map((s, idx) => idx === 0 ? { ...s, status: 'running' } : s));
+      await new Promise((r) => setTimeout(r, 600));
 
-      const output = buildOutput(step.id, issues, costs);
-      const shouldFail = step.id === 'security' && hasCritical;
+      const record = await ApiReviewService.deploy(
+        activeProject.id,
+        state.activeEnvironment,
+        activeProject.nodes,
+        activeProject.edges
+      );
 
-      if (step.id === 'approval') {
-        setSteps((prev) => prev.map((s, idx) => idx === i ? { ...s, status: 'awaiting_approval', output } : s));
-        setExpanded(step.id);
-        setRunning(false);
-        return;
-      }
-
-      setSteps((prev) => prev.map((s, idx) => idx === i ? { ...s, status: shouldFail ? 'failed' : 'success', output } : s));
-      setExpanded(step.id);
-      if (shouldFail) { setRunning(false); setCurrentStep(-1); return; }
+      // Successfully authorized and deployed by server
+      setDeploySuccess(record);
+      setSteps(stepDefs.map((s) => ({
+        ...s,
+        status: 'success',
+        output: `✓ ${s.label} verified and executed successfully by server`,
+      })));
+    } catch (err: any) {
+      setDeployError(err.message);
+      setSteps((prev) => prev.map((s, idx) => idx === 0 ? { ...s, status: 'failed', output: err.message } : s));
+    } finally {
+      setRunning(false);
+      setCurrentStep(-1);
     }
-    setRunning(false);
-    setCurrentStep(-1);
-  }
-
-  async function handleApprove() {
-    const approvalIdx = steps.findIndex((s) => s.id === 'approval');
-    if (approvalIdx === -1) return;
-    setApproved(true);
-    setSteps((prev) => prev.map((s, idx) => idx === approvalIdx ? { ...s, status: 'success' } : s));
-    setRunning(true);
-    for (let i = approvalIdx + 1; i < stepDefs.length; i++) {
-      const step = stepDefs[i];
-      setCurrentStep(i);
-      setSteps((prev) => prev.map((s, idx) => idx === i ? { ...s, status: 'running' } : s));
-      await new Promise((r) => setTimeout(r, 1000 + Math.random() * 600));
-      const output = buildOutput(step.id, issues, costs);
-      setSteps((prev) => prev.map((s, idx) => idx === i ? { ...s, status: 'success', output } : s));
-      setExpanded(step.id);
-    }
-    setRunning(false);
-    setCurrentStep(-1);
   }
 
   function reset() {
     setSteps(stepDefs.map((s) => ({ ...s, status: 'pending' })));
     setCurrentStep(-1);
     setExpanded(null);
-    setApproved(false);
+    setDeployError(null);
+    setDeploySuccess(null);
   }
 
   return (
@@ -142,23 +156,68 @@ function Pipeline({ steps: stepDefs, label, issues, costs, badge, badgeColor }: 
               <RotateCcw className="w-3.5 h-3.5" /> Reset
             </button>
           )}
-          {!running && !allDone && !pendingApproval && (
+          {!running && !allDone && (
             <button
               onClick={runDeployment}
               aria-label={`Start ${label} deployment`}
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={clsx(
+                "flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500",
+                isAdmin && isApproved
+                  ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20"
+                  : "bg-slate-800 text-slate-300 border border-slate-700 hover:border-slate-600"
+              )}
             >
               <Play className="w-3.5 h-3.5" />
-              {hasFailure ? 'Retry' : 'Start'}
+              {hasFailure ? 'Retry Deployment' : isAdmin && isApproved ? 'Deploy to Cloud' : 'Deploy (User / Unapproved)'}
             </button>
           )}
           {running && (
             <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-900/40 border border-blue-800 text-blue-300 rounded-lg text-xs" role="status">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Running...
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Deploying via API...
             </div>
           )}
         </div>
       </div>
+
+      {/* Review Gate Banner */}
+      <div className="mb-4">
+        {latestReview?.status === 'approved' ? (
+          <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Architecture Approved for Deployment by {latestReview.reviewedBy?.name || 'Administrator'}</span>
+            </div>
+            <span className="font-mono text-[10px] text-emerald-400/80 truncate max-w-[120px]">{latestReview.architectureHash.substring(0, 10)}...</span>
+          </div>
+        ) : latestReview?.status === 'invalidated_due_to_changes' ? (
+          <div className="p-3 rounded-xl bg-rose-950/50 border border-rose-500/50 text-rose-300 text-xs flex items-center gap-2 font-medium">
+            <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>Deployment Blocked: Architecture modified after approval. Approval has been invalidated.</span>
+          </div>
+        ) : (
+          <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>Deployment Blocked: Formal Architecture Review approval required prior to deployment.</span>
+          </div>
+        )}
+      </div>
+
+      {deployError && (
+        <div className="mb-4 p-3 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs flex items-center gap-2">
+          <XCircle className="w-4 h-4 shrink-0" />
+          <span>{deployError}</span>
+        </div>
+      )}
+
+      {deploySuccess && (
+        <div className="mb-4 p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 text-xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <span>Infrastructure deployed successfully! (ID: {deploySuccess.id})</span>
+          </div>
+          <span className="text-[10px] text-slate-400">{deploySuccess.durationMs}ms</span>
+        </div>
+      )}
 
       {/* Steps */}
       <div className="space-y-2">
@@ -214,8 +273,8 @@ function Pipeline({ steps: stepDefs, label, issues, costs, badge, badgeColor }: 
                       <button onClick={reset} className="flex items-center gap-1 px-2 py-1 bg-red-900 hover:bg-red-800 text-red-300 rounded text-xs">
                         <ThumbsDown className="w-3 h-3" /> Reject
                       </button>
-                      <button onClick={handleApprove} className="flex items-center gap-1 px-2 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-xs font-medium">
-                        <ThumbsUp className="w-3 h-3" /> Approve
+                      <button onClick={runDeployment} className="flex items-center gap-1 px-2 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-xs font-medium">
+                        <ThumbsUp className="w-3 h-3" /> Deploy
                       </button>
                     </div>
                   </div>
@@ -247,12 +306,25 @@ function Pipeline({ steps: stepDefs, label, issues, costs, badge, badgeColor }: 
 
 export default function DeployPanel() {
   const activeProject = useActiveProject();
+  const [waAssessment, setWaAssessment] = useState<WaAssessment | null>(null);
+
+  useEffect(() => {
+    if (!activeProject) return;
+    let cancelled = false;
+    apiWellArchitectedService.getAssessment().then((ass) => {
+      if (!cancelled && ass) {
+        setWaAssessment(ass);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeProject?.id]);
 
   if (!activeProject) return null;
 
   const issues = runSecurityScan(activeProject.nodes);
   const costs = calculateCosts(activeProject.nodes);
   const isMultiCloud = activeProject.provider === 'multi';
+  const criticalFindings = (waAssessment?.findings || []).filter((f) => f.severity === 'critical');
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-900 p-5">
@@ -268,6 +340,30 @@ export default function DeployPanel() {
             <p className="text-gray-500 text-xs mt-0.5">No real credentials used — mock simulation only</p>
           </div>
         </div>
+
+        {/* Well-Architected Pre-flight gate */}
+        {waAssessment && (
+          <div className={clsx(
+            'p-4 rounded-xl mb-5 border backdrop-blur-md flex items-center justify-between',
+            criticalFindings.length > 0
+              ? 'bg-rose-950/30 border-rose-500/40 text-rose-300'
+              : 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300'
+          )}>
+            <div className="flex items-center gap-3">
+              <ShieldCheck className={clsx('w-5 h-5', criticalFindings.length > 0 ? 'text-rose-400' : 'text-emerald-400')} />
+              <div>
+                <p className="text-xs font-bold text-white">
+                  Well-Architected Pre-Flight Gate: {waAssessment.overallScore}% Overall Score
+                </p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {criticalFindings.length > 0
+                    ? `Warning: ${criticalFindings.length} critical architectural issue(s) detected. Remediation recommended before approval.`
+                    : 'Architecture complies with core security and reliability baselines.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Env + target */}
         <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 mb-5 flex items-center justify-between">

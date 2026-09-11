@@ -3,7 +3,7 @@ import { useApp, useActiveProject } from '@/context/AppContext';
 import {
   LayoutDashboard, Box, Code2, ShieldCheck, DollarSign, Rocket,
   ChevronLeft, ChevronRight, Cloud, Plus, Trash2, Wand2, LayoutGrid,
-  Sparkles, Brain, History, GitBranch, Shield, Upload
+  Sparkles, Brain, History, GitBranch, Shield, Upload, CheckSquare, FileCheck
 } from 'lucide-react';
 import clsx from 'clsx';
 import { AppView } from '@/types';
@@ -28,6 +28,7 @@ const NAV_GROUPS = [
   {
     label: 'Analyze',
     items: [
+      { id: 'well-architected', label: 'Well-Architected', icon: CheckSquare, requiresProject: true },
       { id: 'security',   label: 'Security',          icon: ShieldCheck,     requiresProject: true },
       { id: 'cost',       label: 'Cost Estimate',     icon: DollarSign,      requiresProject: true },
       { id: 'advisor',    label: 'Advisor',           icon: Brain,           requiresProject: true },
@@ -36,6 +37,7 @@ const NAV_GROUPS = [
   {
     label: 'Deliver',
     items: [
+      { id: 'review',     label: 'Review Workflow',  icon: FileCheck,       requiresProject: true },
       { id: 'terraform',  label: 'Terraform',         icon: Code2,           requiresProject: true },
       { id: 'deploy',     label: 'Deploy',            icon: Rocket,          requiresProject: true },
       { id: 'disaster-recovery', label: 'DR Designer', icon: Shield,         requiresProject: false },

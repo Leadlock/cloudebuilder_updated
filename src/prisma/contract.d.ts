@@ -33,9 +33,9 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'a3c68150b6f8cc5b41312cd0b75cd50e75aaae354c23a20e7860b800e7bf7146'>;
+  StorageHashBase<'6e691b6e24681ab49c78750d9e5a5fc32bdb90284a069118a2d3547ded8d5450'>;
 export type ExecutionHash =
-  ExecutionHashBase<'70da85f61a6ba48ecfa04b6da2222209cd7601f0ef3d6dd21f34b2db0655c539'>;
+  ExecutionHashBase<'f0dd6e93fba0bf9901f3acbfe73314e7660c2b2c7d0bc236bea3c19c4e05406f'>;
 export type ProfileHash =
   ProfileHashBase<'3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2'>;
 
@@ -410,6 +410,44 @@ export type FieldOutputTypes = {
       readonly createdAt: CodecTypes['pg/text@1']['output'];
       readonly updatedAt: CodecTypes['pg/text@1']['output'];
     };
+    readonly WellArchitectedAssessment: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly projectId: CodecTypes['pg/text@1']['output'];
+      readonly architectureId: CodecTypes['pg/text@1']['output'];
+      readonly provider: CodecTypes['pg/text@1']['output'];
+      readonly framework: CodecTypes['pg/text@1']['output'];
+      readonly frameworkVersion: CodecTypes['pg/text@1']['output'];
+      readonly overallScore: CodecTypes['pg/int4@1']['output'];
+      readonly pillarScoresJson: CodecTypes['pg/text@1']['output'];
+      readonly findingsJson: CodecTypes['pg/text@1']['output'];
+      readonly source: CodecTypes['pg/text@1']['output'];
+      readonly sourceLabel: CodecTypes['pg/text@1']['output'];
+      readonly confidence: CodecTypes['pg/text@1']['output'];
+      readonly isStale: CodecTypes['pg/bool@1']['output'];
+      readonly createdAt: CodecTypes['pg/text@1']['output'];
+      readonly completedAt: CodecTypes['pg/text@1']['output'] | null;
+    };
+    readonly WellArchitectedFinding: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly assessmentId: CodecTypes['pg/text@1']['output'];
+      readonly ruleId: CodecTypes['pg/text@1']['output'];
+      readonly provider: CodecTypes['pg/text@1']['output'];
+      readonly pillar: CodecTypes['pg/text@1']['output'];
+      readonly pillarLabel: CodecTypes['pg/text@1']['output'];
+      readonly pillarRef: CodecTypes['pg/text@1']['output'];
+      readonly severity: CodecTypes['pg/text@1']['output'];
+      readonly title: CodecTypes['pg/text@1']['output'];
+      readonly description: CodecTypes['pg/text@1']['output'];
+      readonly affectedResourceIds: CodecTypes['pg/text@1']['output'];
+      readonly evidenceJson: CodecTypes['pg/text@1']['output'];
+      readonly recommendation: CodecTypes['pg/text@1']['output'];
+      readonly remediation: CodecTypes['pg/text@1']['output'];
+      readonly frameworkReference: CodecTypes['pg/text@1']['output'];
+      readonly source: CodecTypes['pg/text@1']['output'];
+      readonly sourceLabel: CodecTypes['pg/text@1']['output'];
+      readonly resourceState: CodecTypes['pg/text@1']['output'] | null;
+      readonly detectedAt: CodecTypes['pg/text@1']['output'];
+    };
   };
 };
 export type FieldInputTypes = {
@@ -582,6 +620,44 @@ export type FieldInputTypes = {
       readonly avatarUrl: CodecTypes['pg/text@1']['input'] | null;
       readonly createdAt: CodecTypes['pg/text@1']['input'];
       readonly updatedAt: CodecTypes['pg/text@1']['input'];
+    };
+    readonly WellArchitectedAssessment: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly projectId: CodecTypes['pg/text@1']['input'];
+      readonly architectureId: CodecTypes['pg/text@1']['input'];
+      readonly provider: CodecTypes['pg/text@1']['input'];
+      readonly framework: CodecTypes['pg/text@1']['input'];
+      readonly frameworkVersion: CodecTypes['pg/text@1']['input'];
+      readonly overallScore: CodecTypes['pg/int4@1']['input'];
+      readonly pillarScoresJson: CodecTypes['pg/text@1']['input'];
+      readonly findingsJson: CodecTypes['pg/text@1']['input'];
+      readonly source: CodecTypes['pg/text@1']['input'];
+      readonly sourceLabel: CodecTypes['pg/text@1']['input'];
+      readonly confidence: CodecTypes['pg/text@1']['input'];
+      readonly isStale: CodecTypes['pg/bool@1']['input'];
+      readonly createdAt: CodecTypes['pg/text@1']['input'];
+      readonly completedAt: CodecTypes['pg/text@1']['input'] | null;
+    };
+    readonly WellArchitectedFinding: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly assessmentId: CodecTypes['pg/text@1']['input'];
+      readonly ruleId: CodecTypes['pg/text@1']['input'];
+      readonly provider: CodecTypes['pg/text@1']['input'];
+      readonly pillar: CodecTypes['pg/text@1']['input'];
+      readonly pillarLabel: CodecTypes['pg/text@1']['input'];
+      readonly pillarRef: CodecTypes['pg/text@1']['input'];
+      readonly severity: CodecTypes['pg/text@1']['input'];
+      readonly title: CodecTypes['pg/text@1']['input'];
+      readonly description: CodecTypes['pg/text@1']['input'];
+      readonly affectedResourceIds: CodecTypes['pg/text@1']['input'];
+      readonly evidenceJson: CodecTypes['pg/text@1']['input'];
+      readonly recommendation: CodecTypes['pg/text@1']['input'];
+      readonly remediation: CodecTypes['pg/text@1']['input'];
+      readonly frameworkReference: CodecTypes['pg/text@1']['input'];
+      readonly source: CodecTypes['pg/text@1']['input'];
+      readonly sourceLabel: CodecTypes['pg/text@1']['input'];
+      readonly resourceState: CodecTypes['pg/text@1']['input'] | null;
+      readonly detectedAt: CodecTypes['pg/text@1']['input'];
     };
   };
 };
@@ -756,6 +832,44 @@ export type StorageColumnTypes = {
       readonly name: CodecTypes['pg/text@1']['output'] | null;
       readonly updatedAt: CodecTypes['pg/text@1']['output'];
     };
+    readonly wellArchitectedAssessment: {
+      readonly architectureId: CodecTypes['pg/text@1']['output'];
+      readonly completedAt: CodecTypes['pg/text@1']['output'] | null;
+      readonly confidence: CodecTypes['pg/text@1']['output'];
+      readonly createdAt: CodecTypes['pg/text@1']['output'];
+      readonly findingsJson: CodecTypes['pg/text@1']['output'];
+      readonly framework: CodecTypes['pg/text@1']['output'];
+      readonly frameworkVersion: CodecTypes['pg/text@1']['output'];
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly isStale: CodecTypes['pg/bool@1']['output'];
+      readonly overallScore: CodecTypes['pg/int4@1']['output'];
+      readonly pillarScoresJson: CodecTypes['pg/text@1']['output'];
+      readonly projectId: CodecTypes['pg/text@1']['output'];
+      readonly provider: CodecTypes['pg/text@1']['output'];
+      readonly source: CodecTypes['pg/text@1']['output'];
+      readonly sourceLabel: CodecTypes['pg/text@1']['output'];
+    };
+    readonly wellArchitectedFinding: {
+      readonly affectedResourceIds: CodecTypes['pg/text@1']['output'];
+      readonly assessmentId: CodecTypes['pg/text@1']['output'];
+      readonly description: CodecTypes['pg/text@1']['output'];
+      readonly detectedAt: CodecTypes['pg/text@1']['output'];
+      readonly evidenceJson: CodecTypes['pg/text@1']['output'];
+      readonly frameworkReference: CodecTypes['pg/text@1']['output'];
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly pillar: CodecTypes['pg/text@1']['output'];
+      readonly pillarLabel: CodecTypes['pg/text@1']['output'];
+      readonly pillarRef: CodecTypes['pg/text@1']['output'];
+      readonly provider: CodecTypes['pg/text@1']['output'];
+      readonly recommendation: CodecTypes['pg/text@1']['output'];
+      readonly remediation: CodecTypes['pg/text@1']['output'];
+      readonly resourceState: CodecTypes['pg/text@1']['output'] | null;
+      readonly ruleId: CodecTypes['pg/text@1']['output'];
+      readonly severity: CodecTypes['pg/text@1']['output'];
+      readonly source: CodecTypes['pg/text@1']['output'];
+      readonly sourceLabel: CodecTypes['pg/text@1']['output'];
+      readonly title: CodecTypes['pg/text@1']['output'];
+    };
   };
 };
 export type StorageColumnInputTypes = {
@@ -928,6 +1042,44 @@ export type StorageColumnInputTypes = {
       readonly id: CodecTypes['pg/text@1']['input'];
       readonly name: CodecTypes['pg/text@1']['input'] | null;
       readonly updatedAt: CodecTypes['pg/text@1']['input'];
+    };
+    readonly wellArchitectedAssessment: {
+      readonly architectureId: CodecTypes['pg/text@1']['input'];
+      readonly completedAt: CodecTypes['pg/text@1']['input'] | null;
+      readonly confidence: CodecTypes['pg/text@1']['input'];
+      readonly createdAt: CodecTypes['pg/text@1']['input'];
+      readonly findingsJson: CodecTypes['pg/text@1']['input'];
+      readonly framework: CodecTypes['pg/text@1']['input'];
+      readonly frameworkVersion: CodecTypes['pg/text@1']['input'];
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly isStale: CodecTypes['pg/bool@1']['input'];
+      readonly overallScore: CodecTypes['pg/int4@1']['input'];
+      readonly pillarScoresJson: CodecTypes['pg/text@1']['input'];
+      readonly projectId: CodecTypes['pg/text@1']['input'];
+      readonly provider: CodecTypes['pg/text@1']['input'];
+      readonly source: CodecTypes['pg/text@1']['input'];
+      readonly sourceLabel: CodecTypes['pg/text@1']['input'];
+    };
+    readonly wellArchitectedFinding: {
+      readonly affectedResourceIds: CodecTypes['pg/text@1']['input'];
+      readonly assessmentId: CodecTypes['pg/text@1']['input'];
+      readonly description: CodecTypes['pg/text@1']['input'];
+      readonly detectedAt: CodecTypes['pg/text@1']['input'];
+      readonly evidenceJson: CodecTypes['pg/text@1']['input'];
+      readonly frameworkReference: CodecTypes['pg/text@1']['input'];
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly pillar: CodecTypes['pg/text@1']['input'];
+      readonly pillarLabel: CodecTypes['pg/text@1']['input'];
+      readonly pillarRef: CodecTypes['pg/text@1']['input'];
+      readonly provider: CodecTypes['pg/text@1']['input'];
+      readonly recommendation: CodecTypes['pg/text@1']['input'];
+      readonly remediation: CodecTypes['pg/text@1']['input'];
+      readonly resourceState: CodecTypes['pg/text@1']['input'] | null;
+      readonly ruleId: CodecTypes['pg/text@1']['input'];
+      readonly severity: CodecTypes['pg/text@1']['input'];
+      readonly source: CodecTypes['pg/text@1']['input'];
+      readonly sourceLabel: CodecTypes['pg/text@1']['input'];
+      readonly title: CodecTypes['pg/text@1']['input'];
     };
   };
 };
@@ -2314,6 +2466,282 @@ type ContractBase = Omit<
               indexes: readonly [];
               foreignKeys: readonly [];
             };
+            readonly wellArchitectedAssessment: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly projectId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly architectureId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly provider: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly framework: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly frameworkVersion: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly overallScore: {
+                  readonly nativeType: 'int4';
+                  readonly codecId: 'pg/int4@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/int4@1', 0>;
+                  };
+                };
+                readonly pillarScoresJson: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', '[]'>;
+                  };
+                };
+                readonly findingsJson: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', '[]'>;
+                  };
+                };
+                readonly source: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly sourceLabel: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', 'Design-time assessment'>;
+                  };
+                };
+                readonly confidence: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', 'design-time'>;
+                  };
+                };
+                readonly isStale: {
+                  readonly nativeType: 'bool';
+                  readonly codecId: 'pg/bool@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/bool@1', false>;
+                  };
+                };
+                readonly createdAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly completedAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [];
+              indexes: readonly [
+                {
+                  readonly name: 'wellArchitectedAssessment_projectId_idx_a96e4d92';
+                  readonly prefix: 'wellArchitectedAssessment_projectId_idx';
+                  readonly columns: readonly ['projectId'];
+                  readonly unique: false;
+                },
+                {
+                  readonly name: 'wellArchitectedAssessment_architectureId_idx_a096837f';
+                  readonly prefix: 'wellArchitectedAssessment_architectureId_idx';
+                  readonly columns: readonly ['architectureId'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [
+                {
+                  readonly source: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'wellArchitectedAssessment';
+                    readonly columns: readonly ['projectId'];
+                  };
+                  readonly target: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'project';
+                    readonly columns: readonly ['id'];
+                  };
+                },
+                {
+                  readonly source: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'wellArchitectedAssessment';
+                    readonly columns: readonly ['architectureId'];
+                  };
+                  readonly target: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'architecture';
+                    readonly columns: readonly ['id'];
+                  };
+                },
+              ];
+            };
+            readonly wellArchitectedFinding: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly assessmentId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly ruleId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly provider: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly pillar: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly pillarLabel: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly pillarRef: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly severity: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly title: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly description: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly affectedResourceIds: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', '[]'>;
+                  };
+                };
+                readonly evidenceJson: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', '{}'>;
+                  };
+                };
+                readonly recommendation: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly remediation: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly frameworkReference: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly source: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly sourceLabel: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly resourceState: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly detectedAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [];
+              indexes: readonly [
+                {
+                  readonly name: 'wellArchitectedFinding_assessmentId_idx_1fe05216';
+                  readonly prefix: 'wellArchitectedFinding_assessmentId_idx';
+                  readonly columns: readonly ['assessmentId'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [
+                {
+                  readonly source: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'wellArchitectedFinding';
+                    readonly columns: readonly ['assessmentId'];
+                  };
+                  readonly target: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'wellArchitectedAssessment';
+                    readonly columns: readonly ['id'];
+                  };
+                },
+              ];
+            };
           };
         };
       };
@@ -2383,6 +2811,14 @@ type ContractBase = Omit<
     readonly currencyExchangeRate: {
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'CurrencyExchangeRate';
+    };
+    readonly wellArchitectedAssessment: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'WellArchitectedAssessment';
+    };
+    readonly wellArchitectedFinding: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'WellArchitectedFinding';
     };
   };
   readonly domain: {
@@ -2490,6 +2926,17 @@ type ContractBase = Omit<
                 readonly to: {
                   readonly namespace: 'public' & NamespaceId;
                   readonly model: 'ArchitectureVersion';
+                };
+                readonly cardinality: '1:N';
+                readonly on: {
+                  readonly localFields: readonly ['id'];
+                  readonly targetFields: readonly ['architectureId'];
+                };
+              };
+              readonly wellArchitectedAssessments: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'WellArchitectedAssessment';
                 };
                 readonly cardinality: '1:N';
                 readonly on: {
@@ -3438,6 +3885,17 @@ type ContractBase = Omit<
                   readonly targetFields: readonly ['projectId'];
                 };
               };
+              readonly wellArchitectedAssessments: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'WellArchitectedAssessment';
+                };
+                readonly cardinality: '1:N';
+                readonly on: {
+                  readonly localFields: readonly ['id'];
+                  readonly targetFields: readonly ['projectId'];
+                };
+              };
             };
             readonly storage: {
               readonly table: 'project';
@@ -3767,6 +4225,244 @@ type ContractBase = Omit<
               };
             };
           };
+          readonly WellArchitectedAssessment: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly projectId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly architectureId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly provider: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly framework: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly frameworkVersion: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly overallScore: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/int4@1' };
+              };
+              readonly pillarScoresJson: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly findingsJson: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly source: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly sourceLabel: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly confidence: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly isStale: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/bool@1' };
+              };
+              readonly createdAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly completedAt: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+            };
+            readonly relations: {
+              readonly architecture: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'Architecture';
+                };
+                readonly cardinality: 'N:1';
+                readonly on: {
+                  readonly localFields: readonly ['architectureId'];
+                  readonly targetFields: readonly ['id'];
+                };
+              };
+              readonly findings: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'WellArchitectedFinding';
+                };
+                readonly cardinality: '1:N';
+                readonly on: {
+                  readonly localFields: readonly ['id'];
+                  readonly targetFields: readonly ['assessmentId'];
+                };
+              };
+              readonly project: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'Project';
+                };
+                readonly cardinality: 'N:1';
+                readonly on: {
+                  readonly localFields: readonly ['projectId'];
+                  readonly targetFields: readonly ['id'];
+                };
+              };
+            };
+            readonly storage: {
+              readonly table: 'wellArchitectedAssessment';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly projectId: { readonly column: 'projectId' };
+                readonly architectureId: { readonly column: 'architectureId' };
+                readonly provider: { readonly column: 'provider' };
+                readonly framework: { readonly column: 'framework' };
+                readonly frameworkVersion: { readonly column: 'frameworkVersion' };
+                readonly overallScore: { readonly column: 'overallScore' };
+                readonly pillarScoresJson: { readonly column: 'pillarScoresJson' };
+                readonly findingsJson: { readonly column: 'findingsJson' };
+                readonly source: { readonly column: 'source' };
+                readonly sourceLabel: { readonly column: 'sourceLabel' };
+                readonly confidence: { readonly column: 'confidence' };
+                readonly isStale: { readonly column: 'isStale' };
+                readonly createdAt: { readonly column: 'createdAt' };
+                readonly completedAt: { readonly column: 'completedAt' };
+              };
+            };
+          };
+          readonly WellArchitectedFinding: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly assessmentId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly ruleId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly provider: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly pillar: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly pillarLabel: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly pillarRef: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly severity: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly title: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly description: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly affectedResourceIds: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly evidenceJson: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly recommendation: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly remediation: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly frameworkReference: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly source: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly sourceLabel: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly resourceState: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly detectedAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+            };
+            readonly relations: {
+              readonly assessment: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'WellArchitectedAssessment';
+                };
+                readonly cardinality: 'N:1';
+                readonly on: {
+                  readonly localFields: readonly ['assessmentId'];
+                  readonly targetFields: readonly ['id'];
+                };
+              };
+            };
+            readonly storage: {
+              readonly table: 'wellArchitectedFinding';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly assessmentId: { readonly column: 'assessmentId' };
+                readonly ruleId: { readonly column: 'ruleId' };
+                readonly provider: { readonly column: 'provider' };
+                readonly pillar: { readonly column: 'pillar' };
+                readonly pillarLabel: { readonly column: 'pillarLabel' };
+                readonly pillarRef: { readonly column: 'pillarRef' };
+                readonly severity: { readonly column: 'severity' };
+                readonly title: { readonly column: 'title' };
+                readonly description: { readonly column: 'description' };
+                readonly affectedResourceIds: { readonly column: 'affectedResourceIds' };
+                readonly evidenceJson: { readonly column: 'evidenceJson' };
+                readonly recommendation: { readonly column: 'recommendation' };
+                readonly remediation: { readonly column: 'remediation' };
+                readonly frameworkReference: { readonly column: 'frameworkReference' };
+                readonly source: { readonly column: 'source' };
+                readonly sourceLabel: { readonly column: 'sourceLabel' };
+                readonly resourceState: { readonly column: 'resourceState' };
+                readonly detectedAt: { readonly column: 'detectedAt' };
+              };
+            };
+          };
         };
       };
     };
@@ -3926,6 +4622,22 @@ type ContractBase = Omit<
           readonly ref: {
             readonly namespace: 'public';
             readonly table: 'user';
+            readonly column: 'id';
+          };
+          readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };
+        },
+        {
+          readonly ref: {
+            readonly namespace: 'public';
+            readonly table: 'wellArchitectedAssessment';
+            readonly column: 'id';
+          };
+          readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };
+        },
+        {
+          readonly ref: {
+            readonly namespace: 'public';
+            readonly table: 'wellArchitectedFinding';
             readonly column: 'id';
           };
           readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };

@@ -34,13 +34,17 @@ export class MockExchangeRateProvider implements IExchangeRateProvider {
     const base = from.toUpperCase();
     const target = to.toUpperCase();
 
+    const now = new Date();
+    const retrievedAt = now.toISOString();
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+
     if (base === target) {
       return {
         fromCurrency: base,
         toCurrency: target,
         rate: 1.0,
-        retrievedAt: '2026-09-10T00:00:00.000Z',
-        expiresAt: '2026-09-11T00:00:00.000Z',
+        retrievedAt,
+        expiresAt,
         source: this.name,
       };
     }
@@ -53,8 +57,8 @@ export class MockExchangeRateProvider implements IExchangeRateProvider {
       fromCurrency: base,
       toCurrency: target,
       rate,
-      retrievedAt: '2026-09-10T00:00:00.000Z',
-      expiresAt: '2026-09-11T00:00:00.000Z',
+      retrievedAt,
+      expiresAt,
       source: this.name,
     };
   }

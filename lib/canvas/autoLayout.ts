@@ -20,10 +20,16 @@ export interface LayoutResult {
 export function autoLayoutArchitecture(nodes: CanvasNode[], edges: CanvasEdge[]): LayoutResult {
   if (nodes.length === 0) return { nodes, edges };
 
+  // 0. Extract existing Cloud Provider Boundaries
+  const boundaryNodes = nodes.filter(
+    (n) => n.resourceType === 'cloud_provider_boundary' || n.resourceType === 'aws_cloud_boundary' || n.resourceType === 'azure_cloud_boundary'
+  );
+  const nonBoundaryNodes = nodes.filter((n) => !boundaryNodes.includes(n));
+
   // 1. Classify nodes
-  const vpcNodes = nodes.filter((n) => n.resourceType === 'aws_vpc' || n.resourceType === 'azure_vnet' || n.resourceType === 'azure_resource_group');
-  const subnetNodes = nodes.filter((n) => n.resourceType === 'aws_subnet' || n.resourceType === 'azure_subnet');
-  const leafNodes = nodes.filter((n) => !vpcNodes.includes(n) && !subnetNodes.includes(n));
+  const vpcNodes = nonBoundaryNodes.filter((n) => n.resourceType === 'aws_vpc' || n.resourceType === 'azure_vnet' || n.resourceType === 'azure_resource_group');
+  const subnetNodes = nonBoundaryNodes.filter((n) => n.resourceType === 'aws_subnet' || n.resourceType === 'azure_subnet');
+  const leafNodes = nonBoundaryNodes.filter((n) => !vpcNodes.includes(n) && !subnetNodes.includes(n));
 
   // Determine Subnet tiers based on config/name/children
   const isPublicSubnet = (s: CanvasNode) => {
@@ -230,10 +236,57 @@ export function autoLayoutArchitecture(nodes: CanvasNode[], edges: CanvasEdge[])
     flankY += LEAF_CARD_H + 25;
   });
 
-  // Order nodes so container nodes (VPC, VNet) are rendered first (bottom-most in z-index)
-  // followed by Subnets, followed by leaf nodes (top-most)
+  // Layout Cloud Provider Boundaries if present
+  if (boundaryNodes.length > 0) {
+    for (const bNode of boundaryNodes) {
+      const bProvider = bNode.provider ?? (bNode.resourceType.includes('azure') ? 'azure' : 'aws');
+      const enclosed = updatedNodes.filter((n) => {
+        const nProvider = n.provider ?? (n.resourceType.startsWith('azure_') ? 'azure' : 'aws');
+        return nProvider === bProvider;
+      });
+
+      if (enclosed.length > 0) {
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+
+        for (const n of enclosed) {
+          const w = n.width || 180;
+          const h = n.height || 100;
+          minX = Math.min(minX, n.position.x);
+          minY = Math.min(minY, n.position.y);
+          maxX = Math.max(maxX, n.position.x + w);
+          maxY = Math.max(maxY, n.position.y + h);
+        }
+
+        const bPaddingX = 40;
+        const bPaddingTop = 60;
+        const bPaddingBottom = 40;
+
+        updatedNodes.push({
+          ...bNode,
+          position: {
+            x: Math.max(20, minX - bPaddingX),
+            y: Math.max(20, minY - bPaddingTop),
+          },
+          width: Math.max(880, maxX - minX + bPaddingX * 2),
+          height: Math.max(520, maxY - minY + bPaddingTop + bPaddingBottom),
+          config: {
+            ...bNode.config,
+            resourceCount: enclosed.length,
+          },
+        });
+      } else {
+        updatedNodes.push(bNode);
+      }
+    }
+  }
+
+  // Order nodes so container nodes (Boundary -> VPC/VNet -> Subnets -> Leaf nodes)
   const zOrderedNodes = updatedNodes.sort((a, b) => {
     const getZ = (n: CanvasNode) => {
+      if (n.resourceType === 'cloud_provider_boundary' || n.resourceType === 'aws_cloud_boundary' || n.resourceType === 'azure_cloud_boundary') return -1;
       if (n.resourceType === 'aws_vpc' || n.resourceType === 'azure_vnet' || n.resourceType === 'azure_resource_group') return 0;
       if (n.resourceType === 'aws_subnet' || n.resourceType === 'azure_subnet') return 1;
       return 2;

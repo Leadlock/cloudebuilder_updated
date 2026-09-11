@@ -1,10 +1,13 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CanvasNode } from '@/types';
 import { getResourceDefinition } from '@/lib/resources';
 import { CloudServiceIcon } from '@/components/icons/cloud/CloudServiceIcon';
-import { X, Settings, Network, Info, CheckCircle2, AlertTriangle, Layers } from 'lucide-react';
+import { X, Settings, Network, Info, CheckCircle2, AlertTriangle, Layers, ShieldCheck, ShieldAlert, ExternalLink } from 'lucide-react';
 import clsx from 'clsx';
+import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedService';
+import { useActiveProject } from '@/context/AppContext';
+import type { WaFinding } from '@/lib/engines/wellArchitected/types';
 
 interface PropertiesPanelProps {
   node: CanvasNode | null;
@@ -13,7 +16,28 @@ interface PropertiesPanelProps {
 }
 
 export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesPanelProps) {
-  const [activeTab, setActiveTab] = useState<'config' | 'placement' | 'info'>('config');
+  const activeProject = useActiveProject();
+  const [activeTab, setActiveTab] = useState<'config' | 'placement' | 'info' | 'waf'>('config');
+  const [wafFindings, setWafFindings] = useState<WaFinding[]>([]);
+  const [loadingWaf, setLoadingWaf] = useState(false);
+
+  useEffect(() => {
+    if (!node || !activeProject) return;
+    let isCancelled = false;
+    setLoadingWaf(true);
+    apiWellArchitectedService.getResourceFindings(node.id, activeProject.id).then((findings) => {
+      if (!isCancelled) {
+        setWafFindings(findings || []);
+        setLoadingWaf(false);
+      }
+    }).catch(() => {
+      if (!isCancelled) {
+        setWafFindings([]);
+        setLoadingWaf(false);
+      }
+    });
+    return () => { isCancelled = true; };
+  }, [node?.id, activeProject?.id]);
 
   if (!node) return null;
   const def = getResourceDefinition(node.resourceType);
@@ -113,6 +137,31 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
         >
           <Info className="w-3.5 h-3.5" />
           <span>Summary</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('waf')}
+          className={clsx(
+            'py-2.5 px-3 border-b-2 font-medium transition-colors flex items-center gap-1.5',
+            activeTab === 'waf'
+              ? 'border-cyan-400 text-cyan-400 font-semibold'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          )}
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>WAF</span>
+          {wafFindings.length > 0 && (
+            <span
+              className={clsx(
+                'px-1 py-0.2 rounded-full text-[9px] font-bold leading-none',
+                wafFindings.some((f) => f.severity === 'critical')
+                  ? 'bg-rose-500 text-white'
+                  : 'bg-amber-500 text-slate-950'
+              )}
+            >
+              {wafFindings.length}
+            </span>
+          )}
         </button>
       </div>
 
@@ -301,6 +350,91 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
                   Description
                 </span>
                 <p className="text-xs text-slate-400 leading-relaxed">{def.description}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'waf' && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-800">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                <span>Well-Architected Posture</span>
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono">
+                {wafFindings.length} issue{wafFindings.length === 1 ? '' : 's'}
+              </span>
+            </div>
+
+            {loadingWaf ? (
+              <div className="p-8 text-center text-slate-400 text-xs">
+                Scanning resource compliance...
+              </div>
+            ) : wafFindings.length === 0 ? (
+              <div className="p-6 text-center rounded-xl bg-slate-950/60 border border-slate-800">
+                <CheckCircle2 className="w-7 h-7 text-emerald-400 mx-auto mb-2" />
+                <p className="text-xs font-semibold text-emerald-300">Architecture Compliant</p>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  No Well-Architected violations or misconfigurations detected for this component.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {wafFindings.map((f) => {
+                  const isCrit = f.severity === 'critical';
+                  const isHigh = f.severity === 'high';
+                  return (
+                    <div
+                      key={f.id}
+                      className={clsx(
+                        'p-3 rounded-xl border text-xs space-y-2',
+                        isCrit
+                          ? 'bg-rose-950/30 border-rose-500/40 text-rose-200'
+                          : isHigh
+                          ? 'bg-orange-950/30 border-orange-500/40 text-orange-200'
+                          : 'bg-slate-950/60 border-slate-800 text-slate-300'
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={clsx(
+                              'px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider',
+                              isCrit ? 'bg-rose-500/20 text-rose-300' : isHigh ? 'bg-orange-500/20 text-orange-300' : 'bg-amber-500/20 text-amber-300'
+                            )}
+                          >
+                            {f.severity}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            {f.pillarLabel || f.pillar}
+                          </span>
+                        </div>
+                        {f.pillarRef && (
+                          <a
+                            href={f.pillarRef}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-cyan-400 hover:text-cyan-300"
+                            title="Official guidance doc"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
+
+                      <p className="font-bold text-xs text-white leading-snug">{f.title}</p>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">{f.description}</p>
+
+                      <div className="p-2 rounded-lg bg-black/40 border border-white/5 space-y-1">
+                        <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider block">
+                          Remediation
+                        </span>
+                        <p className="text-[11px] text-slate-300 leading-normal">{f.remediation}</p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

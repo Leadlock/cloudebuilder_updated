@@ -1,9 +1,11 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useActiveProject } from '@/context/AppContext';
+import { useApp, useActiveProject } from '@/context/AppContext';
 import { apiAdvisorService } from '@/lib/services/ApiAdvisorService';
+import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedService';
+import type { WaAssessment } from '@/lib/engines/wellArchitected/types';
 import type { AdvisorResult } from '@/lib/services/ApiAdvisorService';
-import { Brain, TrendingUp, Shield, Zap, DollarSign, Scale, AlertTriangle } from 'lucide-react';
+import { Brain, TrendingUp, Shield, Zap, DollarSign, Scale, AlertTriangle, ShieldCheck, ArrowRight, RefreshCw } from 'lucide-react';
 import clsx from 'clsx';
 import { scoreArchitecture, generateRecommendations } from '@/lib/generator';
 
@@ -37,14 +39,28 @@ function RadialScore({ score }: { score: number }) {
 }
 
 export default function AdvisorPanel() {
+  const { dispatch } = useApp();
   const activeProject = useActiveProject();
   const [result, setResult] = useState<AdvisorResult | null>(null);
+  const [waAssessment, setWaAssessment] = useState<WaAssessment | null>(null);
   const [loading, setLoading] = useState(false);
+  const [analyzingWa, setAnalyzingWa] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
 
   const activeProjectId = activeProject?.id ?? null;
   const nodeCount = activeProject?.nodes.length ?? 0;
+
+  useEffect(() => {
+    if (!activeProject) return;
+    let cancelled = false;
+    apiWellArchitectedService.getAssessment().then((ass) => {
+      if (!cancelled && ass) {
+        setWaAssessment(ass);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeProjectId, retryCount]);
 
   // Run advisor via the API-backed service whenever active project or nodes change.
   // apiAdvisorService already has the project ID injected by AppContext.
@@ -148,13 +164,30 @@ export default function AdvisorPanel() {
     <div className="flex-1 overflow-y-auto bg-gray-900 p-5">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <Brain className="w-5 h-5 text-purple-400" />
-          <h2 className="text-white font-bold text-lg">Architecture Advisor</h2>
-          <span className="text-xs px-2 py-0.5 bg-purple-900/40 text-purple-300 rounded-full">Well-Architected</span>
-          {fromApi && (
-            <span className="text-xs px-2 py-0.5 bg-emerald-900/40 text-emerald-400 rounded-full">API</span>
-          )}
+        <div className="flex items-center justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3">
+            <Brain className="w-5 h-5 text-purple-400" />
+            <h2 className="text-white font-bold text-lg">Architecture Advisor</h2>
+            <span className="text-xs px-2 py-0.5 bg-purple-900/40 text-purple-300 rounded-full">Well-Architected</span>
+            {fromApi && (
+              <span className="text-xs px-2 py-0.5 bg-emerald-900/40 text-emerald-400 rounded-full">API</span>
+            )}
+            {waAssessment?.isStale && (
+              <span className="text-xs px-2 py-0.5 bg-amber-900/40 text-amber-300 border border-amber-600/40 rounded-full animate-pulse flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                Stale
+              </span>
+            )}
+          </div>
+
+          <button
+            onClick={() => dispatch({ type: 'SET_VIEW', view: 'well-architected' })}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition-colors"
+          >
+            <ShieldCheck className="w-4 h-4 text-cyan-400" />
+            <span>Open Full WAF Review</span>
+            <ArrowRight className="w-3 h-3" />
+          </button>
         </div>
 
         {/* Overall score */}

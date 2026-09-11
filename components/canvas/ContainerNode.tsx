@@ -15,6 +15,8 @@ export interface ContainerNodeData {
   isValidDrop?: boolean;
   childCount?: number;
   importState?: 'imported' | 'cloudcraft-managed' | 'new' | 'modified' | 'planned';
+  findingsSummary?: { critical: number; high: number; medium: number; total: number };
+  showFindings?: boolean;
 }
 
 const ContainerNode = memo(({ data, selected }: NodeProps<ContainerNodeData>) => {
@@ -105,6 +107,20 @@ const ContainerNode = memo(({ data, selected }: NodeProps<ContainerNodeData>) =>
           {typeof data.childCount === 'number' && data.childCount > 0 && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 font-medium">
               {data.childCount} {data.childCount === 1 ? 'resource' : 'resources'}
+            </span>
+          )}
+          {data.showFindings && data.findingsSummary && data.findingsSummary.total > 0 && (
+            <span
+              className={clsx(
+                'text-[9px] font-bold px-1.5 py-0.5 rounded-full border flex items-center gap-1',
+                (data.findingsSummary.critical > 0 || data.findingsSummary.high > 0)
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                  : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+              )}
+              title={`${data.findingsSummary.total} WAF findings`}
+            >
+              <span className={clsx('w-1.5 h-1.5 rounded-full', (data.findingsSummary.critical > 0 || data.findingsSummary.high > 0) ? 'bg-rose-400' : 'bg-amber-400')} />
+              {data.findingsSummary.total} WAF
             </span>
           )}
         </div>

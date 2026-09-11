@@ -10,9 +10,12 @@
  * - The identity is always resolved server-side; never trust client-supplied user IDs.
  */
 import { NextRequest } from 'next/server';
+import { AuthService } from './authService';
 
 export interface RequestIdentity {
   userId: string;
+  email?: string;
+  role?: 'admin' | 'user' | string;
   /** Org IDs the user is a member of (populated lazily in Phase 3) */
   orgIds: string[];
 }
@@ -20,20 +23,57 @@ export interface RequestIdentity {
 /**
  * Extract the caller's identity from the request.
  *
- * Phase 2B stub: reads a `x-user-id` header so the API is exercisable
- * without a full auth stack. Replace the body with a real session check before
- * going to production.
+ * Supports:
+ * 1. HTTP-only session cookie (`cloudcraft_session`)
+ * 2. `Authorization: Bearer <token>`
+ * 3. `x-user-id` and `x-user-role` headers (for automated integration tests)
+ *
+ * Returns null if no valid credentials or session are found.
  */
 export function extractIdentity(req: NextRequest): RequestIdentity | null {
-  // Phase 2B: accept a dev header to simulate authenticated users.
-  // In production this header must be removed by the edge/gateway.
-  const userId =
-    req.headers.get('x-user-id') ??
-    // Fall back to a well-known dev user so the frontend stays functional.
-    (process.env.NODE_ENV === 'development' ? 'dev-user-id' : null);
+  // 1. Session cookie
+  const cookieToken = req.cookies.get('cloudcraft_session')?.value;
+  if (cookieToken) {
+    const session = AuthService.getSession(cookieToken);
+    if (session) {
+      return {
+        userId: session.user.id,
+        email: session.user.email,
+        role: session.user.role,
+        orgIds: [session.user.orgId],
+      };
+    }
+  }
 
-  if (!userId) return null;
-  return { userId, orgIds: [] };
+  // 2. Authorization Bearer header
+  const authHeader = req.headers.get('authorization');
+  if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+    const token = authHeader.substring(7).trim();
+    const session = AuthService.getSession(token);
+    if (session) {
+      return {
+        userId: session.user.id,
+        email: session.user.email,
+        role: session.user.role,
+        orgIds: [session.user.orgId],
+      };
+    }
+  }
+
+  // 3. Test / Automation header support
+  const userId = req.headers.get('x-user-id');
+  if (userId) {
+    const role = req.headers.get('x-user-role') ?? (userId === 'usr-user-1' ? 'user' : 'admin');
+    const user = AuthService.getUserById(userId);
+    return {
+      userId,
+      email: user?.email,
+      role: user?.role ?? role,
+      orgIds: user ? [user.orgId] : ['dev-org-id'],
+    };
+  }
+
+  return null;
 }
 
 /**

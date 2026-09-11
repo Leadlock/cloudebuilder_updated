@@ -15,6 +15,8 @@ interface CloudNodeData {
   hasErrors?: boolean;
   status?: 'ready' | 'warning' | 'error' | 'unconfigured';
   importState?: 'imported' | 'cloudcraft-managed' | 'new' | 'modified' | 'planned';
+  findingsSummary?: { critical: number; high: number; medium: number; total: number };
+  showFindings?: boolean;
 }
 
 const zoomSelector = (s: { transform: [number, number, number] }) => s.transform[2];
@@ -91,6 +93,28 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
         isZoomedOut ? 'min-w-[130px] p-2' : 'min-w-[180px] p-3'
       )}
     >
+      {data.showFindings && data.findingsSummary && (
+        <div
+          className={clsx(
+            'absolute -top-2 -right-2 z-10 flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full text-[9px] font-bold shadow-lg border pointer-events-none',
+            (data.findingsSummary.critical > 0 || data.findingsSummary.high > 0)
+              ? 'bg-rose-500 text-white border-rose-400 ring-2 ring-rose-950/80'
+              : data.findingsSummary.medium > 0
+              ? 'bg-amber-500 text-slate-950 border-amber-400 ring-2 ring-amber-950/80'
+              : data.findingsSummary.total > 0
+              ? 'bg-yellow-500 text-slate-950 border-yellow-400'
+              : 'bg-emerald-500 text-white border-emerald-400'
+          )}
+          title={`Well-Architected Findings: ${data.findingsSummary.total} (${data.findingsSummary.critical} critical, ${data.findingsSummary.high} high, ${data.findingsSummary.medium} medium)`}
+        >
+          {data.findingsSummary.total > 0 ? (
+            <span>{data.findingsSummary.critical > 0 ? `!${data.findingsSummary.critical}` : data.findingsSummary.total}</span>
+          ) : (
+            <span className="w-1.5 h-1.5 rounded-full bg-white" />
+          )}
+        </div>
+      )}
+
       {/* Handles */}
       <Handle
         type="target"

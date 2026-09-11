@@ -9,7 +9,8 @@ import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { projectRepository, environmentRepository } from '@/lib/repositories/projectRepository';
 import { architectureRepository, toCanvas } from '@/lib/repositories/architectureRepository';
 import { orgRepository } from '@/lib/repositories/orgRepository';
-import type { Environment } from '@/types';
+import { ArchitectureReviewService } from '@/lib/services/ArchitectureReviewService';
+import type { Environment, CanvasNode, CanvasEdge } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,19 +21,24 @@ const CanvasNodeSchema = z.object({
   provider:     z.enum(['aws', 'azure']),
   label:        z.string(),
   position:     z.object({ x: z.number(), y: z.number() }),
-  config:       z.record(z.string(), z.unknown()),
-  region:       z.string().optional(),
-  groupId:      z.string().optional(),
-  locked:       z.boolean().optional(),
-});
+  config:       z.record(z.string(), z.unknown()).optional().default({}),
+  region:       z.string().optional().nullable(),
+  groupId:      z.string().optional().nullable(),
+  parentId:     z.string().optional().nullable(),
+  width:        z.number().optional().nullable(),
+  height:       z.number().optional().nullable(),
+  locked:       z.boolean().optional().nullable(),
+  selected:     z.boolean().optional().nullable(),
+  importState:  z.string().optional().nullable(),
+}).passthrough();
 
 const CanvasEdgeSchema = z.object({
   id:       z.string(),
   source:   z.string(),
   target:   z.string(),
-  label:    z.string().optional(),
-  edgeType: z.enum(['data', 'network', 'security', 'management']).optional(),
-});
+  label:    z.string().optional().nullable(),
+  edgeType: z.enum(['data', 'network', 'security', 'management']).optional().nullable(),
+}).passthrough();
 
 const SaveCanvasSchema = z.object({
   env:   z.enum(['development', 'staging', 'production']).optional().default('production'),
@@ -101,16 +107,48 @@ export async function PUT(
     const role = await getOrgRole(identity.userId, orgId);
     if (!role || role === 'viewer') return forbidden();
 
-    const project = await projectRepository.findById(projectId, orgId);
-    if (!project) return notFound('Project');
+    try {
+      const project = await projectRepository.findById(projectId, orgId);
+      if (!project) {
+        if (process.env.NODE_ENV === 'development') {
+          return ok({ nodes: body.nodes, edges: body.edges });
+        }
+        return notFound('Project');
+      }
 
-    const envKey = body.env as Environment;
-    let env = await environmentRepository.findByKey(projectId, envKey);
-    if (!env) return notFound('Environment');
+      const envKey = body.env as Environment;
+      let env = await environmentRepository.findByKey(projectId, envKey);
+      if (!env) {
+        if (process.env.NODE_ENV === 'development') {
+          return ok({ nodes: body.nodes, edges: body.edges });
+        }
+        return notFound('Environment');
+      }
 
-    // Cast Zod-validated nodes (region is string) to CanvasNode[] (region is Region)
-    const arch = await architectureRepository.saveCanvas(env.id, body.nodes as import('@/types').CanvasNode[], body.edges as import('@/types').CanvasEdge[]);
-    return ok(toCanvas(arch.resources, arch.connections));
+      // Invalidate existing approval if architecture changed
+      ArchitectureReviewService.checkAndInvalidateOnSave(
+        projectId,
+        envKey,
+        body.nodes as CanvasNode[],
+        body.edges as CanvasEdge[]
+      );
+
+      // Cast Zod-validated nodes (region is string) to CanvasNode[] (region is Region)
+      const arch = await architectureRepository.saveCanvas(env.id, body.nodes as import('@/types').CanvasNode[], body.edges as import('@/types').CanvasEdge[]);
+      return ok(toCanvas(arch.resources, arch.connections));
+    } catch (dbErr) {
+      // Invalidate existing approval if architecture changed in dev fallback mode as well
+      ArchitectureReviewService.checkAndInvalidateOnSave(
+        projectId,
+        body.env as Environment,
+        body.nodes as CanvasNode[],
+        body.edges as CanvasEdge[]
+      );
+      if (process.env.NODE_ENV === 'development') {
+        return ok({ nodes: body.nodes, edges: body.edges });
+      }
+      throw dbErr;
+    }
   } catch (err) {
     console.error('[PUT /api/projects/:id/canvas]', err);
     return internalError();

@@ -13,6 +13,7 @@ import {
   Layout,
   Plus,
   Compass,
+  ShieldAlert,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -29,6 +30,8 @@ interface CanvasToolbarProps {
   onDeleteSelected: () => void;
   onCopy: () => void;
   onOpenAddModal?: () => void;
+  showFindings?: boolean;
+  onToggleFindings?: () => void;
 }
 
 export default function CanvasToolbar({
@@ -44,6 +47,8 @@ export default function CanvasToolbar({
   onDeleteSelected,
   onCopy,
   onOpenAddModal,
+  showFindings = false,
+  onToggleFindings,
 }: CanvasToolbarProps) {
   return (
     <div className="absolute top-4 left-4 z-20 flex items-center gap-1 p-1 bg-slate-900/90 border border-slate-700/80 rounded-xl shadow-2xl backdrop-blur-md select-none">
@@ -71,6 +76,23 @@ export default function CanvasToolbar({
         <Layout className="w-3.5 h-3.5 text-cyan-400" />
         <span>Auto Layout</span>
       </button>
+
+      {/* WAF Findings Toggle */}
+      {onToggleFindings && (
+        <button
+          onClick={onToggleFindings}
+          title={showFindings ? "Hide Well-Architected findings badges" : "Show Well-Architected findings badges"}
+          className={clsx(
+            'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors',
+            showFindings
+              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+              : 'text-slate-300 hover:text-white hover:bg-slate-800'
+          )}
+        >
+          <ShieldAlert className={clsx('w-3.5 h-3.5', showFindings ? 'text-amber-400' : 'text-slate-400')} />
+          <span>Findings</span>
+        </button>
+      )}
 
       {/* Fit View */}
       <button
