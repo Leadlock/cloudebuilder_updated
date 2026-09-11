@@ -8,6 +8,7 @@ import {
 import clsx from 'clsx';
 import { CloudProvider } from '@/types';
 import { formatCurrency } from '@/lib/currency/formatter';
+import { formatDate } from '@/lib/date';
 
 function ScoreBadge({ score }: { score: number }) {
   const color = score >= 80 ? 'text-emerald-400' : score >= 60 ? 'text-yellow-400' : 'text-red-400';
@@ -39,24 +40,26 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>('all');
 
   useEffect(() => {
-    if (activeCurrency === 'USD') {
-      setExchangeRate(1.0);
-      return;
-    }
+    if (activeCurrency === 'USD') return;
+    let cancelled = false;
     fetch(`/api/currency/rates?from=USD&to=${activeCurrency}`)
       .then((res) => res.json())
       .then((data) => {
-        if (data.ok && data.data?.rate?.rate) {
+        if (!cancelled && data.ok && data.data?.rate?.rate) {
           setExchangeRate(data.data.rate.rate);
         }
       })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [activeCurrency]);
 
+  const effectiveRate = activeCurrency === 'USD' ? 1.0 : exchangeRate;
   const totalResources = projects.reduce((a, p) => a + p.resourceCount, 0);
   const avgScore = projects.length ? Math.round(projects.reduce((a, p) => a + p.securityScore, 0) / projects.length) : 0;
   const totalCostUsd = projects.reduce((a, p) => a + p.estimatedMonthlyCost, 0);
-  const totalCost = totalCostUsd * exchangeRate;
+  const totalCost = totalCostUsd * effectiveRate;
 
   const filteredProjects = projects.filter((p) => tab === 'all' || p.provider === tab);
 
@@ -224,8 +227,8 @@ export default function Dashboard() {
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-gray-600 text-xs flex items-center gap-1">
-                    <Clock className="w-3 h-3" /> {new Date(project.updatedAt).toLocaleDateString()}
+                  <span className="text-gray-600 text-xs flex items-center gap-1" suppressHydrationWarning>
+                    <Clock className="w-3 h-3" /> {formatDate(project.updatedAt)}
                   </span>
                   <span className={clsx('text-[10px] px-1.5 py-0.5 rounded-full', project.environment === 'production' ? 'bg-emerald-900/40 text-emerald-500' : project.environment === 'staging' ? 'bg-yellow-900/40 text-yellow-500' : 'bg-gray-700 text-gray-500')}>
                     {project.environment}

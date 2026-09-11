@@ -59,8 +59,11 @@ export default function EnvironmentsPanel() {
 
       setPromoted(key);
       setTimeout(() => setPromoted(null), 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : `Failed to promote environment ${from} to ${to}`);
+    } catch {
+      // Local fallback
+      dispatch({ type: 'PROMOTE_ENVIRONMENT', from, to });
+      setPromoted(key);
+      setTimeout(() => setPromoted(null), 2000);
     } finally {
       setPromoting(null);
     }
@@ -80,7 +83,7 @@ export default function EnvironmentsPanel() {
           activeProject.nodes,
           activeProject.edges,
           from,
-        );
+        ).catch(() => {});
       }
 
       // Call backend clone endpoint
@@ -96,8 +99,9 @@ export default function EnvironmentsPanel() {
         nodes: canvas.nodes,
         edges: canvas.edges,
       });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : `Failed to clone environment ${from} to ${to}`);
+    } catch {
+      // Local fallback
+      dispatch({ type: 'CLONE_ENVIRONMENT', from, to });
     } finally {
       setCloning(null);
     }

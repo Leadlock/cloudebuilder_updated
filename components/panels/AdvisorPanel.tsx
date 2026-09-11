@@ -5,6 +5,7 @@ import { apiAdvisorService } from '@/lib/services/ApiAdvisorService';
 import type { AdvisorResult } from '@/lib/services/ApiAdvisorService';
 import { Brain, TrendingUp, Shield, Zap, DollarSign, Scale, AlertTriangle } from 'lucide-react';
 import clsx from 'clsx';
+import { scoreArchitecture, generateRecommendations } from '@/lib/generator';
 
 const CATEGORY_CONFIG = {
   reliability:  { icon: TrendingUp, color: 'text-blue-400',   bg: 'bg-blue-900/30',   border: 'border-blue-800',   label: 'Reliability' },
@@ -49,13 +50,9 @@ export default function AdvisorPanel() {
   // apiAdvisorService already has the project ID injected by AppContext.
   useEffect(() => {
     if (!activeProject || nodeCount === 0) {
-      setResult(null);
-      setError(null);
       return;
     }
     let cancelled = false;
-    setLoading(true);
-    setError(null);
     apiAdvisorService.analyze(activeProject.nodes).then((r) => {
       if (!cancelled) {
         setResult(r);
@@ -64,13 +61,24 @@ export default function AdvisorPanel() {
       }
     }).catch(() => {
       if (!cancelled) {
-        setError('Architecture analysis failed. Unable to retrieve advisor recommendations from server.');
-        setResult(null);
+        const score = scoreArchitecture(activeProject.nodes);
+        const recs = generateRecommendations(activeProject.nodes).map((r) => ({
+          id: r.id,
+          category: r.category as any,
+          severity: r.severity as any,
+          title: r.title,
+          description: r.description,
+          affectedResourceIds: [],
+          affectedResourceLabels: r.affectedResources,
+          rationale: r.description,
+          suggestedAction: r.action,
+        }));
+        setResult({ score, recommendations: recs, fromApi: false });
+        setError(null);
         setLoading(false);
       }
     });
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProjectId, nodeCount, retryCount]);
 
   if (!activeProject) return null;

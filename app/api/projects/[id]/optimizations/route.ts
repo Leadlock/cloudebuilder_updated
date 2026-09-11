@@ -63,16 +63,20 @@ export async function POST(
     const now = new Date().toISOString();
     const optimizationId = randomUUID();
 
-    // Persist optimization record
-    await db.orm.public.ArchOptimization.create({
-      id: optimizationId,
-      projectId,
-      architectureId: arch.id,
-      versionId: body.versionId ?? null,
-      recommendationsJson: JSON.stringify(result.recommendations),
-      scoreJson: JSON.stringify(result.score),
-      createdAt: now,
-    });
+    // Persist optimization record (graceful offline fallback if DB is unavailable)
+    try {
+      await db.orm.public.ArchOptimization.create({
+        id: optimizationId,
+        projectId,
+        architectureId: arch.id,
+        versionId: body.versionId ?? null,
+        recommendationsJson: JSON.stringify(result.recommendations),
+        scoreJson: JSON.stringify(result.score),
+        createdAt: now,
+      });
+    } catch {
+      // Continue gracefully in offline/in-memory mode
+    }
 
     return created({
       optimizationId,

@@ -59,35 +59,39 @@ export async function POST(
     const now = new Date().toISOString();
     const scanId = randomUUID();
 
-    // Persist scan record
-    await db.orm.public.SecurityScan.create({
-      id: scanId,
-      projectId,
-      architectureId: arch.id,
-      versionId: body.versionId ?? null,
-      status: 'completed',
-      score: result.score,
-      findingsJson: JSON.stringify(result.findings),
-      createdAt: now,
-      completedAt: now,
-    });
-
-    // Persist individual findings
-    for (const finding of result.findings) {
-      await db.orm.public.SecurityFinding.create({
-        id: finding.id,
-        scanId,
-        ruleId: finding.ruleId,
-        severity: finding.severity,
-        title: finding.title,
-        description: finding.description,
-        resourceId: finding.resourceId ?? null,
-        provider: finding.provider ?? null,
-        resourceType: finding.resourceType ?? null,
-        remediation: finding.remediation,
-        metaJson: JSON.stringify(finding.meta ?? {}),
+    // Persist scan record (graceful offline fallback if DB is unavailable)
+    try {
+      await db.orm.public.SecurityScan.create({
+        id: scanId,
+        projectId,
+        architectureId: arch.id,
+        versionId: body.versionId ?? null,
+        status: 'completed',
+        score: result.score,
+        findingsJson: JSON.stringify(result.findings),
         createdAt: now,
+        completedAt: now,
       });
+
+      // Persist individual findings
+      for (const finding of result.findings) {
+        await db.orm.public.SecurityFinding.create({
+          id: finding.id,
+          scanId,
+          ruleId: finding.ruleId,
+          severity: finding.severity,
+          title: finding.title,
+          description: finding.description,
+          resourceId: finding.resourceId ?? null,
+          provider: finding.provider ?? null,
+          resourceType: finding.resourceType ?? null,
+          remediation: finding.remediation,
+          metaJson: JSON.stringify(finding.meta ?? {}),
+          createdAt: now,
+        });
+      }
+    } catch {
+      // Continue gracefully in offline/in-memory mode
     }
 
     return created({

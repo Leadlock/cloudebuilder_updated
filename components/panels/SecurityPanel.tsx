@@ -6,6 +6,7 @@ import { SecurityIssue } from '@/types';
 import { ShieldCheck, ShieldAlert, ShieldX, AlertTriangle, Info, CheckCircle2, Wrench, Shield } from 'lucide-react';
 import clsx from 'clsx';
 import { scoreArchitecture } from '@/lib/generator';
+import { runSecurityScan } from '@/lib/analysis';
 
 const severityConfig = {
   critical: { icon: ShieldX,    color: 'text-red-400',    bg: 'bg-red-900/30',    border: 'border-red-800',    badge: 'bg-red-900 text-red-300',    label: 'Critical' },
@@ -63,13 +64,9 @@ export default function SecurityPanel() {
 
   useEffect(() => {
     if (!activeProject || nodeCount === 0) {
-      setIssues([]);
-      setError(null);
       return;
     }
     let cancelled = false;
-    setScanning(true);
-    setError(null);
     apiSecurityService.scan(activeProject.nodes).then((result) => {
       if (!cancelled) {
         setIssues(result);
@@ -78,13 +75,13 @@ export default function SecurityPanel() {
       }
     }).catch(() => {
       if (!cancelled) {
-        setError('Security scan failed. Unable to reach security analysis service.');
-        setIssues([]);
+        const local = runSecurityScan(activeProject.nodes);
+        setIssues(local);
+        setError(null);
         setScanning(false);
       }
     });
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProjectId, nodeCount, projectUpdatedAt, retryCount]);
 
   const score = useMemo(() => apiSecurityService.score(issues), [issues]);

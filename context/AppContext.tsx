@@ -492,7 +492,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Keep a stable ref to state so side-effect callbacks can read current state
   // without needing to be recreated on every render.
   const stateRef = useRef(state);
-  stateRef.current = state;
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // ── Sync active project ID & currency to all API-backed services ──────────
   // This is the single source-of-truth sync: whenever AppContext's activeProjectId

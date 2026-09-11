@@ -144,40 +144,51 @@ export default function InfraCanvas() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  latestNodesRef.current = nodes;
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
   // Provider filter for multi-cloud canvas
   const [canvasFilter, setCanvasFilter] = useState<'all' | 'aws' | 'azure'>('all');
+
+  useEffect(() => {
+    latestNodesRef.current = nodes;
+  }, [nodes]);
 
   // Track project/env/version changes
   const prevProjectRef = useRef<string | null>(null);
   const prevEnvRef = useRef<string | null>(null);
   const prevCanvasKey = useRef<number>(state.canvasKey);
 
-  if (
-    activeProject &&
-    (activeProject.id !== prevProjectRef.current ||
+  useEffect(() => {
+    if (!activeProject) return;
+    if (
+      activeProject.id !== prevProjectRef.current ||
       state.activeEnvironment !== prevEnvRef.current ||
-      state.canvasKey !== prevCanvasKey.current)
-  ) {
-    prevProjectRef.current = activeProject.id;
-    prevEnvRef.current = state.activeEnvironment;
-    prevCanvasKey.current = state.canvasKey;
-    const envNodes = toReactFlowNodes(activeProject.nodes);
-    const envEdges = toReactFlowEdges(activeProject.edges);
-    setNodes(envNodes);
-    setEdges(envEdges);
-    setSelectedNodeId(null);
-    undoStack.current = [];
-    redoStack.current = [];
-  }
+      state.canvasKey !== prevCanvasKey.current
+    ) {
+      prevProjectRef.current = activeProject.id;
+      prevEnvRef.current = state.activeEnvironment;
+      prevCanvasKey.current = state.canvasKey;
+      const envNodes = toReactFlowNodes(activeProject.nodes);
+      const envEdges = toReactFlowEdges(activeProject.edges);
+      setNodes(envNodes);
+      setEdges(envEdges);
+      setSelectedNodeId(null);
+      undoStack.current = [];
+      redoStack.current = [];
+      setCanUndo(false);
+      setCanRedo(false);
+    }
+  }, [activeProject, state.activeEnvironment, state.canvasKey, setNodes, setEdges]);
 
   // ── History helpers ──────────────────────────────────────────────────────────
   const pushHistory = useCallback((n: Node[], e: Edge[]) => {
     undoStack.current.push({ nodes: n, edges: e });
     if (undoStack.current.length > 50) undoStack.current.shift();
     redoStack.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
   }, []);
 
   // ── Canvas sync ──────────────────────────────────────────────────────────────
@@ -591,6 +602,8 @@ export default function InfraCanvas() {
     setNodes(snap.nodes);
     setEdges(snap.edges);
     syncToStore(snap.nodes, snap.edges);
+    setCanUndo(undoStack.current.length > 0);
+    setCanRedo(true);
   }, [nodes, edges, setNodes, setEdges, syncToStore]);
 
   const handleRedo = useCallback(() => {
@@ -600,6 +613,8 @@ export default function InfraCanvas() {
     setNodes(snap.nodes);
     setEdges(snap.edges);
     syncToStore(snap.nodes, snap.edges);
+    setCanUndo(true);
+    setCanRedo(redoStack.current.length > 0);
   }, [nodes, edges, setNodes, setEdges, syncToStore]);
 
   const handleCopy = useCallback(() => {
@@ -744,8 +759,8 @@ export default function InfraCanvas() {
       <div ref={reactFlowWrapper} className="flex-1 relative bg-slate-950">
         {/* Floating Architecture Toolbar */}
         <CanvasToolbar
-          canUndo={undoStack.current.length > 0}
-          canRedo={redoStack.current.length > 0}
+          canUndo={canUndo}
+          canRedo={canRedo}
           hasSelected={hasSelected}
           onUndo={handleUndo}
           onRedo={handleRedo}

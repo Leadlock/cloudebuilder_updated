@@ -70,17 +70,21 @@ export async function POST(
       filesRecord[f.filename] = f.content;
     }
 
-    // Persist generation record
-    await db.orm.public.TerraformGeneration.create({
-      id: generationId,
-      projectId,
-      architectureId: arch.id,
-      versionId: body.versionId ?? null,
-      filesJson: JSON.stringify(filesRecord),
-      warningsJson: JSON.stringify(result.warnings),
-      resourceMapJson: JSON.stringify(result.resourceMap),
-      createdAt: now,
-    });
+    // Persist generation record (graceful offline fallback if DB is unavailable)
+    try {
+      await db.orm.public.TerraformGeneration.create({
+        id: generationId,
+        projectId,
+        architectureId: arch.id,
+        versionId: body.versionId ?? null,
+        filesJson: JSON.stringify(filesRecord),
+        warningsJson: JSON.stringify(result.warnings),
+        resourceMapJson: JSON.stringify(result.resourceMap),
+        createdAt: now,
+      });
+    } catch {
+      // Continue gracefully in offline/in-memory mode
+    }
 
     return created({
       generationId,

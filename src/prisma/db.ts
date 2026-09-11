@@ -16,7 +16,6 @@ import contractJson from './contract.json' with { type: 'json' };
 type DbClient = ReturnType<typeof postgres<Contract>>;
 
 declare global {
-  // eslint-disable-next-line no-var
   var __cloudcraft_db__: DbClient | undefined;
 }
 

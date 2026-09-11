@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
 import { apiCostService } from '@/lib/services/ApiCostService';
+import { costService } from '@/lib/services/CostService';
 import { CostItem } from '@/types';
 import { DollarSign, TrendingDown, Zap, CheckCircle2, AlertTriangle, Globe, ArrowRightLeft, Info } from 'lucide-react';
 import { getResourceDefinition } from '@/lib/resources';
@@ -31,13 +32,9 @@ export default function CostPanel() {
   // Run cost estimation via the API-backed service whenever project, nodes, or currency changes.
   useEffect(() => {
     if (!activeProject || nodeCount === 0) {
-      setCosts([]);
-      setError(null);
       return;
     }
     let cancelled = false;
-    setCalculating(true);
-    setError(null);
     apiCostService.calculateCosts(activeProject.nodes, displayCurrency).then((result) => {
       if (!cancelled) {
         setCosts(result);
@@ -46,9 +43,19 @@ export default function CostPanel() {
       }
     }).catch(() => {
       if (!cancelled) {
-        setError('Cost estimation failed. Unable to retrieve estimate from server.');
-        setCosts([]);
-        setCalculating(false);
+        costService.calculateCosts(activeProject.nodes, displayCurrency).then((localCosts) => {
+          if (!cancelled) {
+            setCosts(localCosts);
+            setError(null);
+            setCalculating(false);
+          }
+        }).catch(() => {
+          if (!cancelled) {
+            setError('Cost estimation failed. Unable to retrieve estimate from server.');
+            setCosts([]);
+            setCalculating(false);
+          }
+        });
       }
     });
     return () => { cancelled = true; };

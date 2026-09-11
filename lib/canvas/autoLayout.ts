@@ -11,7 +11,6 @@
  */
 
 import { CanvasNode, CanvasEdge } from '@/types';
-import { getResourceDefinition } from '@/lib/resources';
 
 export interface LayoutResult {
   nodes: CanvasNode[];

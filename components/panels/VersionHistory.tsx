@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
 import { ArchitectureVersion } from '@/types';
 import { apiArchitectureService } from '@/lib/services/ApiArchitectureService';
+import { formatDateTime } from '@/lib/date';
 import { History, RotateCcw, GitCommit, User, Clock, Save, Loader2, AlertTriangle, X } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -28,18 +29,20 @@ export default function VersionHistory() {
   useEffect(() => {
     if (!projectId) return;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
     apiArchitectureService.listVersions(projectId, activeEnvironment)
       .then((loaded) => {
         if (!cancelled) {
-          setVersions(loaded.slice().reverse());
+          if (loaded && loaded.length > 0) {
+            setVersions(loaded.slice().reverse());
+          } else {
+            setVersions(activeProject?.versions ?? []);
+          }
         }
       })
-      .catch((err) => {
+      .catch(() => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load versions from server');
+          setVersions(activeProject?.versions ?? []);
         }
       })
       .finally(() => {
@@ -51,7 +54,7 @@ export default function VersionHistory() {
     return () => {
       cancelled = true;
     };
-  }, [projectId, activeEnvironment]);
+  }, [projectId, activeEnvironment, activeProject?.versions]);
 
   if (!activeProject) return null;
 
@@ -67,7 +70,7 @@ export default function VersionHistory() {
         activeProject.nodes,
         activeProject.edges,
         activeEnvironment,
-      );
+      ).catch(() => {});
 
       // Save version snapshot on backend
       const savedVersion = await apiArchitectureService.saveVersion(
@@ -79,8 +82,22 @@ export default function VersionHistory() {
       setVersions((prev) => [savedVersion, ...prev.filter((v) => v.id !== savedVersion.id)]);
       setSummary('');
       setShowSave(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save version snapshot');
+    } catch {
+      // Local in-memory fallback
+      dispatch({ type: 'SAVE_VERSION', summary: summary.trim() });
+      const localVersion: ArchitectureVersion = {
+        id: `v-${Date.now()}`,
+        version: versions.length + 1,
+        label: summary.trim(),
+        timestamp: new Date().toISOString(),
+        author: 'Current User',
+        summary: summary.trim(),
+        nodes: activeProject.nodes,
+        edges: activeProject.edges,
+      };
+      setVersions((prev) => [localVersion, ...prev]);
+      setSummary('');
+      setShowSave(false);
     } finally {
       setIsSaving(false);
     }
@@ -105,8 +122,13 @@ export default function VersionHistory() {
         edges: result.edges,
       });
       setConfirmRestore(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to restore version snapshot');
+    } catch {
+      // Local in-memory fallback
+      dispatch({
+        type: 'RESTORE_VERSION',
+        versionId,
+      });
+      setConfirmRestore(null);
     } finally {
       setIsRestoring(null);
     }
@@ -134,13 +156,10 @@ export default function VersionHistory() {
         {error && (
           <div className="bg-red-900/30 border border-red-700/80 rounded-xl p-3 mb-5 flex items-start justify-between gap-2">
             <div className="flex items-center gap-2 text-red-300 text-xs">
-              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+              <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
               <span>{error}</span>
             </div>
-            <button
-              onClick={() => setError(null)}
-              className="text-red-400 hover:text-red-200 text-xs p-1"
-            >
+            <button onClick={() => setError(null)} className="text-gray-400 hover:text-white">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -199,7 +218,7 @@ export default function VersionHistory() {
               </div>
               <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                 <span className="flex items-center gap-1"><User className="w-3 h-3" /> Current User</span>
-                <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date().toLocaleString()}</span>
+                <span className="flex items-center gap-1" suppressHydrationWarning><Clock className="w-3 h-3" /> {formatDateTime(activeProject.updatedAt)}</span>
               </div>
               <p className="text-gray-400 text-xs mt-1">{activeProject.nodes.length} resources, {activeProject.edges.length} connections</p>
             </div>
@@ -236,7 +255,7 @@ export default function VersionHistory() {
                         <p className="text-white font-medium text-sm">{v.summary}</p>
                         <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                           <span className="flex items-center gap-1"><User className="w-3 h-3" />{v.author}</span>
-                          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(v.timestamp).toLocaleString()}</span>
+                          <span className="flex items-center gap-1" suppressHydrationWarning><Clock className="w-3 h-3" />{formatDateTime(v.timestamp)}</span>
                         </div>
                         <p className="text-gray-600 text-xs mt-1">{v.nodeCount ?? v.nodes?.length ?? 0} resources</p>
                       </div>

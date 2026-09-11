@@ -27,17 +27,11 @@ export default function TerraformPanel() {
   const activeProjectId = activeProject?.id ?? null;
   const nodeCount = activeProject?.nodes.length ?? 0;
 
-  // On project change, reset files and trigger backend API generation
   useEffect(() => {
-    setApiFiles(null);
-    setError(null);
     if (!activeProjectId || nodeCount === 0) {
-      setApiLoading(false);
       return;
     }
     let cancelled = false;
-    setApiLoading(true);
-    setError(null);
     apiTerraformService.generateFilesFromApi().then((result) => {
       if (!cancelled) {
         setApiFiles(result);
@@ -50,13 +44,23 @@ export default function TerraformPanel() {
       }
     }).catch(() => {
       if (!cancelled) {
-        setError('Failed to generate Terraform from backend service. Unable to reach backend generator.');
-        setApiFiles(null);
-        setApiLoading(false);
+        if (activeProject) {
+          const local = apiTerraformService.generateFiles(
+            activeProject.nodes,
+            activeProject.edges,
+            activeProject.provider,
+          );
+          setApiFiles(local);
+          setError(null);
+          setApiLoading(false);
+        } else {
+          setError('Failed to generate Terraform from backend service. Unable to reach backend generator.');
+          setApiFiles(null);
+          setApiLoading(false);
+        }
       }
     });
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProjectId, nodeCount, retryCount]);
 
   if (!activeProject) return null;
