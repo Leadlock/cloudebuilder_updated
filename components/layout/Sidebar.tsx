@@ -3,7 +3,8 @@ import { useApp, useActiveProject } from '@/context/AppContext';
 import {
   LayoutDashboard, Box, Code2, ShieldCheck, DollarSign, Rocket,
   ChevronLeft, ChevronRight, Cloud, Plus, Trash2, Wand2, LayoutGrid,
-  Sparkles, Brain, History, GitBranch, Shield, Upload, CheckSquare, FileCheck
+  Sparkles, Brain, History, GitBranch, Shield, Upload, CheckSquare, FileCheck,
+  Activity, Scale
 } from 'lucide-react';
 import clsx from 'clsx';
 import { AppView } from '@/types';
@@ -28,9 +29,11 @@ const NAV_GROUPS = [
   {
     label: 'Analyze',
     items: [
+      { id: 'analyze',    label: 'Overview',          icon: Activity,        requiresProject: true },
       { id: 'well-architected', label: 'Well-Architected', icon: CheckSquare, requiresProject: true },
       { id: 'security',   label: 'Security',          icon: ShieldCheck,     requiresProject: true },
       { id: 'cost',       label: 'Cost Estimate',     icon: DollarSign,      requiresProject: true },
+      { id: 'cost-comparison', label: 'Cost Comparison', icon: Scale,        requiresProject: true },
       { id: 'advisor',    label: 'Advisor',           icon: Brain,           requiresProject: true },
     ],
   },

@@ -1318,9 +1318,46 @@ export default function InfraCanvas() {
   if (!activeProject) {
     return (
       <div className="flex-1 flex items-center justify-center bg-slate-950 text-slate-500">
-        <div className="text-center">
-          <p className="text-lg font-medium text-slate-400">No project selected</p>
-          <p className="text-sm mt-1">Select or create a project from the dashboard</p>
+        <div className="text-center max-w-md w-full px-6 py-8 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl">
+          <div className="w-12 h-12 bg-blue-900/30 text-blue-400 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          </div>
+          <p className="text-xl font-bold text-white mb-2">No active architecture</p>
+          <p className="text-sm text-slate-400 mb-8">Start building by creating a new architecture, opening an existing one, or importing from your cloud provider.</p>
+          
+          <div className="space-y-3">
+            <button 
+              onClick={() => dispatch({ type: 'SET_VIEW', view: 'wizard' })}
+              className="w-full flex items-center gap-3 px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <svg className="w-5 h-5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Create Architecture
+            </button>
+            
+            <button 
+              onClick={() => dispatch({ type: 'SET_VIEW', view: 'dashboard' })}
+              className="w-full flex items-center gap-3 px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-xl text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500"
+            >
+              <svg className="w-5 h-5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
+              </svg>
+              Open Existing Architecture
+            </button>
+            
+            <button 
+              onClick={() => dispatch({ type: 'SET_VIEW', view: 'import' })}
+              className="w-full flex items-center gap-3 px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-xl text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500"
+            >
+              <svg className="w-5 h-5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Import Cloud Infrastructure
+            </button>
+          </div>
         </div>
       </div>
     );

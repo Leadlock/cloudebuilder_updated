@@ -28,6 +28,8 @@ export interface AppState {
   activeEnvironment: Environment;
   sidebarCollapsed: boolean;
   providerFilter: 'all' | 'aws' | 'azure';
+  architectureVersion: number;
+  lastSavedVersion: number;
   /** User-selected display currency (e.g. 'USD', 'INR', 'EUR', etc.) */
   displayCurrency: string;
   /** Incremented on RESTORE_VERSION to force InfraCanvas remount */
@@ -215,7 +217,7 @@ function reducer(state: AppState, action: Action): AppState {
         };
         return { ...updated, environments: envs };
       });
-      return { ...state, projects };
+      return { ...state, projects, architectureVersion: state.architectureVersion + 1 };
     }
 
     // ── UPDATE_NODE_CONFIG: update a single node's config and recompute ────────
@@ -236,7 +238,7 @@ function reducer(state: AppState, action: Action): AppState {
         };
         return { ...updated, environments: envs };
       });
-      return { ...state, projects };
+      return { ...state, projects, architectureVersion: state.architectureVersion + 1 };
     }
 
     case 'SAVE_PROJECT': {
@@ -246,6 +248,7 @@ function reducer(state: AppState, action: Action): AppState {
         projects: exists
           ? state.projects.map((p) => p.id === action.project.id ? action.project : p)
           : [...state.projects, action.project],
+        lastSavedVersion: state.architectureVersion,
       };
     }
 
@@ -521,6 +524,8 @@ const initialState: AppState = {
   activeEnvironment: 'production',
   sidebarCollapsed: false,
   providerFilter: 'all',
+  architectureVersion: 0,
+  lastSavedVersion: 0,
   displayCurrency: 'USD',
   canvasKey: 0,
   apiLoaded: false,

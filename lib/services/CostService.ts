@@ -6,6 +6,7 @@ import { DETERMINISTIC_MOCK_RATES } from '@/lib/currency/providers/MockExchangeR
 // ─── Interface ────────────────────────────────────────────────────────────────
 export interface ICostService {
   calculateCosts(nodes: CanvasNode[], currency?: string): Promise<CostItem[]>;
+  compareCosts?(nodes: CanvasNode[], currency?: string): Promise<any>;
   generateOptimizations(nodes: CanvasNode[]): CostOptimization[];
   applyOptimization(nodes: CanvasNode[], optimizationId: string): CanvasNode[];
 }

@@ -11,6 +11,14 @@
 import type { ICostService } from './CostService';
 import type { CanvasNode, CostItem, CostOptimization } from '@/types';
 
+export interface CostComparisonResult {
+  currentProvider: string;
+  targetProvider: string;
+  current: { items: any[]; totalMonthlyUsd: number; totalHourlyUsd: number };
+  translated: { items: any[]; totalMonthlyUsd: number; totalHourlyUsd: number };
+  targetCurrency: string;
+}
+
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
 function getBaseUrl(): string {
@@ -189,6 +197,30 @@ class ApiCostServiceImpl implements ICostService {
     return (data.items ?? [])
       .filter((i) => i.confidence !== 'unsupported')
       .map(mapItem);
+  }
+
+  async compareCosts(nodes: CanvasNode[], currency?: string): Promise<CostComparisonResult> {
+    const projectId = _activeProjectId;
+    if (!projectId) {
+      throw new Error('No active project context');
+    }
+
+    const targetCurr = (currency || _activeCurrency || 'USD').toUpperCase();
+    const query = targetCurr !== 'USD' ? `?currency=${targetCurr}` : '';
+    const bodyPayload: Record<string, string> = { env: _activeEnvironment };
+    if (currency && currency.toUpperCase() !== 'USD') {
+      bodyPayload.currency = currency.toUpperCase();
+    }
+
+    const data = await apiFetch<CostComparisonResult>(
+      `/api/projects/${projectId}/cost-comparison${query}`,
+      {
+        method: 'POST',
+        body: JSON.stringify(bodyPayload),
+      },
+    );
+
+    return data;
   }
 
   generateOptimizations(nodes: CanvasNode[]): CostOptimization[] {

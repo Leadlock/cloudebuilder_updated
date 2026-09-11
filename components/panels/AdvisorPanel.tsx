@@ -39,7 +39,7 @@ function RadialScore({ score }: { score: number }) {
 }
 
 export default function AdvisorPanel() {
-  const { dispatch } = useApp();
+  const { state, dispatch } = useApp();
   const activeProject = useActiveProject();
   const [result, setResult] = useState<AdvisorResult | null>(null);
   const [waAssessment, setWaAssessment] = useState<WaAssessment | null>(null);
@@ -96,6 +96,8 @@ export default function AdvisorPanel() {
     });
     return () => { cancelled = true; };
   }, [activeProjectId, nodeCount, retryCount]);
+
+  const isStale = state.architectureVersion > state.lastSavedVersion;
 
   if (!activeProject) return null;
 
@@ -162,7 +164,22 @@ export default function AdvisorPanel() {
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-900 p-5">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-4xl mx-auto">
+        {isStale && (
+          <div className="bg-amber-900/30 border border-amber-800/50 rounded-xl p-4 flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+              <p className="text-amber-300 text-sm">You have unsaved changes. Save your architecture to refresh this analysis.</p>
+            </div>
+            <button 
+              onClick={() => dispatch({ type: 'SET_VIEW', view: 'canvas' })}
+              className="px-3 py-1.5 bg-amber-800 hover:bg-amber-700 text-white rounded-lg text-xs font-medium transition-colors"
+            >
+              Return to Builder
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between gap-3 mb-6">
           <div className="flex items-center gap-3">

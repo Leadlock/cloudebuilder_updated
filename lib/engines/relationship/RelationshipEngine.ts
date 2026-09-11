@@ -143,7 +143,7 @@ export class RelationshipEngine {
       }
 
       // Invalid: Reverse connection from Database to Internet
-      if ((sType === 'aws_rds' || sType === 'aws_elasticache') && (tType === 'aws_internet' || tType === 'aws_igw')) {
+      if ((sType === 'aws_rds' || sType === 'aws_elasticache' || sType === 'aws_dynamodb') && (tType === 'aws_internet' || tType === 'aws_igw')) {
         return {
           isValid: false,
           relationshipType: 'NETWORK_FLOW',
@@ -153,6 +153,21 @@ export class RelationshipEngine {
             message: 'Databases should not initiate outbound internet connections.',
             technicalReason: 'Stateful database tiers must not have default routes to the Internet Gateway to prevent data exfiltration and external compromise.',
             suggestedAlternatives: ['Keep database traffic restricted to VPC private subnets.'],
+          },
+        };
+      }
+
+      // Invalid: Storage/Database initiating connection to Compute
+      if ((sType === 'aws_rds' || sType === 'aws_s3' || sType === 'aws_dynamodb' || sType === 'aws_elasticache') && (tType === 'aws_ec2' || tType === 'aws_lambda' || tType === 'aws_ecs' || tType === 'aws_eks' || tType === 'aws_auto_scaling')) {
+        return {
+          isValid: false,
+          relationshipType: 'NETWORK_FLOW',
+          networkScope: 'private',
+          error: {
+            code: 'REVERSE_COMPUTE_CONNECTION',
+            message: 'Databases and storage buckets do not initiate connections to compute resources.',
+            technicalReason: 'Storage and databases are passive endpoints. Compute resources must initiate the connection to them.',
+            suggestedAlternatives: ['Reverse the connection direction: Compute -> Storage/Database.'],
           },
         };
       }
@@ -417,6 +432,36 @@ export class RelationshipEngine {
               'Route incoming traffic through Application Gateway / Load Balancer -> App Service / VMSS -> Azure SQL.',
               'Use Azure Private Link / Private Endpoint for SQL access.',
             ],
+          },
+        };
+      }
+
+      // Invalid: Reverse connection from Database to Internet
+      if ((sType === 'azure_sql' || sType === 'azure_storage' || sType === 'azure_redis') && (tType === 'azure_public_ip' || tType === 'aws_internet')) {
+        return {
+          isValid: false,
+          relationshipType: 'NETWORK_FLOW',
+          networkScope: 'public',
+          error: {
+            code: 'DATABASE_EGRESS_TO_INTERNET',
+            message: 'Databases and storage should not initiate outbound internet connections.',
+            technicalReason: 'Stateful database tiers must not have default routes to the Internet to prevent data exfiltration.',
+            suggestedAlternatives: ['Keep database traffic restricted to private virtual networks.'],
+          },
+        };
+      }
+
+      // Invalid: Storage/Database initiating connection to Compute
+      if ((sType === 'azure_sql' || sType === 'azure_storage' || sType === 'azure_redis') && (tType === 'azure_vm' || tType === 'azure_vmss' || tType === 'azure_functions' || tType === 'azure_aks')) {
+        return {
+          isValid: false,
+          relationshipType: 'NETWORK_FLOW',
+          networkScope: 'private',
+          error: {
+            code: 'REVERSE_COMPUTE_CONNECTION',
+            message: 'Databases and storage do not initiate connections to compute resources.',
+            technicalReason: 'Storage and databases are passive endpoints. Compute resources must initiate the connection to them.',
+            suggestedAlternatives: ['Reverse the connection direction: Compute -> Storage/Database.'],
           },
         };
       }

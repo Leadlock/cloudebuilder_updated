@@ -159,6 +159,8 @@ export default function WellArchitectedReview() {
     return (assessment?.findings || []).filter((f) => f.severity === 'critical');
   }, [assessment]);
 
+  const isStale = state.architectureVersion > state.lastSavedVersion;
+
   if (!activeProject) {
     return (
       <div className="flex-1 flex items-center justify-center bg-slate-950 text-slate-400">
@@ -175,6 +177,21 @@ export default function WellArchitectedReview() {
 
   return (
     <div className="flex-1 flex flex-col overflow-y-auto bg-slate-950 text-slate-100 p-6 lg:p-8 space-y-6">
+        {isStale && (
+          <div className="bg-amber-900/30 border border-amber-800/50 rounded-xl p-4 flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+              <p className="text-amber-300 text-sm">You have unsaved changes. Save your architecture to refresh this analysis.</p>
+            </div>
+            <button 
+              onClick={() => dispatch({ type: 'SET_VIEW', view: 'canvas' })}
+              className="px-3 py-1.5 bg-amber-800 hover:bg-amber-700 text-white rounded-lg text-xs font-medium transition-colors"
+            >
+              Return to Builder
+            </button>
+          </div>
+        )}
+
       {/* Header Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800">
         <div>

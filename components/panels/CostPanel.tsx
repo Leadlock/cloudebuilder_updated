@@ -68,6 +68,8 @@ export default function CostPanel() {
 
   if (!activeProject) return null;
 
+  const isStale = state.architectureVersion > state.lastSavedVersion;
+
   const optimizations = allOptimizations.filter((o) => !appliedOpts.has(o.id));
   const total = costs.reduce((a, c) => a + c.monthlyCost, 0);
   const totalUsd = costs.reduce((a, c) => a + (c.providerCostUsd ?? c.monthlyCost), 0);
@@ -148,7 +150,22 @@ export default function CostPanel() {
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-900 p-5">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-4xl mx-auto">
+        {isStale && (
+          <div className="bg-amber-900/30 border border-amber-800/50 rounded-xl p-4 flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+              <p className="text-amber-300 text-sm">You have unsaved changes. Save your architecture to refresh this analysis.</p>
+            </div>
+            <button 
+              onClick={() => dispatch({ type: 'SET_VIEW', view: 'canvas' })}
+              className="px-3 py-1.5 bg-amber-800 hover:bg-amber-700 text-white rounded-lg text-xs font-medium transition-colors"
+            >
+              Return to Builder
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
