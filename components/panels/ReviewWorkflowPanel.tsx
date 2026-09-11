@@ -53,7 +53,9 @@ export default function ReviewWorkflowPanel() {
   };
 
   useEffect(() => {
-    fetchReviews();
+    Promise.resolve().then(() => {
+      fetchReviews();
+    });
   }, [activeProject?.id, state.activeEnvironment]);
 
   if (!activeProject) {
@@ -353,7 +355,7 @@ export default function ReviewWorkflowPanel() {
                       {new Date(r.submittedAt).toLocaleTimeString()} · {r.environment}
                     </p>
                     {r.reviewerComments && (
-                      <p className="text-[11px] text-slate-400 italic">"{r.reviewerComments}"</p>
+                      <p className="text-[11px] text-slate-400 italic">&ldquo;{r.reviewerComments}&rdquo;</p>
                     )}
                   </div>
                 ))
