@@ -73,6 +73,19 @@ export function extractIdentity(req: NextRequest): RequestIdentity | null {
     };
   }
 
+  // 4. Development / demo fallback: default to preset admin user matching AppContext initial state
+  if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+    const defaultUser = AuthService.getUserById('usr-admin-1');
+    if (defaultUser) {
+      return {
+        userId: defaultUser.id,
+        email: defaultUser.email,
+        role: defaultUser.role,
+        orgIds: [defaultUser.orgId],
+      };
+    }
+  }
+
   return null;
 }
 

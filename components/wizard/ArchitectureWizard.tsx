@@ -1,9 +1,10 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { WizardOptions, CloudProvider, Region, Environment, AWS_REGIONS, AZURE_REGIONS, REGION_LABELS } from '@/types';
 import { architectureTemplates } from '@/lib/templates';
 import { generateFromWizard } from '@/lib/generator';
+import { formatCurrency } from '@/lib/currency/formatter';
 import { Wand2, ChevronRight, ChevronLeft, Check, Cloud, Database, Shield, DollarSign, Globe, Zap } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -31,9 +32,31 @@ function StepIndicator({ step, current }: { step: number; current: number }) {
 }
 
 export default function ArchitectureWizard() {
-  const { dispatch } = useApp();
+  const { state, dispatch } = useApp();
   const [step, setStep] = useState(0);
   const [generating, setGenerating] = useState(false);
+
+  const activeCurrency = state.displayCurrency || 'USD';
+  const [exchangeRate, setExchangeRate] = useState<number>(1.0);
+
+  useEffect(() => {
+    if (activeCurrency === 'USD') {
+      setExchangeRate(1.0);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/currency/rates?from=USD&to=${activeCurrency}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.ok && data.data?.rate?.rate) {
+          setExchangeRate(data.data.rate.rate);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCurrency]);
   const [opts, setOpts] = useState<WizardOptions>({
     provider: 'aws',
     templateId: '3tier-web',
@@ -148,7 +171,7 @@ export default function ArchitectureWizard() {
                     <p className="text-gray-500 text-xs mb-3 line-clamp-2">{t.description}</p>
                     <div className="flex items-center gap-3 text-xs text-gray-500">
                       <span>{t.resourceCount} resources</span>
-                      <span>~${t.estimatedCost}/mo</span>
+                      <span>~{formatCurrency(t.estimatedCost * (activeCurrency === 'USD' ? 1.0 : exchangeRate), activeCurrency)}/mo</span>
                     </div>
                   </button>
                 ))}
@@ -286,7 +309,7 @@ export default function ArchitectureWizard() {
                   </div>
                   <div className="flex gap-4 mt-3 text-xs text-gray-400">
                     <span>~{selectedTemplate.resourceCount + (opts.highAvailability ? 3 : 0)} resources</span>
-                    <span>~${selectedTemplate.estimatedCost}/mo est.</span>
+                    <span>~{formatCurrency(selectedTemplate.estimatedCost * (activeCurrency === 'USD' ? 1.0 : exchangeRate), activeCurrency)}/mo est.</span>
                   </div>
                 </div>
               )}

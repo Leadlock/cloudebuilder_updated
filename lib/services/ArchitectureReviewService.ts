@@ -53,36 +53,44 @@ export interface DeploymentRecord {
   durationMs: number;
 }
 
-// In-memory persistent state stores across the dev session
-const REVIEWS = new Map<string, ArchitectureReview>();
-const DEPLOYMENTS: DeploymentRecord[] = [];
+// In-memory persistent state stores across the dev session (attached to globalThis to survive Next.js dev rebuilds)
+const globalForReviews = globalThis as unknown as {
+  __cloudcraft_reviews?: Map<string, ArchitectureReview>;
+  __cloudcraft_deployments?: DeploymentRecord[];
+};
+const REVIEWS = globalForReviews.__cloudcraft_reviews ?? new Map<string, ArchitectureReview>();
+const DEPLOYMENTS = globalForReviews.__cloudcraft_deployments ?? [];
+if (process.env.NODE_ENV !== 'production') {
+  globalForReviews.__cloudcraft_reviews = REVIEWS;
+  globalForReviews.__cloudcraft_deployments = DEPLOYMENTS;
+}
 
 export class ArchitectureReviewService {
   /**
    * Deterministic SHA-256 hash of nodes and edges structure and configuration
    */
-  static computeArchitectureHash(nodes: CanvasNode[], edges: CanvasEdge[]): string {
-    const cleanNodes = [...nodes]
-      .sort((a, b) => a.id.localeCompare(b.id))
+  static computeArchitectureHash(nodes: CanvasNode[] = [], edges: CanvasEdge[] = []): string {
+    const cleanNodes = [...(nodes || [])]
+      .sort((a, b) => (a?.id || '').localeCompare(b?.id || ''))
       .map((n) => ({
-        id: n.id,
-        resourceType: n.resourceType,
-        provider: n.provider,
-        groupId: n.groupId || null,
-        config: n.config || {},
+        id: n?.id || '',
+        resourceType: n?.resourceType || '',
+        provider: n?.provider || 'aws',
+        groupId: n?.groupId || null,
+        config: n?.config || {},
         position: {
-          x: Math.round(n.position.x),
-          y: Math.round(n.position.y),
+          x: Math.round(n?.position?.x ?? 0),
+          y: Math.round(n?.position?.y ?? 0),
         },
       }));
 
-    const cleanEdges = [...edges]
-      .sort((a, b) => a.id.localeCompare(b.id))
+    const cleanEdges = [...(edges || [])]
+      .sort((a, b) => (a?.id || '').localeCompare(b?.id || ''))
       .map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        edgeType: e.edgeType || 'network',
+        id: e?.id || '',
+        source: e?.source || '',
+        target: e?.target || '',
+        edgeType: e?.edgeType || 'network',
       }));
 
     const payload = JSON.stringify({ nodes: cleanNodes, edges: cleanEdges });

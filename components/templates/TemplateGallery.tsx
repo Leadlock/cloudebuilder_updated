@@ -1,19 +1,42 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { architectureTemplates } from '@/lib/templates';
 import { CloudProvider } from '@/types';
 import { LayoutGrid, DollarSign, Server } from 'lucide-react';
+import { formatCurrency } from '@/lib/currency/formatter';
 import clsx from 'clsx';
 
 const categories = ['All', 'Web Applications', 'High Availability', 'SaaS', 'E-Commerce', 'Microservices', 'Data & Analytics', 'Disaster Recovery', 'Multi-cloud'];
 
 export default function TemplateGallery() {
-  const { dispatch } = useApp();
+  const { state, dispatch } = useApp();
   const [filter, setFilter] = useState('All');
   const [providerFilter, setProviderFilter] = useState<'all' | 'aws' | 'azure' | 'multi'>('all');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
+
+  const activeCurrency = state.displayCurrency || 'USD';
+  const [exchangeRate, setExchangeRate] = useState<number>(1.0);
+
+  useEffect(() => {
+    if (activeCurrency === 'USD') {
+      setExchangeRate(1.0);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/currency/rates?from=USD&to=${activeCurrency}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.ok && data.data?.rate?.rate) {
+          setExchangeRate(data.data.rate.rate);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCurrency]);
 
   const filtered = architectureTemplates.filter((t) => {
     const catMatch = filter === 'All' || t.category === filter;
@@ -113,7 +136,7 @@ export default function TemplateGallery() {
                 {/* Stats */}
                 <div className="flex items-center gap-4 text-xs text-gray-500 mb-4">
                   <span className="flex items-center gap-1"><Server className="w-3 h-3" />{t.resourceCount} resources</span>
-                  <span className="flex items-center gap-1"><DollarSign className="w-3 h-3" />~${t.estimatedCost}/mo</span>
+                  <span className="flex items-center gap-1"><DollarSign className="w-3 h-3" />~{formatCurrency(t.estimatedCost * (activeCurrency === 'USD' ? 1.0 : exchangeRate), activeCurrency)}/mo</span>
                 </div>
 
                 {/* Action */}
