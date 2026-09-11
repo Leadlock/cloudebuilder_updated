@@ -17,12 +17,22 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useApp, useActiveProject } from '@/context/AppContext';
-import { CanvasNode, CanvasEdge } from '@/types';
+import { CanvasNode, CanvasEdge, RelationshipType } from '@/types';
 import { getResourceDefinition } from '@/lib/resources';
+import { relationshipEngine } from '@/lib/engines/relationship/RelationshipEngine';
 import CloudNode from './CloudNode';
 import ContainerNode from './ContainerNode';
 import CloudProviderBoundary from './CloudProviderBoundary';
-import { TrafficEdge, AssociationEdge, CrossCloudEdge } from './ArchitectureEdges';
+import {
+  TrafficEdge,
+  LoadBalancesEdge,
+  ConnectsToEdge,
+  StoresInEdge,
+  ResolvesToEdge,
+  AssociationEdge,
+  ReplicationEdge,
+  CrossCloudEdge,
+} from './ArchitectureEdges';
 import ResourcePalette from './ResourcePalette';
 import PropertiesPanel from './PropertiesPanel';
 import CanvasToolbar from './CanvasToolbar';
@@ -38,7 +48,14 @@ const nodeTypes = {
 
 const edgeTypes = {
   traffic: TrafficEdge,
+  networkFlow: TrafficEdge,
+  loadBalances: LoadBalancesEdge,
+  connectsTo: ConnectsToEdge,
+  storesIn: StoresInEdge,
+  resolvesTo: ResolvesToEdge,
   association: AssociationEdge,
+  associatedWith: AssociationEdge,
+  replication: ReplicationEdge,
   crossCloud: CrossCloudEdge,
 };
 
@@ -116,24 +133,60 @@ function toReactFlowNodes(
 
 function toReactFlowEdges(canvasEdges: CanvasEdge[]): Edge[] {
   return canvasEdges.map((e) => {
-    const isCrossCloud = e.edgeType === 'cross-cloud';
-    const isAssociation = e.edgeType === 'security' || e.edgeType === 'management';
-    const color = isCrossCloud ? '#F59E0B' : isAssociation ? '#64748B' : '#38BDF8';
+    const relType = e.relationshipType || (e.edgeType as string);
+    let type = 'traffic';
+    let color = '#38BDF8';
+
+    if (relType === 'LOAD_BALANCES') {
+      type = 'loadBalances';
+      color = '#818CF8';
+    } else if (relType === 'CONNECTS_TO') {
+      type = 'connectsTo';
+      color = '#10B981';
+    } else if (relType === 'STORES_IN') {
+      type = 'storesIn';
+      color = '#14B8A6';
+    } else if (relType === 'RESOLVES_TO') {
+      type = 'resolvesTo';
+      color = '#38BDF8';
+    } else if (relType === 'ASSOCIATED_WITH' || relType === 'security' || relType === 'management') {
+      type = 'association';
+      color = '#94A3B8';
+    } else if (relType === 'REPLICATES_TO') {
+      type = 'replication';
+      color = '#F59E0B';
+    } else if (relType === 'cross-cloud' || e.networkScope === 'cross-cloud') {
+      type = 'crossCloud';
+      color = '#F59E0B';
+    }
+
+    const isAssociation = type === 'association';
+
     return {
       id: e.id,
       source: e.source,
       target: e.target,
       label: e.label,
-      type: isCrossCloud ? 'crossCloud' : isAssociation ? 'association' : 'traffic',
+      type,
       animated: !isAssociation,
-      style: { stroke: color, strokeWidth: isCrossCloud ? 2.5 : 2 },
+      data: {
+        relationshipType: e.relationshipType,
+        protocol: e.protocol,
+        port: e.port,
+        networkScope: e.networkScope,
+        direction: e.direction,
+        inferred: e.inferred,
+        validationStatus: e.validationStatus,
+        reason: e.reason,
+      },
+      style: { stroke: color, strokeWidth: type === 'crossCloud' ? 2.5 : 2 },
       markerEnd: {
         type: MarkerType.ArrowClosed,
         color,
         width: 14,
         height: 14,
       },
-      labelStyle: { fontSize: 10, fill: isCrossCloud ? '#FCD34D' : '#CBD5E1', fontFamily: 'monospace' },
+      labelStyle: { fontSize: 10, fill: type === 'crossCloud' ? '#FCD34D' : '#CBD5E1', fontFamily: 'monospace' },
     };
   });
 }
@@ -152,6 +205,16 @@ export default function InfraCanvas() {
 
   // Quick Add Resource modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  // Pre-connection validation error modal state
+  const [connectionError, setConnectionError] = useState<{
+    title: string;
+    message: string;
+    reason: string;
+    alternatives: string[];
+    sourceLabel: string;
+    targetLabel: string;
+  } | null>(null);
 
   // Undo/Redo history stacks
   const undoStack = useRef<{ nodes: Node[]; edges: Edge[] }[]>([]);
@@ -269,14 +332,26 @@ export default function InfraCanvas() {
   }, [nodes, activeProject]);
 
   const getCanvasEdges = useCallback((): CanvasEdge[] => {
-    return edges.map((e) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      label: e.label as string | undefined,
-      edgeType: (e.type as CanvasEdge['edgeType']) || 'network',
-    }));
-  }, [edges]);
+    return edges.map((e) => {
+      const existing = activeProject?.edges.find((ce) => ce.id === e.id);
+      const data = (e.data || {}) as Record<string, unknown>;
+      return {
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        label: e.label as string | undefined,
+        edgeType: (e.type as CanvasEdge['edgeType']) || existing?.edgeType || 'network',
+        relationshipType: (data.relationshipType as RelationshipType) || existing?.relationshipType,
+        protocol: (data.protocol as string) || existing?.protocol,
+        port: (data.port as string | number) || existing?.port,
+        networkScope: (data.networkScope as any) || existing?.networkScope,
+        direction: (data.direction as any) || existing?.direction || 'unidirectional',
+        inferred: (data.inferred as boolean) ?? existing?.inferred ?? false,
+        validationStatus: (data.validationStatus as any) || existing?.validationStatus || 'valid',
+        reason: (data.reason as string) || existing?.reason,
+      };
+    });
+  }, [edges, activeProject]);
 
   const syncToStore = useCallback((newNodes?: Node[], newEdges?: Edge[]) => {
     const resolvedNodes = newNodes ?? nodes;
@@ -296,57 +371,124 @@ export default function InfraCanvas() {
         height: n.data.height ?? existing?.height,
       } as CanvasNode;
     });
-    const ce = resolvedEdges.map((e) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      label: e.label as string | undefined,
-      edgeType: (e.type as CanvasEdge['edgeType']) || 'network',
-    }));
+    const ce = resolvedEdges.map((e) => {
+      const existing = activeProject?.edges.find((ce) => ce.id === e.id);
+      const data = (e.data || {}) as Record<string, unknown>;
+      return {
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        label: e.label as string | undefined,
+        edgeType: (e.type as CanvasEdge['edgeType']) || existing?.edgeType || 'network',
+        relationshipType: (data.relationshipType as RelationshipType) || existing?.relationshipType,
+        protocol: (data.protocol as string) || existing?.protocol,
+        port: (data.port as string | number) || existing?.port,
+        networkScope: (data.networkScope as any) || existing?.networkScope,
+        direction: (data.direction as any) || existing?.direction || 'unidirectional',
+        inferred: (data.inferred as boolean) ?? existing?.inferred ?? false,
+        validationStatus: (data.validationStatus as any) || existing?.validationStatus || 'valid',
+        reason: (data.reason as string) || existing?.reason,
+      } as CanvasEdge;
+    });
     dispatch({ type: 'UPDATE_CANVAS', nodes: cn, edges: ce });
   }, [activeProject, dispatch, nodes, edges]);
 
-  // ── Smart Connect ────────────────────────────────────────────────────────────
+  // ── Smart Connect with Pre-Connection Validation ─────────────────────────────
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
     const sourceNode = nodes.find((n) => n.id === connection.source);
     const targetNode = nodes.find((n) => n.id === connection.target);
+    if (!sourceNode || !targetNode) return;
 
-    let edgeType = 'traffic';
-    let label: string | undefined = undefined;
+    const currentCanvasNodes = getCanvasNodes();
+    const currentCanvasEdges = getCanvasEdges();
 
-    if (sourceNode && targetNode) {
-      const sType = sourceNode.data.resourceType;
-      const tType = targetNode.data.resourceType;
+    const sourceCanvas: CanvasNode = currentCanvasNodes.find((n) => n.id === connection.source) || {
+      id: sourceNode.id,
+      type: 'cloudNode',
+      resourceType: sourceNode.data.resourceType,
+      provider: sourceNode.data.provider,
+      label: sourceNode.data.label,
+      position: sourceNode.position,
+      config: sourceNode.data.config || {},
+      groupId: sourceNode.data.groupId,
+    };
 
-      if (tType === 'aws_sg' || tType === 'azure_nsg' || tType === 'aws_iam') {
-        edgeType = 'association';
-      } else if (sType === 'aws_internet' && tType === 'aws_cloudfront') {
-        edgeType = 'traffic';
-        label = 'HTTPS / 443';
-      } else if (sType === 'aws_cloudfront' && tType === 'aws_alb') {
-        edgeType = 'traffic';
-        label = 'Origin HTTP/S';
-      } else if (sType === 'aws_alb' && (tType === 'aws_ec2' || tType === 'aws_auto_scaling')) {
-        edgeType = 'traffic';
-        label = 'HTTP / 80';
-      } else if (sType === 'aws_ec2' && (tType === 'aws_rds' || tType === 'azure_sql')) {
-        edgeType = 'traffic';
-        label = 'Port 5432';
-      } else if (sType === 'aws_ec2' && tType === 'aws_s3') {
-        edgeType = 'association';
-        label = 'S3 API / IAM';
-      }
+    const targetCanvas: CanvasNode = currentCanvasNodes.find((n) => n.id === connection.target) || {
+      id: targetNode.id,
+      type: 'cloudNode',
+      resourceType: targetNode.data.resourceType,
+      provider: targetNode.data.provider,
+      label: targetNode.data.label,
+      position: targetNode.position,
+      config: targetNode.data.config || {},
+      groupId: targetNode.data.groupId,
+    };
+
+    // Centralized Relationship Rule Engine Validation
+    const validation = relationshipEngine.validateConnection(
+      sourceCanvas,
+      targetCanvas,
+      currentCanvasNodes,
+      currentCanvasEdges
+    );
+
+    if (!validation.isValid) {
+      setConnectionError({
+        title: 'Invalid Architectural Connection',
+        message: validation.error?.message || 'Unsupported connection between resources.',
+        reason: validation.error?.technicalReason || 'This connection violates cloud networking or security rules.',
+        alternatives: validation.error?.suggestedAlternatives || ['Choose a valid intermediate proxy or application gateway.'],
+        sourceLabel: sourceNode.data.label,
+        targetLabel: targetNode.data.label,
+      });
+      return;
     }
 
-    const color = edgeType === 'association' ? '#64748B' : '#38BDF8';
+    const relType = validation.relationshipType;
+    let edgeReactType = 'traffic';
+    let color = '#38BDF8';
+
+    if (relType === 'LOAD_BALANCES') {
+      edgeReactType = 'loadBalances';
+      color = '#818CF8';
+    } else if (relType === 'CONNECTS_TO') {
+      edgeReactType = 'connectsTo';
+      color = '#10B981';
+    } else if (relType === 'STORES_IN') {
+      edgeReactType = 'storesIn';
+      color = '#14B8A6';
+    } else if (relType === 'RESOLVES_TO') {
+      edgeReactType = 'resolvesTo';
+      color = '#38BDF8';
+    } else if (relType === 'ASSOCIATED_WITH') {
+      edgeReactType = 'association';
+      color = '#94A3B8';
+    } else if (relType === 'REPLICATES_TO') {
+      edgeReactType = 'replication';
+      color = '#F59E0B';
+    } else if (validation.networkScope === 'cross-cloud') {
+      edgeReactType = 'crossCloud';
+      color = '#F59E0B';
+    }
+
+    const label = validation.label || (validation.port ? `${validation.protocol || 'TCP'} / ${validation.port}` : undefined);
+
     const newEdges = addEdge(
       {
         ...connection,
-        type: edgeType,
+        id: `edge-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        type: edgeReactType,
         label,
-        animated: edgeType === 'traffic',
-        style: { stroke: color, strokeWidth: 2 },
+        animated: edgeReactType !== 'association',
+        data: {
+          relationshipType: relType,
+          protocol: validation.protocol,
+          port: validation.port,
+          networkScope: validation.networkScope,
+          validationStatus: 'valid',
+        },
+        style: { stroke: color, strokeWidth: edgeReactType === 'crossCloud' ? 2.5 : 2 },
         markerEnd: {
           type: MarkerType.ArrowClosed,
           color,
@@ -356,10 +498,11 @@ export default function InfraCanvas() {
       },
       edges
     );
+
     pushHistory(nodes, edges);
     setEdges(newEdges);
     syncToStore(nodes, newEdges);
-  }, [edges, nodes, setEdges, syncToStore, pushHistory]);
+  }, [edges, nodes, getCanvasNodes, getCanvasEdges, setEdges, syncToStore, pushHistory]);
 
   // ── Container Detection Helper ───────────────────────────────────────────────
   const findContainerAtPosition = useCallback((pos: { x: number; y: number }, draggedType?: string) => {
@@ -947,6 +1090,67 @@ export default function InfraCanvas() {
         onClose={() => setIsAddModalOpen(false)}
         onSelectResource={handleQuickAdd}
       />
+
+      {/* Invalid Connection Alert Modal */}
+      {connectionError && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+          id="invalid-connection-modal"
+        >
+          <div className="bg-slate-900 border border-rose-500/30 rounded-2xl p-6 max-w-lg w-full shadow-2xl shadow-rose-950/20 text-slate-100">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center shrink-0 text-rose-400">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-semibold text-rose-300">
+                  {connectionError.title}
+                </h3>
+                <div className="flex items-center gap-2 mt-1 text-xs font-mono text-slate-400">
+                  <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">{connectionError.sourceLabel}</span>
+                  <span>→</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">{connectionError.targetLabel}</span>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-300 mt-4 leading-relaxed font-medium">
+              {connectionError.message}
+            </p>
+
+            <div className="mt-3 p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-xs text-slate-400 leading-relaxed">
+              <span className="font-semibold text-slate-300 block mb-1">Architectural Rationale:</span>
+              {connectionError.reason}
+            </div>
+
+            {connectionError.alternatives.length > 0 && (
+              <div className="mt-3">
+                <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider block mb-1">
+                  Valid Alternatives:
+                </span>
+                <ul className="text-xs text-slate-300 space-y-1 list-disc list-inside">
+                  {connectionError.alternatives.map((alt, i) => (
+                    <li key={i}>{alt}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                id="btn-dismiss-connection-error"
+                onClick={() => setConnectionError(null)}
+                className="px-4 py-2 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition-colors"
+              >
+                Understood
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

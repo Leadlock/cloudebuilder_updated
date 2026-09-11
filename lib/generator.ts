@@ -3,14 +3,16 @@ import { architectureTemplates, getTemplate } from './templates';
 
 // ─── AI Generator ─────────────────────────────────────────────────────────────
 const promptKeywords: Record<string, string[]> = {
-  saas:        ['saas', 'multi-tenant', 'platform', 'subscription'],
-  ha:          ['highly available', 'high availability', 'multi-az', 'redundant', 'failover'],
-  microservices: ['microservice', 'microservices', 'container', 'service mesh'],
-  datalake:    ['data lake', 'analytics', 'etl', 'big data', 'warehouse'],
-  ecommerce:   ['ecommerce', 'e-commerce', 'shop', 'store', 'commerce'],
-  dr:          ['disaster recovery', 'dr', 'backup', 'failover', 'rto', 'rpo'],
-  multicloud:  ['multi-cloud', 'multicloud', 'azure and aws', 'hybrid cloud'],
-  '3tier':     ['3-tier', 'three tier', 'web application', 'frontend', 'backend', 'database'],
+  prod1000_azure: ['azure 1000', 'azure production', '1000 user azure', 'azure front door'],
+  prod1000_aws:   ['1000', '1,000', 'thousand user', 'production reference', 'production architecture', 'baseline'],
+  saas:           ['saas', 'multi-tenant', 'platform', 'subscription'],
+  ha:             ['highly available', 'high availability', 'multi-az', 'redundant', 'failover'],
+  microservices:  ['microservice', 'microservices', 'container', 'service mesh'],
+  datalake:       ['data lake', 'analytics', 'etl', 'big data', 'warehouse'],
+  ecommerce:      ['ecommerce', 'e-commerce', 'shop', 'store', 'commerce'],
+  dr:             ['disaster recovery', 'dr', 'backup', 'failover', 'rto', 'rpo'],
+  multicloud:     ['multi-cloud', 'multicloud', 'azure and aws', 'hybrid cloud'],
+  '3tier':        ['3-tier', 'three tier', 'web application', 'frontend', 'backend', 'database'],
 };
 
 function detectTemplateFromPrompt(prompt: string): string {
@@ -18,18 +20,20 @@ function detectTemplateFromPrompt(prompt: string): string {
   for (const [key, words] of Object.entries(promptKeywords)) {
     if (words.some((w) => lower.includes(w))) {
       switch (key) {
-        case 'saas': return 'saas';
-        case 'ha': return 'ha-web';
-        case 'microservices': return 'microservices';
-        case 'datalake': return 'data-lake';
-        case 'ecommerce': return 'ecommerce';
-        case 'dr': return 'disaster-recovery';
-        case 'multicloud': return 'multicloud';
-        default: return '3tier-web';
+        case 'prod1000_azure': return 'azure-1000-user-production';
+        case 'prod1000_aws':   return 'aws-1000-user-production';
+        case 'saas':           return 'saas';
+        case 'ha':             return 'ha-web';
+        case 'microservices':  return 'microservices';
+        case 'datalake':       return 'data-lake';
+        case 'ecommerce':      return 'ecommerce';
+        case 'dr':             return 'disaster-recovery';
+        case 'multicloud':     return 'multicloud';
+        default:               return '3tier-web';
       }
     }
   }
-  return '3tier-web';
+  return 'aws-1000-user-production';
 }
 
 function extractResources(prompt: string): string[] {
@@ -63,13 +67,14 @@ export function generateFromPrompt(prompt: string): AIGeneratorResult {
     return { nodes: [], edges: [], summary: 'Could not generate architecture.', suggestedResources: [], estimatedCost: 0, securityScore: 0 };
   }
   const { nodes, edges } = template.generate({ highAvailability: prompt.toLowerCase().includes('highly available') });
+  const validation = architectureValidator.validate(nodes, edges);
   return {
     nodes,
     edges,
     summary: buildSummary(prompt, templateId),
     suggestedResources: extractResources(prompt),
     estimatedCost: template.estimatedCost,
-    securityScore: 72 + Math.floor(Math.random() * 20),
+    securityScore: validation.score.security,
   };
 }
 
@@ -86,24 +91,21 @@ export function generateFromWizard(opts: WizardOptions): { nodes: CanvasNode[]; 
 }
 
 // ─── Architecture Scoring ─────────────────────────────────────────────────────
-import { runSecurityScan, calculateSecurityScore } from './analysis';
+import { architectureValidator } from './engines/validation/ArchitectureValidator';
 
-export function scoreArchitecture(nodes: CanvasNode[]): {
+export function scoreArchitecture(nodes: CanvasNode[], edges: CanvasEdge[] = []): {
   overall: number; reliability: number; security: number;
   performance: number; cost: number; scalability: number;
 } {
-  const issues = runSecurityScan(nodes);
-  const security = calculateSecurityScore(issues);
-  const hasLB = nodes.some((n) => n.resourceType.includes('alb') || n.resourceType.includes('lb'));
-  const hasMultiAZ = nodes.some((n) => n.config?.multiAz === true);
-  const hasEncryption = nodes.some((n) => n.config?.encrypted === true || n.config?.encryption === true);
-  const resourceCount = nodes.length;
-  const reliability = Math.min(100, 50 + (hasLB ? 20 : 0) + (hasMultiAZ ? 20 : 0) + (resourceCount > 5 ? 10 : 0));
-  const performance = Math.min(100, 60 + (hasLB ? 15 : 0) + (resourceCount > 4 ? 10 : 0) + (hasMultiAZ ? 15 : 0));
-  const costScore = Math.min(100, 85 - Math.max(0, resourceCount - 8) * 3);
-  const scalability = Math.min(100, 55 + (hasLB ? 25 : 0) + (resourceCount > 6 ? 10 : 0) + (hasMultiAZ ? 10 : 0));
-  const overall = Math.round((reliability + security + performance + costScore + scalability) / 5);
-  return { overall, reliability, security, performance, cost: costScore, scalability };
+  const report = architectureValidator.validate(nodes, edges);
+  return {
+    overall: report.score.overall,
+    reliability: report.score.reliability,
+    security: report.score.security,
+    performance: report.score.performance,
+    cost: report.score.cost,
+    scalability: report.score.scalability,
+  };
 }
 
 // ─── Architecture Recommendations ─────────────────────────────────────────────

@@ -18,11 +18,11 @@ const prodNodes1: CanvasNode[] = [
   { id: 'n8', type: 'cloudNode', resourceType: 'aws_sg', provider: 'aws', label: 'Web Security Group', position: { x: 580, y: 650 }, config: { name: 'web-sg', allowSsh: false, allowHttp: true, allowHttps: true } },
 ];
 const prodEdges1: CanvasEdge[] = [
-  { id: 'e0', source: 'n0', target: 'n10', label: 'HTTPS / 443' },
-  { id: 'e1', source: 'n10', target: 'n6', label: 'Origin HTTP/S' },
-  { id: 'e2', source: 'n6', target: 'n4', label: 'HTTP / 80' },
-  { id: 'e3', source: 'n4', target: 'n5', label: 'Port 5432' },
-  { id: 'e4', source: 'n4', target: 'n7', label: 'S3 API / IAM' },
+  { id: 'e0', source: 'n0', target: 'n10', label: 'HTTPS / 443', edgeType: 'NETWORK_FLOW', relationshipType: 'NETWORK_FLOW', protocol: 'HTTPS', port: 443, networkScope: 'public' },
+  { id: 'e1', source: 'n10', target: 'n6', label: 'Origin HTTP/S', edgeType: 'ROUTES_TO', relationshipType: 'ROUTES_TO', protocol: 'HTTPS', port: 443, networkScope: 'public' },
+  { id: 'e2', source: 'n6', target: 'n4', label: 'HTTP / 80', edgeType: 'LOAD_BALANCES', relationshipType: 'LOAD_BALANCES', protocol: 'HTTP', port: 80, networkScope: 'private' },
+  { id: 'e3', source: 'n4', target: 'n5', label: 'Port 5432', edgeType: 'CONNECTS_TO', relationshipType: 'CONNECTS_TO', protocol: 'PostgreSQL', port: 5432, networkScope: 'private' },
+  { id: 'e4', source: 'n4', target: 'n7', label: 'S3 API / IAM', edgeType: 'STORES_IN', relationshipType: 'STORES_IN', protocol: 'HTTPS', port: 443, networkScope: 'private' },
 ];
 
 const v1: ArchitectureVersion = {
@@ -42,17 +42,17 @@ const v3: ArchitectureVersion = {
 };
 
 const azureNodes: CanvasNode[] = [
-  { id: 'a1', type: 'cloudNode', resourceType: 'azure_resource_group', provider: 'azure', label: 'Main Resource Group', position: { x: 50, y: 50 }, config: { name: 'microservices-rg', location: 'eastus' } },
-  { id: 'a2', type: 'cloudNode', resourceType: 'azure_vnet', provider: 'azure', label: 'App VNet', position: { x: 250, y: 100 }, config: { name: 'app-vnet', addressSpace: '10.0.0.0/16' } },
-  { id: 'a3', type: 'cloudNode', resourceType: 'azure_subnet', provider: 'azure', label: 'Services Subnet', position: { x: 450, y: 100 }, config: { name: 'services-subnet', addressPrefix: '10.0.1.0/24' } },
-  { id: 'a4', type: 'cloudNode', resourceType: 'azure_vm', provider: 'azure', label: 'API Server', position: { x: 300, y: 250 }, config: { name: 'api-vm', size: 'Standard_D2s_v3', osType: 'Linux', adminUsername: 'azureuser' } },
-  { id: 'a5', type: 'cloudNode', resourceType: 'azure_storage', provider: 'azure', label: 'Blob Storage', position: { x: 550, y: 250 }, config: { name: 'mystorageacct', sku: 'Standard_ZRS', kind: 'StorageV2', httpsOnly: true } },
-  { id: 'a6', type: 'cloudNode', resourceType: 'azure_nsg', provider: 'azure', label: 'App NSG', position: { x: 150, y: 350 }, config: { name: 'app-nsg', allowSsh: false, allowRdp: false } },
+  { id: 'a1', type: 'containerNode', resourceType: 'azure_resource_group', provider: 'azure', label: 'Main Resource Group', position: { x: 50, y: 50 }, width: 840, height: 540, config: { name: 'microservices-rg', location: 'eastus' } },
+  { id: 'a2', type: 'containerNode', resourceType: 'azure_vnet', provider: 'azure', label: 'App VNet', position: { x: 80, y: 110 }, width: 780, height: 440, groupId: 'a1', config: { name: 'app-vnet', addressSpace: '10.0.0.0/16' } },
+  { id: 'a3', type: 'containerNode', resourceType: 'azure_subnet', provider: 'azure', label: 'Services Subnet', position: { x: 110, y: 170 }, width: 340, height: 240, groupId: 'a2', config: { name: 'services-subnet', addressPrefix: '10.0.1.0/24' } },
+  { id: 'a7', type: 'cloudNode', resourceType: 'azure_lb', provider: 'azure', label: 'App Load Balancer', position: { x: 480, y: 180 }, groupId: 'a2', config: { name: 'app-lb', sku: 'Standard' } },
+  { id: 'a4', type: 'cloudNode', resourceType: 'azure_vm', provider: 'azure', label: 'API Server', position: { x: 180, y: 240 }, groupId: 'a3', config: { name: 'api-vm', size: 'Standard_D2s_v3', osType: 'Linux', adminUsername: 'azureuser' } },
+  { id: 'a5', type: 'cloudNode', resourceType: 'azure_storage', provider: 'azure', label: 'Blob Storage', position: { x: 520, y: 320 }, groupId: 'a1', config: { name: 'mystorageacct', sku: 'Standard_ZRS', kind: 'StorageV2', httpsOnly: true } },
+  { id: 'a6', type: 'cloudNode', resourceType: 'azure_nsg', provider: 'azure', label: 'App NSG', position: { x: 680, y: 180 }, groupId: 'a1', config: { name: 'app-nsg', allowSsh: false, allowRdp: false } },
 ];
 const azureEdges: CanvasEdge[] = [
-  { id: 'ae1', source: 'a2', target: 'a3' },
-  { id: 'ae2', source: 'a3', target: 'a4' },
-  { id: 'ae3', source: 'a4', target: 'a5' },
+  { id: 'ae1', source: 'a7', target: 'a4', label: 'Balance HTTP / 80', edgeType: 'LOAD_BALANCES', relationshipType: 'LOAD_BALANCES', protocol: 'HTTP', port: 80, networkScope: 'private' },
+  { id: 'ae2', source: 'a4', target: 'a5', label: 'Blob HTTPS / 443', edgeType: 'STORES_IN', relationshipType: 'STORES_IN', protocol: 'HTTPS', port: 443, networkScope: 'private' },
 ];
 
 export const mockProjects: Project[] = [

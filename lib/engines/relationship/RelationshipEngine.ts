@@ -1,0 +1,552 @@
+/**
+ * Relationship Rule Engine — Centralized Architecture Relationship Service
+ *
+ * Enforces technical validity of cloud connections across AWS, Azure, and Multi-Cloud.
+ * Categorizes and validates edges according to real cloud networking and security principles.
+ * Never creates arbitrary edges based on visual proximity.
+ */
+
+import { CanvasNode, CanvasEdge, RelationshipType, ConnectionValidationResult, NetworkScope } from '@/types';
+import { getResourceDefinition } from '@/lib/resources';
+
+export interface RelationshipRule {
+  id: string;
+  sourceType: string | string[];
+  targetType: string | string[];
+  relationshipType: RelationshipType;
+  allowed: boolean;
+  defaultProtocol?: string;
+  defaultPort?: string | number;
+  networkScope?: NetworkScope;
+  reason: string;
+  invalidReason?: string;
+  suggestedAlternatives?: string[];
+}
+
+export class RelationshipEngine {
+  private static instance: RelationshipEngine;
+
+  public static getInstance(): RelationshipEngine {
+    if (!RelationshipEngine.instance) {
+      RelationshipEngine.instance = new RelationshipEngine();
+    }
+    return RelationshipEngine.instance;
+  }
+
+  /**
+   * Evaluates whether two nodes can form a valid architectural relationship.
+   * If invalid, returns the architectural justification and actionable alternatives.
+   */
+  public validateConnection(
+    sourceNode: CanvasNode,
+    targetNode: CanvasNode,
+    allNodes: CanvasNode[] = [],
+    _allEdges: CanvasEdge[] = []
+  ): ConnectionValidationResult {
+    const sType = sourceNode.resourceType;
+    const tType = targetNode.resourceType;
+    const sProvider = sourceNode.provider ?? (sType.startsWith('azure_') ? 'azure' : 'aws');
+    const tProvider = targetNode.provider ?? (tType.startsWith('azure_') ? 'azure' : 'aws');
+
+    const sDef = getResourceDefinition(sType);
+    const tDef = getResourceDefinition(tType);
+
+    // Rule 0: Disallow connecting to oneself
+    if (sourceNode.id === targetNode.id) {
+      return {
+        isValid: false,
+        relationshipType: 'LOGICAL_DEPENDENCY',
+        networkScope: 'internal',
+        error: {
+          code: 'SELF_CONNECTION',
+          message: 'Cannot connect a resource to itself.',
+          technicalReason: 'A cloud resource cannot establish an external network loop with itself.',
+          suggestedAlternatives: ['Connect to a separate downstream workload or target service.'],
+        },
+      };
+    }
+
+    // Rule 1: Containers should NOT have drawn network edges to their own contained children
+    // (Containment is represented visually and via groupId, not as network traffic)
+    if (sDef?.isContainer || tDef?.isContainer) {
+      // Check if target is child of source or vice versa
+      if (targetNode.groupId === sourceNode.id || sourceNode.groupId === targetNode.id) {
+        return {
+          isValid: false,
+          relationshipType: 'CONTAINS',
+          networkScope: 'internal',
+          error: {
+            code: 'CONTAINER_EDGE_REDUNDANT',
+            message: 'Container relationships should not be drawn as network traffic edges.',
+            technicalReason: `"${sourceNode.label}" physically encapsulates "${targetNode.label}". Placement inside the container already establishes their hierarchy.`,
+            suggestedAlternatives: [
+              'Keep the resource nested inside the container without drawing an edge.',
+              'Connect workloads inside the subnet to specific endpoints instead.',
+            ],
+          },
+        };
+      }
+    }
+
+    // Rule 2: Cross-Cloud boundary connectivity validation
+    if (sProvider !== tProvider) {
+      // Validate whether cross-cloud communication is technically feasible
+      const isComputeToCompute =
+        (sType.includes('ec2') || sType.includes('vm') || sType.includes('lambda') || sType.includes('functions')) &&
+        (tType.includes('ec2') || tType.includes('vm') || tType.includes('sql') || tType.includes('storage') || tType.includes('s3'));
+
+      if (isComputeToCompute) {
+        return {
+          isValid: true,
+          relationshipType: 'CONNECTS_TO',
+          networkScope: 'cross-cloud',
+          protocol: 'HTTPS / VPN',
+          port: 443,
+          label: 'Cross-Cloud Tunnel',
+        };
+      }
+
+      return {
+        isValid: false,
+        relationshipType: 'LOGICAL_DEPENDENCY',
+        networkScope: 'cross-cloud',
+        error: {
+          code: 'INVALID_CROSS_CLOUD_CONNECTION',
+          message: `Direct cross-cloud connection from ${sProvider.toUpperCase()} (${sDef?.label || sType}) to ${tProvider.toUpperCase()} (${tDef?.label || tType}) is unsupported.`,
+          technicalReason: 'Cloud providers do not share private network fabric. Traffic requires an explicit VPN tunnel, Interconnect, or public API gateway.',
+          suggestedAlternatives: [
+            'Route via public API/HTTPS endpoints with mutual TLS authentication.',
+            'Connect compute workloads through a Site-to-Site VPN or interconnect gateway.',
+          ],
+        },
+      };
+    }
+
+    // ── AWS Explicit Rules ──────────────────────────────────────────────────
+    if (sProvider === 'aws') {
+      // Invalid: Direct Internet to RDS / Databases
+      if ((sType === 'aws_internet' || sType === 'aws_igw') && (tType === 'aws_rds' || tType === 'aws_dynamodb' || tType === 'aws_elasticache')) {
+        return {
+          isValid: false,
+          relationshipType: 'NETWORK_FLOW',
+          networkScope: 'public',
+          error: {
+            code: 'PUBLIC_DATABASE_EXPOSURE',
+            message: 'Direct public internet routing to database instances is prohibited.',
+            technicalReason: 'AWS Well-Architected Security Pillar requires databases to be placed in isolated private database subnets with no direct public route.',
+            suggestedAlternatives: [
+              'Route incoming traffic through Application Load Balancer -> EC2/ECS/EKS application tier -> RDS.',
+              'Place RDS in a private database subnet with security group rules restricting ingress to the application tier.',
+            ],
+          },
+        };
+      }
+
+      // Invalid: Reverse connection from Database to Internet
+      if ((sType === 'aws_rds' || sType === 'aws_elasticache') && (tType === 'aws_internet' || tType === 'aws_igw')) {
+        return {
+          isValid: false,
+          relationshipType: 'NETWORK_FLOW',
+          networkScope: 'public',
+          error: {
+            code: 'DATABASE_EGRESS_TO_INTERNET',
+            message: 'Databases should not initiate outbound internet connections.',
+            technicalReason: 'Stateful database tiers must not have default routes to the Internet Gateway to prevent data exfiltration and external compromise.',
+            suggestedAlternatives: ['Keep database traffic restricted to VPC private subnets.'],
+          },
+        };
+      }
+
+      // Invalid: ALB to RDS directly
+      if (sType === 'aws_alb' && (tType === 'aws_rds' || tType === 'aws_elasticache')) {
+        return {
+          isValid: false,
+          relationshipType: 'NETWORK_FLOW',
+          networkScope: 'private',
+          error: {
+            code: 'ALB_TO_DATABASE_INVALID',
+            message: 'Application Load Balancers cannot forward requests directly to databases.',
+            technicalReason: 'ALBs operate at Layer 7 (HTTP/HTTPS) and route only to compute targets (EC2, ECS, EKS, Lambda, IP targets), not relational databases.',
+            suggestedAlternatives: [
+              'Connect ALB to EC2 / Auto Scaling Group / ECS container tier.',
+              'Connect the application tier to RDS on database port 5432/3306.',
+            ],
+          },
+        };
+      }
+
+      // Invalid: Internet directly to private EC2 without ALB or IGW
+      if (sType === 'aws_internet' && (tType === 'aws_ec2' || tType === 'aws_auto_scaling' || tType === 'aws_ecs')) {
+        const targetSubnet = allNodes.find((n) => n.id === targetNode.groupId);
+        const isPublicSubnet = targetSubnet?.config?.mapPublicIpOnLaunch === true || (targetSubnet?.label || '').toLowerCase().includes('public');
+        if (!isPublicSubnet) {
+          return {
+            isValid: false,
+            relationshipType: 'NETWORK_FLOW',
+            networkScope: 'public',
+            error: {
+              code: 'INTERNET_TO_PRIVATE_COMPUTE',
+              message: 'Cannot route public internet traffic directly into private application subnets.',
+              technicalReason: 'Private subnet instances lack public IP routing and cannot receive unsolicited inbound internet packets without an internet-facing Load Balancer or Bastion host.',
+              suggestedAlternatives: [
+                'Deploy an internet-facing Application Load Balancer in a public subnet to forward traffic to private EC2 instances.',
+                'Use AWS Systems Manager (SSM) Session Manager for administrative access instead of direct internet SSH.',
+              ],
+            },
+          };
+        }
+      }
+
+      // Valid: Route 53 -> CloudFront or ALB
+      if (sType === 'aws_route53' && (tType === 'aws_cloudfront' || tType === 'aws_alb')) {
+        return {
+          isValid: true,
+          relationshipType: 'RESOLVES_TO',
+          networkScope: 'public',
+          protocol: 'DNS',
+          port: 53,
+          label: 'DNS Alias',
+        };
+      }
+
+      // Valid: Internet -> Route 53
+      if (sType === 'aws_internet' && tType === 'aws_route53') {
+        return {
+          isValid: true,
+          relationshipType: 'RESOLVES_TO',
+          networkScope: 'public',
+          protocol: 'DNS / UDP',
+          port: 53,
+          label: 'DNS Query / 53',
+        };
+      }
+
+      // Valid: Internet -> CloudFront
+      if (sType === 'aws_internet' && tType === 'aws_cloudfront') {
+        return {
+          isValid: true,
+          relationshipType: 'NETWORK_FLOW',
+          networkScope: 'public',
+          protocol: 'HTTPS',
+          port: 443,
+          label: 'HTTPS / 443',
+        };
+      }
+
+      // Valid: Internet -> ALB (Internet-facing)
+      if (sType === 'aws_internet' && tType === 'aws_alb') {
+        return {
+          isValid: true,
+          relationshipType: 'NETWORK_FLOW',
+          networkScope: 'public',
+          protocol: 'HTTPS / TLS',
+          port: 443,
+          label: 'HTTPS / 443',
+        };
+      }
+
+      // Valid: CloudFront -> ALB (Origin)
+      if (sType === 'aws_cloudfront' && tType === 'aws_alb') {
+        return {
+          isValid: true,
+          relationshipType: 'ROUTES_TO',
+          networkScope: 'public',
+          protocol: 'Origin HTTPS',
+          port: 443,
+          label: 'Origin HTTPS / 443',
+        };
+      }
+
+      // Valid: CloudFront -> S3 (Static assets origin)
+      if (sType === 'aws_cloudfront' && tType === 'aws_s3') {
+        return {
+          isValid: true,
+          relationshipType: 'SERVES',
+          networkScope: 'public',
+          protocol: 'S3 REST API (OAC)',
+          port: 443,
+          label: 'S3 Origin / OAC',
+        };
+      }
+
+      // Valid: WAF -> CloudFront or ALB
+      if (sType === 'aws_waf' && (tType === 'aws_cloudfront' || tType === 'aws_alb')) {
+        return {
+          isValid: true,
+          relationshipType: 'ASSOCIATED_WITH',
+          networkScope: 'internal',
+          label: 'WAF ACL Inspection',
+        };
+      }
+      if ((sType === 'aws_cloudfront' || sType === 'aws_alb') && tType === 'aws_waf') {
+        return {
+          isValid: true,
+          relationshipType: 'ASSOCIATED_WITH',
+          networkScope: 'internal',
+          label: 'Protected by WAF',
+        };
+      }
+
+      // Valid: ALB -> EC2 / Auto Scaling / ECS
+      if (sType === 'aws_alb' && (tType === 'aws_ec2' || tType === 'aws_auto_scaling' || tType === 'aws_ecs' || tType === 'aws_eks')) {
+        return {
+          isValid: true,
+          relationshipType: 'LOAD_BALANCES',
+          networkScope: 'private',
+          protocol: 'HTTP',
+          port: 80,
+          label: 'Forward HTTP / 80',
+        };
+      }
+
+      // Valid: EC2 / ECS -> RDS
+      if ((sType === 'aws_ec2' || sType === 'aws_auto_scaling' || sType === 'aws_ecs' || sType === 'aws_eks' || sType === 'aws_lambda') && tType === 'aws_rds') {
+        const engine = (targetNode.config?.engine as string) || 'postgres';
+        const port = engine.includes('postgres') ? 5432 : 3306;
+        return {
+          isValid: true,
+          relationshipType: 'CONNECTS_TO',
+          networkScope: 'private',
+          protocol: engine.includes('postgres') ? 'PostgreSQL' : 'MySQL',
+          port,
+          label: `${engine.includes('postgres') ? 'PostgreSQL' : 'MySQL'} / ${port}`,
+        };
+      }
+
+      // Valid: EC2 / ECS -> ElastiCache
+      if ((sType === 'aws_ec2' || sType === 'aws_auto_scaling' || sType === 'aws_ecs' || sType === 'aws_lambda') && tType === 'aws_elasticache') {
+        return {
+          isValid: true,
+          relationshipType: 'CONNECTS_TO',
+          networkScope: 'private',
+          protocol: 'Redis TCP',
+          port: 6379,
+          label: 'Redis / 6379',
+        };
+      }
+
+      // Valid: EC2 / Lambda -> S3
+      if ((sType === 'aws_ec2' || sType === 'aws_auto_scaling' || sType === 'aws_ecs' || sType === 'aws_lambda') && tType === 'aws_s3') {
+        return {
+          isValid: true,
+          relationshipType: 'STORES_IN',
+          networkScope: 'private',
+          protocol: 'HTTPS / IAM',
+          port: 443,
+          label: 'S3 API / IAM',
+        };
+      }
+
+      // Valid: EC2 / Lambda -> SQS
+      if ((sType === 'aws_ec2' || sType === 'aws_ecs' || sType === 'aws_lambda') && tType === 'aws_sqs') {
+        return {
+          isValid: true,
+          relationshipType: 'CONNECTS_TO',
+          networkScope: 'private',
+          protocol: 'SQS API',
+          port: 443,
+          label: 'Enqueue Message',
+        };
+      }
+
+      // Valid: SQS -> Lambda (Event Source)
+      if (sType === 'aws_sqs' && tType === 'aws_lambda') {
+        return {
+          isValid: true,
+          relationshipType: 'TRIGGERS',
+          networkScope: 'internal',
+          protocol: 'EventSourceMapping',
+          label: 'Trigger / Event',
+        };
+      }
+
+      // Valid: Security Group association
+      if (tType === 'aws_sg' || sType === 'aws_sg') {
+        return {
+          isValid: true,
+          relationshipType: 'ASSOCIATED_WITH',
+          networkScope: 'internal',
+          label: 'Firewall Rule Attachment',
+        };
+      }
+
+      // Valid: IAM Role association
+      if (tType === 'aws_iam' || sType === 'aws_iam') {
+        return {
+          isValid: true,
+          relationshipType: 'AUTHENTICATES_WITH',
+          networkScope: 'internal',
+          label: 'IAM Role Policy',
+        };
+      }
+
+      // Valid: NAT Gateway egress routing
+      if ((sType === 'aws_ec2' || sType === 'aws_auto_scaling' || sType === 'aws_ecs') && tType === 'aws_nat') {
+        return {
+          isValid: true,
+          relationshipType: 'ROUTES_TO',
+          networkScope: 'private',
+          protocol: 'TCP / UDP Egress',
+          label: 'Outbound NAT Egress',
+        };
+      }
+      if (sType === 'aws_nat' && tType === 'aws_igw') {
+        return {
+          isValid: true,
+          relationshipType: 'ROUTES_TO',
+          networkScope: 'public',
+          protocol: 'Egress Translation',
+          label: 'Internet Egress',
+        };
+      }
+    }
+
+    // ── Azure Explicit Rules ────────────────────────────────────────────────
+    if (sProvider === 'azure') {
+      // Invalid: Internet directly to Azure SQL
+      if ((sType === 'azure_public_ip' || sType === 'aws_internet') && tType === 'azure_sql') {
+        return {
+          isValid: false,
+          relationshipType: 'NETWORK_FLOW',
+          networkScope: 'public',
+          error: {
+            code: 'PUBLIC_SQL_EXPOSURE',
+            message: 'Direct public internet routing to Azure SQL Database is prohibited.',
+            technicalReason: 'Enterprise production architectures require Azure SQL to use Private Endpoints inside private data subnets without public network access.',
+            suggestedAlternatives: [
+              'Route incoming traffic through Application Gateway / Load Balancer -> App Service / VMSS -> Azure SQL.',
+              'Use Azure Private Link / Private Endpoint for SQL access.',
+            ],
+          },
+        };
+      }
+
+      // Valid: Internet -> Front Door
+      if ((sType === 'aws_internet' || sType === 'azure_public_ip') && tType === 'azure_front_door') {
+        return {
+          isValid: true,
+          relationshipType: 'NETWORK_FLOW',
+          networkScope: 'public',
+          protocol: 'HTTPS',
+          port: 443,
+          label: 'HTTPS / 443',
+        };
+      }
+
+      // Valid: Front Door -> Application Gateway
+      if (sType === 'azure_front_door' && tType === 'azure_app_gateway') {
+        return {
+          isValid: true,
+          relationshipType: 'ROUTES_TO',
+          networkScope: 'public',
+          protocol: 'HTTPS Origin',
+          port: 443,
+          label: 'Backend Pool HTTPS',
+        };
+      }
+
+      // Valid: Front Door -> Storage Account (Blob static)
+      if (sType === 'azure_front_door' && tType === 'azure_storage') {
+        return {
+          isValid: true,
+          relationshipType: 'SERVES',
+          networkScope: 'public',
+          protocol: 'Blob HTTPS',
+          port: 443,
+          label: 'Static Blob Origin',
+        };
+      }
+
+      // Valid: WAF -> Front Door / App Gateway
+      if (sType === 'azure_waf' && (tType === 'azure_front_door' || tType === 'azure_app_gateway')) {
+        return {
+          isValid: true,
+          relationshipType: 'ASSOCIATED_WITH',
+          networkScope: 'internal',
+          label: 'WAF Policy Attached',
+        };
+      }
+
+      // Valid: App Gateway / LB -> VM / VMSS / AKS
+      if ((sType === 'azure_app_gateway' || sType === 'azure_lb') && (tType === 'azure_vm' || tType === 'azure_vmss' || tType === 'azure_aks')) {
+        return {
+          isValid: true,
+          relationshipType: 'LOAD_BALANCES',
+          networkScope: 'private',
+          protocol: 'HTTP',
+          port: 80,
+          label: 'Backend Pool / 80',
+        };
+      }
+
+      // Valid: VM / VMSS -> Azure SQL
+      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_aks') && tType === 'azure_sql') {
+        return {
+          isValid: true,
+          relationshipType: 'CONNECTS_TO',
+          networkScope: 'private',
+          protocol: 'TDS / TCP',
+          port: 1433,
+          label: 'TDS / 1433',
+        };
+      }
+
+      // Valid: VM / VMSS -> Azure Redis
+      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_aks') && tType === 'azure_redis') {
+        return {
+          isValid: true,
+          relationshipType: 'CONNECTS_TO',
+          networkScope: 'private',
+          protocol: 'Redis TLS',
+          port: 6380,
+          label: 'Redis TLS / 6380',
+        };
+      }
+
+      // Valid: VM / VMSS -> Storage Account
+      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions') && tType === 'azure_storage') {
+        return {
+          isValid: true,
+          relationshipType: 'STORES_IN',
+          networkScope: 'private',
+          protocol: 'Blob HTTPS',
+          port: 443,
+          label: 'Blob Storage / 443',
+        };
+      }
+
+      // Valid: NSG association
+      if (tType === 'azure_nsg' || sType === 'azure_nsg') {
+        return {
+          isValid: true,
+          relationshipType: 'ASSOCIATED_WITH',
+          networkScope: 'internal',
+          label: 'NSG Rule Attached',
+        };
+      }
+
+      // Valid: Key Vault access
+      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions') && tType === 'azure_key_vault') {
+        return {
+          isValid: true,
+          relationshipType: 'AUTHENTICATES_WITH',
+          networkScope: 'private',
+          protocol: 'Managed Identity',
+          port: 443,
+          label: 'Managed Identity / KeyVault',
+        };
+      }
+    }
+
+    // Default fallback: If both resources are generic compute or support standard networking
+    return {
+      isValid: true,
+      relationshipType: 'NETWORK_FLOW',
+      networkScope: 'private',
+      protocol: 'TCP',
+      label: 'TCP Flow',
+    };
+  }
+}
+
+export const relationshipEngine = RelationshipEngine.getInstance();

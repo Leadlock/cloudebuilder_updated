@@ -75,13 +75,13 @@ function computeProject(p: Project, nodes: CanvasNode[], edges: CanvasEdge[]): P
   const securityScore = calculateSecurityScore(issues);
   const costs = calculateCosts(nodes);
   const estimatedMonthlyCost = costs.reduce((acc, c) => acc + c.monthlyCost, 0);
-  const scores = scoreArchitecture(nodes);
+  const scores = scoreArchitecture(nodes, edges);
   return {
     ...p,
     nodes,
     edges,
     resourceCount: nodes.length,
-    securityScore,
+    securityScore: Math.min(securityScore, scores.security),
     architectureScore: scores.overall,
     estimatedMonthlyCost,
     updatedAt: new Date().toISOString(),

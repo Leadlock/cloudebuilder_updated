@@ -200,8 +200,29 @@ export interface CanvasEdge {
   source: string;
   target: string;
   label?: string;
-  edgeType?: 'data' | 'network' | 'security' | 'management' | 'cross-cloud';
+  edgeType?: 'data' | 'network' | 'security' | 'management' | 'cross-cloud' | string;
+  relationshipType?: import('@/lib/domain/relationshipModel').RelationshipType;
+  direction?: 'unidirectional' | 'bidirectional';
+  protocol?: string;
+  port?: string | number;
+  networkScope?: import('@/lib/domain/relationshipModel').NetworkScope;
+  provider?: 'aws' | 'azure' | 'multi';
+  region?: string;
+  reason?: string;
+  inferred?: boolean;
+  validationStatus?: import('@/lib/domain/relationshipModel').ValidationStatus;
+  validationMessage?: string;
 }
+
+export type {
+  RelationshipType,
+  NetworkScope,
+  ValidationStatus,
+  ArchitectureRelationship,
+  ConnectionValidationResult,
+  WorkloadProfile,
+  CapacityEstimate,
+} from '@/lib/domain/relationshipModel';
 
 export interface CanvasGroup {
   id: string;

@@ -129,6 +129,32 @@ export function CloudServiceIcon({
       <AwsSgIcon size={size} className={className} />
     );
   }
+  if (type.includes('route53') || type.includes('r53') || type.includes('dns')) {
+    return <AwsRouteTableIcon size={size} className={className} />;
+  }
+  if (type.includes('waf')) {
+    return provider === 'azure' || type.startsWith('azure_') ? (
+      <AzureNsgIcon size={size} className={className} />
+    ) : (
+      <AwsSgIcon size={size} className={className} />
+    );
+  }
+  if (type.includes('elasticache') || type.includes('redis')) {
+    return provider === 'azure' || type.startsWith('azure_') ? (
+      <AzureSqlIcon size={size} className={className} />
+    ) : (
+      <AwsRdsIcon size={size} className={className} />
+    );
+  }
+  if (type.includes('sqs') || type.includes('queue')) {
+    return <AwsLambdaIcon size={size} className={className} />;
+  }
+  if (type.includes('front_door') || type.includes('frontdoor')) {
+    return <AzureAppGatewayIcon size={size} className={className} />;
+  }
+  if (type.includes('vmss') || type.includes('scale_set')) {
+    return <AzureVmIcon size={size} className={className} />;
+  }
   if (type.includes('ebs') || type.includes('volume') || type.includes('disk')) {
     return <AwsEbsIcon size={size} className={className} />;
   }

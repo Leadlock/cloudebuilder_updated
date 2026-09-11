@@ -121,45 +121,61 @@ export function autoLayoutArchitecture(nodes: CanvasNode[], edges: CanvasEdge[])
   let currentSubnetY = VPC_START_Y + VPC_HEADER_H;
   let maxVpcWidth = 720;
 
-  for (const subnet of sortedSubnets) {
-    const children = subnetChildrenMap.get(subnet.id) || [];
-    const childCols = Math.max(1, Math.min(children.length, 3));
-    const childRows = Math.ceil(children.length / childCols) || 1;
+  // Group subnets into 3 architectural tiers: Public (1), App/Compute (2), Database/Data (3)
+  const tier1Subnets = sortedSubnets.filter(isPublicSubnet);
+  const tier3Subnets = sortedSubnets.filter((s) => !tier1Subnets.includes(s) && isDatabaseSubnet(s));
+  const tier2Subnets = sortedSubnets.filter((s) => !tier1Subnets.includes(s) && !tier3Subnets.includes(s));
 
-    const subWidth = Math.max(340, SUB_PADDING_X * 2 + childCols * LEAF_CARD_W + (childCols - 1) * LEAF_GAP_X);
-    const subHeight = Math.max(180, SUB_PADDING_Y + childRows * LEAF_CARD_H + (childRows - 1) * LEAF_GAP_Y + 25);
+  const tiers = [tier1Subnets, tier2Subnets, tier3Subnets].filter((t) => t.length > 0);
+  const SUB_GAP_X = 24;
 
-    const subX = VPC_START_X + VPC_PADDING_X;
-    const subY = currentSubnetY;
+  for (const tier of tiers) {
+    let currentTierMaxH = 180;
+    let tierTotalW = 0;
 
-    subnetDimensions.set(subnet.id, { x: subX, y: subY, width: subWidth, height: subHeight });
+    tier.forEach((subnet, colIdx) => {
+      const children = subnetChildrenMap.get(subnet.id) || [];
+      const childCols = Math.max(1, Math.min(children.length, 2));
+      const childRows = Math.ceil(children.length / childCols) || 1;
 
-    // Position children inside subnet
-    children.forEach((child, idx) => {
-      const col = idx % childCols;
-      const row = Math.floor(idx / childCols);
-      const childX = subX + SUB_PADDING_X + col * (LEAF_CARD_W + LEAF_GAP_X);
-      const childY = subY + SUB_PADDING_Y + row * (LEAF_CARD_H + LEAF_GAP_Y);
+      const subWidth = Math.max(360, SUB_PADDING_X * 2 + childCols * LEAF_CARD_W + (childCols - 1) * LEAF_GAP_X);
+      const subHeight = Math.max(180, SUB_PADDING_Y + childRows * LEAF_CARD_H + (childRows - 1) * LEAF_GAP_Y + 25);
 
+      const subX = VPC_START_X + VPC_PADDING_X + colIdx * (subWidth + SUB_GAP_X);
+      const subY = currentSubnetY;
+
+      currentTierMaxH = Math.max(currentTierMaxH, subHeight);
+      tierTotalW = Math.max(tierTotalW, (colIdx + 1) * subWidth + colIdx * SUB_GAP_X);
+
+      subnetDimensions.set(subnet.id, { x: subX, y: subY, width: subWidth, height: subHeight });
+
+      // Position children inside subnet
+      children.forEach((child, idx) => {
+        const col = idx % childCols;
+        const row = Math.floor(idx / childCols);
+        const childX = subX + SUB_PADDING_X + col * (LEAF_CARD_W + LEAF_GAP_X);
+        const childY = subY + SUB_PADDING_Y + row * (LEAF_CARD_H + LEAF_GAP_Y);
+
+        updatedNodes.push({
+          ...child,
+          position: { x: childX, y: childY },
+          groupId: subnet.id,
+        });
+      });
+
+      // Add updated subnet node
+      const primaryVpc = vpcNodes[0];
       updatedNodes.push({
-        ...child,
-        position: { x: childX, y: childY },
-        groupId: subnet.id,
+        ...subnet,
+        position: { x: subX, y: subY },
+        width: subWidth,
+        height: subHeight,
+        groupId: primaryVpc ? primaryVpc.id : subnet.groupId,
       });
     });
 
-    // Add updated subnet node
-    const primaryVpc = vpcNodes[0];
-    updatedNodes.push({
-      ...subnet,
-      position: { x: subX, y: subY },
-      width: subWidth,
-      height: subHeight,
-      groupId: primaryVpc ? primaryVpc.id : subnet.groupId,
-    });
-
-    maxVpcWidth = Math.max(maxVpcWidth, subWidth + VPC_PADDING_X * 2);
-    currentSubnetY += subHeight + SUB_GAP_Y;
+    maxVpcWidth = Math.max(maxVpcWidth, tierTotalW + VPC_PADDING_X * 2);
+    currentSubnetY += currentTierMaxH + SUB_GAP_Y;
   }
 
   // Layout VPC container
