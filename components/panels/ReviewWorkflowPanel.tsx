@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
 import { ApiReviewService } from '@/lib/services/ApiReviewService';
 import type { ArchitectureReview } from '@/lib/services/ArchitectureReviewService';
+import { formatCurrency } from '@/lib/currency/formatter';
 import {
   CheckCircle2,
   XCircle,
@@ -16,7 +17,8 @@ import {
   MessageSquare,
   ShieldAlert,
   Loader2,
-  DollarSign
+  DollarSign,
+  Coins
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -30,6 +32,28 @@ export default function ReviewWorkflowPanel() {
   const [comments, setComments] = useState('');
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const activeCurrency = state.displayCurrency || 'USD';
+  const [exchangeRate, setExchangeRate] = useState<number>(1.0);
+
+  useEffect(() => {
+    if (activeCurrency === 'USD') {
+      setExchangeRate(1.0);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/currency/rates?from=USD&to=${activeCurrency}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.ok && data.data?.rate?.rate) {
+          setExchangeRate(data.data.rate.rate);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCurrency]);
+
   const currentUser = (state as any).currentUser ?? {
     id: 'usr-admin-1',
     role: 'admin',
@@ -38,22 +62,42 @@ export default function ReviewWorkflowPanel() {
   };
   const isAdmin = currentUser.role === 'admin';
 
+  const formatErrorMessage = (err: any, fallback = 'An error occurred'): string => {
+    if (!err) return fallback;
+    if (typeof err === 'string') return err;
+    if (typeof err.message === 'string' && err.message !== '[object Object]') return err.message;
+    if (err.error) {
+      if (typeof err.error === 'string') return err.error;
+      if (typeof err.error === 'object' && err.error !== null) {
+        return err.error.message || err.error.code || JSON.stringify(err.error);
+      }
+    }
+    try {
+      const str = JSON.stringify(err);
+      return str !== '{}' ? str : fallback;
+    } catch {
+      return fallback;
+    }
+  };
+
   const fetchReviews = async () => {
     if (!activeProject) return;
     setLoading(true);
     try {
-      const data = await ApiReviewService.getReviews(activeProject.id, state.activeEnvironment);
-      setReviews(data.reviews);
-      setLatestReview(data.latest);
+      const data = await ApiReviewService.getReviews(activeProject.id, state.activeEnvironment, currentUser);
+      setReviews(data.reviews || []);
+      setLatestReview(data.latest || null);
     } catch (err: any) {
-      console.warn('Failed to fetch reviews:', err.message);
+      console.warn('Failed to fetch reviews:', formatErrorMessage(err));
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchReviews();
+    Promise.resolve().then(() => {
+      fetchReviews();
+    });
   }, [activeProject?.id, state.activeEnvironment]);
 
   if (!activeProject) {
@@ -68,9 +112,17 @@ export default function ReviewWorkflowPanel() {
     setActionLoading(true);
     setMsg(null);
     try {
+      const currentEnvState = activeProject.environments?.[state.activeEnvironment];
+      const nodesToReview = (state.activeEnvironment === 'production' || !currentEnvState?.nodes?.length)
+        ? activeProject.nodes
+        : currentEnvState.nodes;
+      const edgesToReview = (state.activeEnvironment === 'production' || !currentEnvState?.edges?.length)
+        ? activeProject.edges
+        : currentEnvState.edges;
+
       const summary = {
-        nodeCount: activeProject.nodes.length,
-        edgeCount: activeProject.edges.length,
+        nodeCount: nodesToReview.length,
+        edgeCount: edgesToReview.length,
         criticalIssuesCount: (activeProject as any).securityScore < 70 ? 1 : 0,
         estimatedMonthlyCost: activeProject.estimatedMonthlyCost || 0,
       };
@@ -78,16 +130,17 @@ export default function ReviewWorkflowPanel() {
       const newReview = await ApiReviewService.submitReview(
         activeProject.id,
         state.activeEnvironment,
-        activeProject.nodes,
-        activeProject.edges,
-        summary
+        nodesToReview,
+        edgesToReview,
+        summary,
+        currentUser
       );
 
       setLatestReview(newReview);
       setReviews((prev) => [newReview, ...prev]);
       setMsg({ type: 'success', text: 'Architecture successfully submitted for review!' });
     } catch (err: any) {
-      setMsg({ type: 'error', text: err.message });
+      setMsg({ type: 'error', text: formatErrorMessage(err, 'Failed to submit architecture for review.') });
     } finally {
       setActionLoading(false);
     }
@@ -98,12 +151,17 @@ export default function ReviewWorkflowPanel() {
     setActionLoading(true);
     setMsg(null);
     try {
-      const updated = await ApiReviewService.approveReview(activeProject.id, latestReview.id, comments || 'Approved for deployment');
+      const updated = await ApiReviewService.approveReview(
+        activeProject.id,
+        latestReview.id,
+        comments || 'Approved for deployment',
+        currentUser
+      );
       setLatestReview(updated);
       setReviews((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
       setMsg({ type: 'success', text: 'Architecture approved for deployment!' });
     } catch (err: any) {
-      setMsg({ type: 'error', text: err.message });
+      setMsg({ type: 'error', text: formatErrorMessage(err, 'Failed to approve review.') });
     } finally {
       setActionLoading(false);
     }
@@ -118,12 +176,12 @@ export default function ReviewWorkflowPanel() {
     setActionLoading(true);
     setMsg(null);
     try {
-      const updated = await ApiReviewService.rejectReview(activeProject.id, latestReview.id, comments);
+      const updated = await ApiReviewService.rejectReview(activeProject.id, latestReview.id, comments, currentUser);
       setLatestReview(updated);
       setReviews((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
       setMsg({ type: 'success', text: 'Review marked as rejected.' });
     } catch (err: any) {
-      setMsg({ type: 'error', text: err.message });
+      setMsg({ type: 'error', text: formatErrorMessage(err, 'Failed to reject review.') });
     } finally {
       setActionLoading(false);
     }
@@ -138,12 +196,12 @@ export default function ReviewWorkflowPanel() {
     setActionLoading(true);
     setMsg(null);
     try {
-      const updated = await ApiReviewService.requestChanges(activeProject.id, latestReview.id, comments);
+      const updated = await ApiReviewService.requestChanges(activeProject.id, latestReview.id, comments, currentUser);
       setLatestReview(updated);
       setReviews((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
       setMsg({ type: 'success', text: 'Changes requested from architect.' });
     } catch (err: any) {
-      setMsg({ type: 'error', text: err.message });
+      setMsg({ type: 'error', text: formatErrorMessage(err, 'Failed to request changes.') });
     } finally {
       setActionLoading(false);
     }
@@ -188,7 +246,7 @@ export default function ReviewWorkflowPanel() {
           )}
         >
           {msg.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <XCircle className="w-4 h-4 shrink-0" />}
-          <span>{msg.text}</span>
+          <span>{typeof msg.text === 'object' ? ((msg.text as any)?.message || JSON.stringify(msg.text)) : String(msg.text)}</span>
         </div>
       )}
 
@@ -248,8 +306,15 @@ export default function ReviewWorkflowPanel() {
                   <span className="text-slate-200 font-medium">{latestReview.summary.nodeCount} items</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block text-[10px]">Estimated Cost</span>
-                  <span className="text-slate-200 font-medium">${latestReview.summary.estimatedMonthlyCost.toFixed(2)}/mo</span>
+                  <span className="text-slate-500 block text-[10px]">Estimated Cost ({activeCurrency})</span>
+                  <span className="text-slate-200 font-medium">
+                    {formatCurrency(latestReview.summary.estimatedMonthlyCost * (activeCurrency === 'USD' ? 1.0 : exchangeRate), activeCurrency)}/mo
+                  </span>
+                  {activeCurrency !== 'USD' && (
+                    <span className="text-slate-500 text-[10px] block font-mono">
+                      ≈ {formatCurrency(latestReview.summary.estimatedMonthlyCost, 'USD')}/mo
+                    </span>
+                  )}
                 </div>
               </div>
             )}
@@ -350,10 +415,10 @@ export default function ReviewWorkflowPanel() {
                       </span>
                     </div>
                     <p className="text-[10px] text-slate-500 font-mono">
-                      {new Date(r.submittedAt).toLocaleTimeString()} · {r.environment}
+                      {new Date(r.submittedAt).toLocaleTimeString()} · {r.environment} · {formatCurrency((r.summary?.estimatedMonthlyCost ?? 0) * (activeCurrency === 'USD' ? 1.0 : exchangeRate), activeCurrency)}/mo
                     </p>
                     {r.reviewerComments && (
-                      <p className="text-[11px] text-slate-400 italic">"{r.reviewerComments}"</p>
+                      <p className="text-[11px] text-slate-400 italic">&ldquo;{r.reviewerComments}&rdquo;</p>
                     )}
                   </div>
                 ))

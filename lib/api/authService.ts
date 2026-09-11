@@ -44,8 +44,14 @@ const PRESET_USERS: (AuthUser & { passwordHash: string })[] = [
   },
 ];
 
-// In-memory active session registry
-const SESSIONS = new Map<string, UserSession>();
+// In-memory active session registry (attached to globalThis to survive Next.js dev rebuilds)
+const globalForAuth = globalThis as unknown as {
+  __cloudcraft_sessions?: Map<string, UserSession>;
+};
+const SESSIONS = globalForAuth.__cloudcraft_sessions ?? new Map<string, UserSession>();
+if (process.env.NODE_ENV !== 'production') {
+  globalForAuth.__cloudcraft_sessions = SESSIONS;
+}
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export class AuthService {
@@ -79,10 +85,32 @@ export class AuthService {
   }
 
   /**
-   * Resolve session by token, validating expiration
+   * Resolve session by token, validating expiration and self-recovering across server reloads
    */
   static getSession(token: string): UserSession | null {
-    const session = SESSIONS.get(token);
+    let session = SESSIONS.get(token);
+    if (!session && token.startsWith('cc_sess_')) {
+      try {
+        const raw = token.slice('cc_sess_'.length);
+        const decoded = Buffer.from(raw, 'base64url').toString('utf-8');
+        const [userId, createdAtStr] = decoded.split(':');
+        const createdAt = parseInt(createdAtStr, 10);
+        if (userId && !isNaN(createdAt) && Date.now() - createdAt < SESSION_TTL_MS) {
+          const user = AuthService.getUserById(userId);
+          if (user) {
+            session = {
+              token,
+              user,
+              createdAt,
+              expiresAt: createdAt + SESSION_TTL_MS,
+            };
+            SESSIONS.set(token, session);
+          }
+        }
+      } catch {
+        // ignore invalid token format
+      }
+    }
     if (!session) return null;
     if (Date.now() > session.expiresAt) {
       SESSIONS.delete(token);

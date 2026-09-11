@@ -24,16 +24,22 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
   useEffect(() => {
     if (!node || !activeProject) return;
     let isCancelled = false;
-    setLoadingWaf(true);
-    apiWellArchitectedService.getResourceFindings(node.id, activeProject.id).then((findings) => {
-      if (!isCancelled) {
-        setWafFindings(findings || []);
-        setLoadingWaf(false);
-      }
-    }).catch(() => {
-      if (!isCancelled) {
-        setWafFindings([]);
-        setLoadingWaf(false);
+    Promise.resolve().then(async () => {
+      if (isCancelled) return;
+      setLoadingWaf(true);
+      try {
+        const findings = await apiWellArchitectedService.getResourceFindings(node.id, activeProject.id);
+        if (!isCancelled) {
+          setWafFindings(findings || []);
+        }
+      } catch {
+        if (!isCancelled) {
+          setWafFindings([]);
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoadingWaf(false);
+        }
       }
     });
     return () => { isCancelled = true; };

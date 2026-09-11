@@ -44,3 +44,12 @@ node_modules/
 dist/
 .env
 .cache/
+
+# AI tool skill copies
+.claude/
+.cursor/
+.devin/
+
+# logs & test outputs
+*.log
+qa_screenshots/

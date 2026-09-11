@@ -133,7 +133,9 @@ export default function WellArchitectedReview() {
   };
 
   useEffect(() => {
-    fetchAssessment();
+    Promise.resolve().then(() => {
+      fetchAssessment();
+    });
   }, [activeProject?.id, state.activeEnvironment]);
 
   // Filtered findings
