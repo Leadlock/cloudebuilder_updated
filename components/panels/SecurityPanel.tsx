@@ -92,6 +92,8 @@ export default function SecurityPanel() {
 
   if (!activeProject) return null;
 
+  const isStale = state.architectureVersion > state.lastSavedVersion;
+
   const counts = {
     critical: issues.filter((i) => i.severity === 'critical').length,
     high:     issues.filter((i) => i.severity === 'high').length,

@@ -51,8 +51,7 @@ export default function AnalyzePanel() {
       const waRes = wa as WaAssessment | null;
       if (waRes) {
         setWaScore(waRes.overallScore);
-        const count = Object.values(waRes.pillars).reduce((acc, p) => acc + p.criticalCount + p.highCount + p.mediumCount + p.lowCount, 0);
-        setWaFindings(count);
+        setWaFindings(waRes.findings.length);
       }
       setLoading(false);
     });
