@@ -131,19 +131,61 @@ function reducer(state: AppState, action: Action): AppState {
     }
 
     // ── Internal: replace project list from API ────────────────────────────────
-    case '_LOAD_PROJECTS':
-      return { ...state, projects: action.projects, apiLoaded: true };
+    case '_LOAD_PROJECTS': {
+      const mergedProjects = action.projects.map((incoming) => {
+        const existing = state.projects.find((p) => p.id === incoming.id);
+        if (existing && existing.nodes.length > 0 && incoming.nodes.length === 0) {
+          return {
+            ...incoming,
+            nodes: existing.nodes,
+            edges: existing.edges,
+            resourceCount: existing.resourceCount || incoming.resourceCount,
+            environments: existing.environments,
+            securityScore: existing.securityScore,
+            architectureScore: existing.architectureScore,
+            estimatedMonthlyCost: existing.estimatedMonthlyCost,
+          };
+        }
+        return incoming;
+      });
+      return { ...state, projects: mergedProjects, apiLoaded: true };
+    }
 
     // ── Internal: swap a locally-created project for the API-returned version ──
     case '_REPLACE_PROJECT': {
+      const localProject = state.projects.find((p) => p.id === action.localId);
+      const incomingNodes = action.project.nodes?.length ? action.project.nodes : (localProject?.nodes ?? []);
+      const incomingEdges = action.project.edges?.length ? action.project.edges : (localProject?.edges ?? []);
+
+      const replacementProject: Project = {
+        ...action.project,
+        nodes: incomingNodes,
+        edges: incomingEdges,
+        resourceCount: incomingNodes.length,
+        securityScore: localProject?.securityScore ?? action.project.securityScore,
+        architectureScore: localProject?.architectureScore ?? action.project.architectureScore,
+        estimatedMonthlyCost: localProject?.estimatedMonthlyCost ?? action.project.estimatedMonthlyCost,
+        environments: {
+          ...action.project.environments,
+          production: {
+            ...action.project.environments?.production,
+            id: 'production',
+            label: 'Production',
+            region: action.project.region,
+            nodes: incomingNodes,
+            edges: incomingEdges,
+          },
+        },
+      };
+
       const projects = state.projects.map((p) =>
-        p.id === action.localId ? action.project : p
+        p.id === action.localId ? replacementProject : p
       );
       const activeProjectId =
         state.activeProjectId === action.localId
           ? action.project.id
           : state.activeProjectId;
-      return { ...state, projects, activeProjectId };
+      return { ...state, projects, activeProjectId, canvasKey: state.canvasKey + 1 };
     }
 
     // ── SET_ENVIRONMENT: load that env's nodes/edges into the project ──────────
@@ -217,7 +259,9 @@ function reducer(state: AppState, action: Action): AppState {
         staging:     { id: 'staging',     label: 'Staging',     nodes: [], edges: [], region },
         development: { id: 'development', label: 'Development', nodes: [], edges: [], region },
       };
-      const scores = nodes.length > 0 ? scoreArchitecture(nodes) : { overall: 0 };
+      const scores = nodes.length > 0 ? scoreArchitecture(nodes, edges) : { overall: 0 };
+      const costs = calculateCosts(nodes);
+      const estimatedMonthlyCost = costs.reduce((acc, c) => acc + c.monthlyCost, 0);
       const newProject: Project = {
         id: `proj-${Date.now()}`,
         name: action.name,
@@ -230,7 +274,7 @@ function reducer(state: AppState, action: Action): AppState {
         resourceCount: nodes.length,
         securityScore: 100,
         architectureScore: scores.overall,
-        estimatedMonthlyCost: 0,
+        estimatedMonthlyCost,
         environment: 'production',
         region,
         versions: [],
@@ -243,6 +287,7 @@ function reducer(state: AppState, action: Action): AppState {
         activeProjectId: newProject.id,
         activeView: 'canvas',
         activeEnvironment: 'production',
+        canvasKey: state.canvasKey + 1,
       };
     }
 
@@ -602,16 +647,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const created = currentState.projects[currentState.projects.length - 1];
         if (!created) break;
         const localId = created.id;
-        _activeService.createProject(action.name, action.provider).then((apiProject) => {
-          // Replace the local placeholder with the API-returned project
-          dispatch({ type: '_REPLACE_PROJECT', localId, project: apiProject });
-          // If there are initial nodes/edges, persist the canvas too
-          if (action.nodes?.length || action.edges?.length) {
-            _activeService.saveCanvas(apiProject.id, action.nodes ?? [], action.edges ?? []).catch(() => {});
+        const initialNodes = action.nodes ?? created.nodes ?? [];
+        const initialEdges = action.edges ?? created.edges ?? [];
+        _activeService.createProject(action.name, action.provider).then(async (apiProject) => {
+          // Persist the canvas to backend if initial nodes or edges exist
+          if (initialNodes.length > 0 || initialEdges.length > 0) {
+            await _activeService.saveCanvas(apiProject.id, initialNodes, initialEdges, 'production').catch(() => {});
           }
+          const mergedProject: Project = {
+            ...apiProject,
+            nodes: initialNodes,
+            edges: initialEdges,
+            resourceCount: initialNodes.length,
+            environments: {
+              ...apiProject.environments,
+              production: {
+                ...apiProject.environments?.production,
+                id: 'production',
+                label: 'Production',
+                region: apiProject.region,
+                nodes: initialNodes,
+                edges: initialEdges,
+              },
+            },
+          };
+          // Replace the local placeholder with the API-returned project merged with initial template content
+          dispatch({ type: '_REPLACE_PROJECT', localId, project: mergedProject });
         }).catch(() => {
           // API unavailable — keep the optimistic local project as-is
         });
+        break;
+      }
+
+      case 'SET_ACTIVE_PROJECT': {
+        if (!action.id) break;
+        const targetProj = currentState.projects.find((p) => p.id === action.id);
+        if (targetProj && targetProj.nodes.length === 0) {
+          _activeService.loadCanvas(action.id, currentState.activeEnvironment).then((canvas) => {
+            if (canvas && (canvas.nodes?.length > 0 || canvas.edges?.length > 0)) {
+              dispatch({
+                type: 'SET_ENVIRONMENT_CANVAS',
+                env: currentState.activeEnvironment,
+                nodes: canvas.nodes ?? [],
+                edges: canvas.edges ?? [],
+              });
+            }
+          }).catch(() => {});
+        }
         break;
       }
 

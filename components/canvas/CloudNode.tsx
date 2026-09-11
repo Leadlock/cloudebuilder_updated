@@ -119,12 +119,14 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
       <Handle
         type="target"
         position={Position.Top}
+        id="target-top"
         className="!w-2.5 !h-2.5 !bg-slate-400 !border-2 !border-slate-900 group-hover:!bg-cyan-400 transition-colors"
         style={{ top: -5 }}
       />
       <Handle
         type="target"
         position={Position.Left}
+        id="target-left"
         className="!w-2.5 !h-2.5 !bg-slate-400 !border-2 !border-slate-900 group-hover:!bg-cyan-400 transition-colors"
         style={{ left: -5 }}
       />
@@ -205,12 +207,14 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
       <Handle
         type="source"
         position={Position.Bottom}
+        id="source-bottom"
         className="!w-2.5 !h-2.5 !bg-slate-400 !border-2 !border-slate-900 group-hover:!bg-cyan-400 transition-colors"
         style={{ bottom: -5 }}
       />
       <Handle
         type="source"
         position={Position.Right}
+        id="source-right"
         className="!w-2.5 !h-2.5 !bg-slate-400 !border-2 !border-slate-900 group-hover:!bg-cyan-400 transition-colors"
         style={{ right: -5 }}
       />

@@ -25,13 +25,19 @@ import ContainerNode from './ContainerNode';
 import CloudProviderBoundary from './CloudProviderBoundary';
 import {
   TrafficEdge,
+  NetworkFlowEdge,
+  DataFlowEdge,
   LoadBalancesEdge,
   ConnectsToEdge,
+  DatabaseConnectionEdge,
   StoresInEdge,
   ResolvesToEdge,
   AssociationEdge,
+  AssociatedWithEdge,
+  DependencyEdge,
   ReplicationEdge,
   CrossCloudEdge,
+  UnknownRelationshipEdge,
 } from './ArchitectureEdges';
 import ResourcePalette from './ResourcePalette';
 import PropertiesPanel from './PropertiesPanel';
@@ -48,15 +54,19 @@ const nodeTypes = {
 
 const edgeTypes = {
   traffic: TrafficEdge,
-  networkFlow: TrafficEdge,
+  networkFlow: NetworkFlowEdge,
+  dataFlow: DataFlowEdge,
   loadBalances: LoadBalancesEdge,
   connectsTo: ConnectsToEdge,
+  databaseConnection: DatabaseConnectionEdge,
   storesIn: StoresInEdge,
   resolvesTo: ResolvesToEdge,
   association: AssociationEdge,
-  associatedWith: AssociationEdge,
+  associatedWith: AssociatedWithEdge,
+  dependency: DependencyEdge,
   replication: ReplicationEdge,
   crossCloud: CrossCloudEdge,
+  unknownRelationship: UnknownRelationshipEdge,
 };
 
 function toReactFlowNodes(
@@ -66,16 +76,77 @@ function toReactFlowNodes(
   findingsMap?: Map<string, { critical: number; high: number; medium: number; total: number }>,
   showFindings = false
 ): Node[] {
+  let workingNodes = [...canvasNodes];
+
+  // 1. Auto-inject Cloud Provider Boundary if missing so every VPC is always inside a Cloud Box
+  const hasAwsBoundary = workingNodes.some(
+    (n) => n.resourceType === 'aws_cloud_boundary' || (n.resourceType === 'cloud_provider_boundary' && (n.provider === 'aws' || !n.provider))
+  );
+  const hasAwsNodes = workingNodes.some(
+    (n) => n.provider === 'aws' || n.resourceType.startsWith('aws_')
+  );
+
+  if (hasAwsNodes && !hasAwsBoundary) {
+    const region = (workingNodes.find((n) => n.provider === 'aws')?.config?.region as string) || 'us-east-1';
+    const awsBoundaryNode: CanvasNode = {
+      id: 'aws-cloud',
+      type: 'containerNode',
+      resourceType: 'aws_cloud_boundary',
+      provider: 'aws',
+      label: `Amazon Web Services (${region})`,
+      position: { x: 30, y: 20 },
+      config: { region },
+      width: 1240,
+      height: 940,
+    };
+    workingNodes.unshift(awsBoundaryNode);
+    workingNodes = workingNodes.map((n) => {
+      if (n.id !== 'aws-cloud' && (n.provider === 'aws' || n.resourceType.startsWith('aws_')) && !n.groupId) {
+        return { ...n, groupId: 'aws-cloud' };
+      }
+      return n;
+    });
+  }
+
+  const hasAzBoundary = workingNodes.some(
+    (n) => n.resourceType === 'azure_cloud_boundary' || (n.resourceType === 'cloud_provider_boundary' && n.provider === 'azure')
+  );
+  const hasAzNodes = workingNodes.some(
+    (n) => n.provider === 'azure' || n.resourceType.startsWith('azure_')
+  );
+
+  if (hasAzNodes && !hasAzBoundary) {
+    const region = (workingNodes.find((n) => n.provider === 'azure')?.config?.region as string) || 'eastus';
+    const azBoundaryNode: CanvasNode = {
+      id: 'az-cloud',
+      type: 'containerNode',
+      resourceType: 'azure_cloud_boundary',
+      provider: 'azure',
+      label: `Microsoft Azure (${region})`,
+      position: { x: hasAwsNodes ? 1300 : 30, y: 20 },
+      config: { region },
+      width: 1200,
+      height: 900,
+    };
+    workingNodes.unshift(azBoundaryNode);
+    workingNodes = workingNodes.map((n) => {
+      if (n.id !== 'az-cloud' && (n.provider === 'azure' || n.resourceType.startsWith('azure_')) && !n.groupId) {
+        return { ...n, groupId: 'az-cloud' };
+      }
+      return n;
+    });
+  }
+
   // Count children per container
   const childCountMap = new Map<string, number>();
-  for (const n of canvasNodes) {
+  for (const n of workingNodes) {
     if (n.groupId) {
       childCountMap.set(n.groupId, (childCountMap.get(n.groupId) || 0) + 1);
     }
   }
 
   // Order: Boundary (-3) -> VPC/VNet (-2) -> Subnet (-1) -> Leaf nodes (1)
-  const sorted = [...canvasNodes].sort((a, b) => {
+  const sorted = [...workingNodes].sort((a, b) => {
     const aIsBoundary = a.resourceType === 'cloud_provider_boundary' || a.resourceType === 'aws_cloud_boundary' || a.resourceType === 'azure_cloud_boundary';
     const bIsBoundary = b.resourceType === 'cloud_provider_boundary' || b.resourceType === 'aws_cloud_boundary' || b.resourceType === 'azure_cloud_boundary';
     if (aIsBoundary && !bIsBoundary) return -1;
@@ -93,15 +164,15 @@ function toReactFlowNodes(
     return 0;
   });
 
-  return sorted.map((n) => {
+  const initialReactFlowNodes: Node[] = sorted.map((n) => {
     const def = getResourceDefinition(n.resourceType);
     const isBoundary = n.resourceType === 'cloud_provider_boundary' || n.resourceType === 'aws_cloud_boundary' || n.resourceType === 'azure_cloud_boundary';
     const isContainer = def?.isContainer === true || isBoundary;
     const isVpc = n.resourceType === 'aws_vpc' || n.resourceType === 'azure_vnet' || n.resourceType === 'azure_resource_group';
     const isSubnet = n.resourceType === 'aws_subnet' || n.resourceType === 'azure_subnet';
 
-    const width = n.width || def?.defaultWidth || (isBoundary ? 880 : isVpc ? 780 : isSubnet ? 340 : 180);
-    const height = n.height || def?.defaultHeight || (isBoundary ? 560 : isVpc ? 500 : isSubnet ? 220 : 100);
+    const width = n.width || def?.defaultWidth || (isBoundary ? 980 : isVpc ? 840 : isSubnet ? 380 : 180);
+    const height = n.height || def?.defaultHeight || (isBoundary ? 620 : isVpc ? 520 : isSubnet ? 200 : 100);
 
     const nodeType = isBoundary ? 'cloudProviderNode' : isContainer ? 'containerNode' : 'cloudNode';
 
@@ -129,27 +200,205 @@ function toReactFlowNodes(
       zIndex: isBoundary ? -3 : isVpc ? -2 : isSubnet ? -1 : 1,
     };
   });
+
+  // Automatically compute and expand container bounds around child elements on initial load
+  return recalculateContainerBounds(initialReactFlowNodes);
 }
 
-function toReactFlowEdges(canvasEdges: CanvasEdge[]): Edge[] {
-  return canvasEdges.map((e) => {
-    const relType = e.relationshipType || (e.edgeType as string);
+function recalculateContainerBounds(allNodes: Node[]): Node[] {
+  let updated = [...allNodes];
+
+  // 1. Subnets around leaf children
+  const subnets = updated.filter(
+    (n) => n.data.resourceType === 'aws_subnet' || n.data.resourceType === 'azure_subnet'
+  );
+
+  for (const subnet of subnets) {
+    const children = updated.filter((n) => n.data.groupId === subnet.id);
+    if (children.length > 0) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const c of children) {
+        const cw = c.data.width || 180;
+        const ch = c.data.height || 100;
+        minX = Math.min(minX, c.position.x);
+        minY = Math.min(minY, c.position.y);
+        maxX = Math.max(maxX, c.position.x + cw);
+        maxY = Math.max(maxY, c.position.y + ch);
+      }
+      const padX = 35;
+      const padTop = 65; // Guarantees 65px clear margin below subnet header and badges
+      const padBottom = 35;
+
+      const newX = Math.min(subnet.position.x, minX - padX);
+      const newY = Math.min(subnet.position.y, minY - padTop);
+      const finalW = Math.max(subnet.data.width || 380, (maxX - newX) + padX);
+      const finalH = Math.max(subnet.data.height || 200, (maxY - newY) + padBottom);
+
+      updated = updated.map((n) =>
+        n.id === subnet.id
+          ? {
+              ...n,
+              position: { x: newX, y: newY },
+              data: { ...n.data, width: finalW, height: finalH, childCount: children.length },
+            }
+          : n
+      );
+    }
+  }
+
+  // 2. VPC / VNets around subnets and direct children
+  const vpcs = updated.filter(
+    (n) =>
+      n.data.resourceType === 'aws_vpc' ||
+      n.data.resourceType === 'azure_vnet' ||
+      n.data.resourceType === 'azure_resource_group'
+  );
+
+  for (const vpc of vpcs) {
+    const contained = updated.filter(
+      (n) =>
+        n.data.groupId === vpc.id ||
+        (n.data.groupId && updated.some((sub) => sub.id === n.data.groupId && sub.data.groupId === vpc.id))
+    );
+
+    if (contained.length > 0) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const c of contained) {
+        const cw = c.data.width || 180;
+        const ch = c.data.height || 100;
+        minX = Math.min(minX, c.position.x);
+        minY = Math.min(minY, c.position.y);
+        maxX = Math.max(maxX, c.position.x + cw);
+        maxY = Math.max(maxY, c.position.y + ch);
+      }
+      const padX = 45;
+      const padTop = 75; // Guarantees 75px clear margin below VPC header
+      const padBottom = 45;
+
+      const newX = Math.min(vpc.position.x, minX - padX);
+      const newY = Math.min(vpc.position.y, minY - padTop);
+      const finalW = Math.max(vpc.data.width || 840, (maxX - newX) + padX);
+      const finalH = Math.max(vpc.data.height || 520, (maxY - newY) + padBottom);
+
+      updated = updated.map((n) =>
+        n.id === vpc.id
+          ? {
+              ...n,
+              position: { x: newX, y: newY },
+              data: { ...n.data, width: finalW, height: finalH, childCount: contained.length },
+            }
+          : n
+      );
+    }
+  }
+
+  // 3. Cloud Provider Boundaries around VPCs and Regional Services
+  const boundaries = updated.filter(
+    (n) =>
+      n.data.resourceType === 'cloud_provider_boundary' ||
+      n.data.resourceType === 'aws_cloud_boundary' ||
+      n.data.resourceType === 'azure_cloud_boundary'
+  );
+
+  for (const b of boundaries) {
+    const bProvider = b.data.provider ?? (b.data.resourceType.includes('azure') ? 'azure' : 'aws');
+    const contained = updated.filter((n) => {
+      if (n.id === b.id) return false;
+      const nProvider = n.data.provider ?? (n.data.resourceType?.startsWith('azure_') ? 'azure' : 'aws');
+      return nProvider === bProvider || n.data.groupId === b.id;
+    });
+
+    if (contained.length > 0) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const c of contained) {
+        const cw = c.data.width || 180;
+        const ch = c.data.height || 100;
+        minX = Math.min(minX, c.position.x);
+        minY = Math.min(minY, c.position.y);
+        maxX = Math.max(maxX, c.position.x + cw);
+        maxY = Math.max(maxY, c.position.y + ch);
+      }
+      const padX = 50;
+      const padTop = 85; // Guarantees 85px clear margin below Cloud Provider header
+      const padBottom = 55;
+
+      const newX = Math.min(b.position.x, minX - padX);
+      const newY = Math.min(b.position.y, minY - padTop);
+      const finalW = Math.max(b.data.width || 1050, (maxX - newX) + padX);
+      const finalH = Math.max(b.data.height || 650, (maxY - newY) + padBottom);
+
+      updated = updated.map((n) =>
+        n.id === b.id
+          ? {
+              ...n,
+              position: { x: newX, y: newY },
+              data: {
+                ...n.data,
+                width: finalW,
+                height: finalH,
+                resourceCount: contained.length,
+              },
+            }
+          : n
+      );
+    }
+  }
+
+  return updated;
+}
+
+function toReactFlowEdges(canvasEdges: CanvasEdge[], canvasNodes?: CanvasNode[]): Edge[] {
+  const nodeMap = canvasNodes ? new Map(canvasNodes.map((n) => [n.id, n])) : null;
+  const seenEdgeKeys = new Set<string>();
+  const result: Edge[] = [];
+
+  for (const e of canvasEdges) {
+    // Exclude orphaned edges if canvasNodes is known
+    if (nodeMap && (!nodeMap.has(e.source) || !nodeMap.has(e.target))) {
+      continue;
+    }
+
+    const relType = e.relationshipType || (e.edgeType as string) || 'NETWORK_FLOW';
+    // Containment is purely visual container nesting, not drawn as a network arrow
+    if (relType === 'CONTAINS') {
+      continue;
+    }
+
+    // Deduplication check
+    const dedupKey = `${e.source}:${relType}:${e.target}`;
+    if (seenEdgeKeys.has(dedupKey)) {
+      continue;
+    }
+    seenEdgeKeys.add(dedupKey);
+
     let type = 'traffic';
     let color = '#38BDF8';
 
-    if (relType === 'LOAD_BALANCES') {
+    if (e.validationStatus === 'invalid' || relType === 'UNKNOWN') {
+      type = 'unknownRelationship';
+      color = '#F43F5E';
+    } else if (relType === 'LOAD_BALANCES') {
       type = 'loadBalances';
       color = '#818CF8';
-    } else if (relType === 'CONNECTS_TO') {
+    } else if (relType === 'CONNECTS_TO' || relType === 'DATABASE_CONNECTION') {
       type = 'connectsTo';
       color = '#10B981';
     } else if (relType === 'STORES_IN') {
       type = 'storesIn';
       color = '#14B8A6';
+    } else if (relType === 'DATA_FLOW') {
+      type = 'dataFlow';
+      color = '#06B6D4';
     } else if (relType === 'RESOLVES_TO') {
       type = 'resolvesTo';
       color = '#38BDF8';
-    } else if (relType === 'ASSOCIATED_WITH' || relType === 'security' || relType === 'management') {
+    } else if (
+      relType === 'ASSOCIATED_WITH' ||
+      relType === 'DEPENDS_ON' ||
+      relType === 'LOGICAL_DEPENDENCY' ||
+      relType === 'security' ||
+      relType === 'management'
+    ) {
       type = 'association';
       color = '#94A3B8';
     } else if (relType === 'REPLICATES_TO') {
@@ -162,13 +411,36 @@ function toReactFlowEdges(canvasEdges: CanvasEdge[]): Edge[] {
 
     const isAssociation = type === 'association';
 
-    return {
-      id: e.id,
+    // Smart Handle selection to avoid looping lines
+    let sourceHandle: string | undefined = undefined;
+    let targetHandle: string | undefined = undefined;
+    if (nodeMap) {
+      const srcNode = nodeMap.get(e.source);
+      const tgtNode = nodeMap.get(e.target);
+      if (srcNode && tgtNode) {
+        const dx = tgtNode.position.x - srcNode.position.x;
+        const dy = tgtNode.position.y - srcNode.position.y;
+        if (Math.abs(dx) >= Math.abs(dy)) {
+          sourceHandle = dx >= 0 ? 'source-right' : 'source-bottom';
+          targetHandle = dx >= 0 ? 'target-left' : 'target-top';
+        } else {
+          sourceHandle = dy >= 0 ? 'source-bottom' : 'source-right';
+          targetHandle = dy >= 0 ? 'target-top' : 'target-left';
+        }
+      }
+    }
+
+    const deterministicId = e.id && e.id.includes(':') ? e.id : dedupKey;
+
+    result.push({
+      id: deterministicId,
       source: e.source,
       target: e.target,
+      sourceHandle,
+      targetHandle,
       label: e.label,
       type,
-      animated: !isAssociation,
+      animated: !isAssociation && type !== 'unknownRelationship',
       data: {
         relationshipType: e.relationshipType,
         protocol: e.protocol,
@@ -187,8 +459,10 @@ function toReactFlowEdges(canvasEdges: CanvasEdge[]): Edge[] {
         height: 14,
       },
       labelStyle: { fontSize: 10, fill: type === 'crossCloud' ? '#FCD34D' : '#CBD5E1', fontFamily: 'monospace' },
-    };
-  });
+    });
+  }
+
+  return result;
 }
 
 export default function InfraCanvas() {
@@ -221,7 +495,7 @@ export default function InfraCanvas() {
   const redoStack = useRef<{ nodes: Node[]; edges: Edge[] }[]>([]);
 
   const initialNodes = activeProject ? toReactFlowNodes(activeProject.nodes) : [];
-  const initialEdges = activeProject ? toReactFlowEdges(activeProject.edges) : [];
+  const initialEdges = activeProject ? toReactFlowEdges(activeProject.edges, activeProject.nodes) : [];
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -281,16 +555,17 @@ export default function InfraCanvas() {
 
   useEffect(() => {
     if (!activeProject) return;
-    if (
-      activeProject.id !== prevProjectRef.current ||
-      state.activeEnvironment !== prevEnvRef.current ||
-      state.canvasKey !== prevCanvasKey.current
-    ) {
+    const projectChanged = activeProject.id !== prevProjectRef.current;
+    const envChanged = state.activeEnvironment !== prevEnvRef.current;
+    const keyChanged = state.canvasKey !== prevCanvasKey.current;
+    const nodesCountMismatch = activeProject.nodes.length > 0 && nodes.length === 0;
+
+    if (projectChanged || envChanged || keyChanged || nodesCountMismatch) {
       prevProjectRef.current = activeProject.id;
       prevEnvRef.current = state.activeEnvironment;
       prevCanvasKey.current = state.canvasKey;
       const envNodes = toReactFlowNodes(activeProject.nodes);
-      const envEdges = toReactFlowEdges(activeProject.edges);
+      const envEdges = toReactFlowEdges(activeProject.edges, activeProject.nodes);
       setNodes(envNodes);
       setEdges(envEdges);
       setSelectedNodeId(null);
@@ -298,8 +573,14 @@ export default function InfraCanvas() {
       redoStack.current = [];
       setCanUndo(false);
       setCanRedo(false);
+
+      if (reactFlowInstance.current && envNodes.length > 0) {
+        setTimeout(() => {
+          reactFlowInstance.current?.fitView({ padding: 0.15, duration: 300 });
+        }, 80);
+      }
     }
-  }, [activeProject, state.activeEnvironment, state.canvasKey, setNodes, setEdges]);
+  }, [activeProject, state.activeEnvironment, state.canvasKey, setNodes, setEdges, nodes.length]);
 
   // ── History helpers ──────────────────────────────────────────────────────────
   const pushHistory = useCallback((n: Node[], e: Edge[]) => {
@@ -371,16 +652,33 @@ export default function InfraCanvas() {
         height: n.data.height ?? existing?.height,
       } as CanvasNode;
     });
-    const ce = resolvedEdges.map((e) => {
-      const existing = activeProject?.edges.find((ce) => ce.id === e.id);
+    const validNodeIdSet = new Set(cn.map((n) => n.id));
+    const seenEdgeKeys = new Set<string>();
+    const ce: CanvasEdge[] = [];
+
+    for (const e of resolvedEdges) {
+      if (!validNodeIdSet.has(e.source) || !validNodeIdSet.has(e.target)) {
+        continue;
+      }
+      const existing = activeProject?.edges.find((item) => item.id === e.id);
       const data = (e.data || {}) as Record<string, unknown>;
-      return {
-        id: e.id,
+      const relType = (data.relationshipType as RelationshipType) || existing?.relationshipType || 'NETWORK_FLOW';
+      if (relType === 'CONTAINS') {
+        continue;
+      }
+      const key = `${e.source}:${relType}:${e.target}`;
+      if (seenEdgeKeys.has(key)) {
+        continue;
+      }
+      seenEdgeKeys.add(key);
+
+      ce.push({
+        id: e.id && e.id.includes(':') ? e.id : key,
         source: e.source,
         target: e.target,
         label: e.label as string | undefined,
         edgeType: (e.type as CanvasEdge['edgeType']) || existing?.edgeType || 'network',
-        relationshipType: (data.relationshipType as RelationshipType) || existing?.relationshipType,
+        relationshipType: relType,
         protocol: (data.protocol as string) || existing?.protocol,
         port: (data.port as string | number) || existing?.port,
         networkScope: (data.networkScope as any) || existing?.networkScope,
@@ -388,8 +686,8 @@ export default function InfraCanvas() {
         inferred: (data.inferred as boolean) ?? existing?.inferred ?? false,
         validationStatus: (data.validationStatus as any) || existing?.validationStatus || 'valid',
         reason: (data.reason as string) || existing?.reason,
-      } as CanvasEdge;
-    });
+      });
+    }
     dispatch({ type: 'UPDATE_CANVAS', nodes: cn, edges: ce });
   }, [activeProject, dispatch, nodes, edges]);
 
@@ -452,16 +750,23 @@ export default function InfraCanvas() {
     if (relType === 'LOAD_BALANCES') {
       edgeReactType = 'loadBalances';
       color = '#818CF8';
-    } else if (relType === 'CONNECTS_TO') {
+    } else if (relType === 'CONNECTS_TO' || relType === 'DATABASE_CONNECTION') {
       edgeReactType = 'connectsTo';
       color = '#10B981';
     } else if (relType === 'STORES_IN') {
       edgeReactType = 'storesIn';
       color = '#14B8A6';
+    } else if (relType === 'DATA_FLOW') {
+      edgeReactType = 'dataFlow';
+      color = '#06B6D4';
     } else if (relType === 'RESOLVES_TO') {
       edgeReactType = 'resolvesTo';
       color = '#38BDF8';
-    } else if (relType === 'ASSOCIATED_WITH') {
+    } else if (
+      relType === 'ASSOCIATED_WITH' ||
+      relType === 'DEPENDS_ON' ||
+      relType === 'LOGICAL_DEPENDENCY'
+    ) {
       edgeReactType = 'association';
       color = '#94A3B8';
     } else if (relType === 'REPLICATES_TO') {
@@ -473,11 +778,33 @@ export default function InfraCanvas() {
     }
 
     const label = validation.label || (validation.port ? `${validation.protocol || 'TCP'} / ${validation.port}` : undefined);
+    const deterministicEdgeId = `${connection.source}:${relType}:${connection.target}`;
+
+    // Prevent duplicate edges
+    if (edges.some((e) => e.id === deterministicEdgeId || (e.source === connection.source && e.target === connection.target && e.data?.relationshipType === relType))) {
+      return;
+    }
+
+    const dx = targetNode.position.x - sourceNode.position.x;
+    const dy = targetNode.position.y - sourceNode.position.y;
+    let sourceHandle = connection.sourceHandle;
+    let targetHandle = connection.targetHandle;
+    if (!sourceHandle || !targetHandle) {
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        sourceHandle = dx >= 0 ? 'source-right' : 'source-bottom';
+        targetHandle = dx >= 0 ? 'target-left' : 'target-top';
+      } else {
+        sourceHandle = dy >= 0 ? 'source-bottom' : 'source-right';
+        targetHandle = dy >= 0 ? 'target-top' : 'target-left';
+      }
+    }
 
     const newEdges = addEdge(
       {
         ...connection,
-        id: `edge-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        id: deterministicEdgeId,
+        sourceHandle,
+        targetHandle,
         type: edgeReactType,
         label,
         animated: edgeReactType !== 'association',
@@ -742,17 +1069,27 @@ export default function InfraCanvas() {
 
     // If container node position changes, shift ALL descendants (children & grandchildren)
     const positionChanges = changes.filter((c): c is NodePositionChange => c.type === 'position' && !!c.position);
+    const changingNodeIds = new Set(positionChanges.map((c) => c.id));
     for (const change of positionChanges) {
       const targetNode = nodes.find((n) => n.id === change.id);
-      if (targetNode?.type === 'containerNode' && change.position) {
+      const isContainer =
+        targetNode?.type === 'containerNode' ||
+        targetNode?.type === 'cloudProviderNode' ||
+        targetNode?.data.resourceType?.includes('vpc') ||
+        targetNode?.data.resourceType?.includes('vnet') ||
+        targetNode?.data.resourceType?.includes('boundary');
+
+      if (targetNode && isContainer && change.position) {
         const deltaX = change.position.x - targetNode.position.x;
         const deltaY = change.position.y - targetNode.position.y;
         if (deltaX !== 0 || deltaY !== 0) {
           const descendants = getDescendantIds(change.id, nodes);
-          if (descendants.size > 0) {
+          const toShift = Array.from(descendants).filter((id) => !changingNodeIds.has(id));
+          if (toShift.length > 0) {
+            const shiftSet = new Set(toShift);
             setNodes((currentNodes) =>
               currentNodes.map((n) => {
-                if (descendants.has(n.id)) {
+                if (shiftSet.has(n.id)) {
                   return {
                     ...n,
                     position: {
@@ -778,8 +1115,11 @@ export default function InfraCanvas() {
         for (const change of movedChanges) {
           const movedNode = updated.find((n) => n.id === change.id);
           if (!movedNode) continue;
-          const isVpc = movedNode.data.resourceType?.includes('vpc') || movedNode.data.resourceType?.includes('vnet');
-          if (isVpc) continue;
+          const isVpcOrBoundary =
+            movedNode.data.resourceType?.includes('vpc') ||
+            movedNode.data.resourceType?.includes('vnet') ||
+            movedNode.data.resourceType?.includes('boundary');
+          if (isVpcOrBoundary) continue;
 
           const hit = findContainerAtPosition(movedNode.position, movedNode.data.resourceType);
           if (hit && hit.isAllowed && hit.container.id !== movedNode.id) {
@@ -795,6 +1135,8 @@ export default function InfraCanvas() {
             );
           }
         }
+        // Recalculate container bounds so containers dynamically expand/shrink safely
+        updated = recalculateContainerBounds(updated);
         return updated;
       });
       setTimeout(() => syncToStore(latestNodesRef.current), 0);
@@ -811,7 +1153,7 @@ export default function InfraCanvas() {
     const laid = autoLayoutArchitecture(canvasNodes, canvasEdges);
 
     const rfNodes = toReactFlowNodes(laid.nodes);
-    const rfEdges = toReactFlowEdges(laid.edges);
+    const rfEdges = toReactFlowEdges(laid.edges, laid.nodes);
 
     setNodes(rfNodes);
     setEdges(rfEdges);

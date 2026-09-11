@@ -144,21 +144,25 @@ const ContainerNode = memo(({ data, selected }: NodeProps<ContainerNodeData>) =>
       <Handle
         type="target"
         position={Position.Top}
+        id="target-top"
         className="!w-2.5 !h-2.5 !bg-gray-400 !border-2 !border-gray-800 hover:!bg-blue-400 transition-colors"
       />
       <Handle
         type="source"
         position={Position.Bottom}
+        id="source-bottom"
         className="!w-2.5 !h-2.5 !bg-gray-400 !border-2 !border-gray-800 hover:!bg-blue-400 transition-colors"
       />
       <Handle
         type="target"
         position={Position.Left}
+        id="target-left"
         className="!w-2.5 !h-2.5 !bg-gray-400 !border-2 !border-gray-800 hover:!bg-blue-400 transition-colors"
       />
       <Handle
         type="source"
         position={Position.Right}
+        id="source-right"
         className="!w-2.5 !h-2.5 !bg-gray-400 !border-2 !border-gray-800 hover:!bg-blue-400 transition-colors"
       />
     </div>

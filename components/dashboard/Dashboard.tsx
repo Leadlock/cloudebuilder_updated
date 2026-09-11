@@ -6,9 +6,10 @@ import {
   Cloud, LayoutGrid, Wand2, Sparkles, Upload
 } from 'lucide-react';
 import clsx from 'clsx';
-import { CloudProvider } from '@/types';
+import { CloudProvider, CanvasNode, CanvasEdge } from '@/types';
 import { formatCurrency } from '@/lib/currency/formatter';
 import { formatDate } from '@/lib/date';
+import { architectureTemplates } from '@/lib/templates';
 
 function ScoreBadge({ score }: { score: number }) {
   const color = score >= 80 ? 'text-emerald-400' : score >= 60 ? 'text-yellow-400' : 'text-red-400';
@@ -37,6 +38,7 @@ export default function Dashboard() {
   const [showNewProject, setShowNewProject] = useState(false);
   const [newName, setNewName] = useState('');
   const [newProvider, setNewProvider] = useState<CloudProvider>('aws');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('blank');
   const [tab, setTab] = useState<Tab>('all');
 
   useEffect(() => {
@@ -65,9 +67,26 @@ export default function Dashboard() {
 
   function handleCreate() {
     if (!newName.trim()) return;
-    dispatch({ type: 'CREATE_PROJECT', provider: newProvider, name: newName.trim() });
+    let initialNodes: CanvasNode[] | undefined = undefined;
+    let initialEdges: CanvasEdge[] | undefined = undefined;
+    if (selectedTemplateId && selectedTemplateId !== 'blank') {
+      const template = architectureTemplates.find((t) => t.id === selectedTemplateId);
+      if (template) {
+        const gen = template.generate({});
+        initialNodes = gen.nodes;
+        initialEdges = gen.edges;
+      }
+    }
+    dispatch({
+      type: 'CREATE_PROJECT',
+      provider: newProvider,
+      name: newName.trim(),
+      nodes: initialNodes,
+      edges: initialEdges,
+    });
     setShowNewProject(false);
     setNewName('');
+    setSelectedTemplateId('blank');
   }
 
   const quickActions = [
@@ -270,7 +289,7 @@ export default function Dashboard() {
                 <label className="text-gray-400 text-sm mb-1.5 block">Cloud Provider</label>
                 <div className="grid grid-cols-3 gap-2">
                   {(['aws', 'azure', 'multi'] as CloudProvider[]).map((p) => (
-                    <button key={p} onClick={() => setNewProvider(p)}
+                    <button key={p} onClick={() => { setNewProvider(p); setSelectedTemplateId('blank'); }}
                       className={clsx('flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-colors',
                         newProvider === p ? (p === 'aws' ? 'border-orange-500 bg-orange-900/20' : p === 'azure' ? 'border-blue-500 bg-blue-900/20' : 'border-purple-500 bg-purple-900/20') : 'border-gray-700 hover:border-gray-600'
                       )}
@@ -282,6 +301,28 @@ export default function Dashboard() {
                     </button>
                   ))}
                 </div>
+              </div>
+              <div>
+                <label className="text-gray-400 text-sm mb-1.5 block">Starting Template</label>
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => setSelectedTemplateId(e.target.value)}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                >
+                  <option value="blank">Blank Architecture (Empty Canvas)</option>
+                  {architectureTemplates
+                    .filter((t) => newProvider === 'multi' ? true : t.provider === newProvider || t.provider === 'multi')
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.resourceCount} resources, ~${t.estimatedCost}/mo)
+                      </option>
+                    ))}
+                </select>
+                {selectedTemplateId !== 'blank' && (
+                  <p className="text-xs text-blue-400 mt-1.5 leading-relaxed">
+                    {architectureTemplates.find((t) => t.id === selectedTemplateId)?.description}
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex gap-3 mt-6">

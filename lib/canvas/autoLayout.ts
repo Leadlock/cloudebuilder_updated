@@ -2,45 +2,69 @@
  * Architecture Auto-Layout Engine for CloudCraft
  *
  * Organizes cloud resources into logical architectural tiers:
- * 1. External Ingress / Gateways (Internet, IGW, Route53, ALB)
+ * 1. External Ingress / Gateways (Internet, Route53, CloudFront, WAF, IGW, Front Door)
  * 2. VPC / VNet Container boundaries
- * 3. Public Subnets (NAT, Web EC2, ALB)
- * 4. Private App Subnets (App EC2, ASG, ECS)
- * 5. Private Database Subnets (RDS, Aurora, DynamoDB)
- * 6. Regional Managed Services (S3, KMS, IAM, CloudWatch)
+ * 3. Public / Ingress Subnets (ALB, Application Gateway, NAT Gateway across AZs)
+ * 4. Private App Subnets (EC2, VMSS, ASG, ECS across AZ-A & AZ-B)
+ * 5. Private Database Subnets (RDS Multi-AZ, Azure SQL, Redis across AZs)
+ * 6. Regional Managed Services (S3, Blob Storage, KMS, CloudWatch)
+ *
+ * Provider-aware: lays out AWS and Azure independently with zero cross-provider overlaps.
+ * Multi-AZ-aware: arranges AZ-A and AZ-B subnets side-by-side in parallel columns.
  */
 
-import { CanvasNode, CanvasEdge } from '@/types';
+import { CanvasNode, CanvasEdge, RelationshipType } from '@/types';
 
 export interface LayoutResult {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
 }
 
-export function autoLayoutArchitecture(nodes: CanvasNode[], edges: CanvasEdge[]): LayoutResult {
-  if (nodes.length === 0) return { nodes, edges };
+interface ProviderLayoutContext {
+  provider: 'aws' | 'azure';
+  startX: number;
+}
+
+function layoutSingleProvider(
+  providerNodes: CanvasNode[],
+  context: ProviderLayoutContext
+): { nodes: CanvasNode[]; endX: number; maxY: number } {
+  const { provider, startX } = context;
 
   // 0. Extract existing Cloud Provider Boundaries
-  const boundaryNodes = nodes.filter(
-    (n) => n.resourceType === 'cloud_provider_boundary' || n.resourceType === 'aws_cloud_boundary' || n.resourceType === 'azure_cloud_boundary'
+  const boundaryNodes = providerNodes.filter(
+    (n) =>
+      n.resourceType === 'cloud_provider_boundary' ||
+      n.resourceType === 'aws_cloud_boundary' ||
+      n.resourceType === 'azure_cloud_boundary'
   );
-  const nonBoundaryNodes = nodes.filter((n) => !boundaryNodes.includes(n));
+  const nonBoundaryNodes = providerNodes.filter((n) => !boundaryNodes.includes(n));
 
   // 1. Classify nodes
-  const vpcNodes = nonBoundaryNodes.filter((n) => n.resourceType === 'aws_vpc' || n.resourceType === 'azure_vnet' || n.resourceType === 'azure_resource_group');
-  const subnetNodes = nonBoundaryNodes.filter((n) => n.resourceType === 'aws_subnet' || n.resourceType === 'azure_subnet');
+  const vpcNodes = nonBoundaryNodes.filter(
+    (n) =>
+      n.resourceType === 'aws_vpc' ||
+      n.resourceType === 'azure_vnet' ||
+      n.resourceType === 'azure_resource_group'
+  );
+  const subnetNodes = nonBoundaryNodes.filter(
+    (n) => n.resourceType === 'aws_subnet' || n.resourceType === 'azure_subnet'
+  );
   const leafNodes = nonBoundaryNodes.filter((n) => !vpcNodes.includes(n) && !subnetNodes.includes(n));
 
-  // Determine Subnet tiers based on config/name/children
+  const primaryVpc = vpcNodes[0];
+  const primaryBoundary = boundaryNodes[0];
+
+  // Determine Subnet tiers based on config/name
   const isPublicSubnet = (s: CanvasNode) => {
     const name = (s.label || '').toLowerCase();
     const mapPublic = s.config?.mapPublicIpOnLaunch === true;
-    return mapPublic || name.includes('public') || name.includes('dmz') || name.includes('web');
+    return mapPublic || name.includes('public') || name.includes('dmz') || name.includes('web') || name.includes('ingress');
   };
 
   const isDatabaseSubnet = (s: CanvasNode) => {
     const name = (s.label || '').toLowerCase();
-    return name.includes('db') || name.includes('data') || name.includes('database');
+    return name.includes('db') || name.includes('data') || name.includes('database') || name.includes('sql');
   };
 
   // Associate leaves to subnets
@@ -52,25 +76,29 @@ export function autoLayoutArchitecture(nodes: CanvasNode[], edges: CanvasEdge[])
   }
 
   for (const leaf of leafNodes) {
-    // Check if leaf explicitly belongs to a subnet via groupId or parentId
     const targetSubnetId = leaf.groupId || leaf.parentId;
     if (targetSubnetId && subnetChildrenMap.has(targetSubnetId)) {
       subnetChildrenMap.get(targetSubnetId)!.push(leaf);
     } else {
       // Heuristic association for auto-layout if not yet placed:
-      if (leaf.resourceType === 'aws_rds' || leaf.resourceType === 'azure_sql') {
+      if (leaf.resourceType === 'aws_rds' || leaf.resourceType === 'azure_sql' || leaf.resourceType === 'aws_elasticache' || leaf.resourceType === 'azure_redis') {
         const dbSubnet = subnetNodes.find(isDatabaseSubnet) || subnetNodes[subnetNodes.length - 1];
         if (dbSubnet) {
           subnetChildrenMap.get(dbSubnet.id)!.push({ ...leaf, groupId: dbSubnet.id });
           continue;
         }
-      } else if (leaf.resourceType === 'aws_alb' || leaf.resourceType === 'aws_nat') {
+      } else if (leaf.resourceType === 'aws_alb' || leaf.resourceType === 'azure_app_gateway' || leaf.resourceType === 'aws_nat') {
         const pubSubnet = subnetNodes.find(isPublicSubnet) || subnetNodes[0];
         if (pubSubnet) {
           subnetChildrenMap.get(pubSubnet.id)!.push({ ...leaf, groupId: pubSubnet.id });
           continue;
         }
-      } else if (leaf.resourceType === 'aws_ec2' || leaf.resourceType === 'azure_vm' || leaf.resourceType === 'aws_auto_scaling') {
+      } else if (
+        leaf.resourceType === 'aws_ec2' ||
+        leaf.resourceType === 'azure_vm' ||
+        leaf.resourceType === 'aws_auto_scaling' ||
+        leaf.resourceType === 'azure_vmss'
+      ) {
         const privSubnet = subnetNodes.find((s) => !isPublicSubnet(s) && !isDatabaseSubnet(s)) || subnetNodes[0];
         if (privSubnet) {
           subnetChildrenMap.get(privSubnet.id)!.push({ ...leaf, groupId: privSubnet.id });
@@ -81,90 +109,146 @@ export function autoLayoutArchitecture(nodes: CanvasNode[], edges: CanvasEdge[])
     }
   }
 
-  // Position layout coordinates
   const updatedNodes: CanvasNode[] = [];
-  const SUB_PADDING_X = 25;
-  const SUB_PADDING_Y = 55;
   const LEAF_CARD_W = 180;
   const LEAF_CARD_H = 100;
-  const LEAF_GAP_X = 20;
-  const LEAF_GAP_Y = 20;
 
-  // Layout Subnets and their children
-  const subnetDimensions = new Map<string, { x: number; y: number; width: number; height: number }>();
+  // Classify uncontained leaves into:
+  // 1. External Edge Ingress (Route 53, CloudFront, Front Door, WAF) -> lives in Cloud Boundary ABOVE the VPC
+  // 2. VPC Boundary Gateways (IGW, Public IP, Route Table) -> lives INSIDE VPC at top entrance
+  // 3. Regional Managed Services (S3, Blob Storage, KMS, CloudWatch) -> lives on Right Flank in Cloud Boundary
+  const edgeIngressOrder: Record<string, number> = {
+    aws_internet: 1,
+    aws_route53: 2,
+    azure_front_door: 2,
+    aws_cloudfront: 3,
+    aws_waf: 4,
+    azure_waf: 4,
+  };
 
-  // Sort subnets: Public first, App second, Database last
-  const sortedSubnets = [...subnetNodes].sort((a, b) => {
-    const aScore = isPublicSubnet(a) ? 1 : isDatabaseSubnet(a) ? 3 : 2;
-    const bScore = isPublicSubnet(b) ? 1 : isDatabaseSubnet(b) ? 3 : 2;
-    return aScore - bScore;
-  });
+  const vpcGatewayOrder: Record<string, number> = {
+    aws_igw: 1,
+    azure_public_ip: 2,
+    aws_route_table: 3,
+  };
 
-  const VPC_START_X = 80;
-  // Determine if we have top ingress nodes (Internet, CloudFront, IGW)
-  const hasInternet = uncontainedLeaves.some((n) => n.resourceType === 'aws_internet');
-  const hasCloudFront = uncontainedLeaves.some((n) => n.resourceType === 'aws_cloudfront');
-  const hasIgw = uncontainedLeaves.some((n) => n.resourceType === 'aws_igw' || n.resourceType === 'azure_public_ip');
+  const edgeIngressNodes = uncontainedLeaves
+    .filter((n) => edgeIngressOrder[n.resourceType] !== undefined)
+    .sort((a, b) => (edgeIngressOrder[a.resourceType] || 99) - (edgeIngressOrder[b.resourceType] || 99));
 
-  let vpcStartY = 60;
-  if (hasInternet && hasCloudFront) {
-    vpcStartY = 310;
-  } else if (hasInternet || hasCloudFront || hasIgw) {
-    vpcStartY = 190;
+  const vpcGatewayNodes = uncontainedLeaves
+    .filter((n) => vpcGatewayOrder[n.resourceType] !== undefined)
+    .sort((a, b) => (vpcGatewayOrder[a.resourceType] || 99) - (vpcGatewayOrder[b.resourceType] || 99));
+
+  const remainingLeaves = uncontainedLeaves.filter(
+    (n) => edgeIngressOrder[n.resourceType] === undefined && vpcGatewayOrder[n.resourceType] === undefined
+  );
+
+  const hasEdgeIngress = edgeIngressNodes.length > 0;
+  const VPC_START_X = startX + 40;
+  const VPC_START_Y = hasEdgeIngress ? 210 : 80;
+  const hasVpcGateways = vpcGatewayNodes.length > 0;
+
+  // ── Layout External Edge Ingress at top outside VPC
+  if (hasEdgeIngress) {
+    let ingX = VPC_START_X + 40;
+    edgeIngressNodes.forEach((node) => {
+      updatedNodes.push({
+        ...node,
+        position: { x: ingX, y: 70 },
+        groupId: primaryBoundary ? primaryBoundary.id : undefined,
+      });
+      ingX += LEAF_CARD_W + 40;
+    });
   }
 
-  const VPC_START_Y = vpcStartY;
-  const VPC_PADDING_X = 35;
-  const VPC_HEADER_H = 65;
-  const SUB_GAP_Y = 30;
-
-  let currentSubnetY = VPC_START_Y + VPC_HEADER_H;
-  let maxVpcWidth = 720;
-
-  // Group subnets into 3 architectural tiers: Public (1), App/Compute (2), Database/Data (3)
-  const tier1Subnets = sortedSubnets.filter(isPublicSubnet);
-  const tier3Subnets = sortedSubnets.filter((s) => !tier1Subnets.includes(s) && isDatabaseSubnet(s));
-  const tier2Subnets = sortedSubnets.filter((s) => !tier1Subnets.includes(s) && !tier3Subnets.includes(s));
+  // ── Layout Subnets in multi-AZ tiers:
+  // Tier 1: Public/Ingress Subnets (AZ-A, AZ-B)
+  // Tier 2: Private App Subnets (AZ-A, AZ-B)
+  // Tier 3: Private DB Subnets (AZ-A, AZ-B)
+  const tier1Subnets = subnetNodes.filter(isPublicSubnet);
+  const tier3Subnets = subnetNodes.filter((s) => !tier1Subnets.includes(s) && isDatabaseSubnet(s));
+  const tier2Subnets = subnetNodes.filter((s) => !tier1Subnets.includes(s) && !tier3Subnets.includes(s));
 
   const tiers = [tier1Subnets, tier2Subnets, tier3Subnets].filter((t) => t.length > 0);
-  const SUB_GAP_X = 24;
+  const maxCols = Math.max(1, ...tiers.map((t) => t.length));
+
+  const COL_WIDTH = 460;
+  const COL_GAP = 50;
+  const SUB_PADDING_X = 25;
+  const SUB_PADDING_Y = 65; // Ensures 65px clearance below subnet header, badges, and CIDRs
+  const SUB_GAP_Y = 65; // 65px vertical corridor between tiers for edges/badges
+
+  const maxVpcWidth = 40 * 2 + maxCols * COL_WIDTH + (maxCols - 1) * COL_GAP;
+
+  // ── Layout VPC Gateways (e.g. Internet Gateway) inside VPC at top
+  const gwY = VPC_START_Y + 55;
+  if (hasVpcGateways) {
+    const gwTotalW = vpcGatewayNodes.length * LEAF_CARD_W + (vpcGatewayNodes.length - 1) * 30;
+    let gwStartX = VPC_START_X + Math.round((maxVpcWidth - gwTotalW) / 2);
+    vpcGatewayNodes.forEach((gw) => {
+      updatedNodes.push({
+        ...gw,
+        position: { x: gwStartX, y: gwY },
+        groupId: primaryVpc ? primaryVpc.id : undefined,
+      });
+      gwStartX += LEAF_CARD_W + 30;
+    });
+  }
+
+  let currentSubnetY = hasVpcGateways ? gwY + LEAF_CARD_H + 50 : VPC_START_Y + 70;
 
   for (const tier of tiers) {
     let currentTierMaxH = 180;
-    let tierTotalW = 0;
 
     tier.forEach((subnet, colIdx) => {
       const children = subnetChildrenMap.get(subnet.id) || [];
       const childCols = Math.max(1, Math.min(children.length, 2));
       const childRows = Math.ceil(children.length / childCols) || 1;
 
-      const subWidth = Math.max(360, SUB_PADDING_X * 2 + childCols * LEAF_CARD_W + (childCols - 1) * LEAF_GAP_X);
-      const subHeight = Math.max(180, SUB_PADDING_Y + childRows * LEAF_CARD_H + (childRows - 1) * LEAF_GAP_Y + 25);
-
-      const subX = VPC_START_X + VPC_PADDING_X + colIdx * (subWidth + SUB_GAP_X);
+      // For single subnet spanning entire tier (e.g. Azure App Gateway or single tier):
+      const subWidth = tier.length === 1 && maxCols > 1 ? maxCols * COL_WIDTH + (maxCols - 1) * COL_GAP : COL_WIDTH;
+      const subHeight = Math.max(180, SUB_PADDING_Y + childRows * LEAF_CARD_H + (childRows - 1) * 20 + 25);
+      const subX = VPC_START_X + 40 + colIdx * (COL_WIDTH + COL_GAP);
       const subY = currentSubnetY;
 
       currentTierMaxH = Math.max(currentTierMaxH, subHeight);
-      tierTotalW = Math.max(tierTotalW, (colIdx + 1) * subWidth + colIdx * SUB_GAP_X);
 
-      subnetDimensions.set(subnet.id, { x: subX, y: subY, width: subWidth, height: subHeight });
-
-      // Position children inside subnet
-      children.forEach((child, idx) => {
-        const col = idx % childCols;
-        const row = Math.floor(idx / childCols);
-        const childX = subX + SUB_PADDING_X + col * (LEAF_CARD_W + LEAF_GAP_X);
-        const childY = subY + SUB_PADDING_Y + row * (LEAF_CARD_H + LEAF_GAP_Y);
-
+      // Position children inside subnet with clean padding
+      if (children.length === 1) {
+        const childX = subX + Math.round((subWidth - LEAF_CARD_W) / 2);
+        const childY = subY + SUB_PADDING_Y;
         updatedNodes.push({
-          ...child,
+          ...children[0],
           position: { x: childX, y: childY },
           groupId: subnet.id,
         });
-      });
+      } else if (children.length === 2) {
+        const cGap = Math.max(20, subWidth - SUB_PADDING_X * 2 - LEAF_CARD_W * 2);
+        children.forEach((child, idx) => {
+          const childX = subX + SUB_PADDING_X + idx * (LEAF_CARD_W + cGap);
+          const childY = subY + SUB_PADDING_Y;
+          updatedNodes.push({
+            ...child,
+            position: { x: childX, y: childY },
+            groupId: subnet.id,
+          });
+        });
+      } else {
+        children.forEach((child, idx) => {
+          const col = idx % childCols;
+          const row = Math.floor(idx / childCols);
+          const childX = subX + SUB_PADDING_X + col * (LEAF_CARD_W + 20);
+          const childY = subY + SUB_PADDING_Y + row * (LEAF_CARD_H + 20);
+          updatedNodes.push({
+            ...child,
+            position: { x: childX, y: childY },
+            groupId: subnet.id,
+          });
+        });
+      }
 
       // Add updated subnet node
-      const primaryVpc = vpcNodes[0];
       updatedNodes.push({
         ...subnet,
         position: { x: subX, y: subY },
@@ -174,141 +258,176 @@ export function autoLayoutArchitecture(nodes: CanvasNode[], edges: CanvasEdge[])
       });
     });
 
-    maxVpcWidth = Math.max(maxVpcWidth, tierTotalW + VPC_PADDING_X * 2);
     currentSubnetY += currentTierMaxH + SUB_GAP_Y;
   }
 
-  // Layout VPC container
+  // ── Layout VPC / VNet container
   if (vpcNodes.length > 0) {
-    const vpcHeight = Math.max(480, currentSubnetY - VPC_START_Y + 30);
+    const vpcHeight = Math.max(520, currentSubnetY - SUB_GAP_Y + 35 - VPC_START_Y);
     vpcNodes.forEach((vpc, i) => {
       updatedNodes.push({
         ...vpc,
         position: { x: VPC_START_X + i * (maxVpcWidth + 40), y: VPC_START_Y },
         width: maxVpcWidth,
         height: vpcHeight,
+        groupId: primaryBoundary ? primaryBoundary.id : undefined,
       });
     });
   }
 
-  // Layout Ingress / Top Gateways (Internet -> CloudFront -> IGW) above VPC
-  const ingressOrder: Record<string, number> = {
-    aws_internet: 1,
-    aws_cloudfront: 2,
-    aws_igw: 3,
-    azure_public_ip: 3,
-    aws_route_table: 4,
-  };
-
-  const ingressNodes = uncontainedLeaves
-    .filter((n) => ingressOrder[n.resourceType] !== undefined)
-    .sort((a, b) => (ingressOrder[a.resourceType] || 99) - (ingressOrder[b.resourceType] || 99));
-
-  const remainingLeaves = uncontainedLeaves.filter((n) => ingressOrder[n.resourceType] === undefined);
-
-  // Position ingress pipeline centered above the primary subnet entry
-  const ingressCenterX = VPC_START_X + VPC_PADDING_X + SUB_PADDING_X;
-  if (hasInternet && hasCloudFront) {
-    const internetNode = ingressNodes.find((n) => n.resourceType === 'aws_internet');
-    const cloudFrontNode = ingressNodes.find((n) => n.resourceType === 'aws_cloudfront');
-    const otherIngress = ingressNodes.filter((n) => n !== internetNode && n !== cloudFrontNode);
-
-    if (internetNode) {
-      updatedNodes.push({
-        ...internetNode,
-        position: { x: ingressCenterX, y: 30 },
-      });
-    }
-    if (cloudFrontNode) {
-      updatedNodes.push({
-        ...cloudFrontNode,
-        position: { x: ingressCenterX, y: 160 },
-      });
-    }
-    otherIngress.forEach((node, i) => {
-      updatedNodes.push({
-        ...node,
-        position: { x: ingressCenterX + (i + 1) * (LEAF_CARD_W + 30), y: 155 },
-      });
-    });
-  } else {
-    ingressNodes.forEach((node, i) => {
-      updatedNodes.push({
-        ...node,
-        position: { x: VPC_START_X + VPC_PADDING_X + i * (LEAF_CARD_W + 30), y: 40 },
-      });
-    });
-  }
-
-  // Layout Regional / External Services to the right of VPC (S3, KMS, IAM, CloudWatch)
+  // ── Layout Regional Services (S3, Blob Storage, KMS, CloudWatch) to the right flank
   const rightFlankX = VPC_START_X + maxVpcWidth + 60;
-  let flankY = Math.max(VPC_START_Y, 200);
+  let flankY = Math.max(VPC_START_Y + 50, 240);
 
   remainingLeaves.forEach((node) => {
     updatedNodes.push({
       ...node,
       position: { x: rightFlankX, y: flankY },
+      groupId: primaryBoundary ? primaryBoundary.id : undefined,
     });
-    flankY += LEAF_CARD_H + 25;
+    flankY += LEAF_CARD_H + 30;
   });
 
-  // Layout Cloud Provider Boundaries if present
-  if (boundaryNodes.length > 0) {
-    for (const bNode of boundaryNodes) {
-      const bProvider = bNode.provider ?? (bNode.resourceType.includes('azure') ? 'azure' : 'aws');
-      const enclosed = updatedNodes.filter((n) => {
-        const nProvider = n.provider ?? (n.resourceType.startsWith('azure_') ? 'azure' : 'aws');
-        return nProvider === bProvider;
-      });
+  const totalEndX = Math.max(rightFlankX + LEAF_CARD_W + 50, VPC_START_X + maxVpcWidth + 50);
+  const totalMaxY = Math.max(currentSubnetY + 40, flankY + 40);
 
-      if (enclosed.length > 0) {
-        let minX = Infinity;
-        let minY = Infinity;
-        let maxX = -Infinity;
-        let maxY = -Infinity;
-
-        for (const n of enclosed) {
-          const w = n.width || 180;
-          const h = n.height || 100;
-          minX = Math.min(minX, n.position.x);
-          minY = Math.min(minY, n.position.y);
-          maxX = Math.max(maxX, n.position.x + w);
-          maxY = Math.max(maxY, n.position.y + h);
-        }
-
-        const bPaddingX = 40;
-        const bPaddingTop = 60;
-        const bPaddingBottom = 40;
-
-        updatedNodes.push({
-          ...bNode,
-          position: {
-            x: Math.max(20, minX - bPaddingX),
-            y: Math.max(20, minY - bPaddingTop),
-          },
-          width: Math.max(880, maxX - minX + bPaddingX * 2),
-          height: Math.max(520, maxY - minY + bPaddingTop + bPaddingBottom),
-          config: {
-            ...bNode.config,
-            resourceCount: enclosed.length,
-          },
-        });
-      } else {
-        updatedNodes.push(bNode);
-      }
+  // ── Layout Cloud Provider Boundary
+  const boundariesToLayout = boundaryNodes.length > 0 ? boundaryNodes : [
+    {
+      id: `${provider}-cloud`,
+      type: 'containerNode' as const,
+      resourceType: `${provider}_cloud_boundary`,
+      provider,
+      label: provider === 'azure' ? 'Microsoft Azure (East US)' : 'Amazon Web Services (us-east-1)',
+      position: { x: 30, y: 20 },
+      width: 1240,
+      height: 940,
+      config: { region: provider === 'azure' ? 'eastus' : 'us-east-1' },
     }
+  ];
+
+  for (const bNode of boundariesToLayout) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of updatedNodes) {
+      const w = n.width || 180;
+      const h = n.height || 100;
+      minX = Math.min(minX, n.position.x);
+      minY = Math.min(minY, n.position.y);
+      maxX = Math.max(maxX, n.position.x + w);
+      maxY = Math.max(maxY, n.position.y + h);
+    }
+
+    const bPaddingX = 50;
+    const bPaddingTop = 80;
+    const bPaddingBottom = 50;
+
+    const bX = Math.max(20, minX - bPaddingX);
+    const bY = Math.max(20, minY - bPaddingTop);
+    const bW = Math.max(1050, maxX - bX + bPaddingX);
+    const bH = Math.max(680, maxY - bY + bPaddingBottom);
+
+    updatedNodes.unshift({
+      ...bNode,
+      position: { x: bX, y: bY },
+      width: bW,
+      height: bH,
+      config: {
+        ...bNode.config,
+        resourceCount: updatedNodes.length,
+      },
+    });
   }
 
-  // Order nodes so container nodes (Boundary -> VPC/VNet -> Subnets -> Leaf nodes)
-  const zOrderedNodes = updatedNodes.sort((a, b) => {
+  return { nodes: updatedNodes, endX: totalEndX, maxY: totalMaxY };
+}
+
+export function autoLayoutArchitecture(nodes: CanvasNode[], edges: CanvasEdge[]): LayoutResult {
+  if (nodes.length === 0) return { nodes, edges };
+
+  // Partition nodes by provider
+  const isAws = (n: CanvasNode) =>
+    n.provider === 'aws' ||
+    n.resourceType.startsWith('aws_') ||
+    n.resourceType === 'aws_cloud_boundary';
+
+  const isAzure = (n: CanvasNode) =>
+    n.provider === 'azure' ||
+    n.resourceType.startsWith('azure_') ||
+    n.resourceType === 'azure_cloud_boundary';
+
+  const awsNodes = nodes.filter(isAws);
+  const azureNodes = nodes.filter(isAzure);
+  const otherNodes = nodes.filter((n) => !isAws(n) && !isAzure(n));
+
+  const finalNodes: CanvasNode[] = [];
+  let currentStartX = 60;
+
+  if (awsNodes.length > 0) {
+    const awsLayout = layoutSingleProvider(awsNodes, { provider: 'aws', startX: currentStartX });
+    finalNodes.push(...awsLayout.nodes);
+    currentStartX = awsLayout.endX + 120;
+  }
+
+  if (azureNodes.length > 0) {
+    const azLayout = layoutSingleProvider(azureNodes, { provider: 'azure', startX: currentStartX });
+    finalNodes.push(...azLayout.nodes);
+    currentStartX = azLayout.endX + 120;
+  }
+
+  if (otherNodes.length > 0) {
+    otherNodes.forEach((n, idx) => {
+      finalNodes.push({
+        ...n,
+        position: { x: currentStartX + (idx % 3) * 200, y: 80 + Math.floor(idx / 3) * 120 },
+      });
+    });
+  }
+
+  // Z-Order: Boundary (-3) -> VPC/VNet (-2) -> Subnets (-1) -> Leaf nodes (1)
+  const zOrderedNodes = finalNodes.sort((a, b) => {
     const getZ = (n: CanvasNode) => {
-      if (n.resourceType === 'cloud_provider_boundary' || n.resourceType === 'aws_cloud_boundary' || n.resourceType === 'azure_cloud_boundary') return -1;
-      if (n.resourceType === 'aws_vpc' || n.resourceType === 'azure_vnet' || n.resourceType === 'azure_resource_group') return 0;
-      if (n.resourceType === 'aws_subnet' || n.resourceType === 'azure_subnet') return 1;
-      return 2;
+      if (
+        n.resourceType === 'cloud_provider_boundary' ||
+        n.resourceType === 'aws_cloud_boundary' ||
+        n.resourceType === 'azure_cloud_boundary'
+      )
+        return -3;
+      if (
+        n.resourceType === 'aws_vpc' ||
+        n.resourceType === 'azure_vnet' ||
+        n.resourceType === 'azure_resource_group'
+      )
+        return -2;
+      if (n.resourceType === 'aws_subnet' || n.resourceType === 'azure_subnet') return -1;
+      return 1;
     };
     return getZ(a) - getZ(b);
   });
 
-  return { nodes: zOrderedNodes, edges };
+  // Edge sanitization & deduplication
+  const validNodeIds = new Set(zOrderedNodes.map((n) => n.id));
+  const seenEdges = new Set<string>();
+  const cleanEdges: CanvasEdge[] = [];
+
+  for (const e of edges) {
+    if (!validNodeIds.has(e.source) || !validNodeIds.has(e.target)) {
+      continue; // drop orphaned edge
+    }
+    const relType = e.relationshipType || (e.edgeType as RelationshipType) || 'NETWORK_FLOW';
+    if (relType === 'CONTAINS') {
+      continue; // drop container edge, containment is visual
+    }
+    const key = `${e.source}:${relType}:${e.target}`;
+    if (seenEdges.has(key)) {
+      continue; // deduplicate
+    }
+    seenEdges.add(key);
+    cleanEdges.push({
+      ...e,
+      id: e.id && e.id.includes(':') ? e.id : key,
+      relationshipType: relType,
+    });
+  }
+
+  return { nodes: zOrderedNodes, edges: cleanEdges };
 }

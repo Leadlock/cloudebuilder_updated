@@ -8,9 +8,11 @@
 
 export type RelationshipType =
   | 'NETWORK_FLOW'        // General directional network/IP traffic
+  | 'DATA_FLOW'           // Directional data pipeline stream
   | 'ROUTES_TO'           // Gateway/Routing hops (IGW, NAT, Route Table, CloudFront Origin)
   | 'DEPENDS_ON'          // Upstream infrastructure or service dependency
   | 'CONNECTS_TO'         // TCP/UDP client-to-service connection (e.g. EC2 -> RDS)
+  | 'DATABASE_CONNECTION' // Dedicated database protocol connection (PostgreSQL, MySQL, TDS)
   | 'LOAD_BALANCES'       // Traffic distribution across targets (ALB/NLB/App Gateway -> EC2/VMSS)
   | 'SERVES'              // Content delivery (e.g. CloudFront/FrontDoor serving cached assets)
   | 'READS_FROM'          // Read-only data access
@@ -23,7 +25,8 @@ export type RelationshipType =
   | 'ASSOCIATED_WITH'     // Firewall/Security Group/WAF attachment
   | 'PEERS_WITH'          // VPC/VNet peering connection
   | 'REPLICATES_TO'       // Cross-region or cross-cloud replication
-  | 'LOGICAL_DEPENDENCY'; // Higher-level architectural dependency
+  | 'LOGICAL_DEPENDENCY'  // Higher-level architectural dependency
+  | 'UNKNOWN';            // Unresolved or invalid relationship
 
 export type NetworkScope =
   | 'public'        // Traverses public Internet

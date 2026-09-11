@@ -34,7 +34,7 @@ function n(
 }
 
 function e(
-  id: string,
+  _id: string,
   source: string,
   target: string,
   label?: string,
@@ -43,8 +43,9 @@ function e(
   port?: string | number,
   networkScope: NetworkScope = 'private'
 ): CanvasEdge {
+  const deterministicId = `${source}:${relationshipType}:${target}`;
   return {
-    id,
+    id: deterministicId,
     source,
     target,
     label,
@@ -84,45 +85,45 @@ export const architectureTemplates: ArchitectureTemplate[] = [
     generate(_opts: TemplateGenerateOptions) {
       const nodes: CanvasNode[] = [
         // ── Cloud Provider Boundary
-        n('aws-cloud', 'aws_cloud_boundary', 'aws', 'Amazon Web Services (us-east-1)', 40, 20, { region: 'us-east-1' }, undefined, 1100, 920),
+        n('aws-cloud', 'aws_cloud_boundary', 'aws', 'Amazon Web Services (us-east-1)', 30, 20, { region: 'us-east-1' }, undefined, 1460, 1140),
 
-        // ── Edge & Ingress Layer (Regional/Global)
-        n('r53', 'aws_route53', 'aws', 'Route 53 DNS', 220, 60, { domainName: 'cloudcraft.app' }, 'aws-cloud'),
-        n('cf', 'aws_cloudfront', 'aws', 'CloudFront CDN', 460, 60, { priceClass: 'PriceClass_100', defaultRootObject: 'index.html' }, 'aws-cloud'),
-        n('waf', 'aws_waf', 'aws', 'AWS WAF', 700, 60, { scope: 'CLOUDFRONT', defaultAction: 'ALLOW' }, 'aws-cloud'),
+        // ── Edge & Ingress Layer (Regional/Global, Outside VPC)
+        n('r53', 'aws_route53', 'aws', 'Route 53 DNS', 200, 70, { domainName: 'cloudcraft.app' }, 'aws-cloud'),
+        n('cf', 'aws_cloudfront', 'aws', 'CloudFront CDN', 450, 70, { priceClass: 'PriceClass_100', defaultRootObject: 'index.html' }, 'aws-cloud'),
+        n('waf', 'aws_waf', 'aws', 'AWS WAF', 700, 70, { scope: 'CLOUDFRONT', defaultAction: 'ALLOW' }, 'aws-cloud'),
 
         // ── VPC Container
-        n('vpc', 'aws_vpc', 'aws', 'Production VPC (10.0.0.0/16)', 80, 160, { cidrBlock: '10.0.0.0/16', enableDnsSupport: true, enableDnsHostnames: true }, 'aws-cloud', 1020, 740),
-        n('igw', 'aws_igw', 'aws', 'Internet Gateway', 460, 210, {}, 'vpc'),
+        n('vpc', 'aws_vpc', 'aws', 'Production VPC (10.0.0.0/16)', 70, 210, { cidrBlock: '10.0.0.0/16', enableDnsSupport: true, enableDnsHostnames: true }, 'aws-cloud', 1050, 890),
+        n('igw', 'aws_igw', 'aws', 'Internet Gateway', 505, 265, {}, 'vpc'),
 
         // ── Public Subnets Tier (AZ-a & AZ-b)
-        n('pub-sub-a', 'aws_subnet', 'aws', 'Public Subnet AZ-A (10.0.1.0/24)', 120, 290, { cidrBlock: '10.0.1.0/24', availabilityZone: 'us-east-1a', mapPublicIpOnLaunch: true }, 'vpc', 450, 170),
-        n('pub-sub-b', 'aws_subnet', 'aws', 'Public Subnet AZ-B (10.0.2.0/24)', 610, 290, { cidrBlock: '10.0.2.0/24', availabilityZone: 'us-east-1b', mapPublicIpOnLaunch: true }, 'vpc', 450, 170),
-        n('alb', 'aws_alb', 'aws', 'App Load Balancer (Multi-AZ)', 160, 350, { lbType: 'application', scheme: 'internet-facing' }, 'pub-sub-a'),
-        n('nat-a', 'aws_nat', 'aws', 'NAT Gateway AZ-A', 380, 350, { connectivityType: 'public' }, 'pub-sub-a'),
-        n('nat-b', 'aws_nat', 'aws', 'NAT Gateway AZ-B', 870, 350, { connectivityType: 'public' }, 'pub-sub-b'),
+        n('pub-sub-a', 'aws_subnet', 'aws', 'Public Subnet AZ-A (10.0.1.0/24)', 110, 385, { cidrBlock: '10.0.1.0/24', availabilityZone: 'us-east-1a', mapPublicIpOnLaunch: true }, 'vpc', 460, 190),
+        n('pub-sub-b', 'aws_subnet', 'aws', 'Public Subnet AZ-B (10.0.2.0/24)', 620, 385, { cidrBlock: '10.0.2.0/24', availabilityZone: 'us-east-1b', mapPublicIpOnLaunch: true }, 'vpc', 460, 190),
+        n('alb', 'aws_alb', 'aws', 'App Load Balancer (Multi-AZ)', 140, 450, { lbType: 'application', scheme: 'internet-facing' }, 'pub-sub-a'),
+        n('nat-a', 'aws_nat', 'aws', 'NAT Gateway AZ-A', 355, 450, { connectivityType: 'public' }, 'pub-sub-a'),
+        n('nat-b', 'aws_nat', 'aws', 'NAT Gateway AZ-B', 760, 450, { connectivityType: 'public' }, 'pub-sub-b'),
 
         // ── Private Application Subnets Tier (AZ-a & AZ-b)
-        n('app-sub-a', 'aws_subnet', 'aws', 'Private App Subnet AZ-A (10.0.10.0/24)', 120, 490, { cidrBlock: '10.0.10.0/24', availabilityZone: 'us-east-1a', mapPublicIpOnLaunch: false }, 'vpc', 450, 170),
-        n('app-sub-b', 'aws_subnet', 'aws', 'Private App Subnet AZ-B (10.0.11.0/24)', 610, 490, { cidrBlock: '10.0.11.0/24', availabilityZone: 'us-east-1b', mapPublicIpOnLaunch: false }, 'vpc', 450, 170),
-        n('app-srv-a', 'aws_ec2', 'aws', 'App Worker AZ-A', 260, 550, { instanceType: 't3.medium', keyName: 'prod-key', encrypted: true }, 'app-sub-a'),
-        n('app-srv-b', 'aws_ec2', 'aws', 'App Worker AZ-B', 750, 550, { instanceType: 't3.medium', keyName: 'prod-key', encrypted: true }, 'app-sub-b'),
+        n('app-sub-a', 'aws_subnet', 'aws', 'Private App Subnet AZ-A (10.0.10.0/24)', 110, 640, { cidrBlock: '10.0.10.0/24', availabilityZone: 'us-east-1a', mapPublicIpOnLaunch: false }, 'vpc', 460, 190),
+        n('app-sub-b', 'aws_subnet', 'aws', 'Private App Subnet AZ-B (10.0.11.0/24)', 620, 640, { cidrBlock: '10.0.11.0/24', availabilityZone: 'us-east-1b', mapPublicIpOnLaunch: false }, 'vpc', 460, 190),
+        n('app-srv-a', 'aws_ec2', 'aws', 'App Worker AZ-A', 250, 705, { instanceType: 't3.medium', keyName: 'prod-key', encrypted: true }, 'app-sub-a'),
+        n('app-srv-b', 'aws_ec2', 'aws', 'App Worker AZ-B', 760, 705, { instanceType: 't3.medium', keyName: 'prod-key', encrypted: true }, 'app-sub-b'),
 
         // ── Private Database Subnets Tier (AZ-a & AZ-b)
-        n('db-sub-a', 'aws_subnet', 'aws', 'Private DB Subnet AZ-A (10.0.20.0/24)', 120, 690, { cidrBlock: '10.0.20.0/24', availabilityZone: 'us-east-1a', mapPublicIpOnLaunch: false }, 'vpc', 450, 170),
-        n('db-sub-b', 'aws_subnet', 'aws', 'Private DB Subnet AZ-B (10.0.21.0/24)', 610, 690, { cidrBlock: '10.0.21.0/24', availabilityZone: 'us-east-1b', mapPublicIpOnLaunch: false }, 'vpc', 450, 170),
-        n('rds-multiaz', 'aws_rds', 'aws', 'RDS PostgreSQL (Multi-AZ)', 260, 750, { engine: 'postgres', instanceClass: 'db.t3.medium', multiAz: true, encrypted: true }, 'db-sub-a'),
-        n('redis-cache', 'aws_elasticache', 'aws', 'ElastiCache Redis', 750, 750, { numNodes: 2 }, 'db-sub-b'),
+        n('db-sub-a', 'aws_subnet', 'aws', 'Private DB Subnet AZ-A (10.0.20.0/24)', 110, 895, { cidrBlock: '10.0.20.0/24', availabilityZone: 'us-east-1a', mapPublicIpOnLaunch: false }, 'vpc', 460, 190),
+        n('db-sub-b', 'aws_subnet', 'aws', 'Private DB Subnet AZ-B (10.0.21.0/24)', 620, 895, { cidrBlock: '10.0.21.0/24', availabilityZone: 'us-east-1b', mapPublicIpOnLaunch: false }, 'vpc', 460, 190),
+        n('rds-multiaz', 'aws_rds', 'aws', 'RDS PostgreSQL (Multi-AZ)', 250, 960, { engine: 'postgres', instanceClass: 'db.t3.medium', multiAz: true, encrypted: true }, 'db-sub-a'),
+        n('redis-cache', 'aws_elasticache', 'aws', 'ElastiCache Redis', 760, 960, { numNodes: 2 }, 'db-sub-b'),
 
-        // ── Regional Storage (Outside Subnets)
-        n('s3-storage', 'aws_s3', 'aws', 'Encrypted S3 Storage', 880, 210, { bucketName: 'prod-assets-vault', encryption: true, versioning: true, publicAccess: false }, 'aws-cloud'),
+        // ── Regional Storage (Outside VPC, inside AWS Cloud Boundary)
+        n('s3-storage', 'aws_s3', 'aws', 'Encrypted S3 Storage', 1190, 385, { bucketName: 'prod-assets-vault', encryption: true, versioning: true, publicAccess: false }, 'aws-cloud'),
       ];
 
       const edges: CanvasEdge[] = [
         // Ingress Flow
         e('e-r53-cf', 'r53', 'cf', 'DNS Alias', 'RESOLVES_TO', 'DNS', 53, 'public'),
         e('e-waf-cf', 'waf', 'cf', 'WAF Protection', 'ASSOCIATED_WITH', undefined, undefined, 'internal'),
-        e('e-cf-alb', 'cf', 'alb', 'Origin HTTPS / 443', 'ROUTES_TO', 'HTTPS', 443, 'public'),
+        e('e-cf-igw', 'cf', 'igw', 'Origin HTTPS / 443', 'ROUTES_TO', 'HTTPS', 443, 'public'),
         e('e-igw-alb', 'igw', 'alb', 'Inbound HTTPS / 443', 'ROUTES_TO', 'HTTPS', 443, 'public'),
 
         // Load Balancing across Multi-AZ Application Workers
@@ -239,22 +240,29 @@ export const architectureTemplates: ArchitectureTemplate[] = [
     generate(opts: TemplateGenerateOptions) {
       const ha = opts.highAvailability || false;
       const nodes: CanvasNode[] = [
-        n('vpc', 'aws_vpc', 'aws', 'Production VPC', 50, 40, { cidrBlock: '10.0.0.0/16' }, undefined, 820, 580),
-        n('igw', 'aws_igw', 'aws', 'Internet Gateway', 380, 90, {}, 'vpc'),
+        // ── Outer Cloud Provider Boundary
+        n('aws-cloud', 'aws_cloud_boundary', 'aws', 'Amazon Web Services (us-east-1)', 30, 20, { region: 'us-east-1' }, undefined, 1150, 920),
 
-        n('pub1', 'aws_subnet', 'aws', 'Public Subnet', 80, 160, { cidrBlock: '10.0.1.0/24', mapPublicIpOnLaunch: true }, 'vpc', 340, 160),
-        n('alb', 'aws_alb', 'aws', 'App Load Balancer', 150, 210, { lbType: 'application', scheme: 'internet-facing' }, 'pub1'),
+        // ── VPC Container
+        n('vpc', 'aws_vpc', 'aws', 'Production VPC (10.0.0.0/16)', 60, 110, { cidrBlock: '10.0.0.0/16' }, 'aws-cloud', 1040, 760),
+        n('igw', 'aws_igw', 'aws', 'Internet Gateway', 460, 160, {}, 'vpc'),
 
-        n('priv1', 'aws_subnet', 'aws', 'Private App Subnet', 80, 350, { cidrBlock: '10.0.2.0/24', availabilityZone: 'us-east-1a' }, 'vpc', 340, 160),
-        n('ec2a', 'aws_ec2', 'aws', 'App Server 1', 150, 400, { instanceType: 't3.medium', keyName: 'prod-key' }, 'priv1'),
+        // ── Public Subnet Tier
+        n('pub1', 'aws_subnet', 'aws', 'Public Subnet (10.0.1.0/24)', 100, 240, { cidrBlock: '10.0.1.0/24', mapPublicIpOnLaunch: true }, 'vpc', 460, 180),
+        n('alb', 'aws_alb', 'aws', 'App Load Balancer', 220, 310, { lbType: 'application', scheme: 'internet-facing' }, 'pub1'),
 
-        n('db-sub', 'aws_subnet', 'aws', 'Private DB Subnet', 450, 350, { cidrBlock: '10.0.3.0/24', availabilityZone: 'us-east-1a' }, 'vpc', 340, 160),
-        n('db', 'aws_rds', 'aws', 'PostgreSQL Database', 520, 400, { engine: 'postgres', instanceClass: 'db.t3.medium', multiAz: ha, encrypted: true }, 'db-sub'),
+        // ── Private App Subnet Tier
+        n('priv1', 'aws_subnet', 'aws', 'Private App Subnet AZ-A (10.0.2.0/24)', 100, 460, { cidrBlock: '10.0.2.0/24', availabilityZone: 'us-east-1a' }, 'vpc', 460, 180),
+        n('ec2a', 'aws_ec2', 'aws', 'App Server 1', 220, 530, { instanceType: 't3.medium', keyName: 'prod-key' }, 'priv1'),
+
+        // ── Private DB Subnet Tier
+        n('db-sub', 'aws_subnet', 'aws', 'Private DB Subnet (10.0.3.0/24)', 100, 670, { cidrBlock: '10.0.3.0/24', availabilityZone: 'us-east-1a' }, 'vpc', ha ? 960 : 460, 180),
+        n('db', 'aws_rds', 'aws', 'PostgreSQL Database', 220, 740, { engine: 'postgres', instanceClass: 'db.t3.medium', multiAz: ha, encrypted: true }, 'db-sub'),
       ];
 
       if (ha) {
-        nodes.push(n('priv2', 'aws_subnet', 'aws', 'Private App Subnet 1b', 450, 160, { cidrBlock: '10.0.4.0/24', availabilityZone: 'us-east-1b' }, 'vpc', 340, 160));
-        nodes.push(n('ec2b', 'aws_ec2', 'aws', 'App Server 2', 520, 210, { instanceType: 't3.medium', keyName: 'prod-key' }, 'priv2'));
+        nodes.push(n('priv2', 'aws_subnet', 'aws', 'Private App Subnet AZ-B (10.0.4.0/24)', 600, 460, { cidrBlock: '10.0.4.0/24', availabilityZone: 'us-east-1b' }, 'vpc', 460, 180));
+        nodes.push(n('ec2b', 'aws_ec2', 'aws', 'App Server 2', 720, 530, { instanceType: 't3.medium', keyName: 'prod-key' }, 'priv2'));
       }
 
       const edges: CanvasEdge[] = [
@@ -284,27 +292,39 @@ export const architectureTemplates: ArchitectureTemplate[] = [
     tags: ['aws', 'ha', 'multi-az', 'auto-scaling'],
     complexity: 'complex',
     estimatedCost: 320,
-    resourceCount: 11,
-    features: ['Multi-AZ', 'Auto Scaling', 'S3 static assets', 'Encrypted storage'],
+    resourceCount: 12,
+    features: ['Multi-AZ across AZ-A & AZ-B', 'Auto Scaling', 'S3 static assets outside VPC', 'Encrypted storage'],
     generate(_opts) {
       const nodes: CanvasNode[] = [
-        n('vpc', 'aws_vpc', 'aws', 'HA Production VPC', 50, 40, { cidrBlock: '10.0.0.0/16' }, undefined, 900, 680),
-        n('igw', 'aws_igw', 'aws', 'Internet Gateway', 420, 90, {}, 'vpc'),
+        // ── Outer Cloud Provider Boundary
+        n('aws-cloud', 'aws_cloud_boundary', 'aws', 'Amazon Web Services (us-east-1)', 30, 20, { region: 'us-east-1' }, undefined, 1460, 1040),
 
-        n('pub1', 'aws_subnet', 'aws', 'Public Subnet AZ-A', 80, 160, { cidrBlock: '10.0.1.0/24', availabilityZone: 'us-east-1a', mapPublicIpOnLaunch: true }, 'vpc', 380, 160),
-        n('alb', 'aws_alb', 'aws', 'App Load Balancer', 120, 220, { lbType: 'application', scheme: 'internet-facing' }, 'pub1'),
-        n('nat', 'aws_nat', 'aws', 'NAT Gateway AZ-A', 300, 220, { connectivityType: 'public' }, 'pub1'),
+        // ── VPC Container
+        n('vpc', 'aws_vpc', 'aws', 'HA Production VPC (10.0.0.0/16)', 70, 80, { cidrBlock: '10.0.0.0/16' }, 'aws-cloud', 1050, 900),
+        n('igw', 'aws_igw', 'aws', 'Internet Gateway', 505, 135, {}, 'vpc'),
 
-        n('priv1', 'aws_subnet', 'aws', 'Private Subnet AZ-A', 80, 350, { cidrBlock: '10.0.3.0/24', availabilityZone: 'us-east-1a' }, 'vpc', 380, 160),
-        n('ec2a', 'aws_ec2', 'aws', 'App Server AZ-A', 180, 400, { instanceType: 'm5.large', keyName: 'prod-key' }, 'priv1'),
+        // ── Multi-AZ Public Subnets (Tier 1)
+        n('pub1', 'aws_subnet', 'aws', 'Public Subnet AZ-A (10.0.1.0/24)', 110, 255, { cidrBlock: '10.0.1.0/24', availabilityZone: 'us-east-1a', mapPublicIpOnLaunch: true }, 'vpc', 460, 190),
+        n('alb', 'aws_alb', 'aws', 'App Load Balancer', 140, 320, { lbType: 'application', scheme: 'internet-facing' }, 'pub1'),
+        n('nat', 'aws_nat', 'aws', 'NAT Gateway AZ-A', 355, 320, { connectivityType: 'public' }, 'pub1'),
 
-        n('priv2', 'aws_subnet', 'aws', 'Private Subnet AZ-B', 500, 350, { cidrBlock: '10.0.4.0/24', availabilityZone: 'us-east-1b' }, 'vpc', 380, 160),
-        n('ec2b', 'aws_ec2', 'aws', 'App Server AZ-B', 600, 400, { instanceType: 'm5.large', keyName: 'prod-key' }, 'priv2'),
+        n('pub2', 'aws_subnet', 'aws', 'Public Subnet AZ-B (10.0.2.0/24)', 620, 255, { cidrBlock: '10.0.2.0/24', availabilityZone: 'us-east-1b', mapPublicIpOnLaunch: true }, 'vpc', 460, 190),
+        n('nat-b', 'aws_nat', 'aws', 'NAT Gateway AZ-B', 760, 320, { connectivityType: 'public' }, 'pub2'),
 
-        n('db-sub', 'aws_subnet', 'aws', 'Private DB Subnet', 80, 530, { cidrBlock: '10.0.5.0/24' }, 'vpc', 800, 160),
-        n('rds', 'aws_rds', 'aws', 'RDS Multi-AZ Postgres', 200, 580, { engine: 'postgres', instanceClass: 'db.m5.large', multiAz: true, encrypted: true }, 'db-sub'),
+        // ── Multi-AZ Private App Subnets (Tier 2)
+        n('priv1', 'aws_subnet', 'aws', 'Private App Subnet AZ-A (10.0.3.0/24)', 110, 510, { cidrBlock: '10.0.3.0/24', availabilityZone: 'us-east-1a' }, 'vpc', 460, 190),
+        n('ec2a', 'aws_ec2', 'aws', 'App Server AZ-A', 250, 575, { instanceType: 'm5.large', keyName: 'prod-key' }, 'priv1'),
 
-        n('s3', 'aws_s3', 'aws', 'Assets Bucket', 600, 580, { versioning: true, encryption: true, publicAccess: false }),
+        n('priv2', 'aws_subnet', 'aws', 'Private App Subnet AZ-B (10.0.4.0/24)', 620, 510, { cidrBlock: '10.0.4.0/24', availabilityZone: 'us-east-1b' }, 'vpc', 460, 190),
+        n('ec2b', 'aws_ec2', 'aws', 'App Server AZ-B', 760, 575, { instanceType: 'm5.large', keyName: 'prod-key' }, 'priv2'),
+
+        // ── Private DB Subnet (Tier 3)
+        n('db-sub', 'aws_subnet', 'aws', 'Private DB Subnet (10.0.5.0/24)', 110, 765, { cidrBlock: '10.0.5.0/24' }, 'vpc', 970, 190),
+        n('rds', 'aws_rds', 'aws', 'RDS Multi-AZ Postgres', 250, 830, { engine: 'postgres', instanceClass: 'db.m5.large', multiAz: true, encrypted: true }, 'db-sub'),
+        n('redis', 'aws_elasticache', 'aws', 'ElastiCache Redis', 760, 830, { numNodes: 2 }, 'db-sub'),
+
+        // ── Regional Object Storage (Outside VPC, inside AWS Cloud Boundary)
+        n('s3', 'aws_s3', 'aws', 'Assets Bucket (S3)', 1180, 255, { versioning: true, encryption: true, publicAccess: false }, 'aws-cloud'),
       ];
 
       const edges: CanvasEdge[] = [
@@ -313,10 +333,13 @@ export const architectureTemplates: ArchitectureTemplate[] = [
         e('e3', 'alb', 'ec2b', 'HTTP / 80', 'LOAD_BALANCES', 'HTTP', 80, 'private'),
         e('e4', 'ec2a', 'rds', 'PostgreSQL / 5432', 'CONNECTS_TO', 'PostgreSQL', 5432, 'private'),
         e('e5', 'ec2b', 'rds', 'PostgreSQL / 5432', 'CONNECTS_TO', 'PostgreSQL', 5432, 'private'),
-        e('e6', 'ec2a', 's3', 'S3 API / IAM', 'STORES_IN', 'HTTPS', 443, 'private'),
-        e('e7', 'ec2b', 's3', 'S3 API / IAM', 'STORES_IN', 'HTTPS', 443, 'private'),
-        e('e8', 'ec2a', 'nat', 'Egress NAT', 'ROUTES_TO', 'TCP', undefined, 'private'),
-        e('e9', 'nat', 'igw', 'Internet Egress', 'ROUTES_TO', 'TCP', undefined, 'public'),
+        e('e6', 'ec2a', 'redis', 'Redis / 6379', 'CONNECTS_TO', 'Redis', 6379, 'private'),
+        e('e7', 'ec2b', 'redis', 'Redis / 6379', 'CONNECTS_TO', 'Redis', 6379, 'private'),
+        e('e8', 'ec2a', 's3', 'S3 API / IAM', 'STORES_IN', 'HTTPS', 443, 'private'),
+        e('e9', 'ec2b', 's3', 'S3 API / IAM', 'STORES_IN', 'HTTPS', 443, 'private'),
+        e('e10', 'ec2a', 'nat', 'Egress NAT', 'ROUTES_TO', 'TCP', undefined, 'private'),
+        e('e11', 'ec2b', 'nat-b', 'Egress NAT', 'ROUTES_TO', 'TCP', undefined, 'private'),
+        e('e12', 'nat', 'igw', 'Internet Egress', 'ROUTES_TO', 'TCP', undefined, 'public'),
       ];
 
       return { nodes, edges };
@@ -337,21 +360,29 @@ export const architectureTemplates: ArchitectureTemplate[] = [
     features: ['Load Balancer', 'RDS Multi-AZ', 'S3 storage', 'ElastiCache Redis'],
     generate() {
       const nodes: CanvasNode[] = [
-        n('vpc', 'aws_vpc', 'aws', 'SaaS VPC', 50, 50, { cidrBlock: '10.0.0.0/16' }, undefined, 880, 640),
-        n('igw', 'aws_igw', 'aws', 'Internet Gateway', 420, 90, {}, 'vpc'),
+        // ── Outer Cloud Provider Boundary
+        n('aws-cloud', 'aws_cloud_boundary', 'aws', 'Amazon Web Services (us-east-1)', 30, 20, { region: 'us-east-1' }, undefined, 1300, 940),
 
-        n('pub1', 'aws_subnet', 'aws', 'Public Subnet', 80, 170, { cidrBlock: '10.0.1.0/24', mapPublicIpOnLaunch: true }, 'vpc', 400, 160),
-        n('alb', 'aws_alb', 'aws', 'API Load Balancer', 120, 220, { lbType: 'application', scheme: 'internet-facing' }, 'pub1'),
-        n('nat', 'aws_nat', 'aws', 'NAT Gateway', 320, 220, { connectivityType: 'public' }, 'pub1'),
+        // ── VPC Container
+        n('vpc', 'aws_vpc', 'aws', 'SaaS Production VPC (10.0.0.0/16)', 60, 110, { cidrBlock: '10.0.0.0/16' }, 'aws-cloud', 940, 780),
+        n('igw', 'aws_igw', 'aws', 'Internet Gateway', 420, 160, {}, 'vpc'),
 
-        n('priv1', 'aws_subnet', 'aws', 'Private App Subnet', 80, 350, { cidrBlock: '10.0.2.0/24' }, 'vpc', 400, 160),
-        n('api', 'aws_ec2', 'aws', 'API Cluster Workers', 200, 400, { instanceType: 'm5.xlarge', keyName: 'saas-key' }, 'priv1'),
+        // ── Public Subnet Tier
+        n('pub1', 'aws_subnet', 'aws', 'Public Subnet (10.0.1.0/24)', 100, 240, { cidrBlock: '10.0.1.0/24', mapPublicIpOnLaunch: true }, 'vpc', 440, 180),
+        n('alb', 'aws_alb', 'aws', 'API Load Balancer', 140, 310, { lbType: 'application', scheme: 'internet-facing' }, 'pub1'),
+        n('nat', 'aws_nat', 'aws', 'NAT Gateway', 330, 310, { connectivityType: 'public' }, 'pub1'),
 
-        n('db-sub', 'aws_subnet', 'aws', 'Private Data Subnet', 80, 530, { cidrBlock: '10.0.3.0/24' }, 'vpc', 800, 150),
-        n('rds', 'aws_rds', 'aws', 'Multi-AZ Postgres DB', 200, 580, { engine: 'postgres', instanceClass: 'db.m5.large', multiAz: true, encrypted: true }, 'db-sub'),
-        n('redis', 'aws_elasticache', 'aws', 'ElastiCache Session Store', 560, 580, { numNodes: 2 }, 'db-sub'),
+        // ── Private App Subnet Tier
+        n('priv1', 'aws_subnet', 'aws', 'Private App Subnet (10.0.2.0/24)', 100, 460, { cidrBlock: '10.0.2.0/24' }, 'vpc', 440, 180),
+        n('api', 'aws_ec2', 'aws', 'API Cluster Workers', 230, 530, { instanceType: 'm5.xlarge', keyName: 'saas-key' }, 'priv1'),
 
-        n('s3-app', 'aws_s3', 'aws', 'Private App Storage', 560, 220, { versioning: true, encryption: true, publicAccess: false }),
+        // ── Private Data Subnet Tier
+        n('db-sub', 'aws_subnet', 'aws', 'Private Data Subnet (10.0.3.0/24)', 100, 670, { cidrBlock: '10.0.3.0/24' }, 'vpc', 860, 180),
+        n('rds', 'aws_rds', 'aws', 'Multi-AZ Postgres DB', 230, 740, { engine: 'postgres', instanceClass: 'db.m5.large', multiAz: true, encrypted: true }, 'db-sub'),
+        n('redis', 'aws_elasticache', 'aws', 'ElastiCache Session Store', 630, 740, { numNodes: 2 }, 'db-sub'),
+
+        // ── Regional Storage Tier (Outside VPC, inside AWS Cloud Boundary)
+        n('s3-app', 'aws_s3', 'aws', 'Private App Storage (S3)', 1040, 240, { versioning: true, encryption: true, publicAccess: false }, 'aws-cloud'),
       ];
 
       const edges: CanvasEdge[] = [
@@ -383,19 +414,19 @@ export const architectureTemplates: ArchitectureTemplate[] = [
     generate() {
       const nodes: CanvasNode[] = [
         // AWS Side
-        n('aws-cloud', 'aws_cloud_boundary', 'aws', 'AWS Primary Cloud', 40, 40, { region: 'us-east-1' }, undefined, 480, 580),
-        n('aws-vpc', 'aws_vpc', 'aws', 'AWS VPC', 60, 100, { cidrBlock: '10.1.0.0/16' }, 'aws-cloud', 440, 500),
-        n('aws-sub', 'aws_subnet', 'aws', 'AWS App Subnet', 80, 180, { cidrBlock: '10.1.1.0/24' }, 'aws-vpc', 400, 180),
-        n('aws-ec2', 'aws_ec2', 'aws', 'AWS App Server', 180, 230, { instanceType: 'm5.large' }, 'aws-sub'),
-        n('aws-rds', 'aws_rds', 'aws', 'AWS RDS Postgres', 180, 420, { engine: 'postgres', multiAz: true, encrypted: true }, 'aws-vpc'),
+        n('aws-cloud', 'aws_cloud_boundary', 'aws', 'AWS Primary Cloud', 30, 30, { region: 'us-east-1' }, undefined, 580, 680),
+        n('aws-vpc', 'aws_vpc', 'aws', 'AWS VPC (10.1.0.0/16)', 60, 100, { cidrBlock: '10.1.0.0/16' }, 'aws-cloud', 520, 570),
+        n('aws-sub', 'aws_subnet', 'aws', 'AWS App Subnet (10.1.1.0/24)', 90, 180, { cidrBlock: '10.1.1.0/24' }, 'aws-vpc', 460, 180),
+        n('aws-ec2', 'aws_ec2', 'aws', 'AWS App Server', 210, 250, { instanceType: 'm5.large' }, 'aws-sub'),
+        n('aws-rds', 'aws_rds', 'aws', 'AWS RDS Postgres', 210, 440, { engine: 'postgres', multiAz: true, encrypted: true }, 'aws-vpc'),
 
         // Azure Side
-        n('az-cloud', 'azure_cloud_boundary', 'azure', 'Azure Secondary Cloud', 560, 40, { region: 'eastus' }, undefined, 480, 580),
-        n('az-rg', 'azure_resource_group', 'azure', 'Azure RG', 580, 100, { location: 'eastus' }, 'az-cloud', 440, 500),
-        n('az-vnet', 'azure_vnet', 'azure', 'Azure VNet', 600, 160, { addressSpace: '10.2.0.0/16' }, 'az-rg', 400, 420),
-        n('az-sub', 'azure_subnet', 'azure', 'Azure Data Subnet', 620, 220, { addressPrefix: '10.2.1.0/24' }, 'az-vnet', 360, 160),
-        n('az-sql', 'azure_sql', 'azure', 'Azure SQL Standby', 700, 270, { tier: 'GeneralPurpose' }, 'az-sub'),
-        n('az-storage', 'azure_storage', 'azure', 'Azure Blob Backup', 700, 440, { sku: 'Standard_GRS', httpsOnly: true }, 'az-rg'),
+        n('az-cloud', 'azure_cloud_boundary', 'azure', 'Azure Secondary Cloud', 660, 30, { region: 'eastus' }, undefined, 580, 680),
+        n('az-rg', 'azure_resource_group', 'azure', 'Azure Resource Group', 690, 100, { location: 'eastus' }, 'az-cloud', 520, 570),
+        n('az-vnet', 'azure_vnet', 'azure', 'Azure VNet (10.2.0.0/16)', 710, 160, { addressSpace: '10.2.0.0/16' }, 'az-rg', 480, 480),
+        n('az-sub', 'azure_subnet', 'azure', 'Azure Data Subnet (10.2.1.0/24)', 730, 240, { addressPrefix: '10.2.1.0/24' }, 'az-vnet', 440, 180),
+        n('az-sql', 'azure_sql', 'azure', 'Azure SQL Standby', 830, 310, { tier: 'GeneralPurpose' }, 'az-sub'),
+        n('az-storage', 'azure_storage', 'azure', 'Azure Blob Backup', 830, 460, { sku: 'Standard_GRS', httpsOnly: true }, 'az-rg'),
       ];
 
       const edges: CanvasEdge[] = [

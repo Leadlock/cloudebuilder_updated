@@ -10,6 +10,7 @@ function EdgeBadge({
   stroke,
   textColor = '#E2E8F0',
   bgColor = '#0F172A',
+  badgeWidth,
 }: {
   x: number;
   y: number;
@@ -17,10 +18,11 @@ function EdgeBadge({
   stroke: string;
   textColor?: string;
   bgColor?: string;
+  badgeWidth?: number;
 }) {
   const textStr = String(label);
-  const width = Math.max(40, textStr.length * 7 + 16);
-  const height = 18;
+  const width = badgeWidth || Math.max(48, textStr.length * 7 + 18);
+  const height = 20;
   return (
     <g transform={`translate(${x}, ${y})`}>
       <rect
@@ -28,14 +30,14 @@ function EdgeBadge({
         y={-height / 2}
         width={width}
         height={height}
-        rx={9}
+        rx={10}
         fill={bgColor}
         stroke={stroke}
-        strokeWidth={1}
+        strokeWidth={1.2}
         className="filter drop-shadow-md"
       />
       <text
-        className="text-[10px] font-mono font-semibold"
+        className="text-[10px] font-mono font-bold"
         fill={textColor}
         textAnchor="middle"
         dominantBaseline="central"
@@ -91,10 +93,55 @@ export const TrafficEdge = memo(({
   );
 });
 TrafficEdge.displayName = 'TrafficEdge';
-
 export const NetworkFlowEdge = TrafficEdge;
 
-// ── 2. Load Balances Edge (Purple/Violet flow) ─────────────────────────────────
+// ── 2. Data Flow Edge (Cyan/Teal dashed with directional stream) ───────────────
+export const DataFlowEdge = memo(({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  style = {},
+  markerEnd,
+  label,
+}: EdgeProps) => {
+  const [edgePath, labelX, labelY] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+    borderRadius: 16,
+  });
+
+  return (
+    <>
+      <path
+        id={id}
+        style={{
+          ...style,
+          stroke: '#06B6D4', // Cyan-500
+          strokeWidth: 2,
+          strokeDasharray: '6, 3',
+        }}
+        className="react-flow__edge-path"
+        d={edgePath}
+        markerEnd={markerEnd}
+      />
+      <circle r="3" fill="#22D3EE">
+        <animateMotion dur="1.8s" repeatCount="indefinite" path={edgePath} />
+      </circle>
+      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#06B6D4" textColor="#A5F3FC" />}
+    </>
+  );
+});
+DataFlowEdge.displayName = 'DataFlowEdge';
+
+// ── 3. Load Balances Edge (Purple/Violet flow) ─────────────────────────────────
 export const LoadBalancesEdge = memo(({
   id,
   sourceX,
@@ -139,7 +186,7 @@ export const LoadBalancesEdge = memo(({
 });
 LoadBalancesEdge.displayName = 'LoadBalancesEdge';
 
-// ── 3. Connects To Edge (Emerald Green Database / TCP Flow) ───────────────────
+// ── 4. Connects To / Database Connection Edge (Emerald Green Flow) ─────────────
 export const ConnectsToEdge = memo(({
   id,
   sourceX,
@@ -176,15 +223,16 @@ export const ConnectsToEdge = memo(({
         markerEnd={markerEnd}
       />
       <circle r="3" fill="#10B981">
-        <animateMotion dur="3s" repeatCount="indefinite" path={edgePath} />
+        <animateMotion dur="2.8s" repeatCount="indefinite" path={edgePath} />
       </circle>
       {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#10B981" textColor="#6EE7B7" />}
     </>
   );
 });
 ConnectsToEdge.displayName = 'ConnectsToEdge';
+export const DatabaseConnectionEdge = ConnectsToEdge;
 
-// ── 4. Stores In Edge (Teal Storage / S3 Flow) ─────────────────────────────────
+// ── 5. Stores In Edge (Teal Storage / S3 / Blob Flow) ──────────────────────────
 export const StoresInEdge = memo(({
   id,
   sourceX,
@@ -229,7 +277,7 @@ export const StoresInEdge = memo(({
 });
 StoresInEdge.displayName = 'StoresInEdge';
 
-// ── 5. Resolves To Edge (Sky Blue DNS Resolution) ──────────────────────────────
+// ── 6. Resolves To Edge (Sky Blue DNS Resolution) ──────────────────────────────
 export const ResolvesToEdge = memo(({
   id,
   sourceX,
@@ -271,7 +319,7 @@ export const ResolvesToEdge = memo(({
 });
 ResolvesToEdge.displayName = 'ResolvesToEdge';
 
-// ── 6. Association Edge (Slate Security / WAF / Policy Attachment) ─────────────
+// ── 7. Association / Dependency Edge (Slate Security / Policy Attachment) ─────
 export const AssociationEdge = memo(({
   id,
   sourceX,
@@ -312,10 +360,10 @@ export const AssociationEdge = memo(({
   );
 });
 AssociationEdge.displayName = 'AssociationEdge';
-
 export const AssociatedWithEdge = AssociationEdge;
+export const DependencyEdge = AssociationEdge;
 
-// ── 7. Replication Edge (Amber Sync Double-Pulse) ──────────────────────────────
+// ── 8. Replication Edge (Amber Sync Double-Pulse) ──────────────────────────────
 export const ReplicationEdge = memo(({
   id,
   sourceX,
@@ -360,7 +408,7 @@ export const ReplicationEdge = memo(({
 });
 ReplicationEdge.displayName = 'ReplicationEdge';
 
-// ── 8. Cross-Cloud Edge (Bold Amber/Gold Bridge) ───────────────────────────────
+// ── 9. Cross-Cloud Edge (Bold Amber/Gold Bridge) ───────────────────────────────
 export const CrossCloudEdge = memo(({
   id,
   sourceX,
@@ -404,3 +452,53 @@ export const CrossCloudEdge = memo(({
   );
 });
 CrossCloudEdge.displayName = 'CrossCloudEdge';
+
+// ── 10. Unknown / Error Relationship Edge (Rose/Red Alert Edge) ────────────────
+export const UnknownRelationshipEdge = memo(({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  style = {},
+  markerEnd,
+  label = 'UNKNOWN RELATIONSHIP',
+}: EdgeProps) => {
+  const [edgePath, labelX, labelY] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+    borderRadius: 16,
+  });
+
+  return (
+    <>
+      <path
+        id={id}
+        style={{
+          ...style,
+          stroke: '#F43F5E', // Rose-500
+          strokeWidth: 2,
+          strokeDasharray: '5, 5',
+        }}
+        className="react-flow__edge-path"
+        d={edgePath}
+        markerEnd={markerEnd}
+      />
+      <EdgeBadge
+        x={labelX}
+        y={labelY}
+        label={label ? `⚠ ${label}` : '⚠ UNKNOWN RELATIONSHIP'}
+        stroke="#F43F5E"
+        textColor="#FECDD3"
+        bgColor="#4C0519"
+      />
+    </>
+  );
+});
+UnknownRelationshipEdge.displayName = 'UnknownRelationshipEdge';
