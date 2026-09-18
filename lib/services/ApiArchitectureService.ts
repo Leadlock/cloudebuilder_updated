@@ -14,7 +14,7 @@
  *   PUT    /api/projects/:id/canvas   — save canvas
  */
 import type { IArchitectureService } from './ArchitectureService';
-import type { Project, CanvasNode, CanvasEdge, CloudProvider, Environment, Region, ArchitectureVersion } from '@/types';
+import type { Project, CanvasNode, CanvasEdge, CloudProvider, Environment, Region, ArchitectureVersion, ScaleProfile } from '@/types';
 
 // ─── Client config ────────────────────────────────────────────────────────────
 
@@ -34,6 +34,13 @@ interface ApiSuccess<T> { ok: true; data: T }
 interface ApiError { ok: false; error: { code: string; message: string } }
 type ApiEnvelope<T> = ApiSuccess<T> | ApiError;
 
+export interface ApiFetchError extends Error {
+  status?: number;
+  code?: string;
+  serverRevision?: number;
+  clientRevision?: number;
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${getBaseUrl()}${path}`;
   const res = await fetch(url, {
@@ -46,7 +53,16 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const envelope = (await res.json()) as ApiEnvelope<T>;
   if (!envelope.ok) {
-    throw new Error(`API ${path} → ${envelope.error.code}: ${envelope.error.message}`);
+    const err: ApiFetchError = new Error(`API ${path} → ${envelope.error.code}: ${envelope.error.message}`);
+    err.status = res.status;
+    err.code = envelope.error.code;
+    if ((envelope.error as any)?.serverRevision !== undefined) {
+      err.serverRevision = (envelope.error as any).serverRevision;
+    }
+    if ((envelope.error as any)?.clientRevision !== undefined) {
+      err.clientRevision = (envelope.error as any).clientRevision;
+    }
+    throw err;
   }
   return envelope.data;
 }
@@ -152,15 +168,22 @@ class ApiArchitectureServiceImpl implements IArchitectureService {
     await apiFetch(`/api/projects/${id}`, { method: 'DELETE' });
   }
 
-  async saveCanvas(projectId: string, nodes: CanvasNode[], edges: CanvasEdge[], env = 'production'): Promise<void> {
-    await apiFetch(`/api/projects/${projectId}/canvas`, {
+  async saveCanvas(
+    projectId: string,
+    nodes: CanvasNode[],
+    edges: CanvasEdge[],
+    env = 'production',
+    revision?: number,
+    scaleProfile?: ScaleProfile
+  ): Promise<{ revision?: number } | void> {
+    return apiFetch<{ revision?: number }>(`/api/projects/${projectId}/canvas`, {
       method: 'PUT',
-      body: JSON.stringify({ nodes, edges, env }),
+      body: JSON.stringify({ nodes, edges, env, revision, scaleProfile }),
     });
   }
 
-  async loadCanvas(projectId: string, env = 'production'): Promise<{ nodes: CanvasNode[]; edges: CanvasEdge[] }> {
-    return apiFetch<{ nodes: CanvasNode[]; edges: CanvasEdge[] }>(
+  async loadCanvas(projectId: string, env = 'production'): Promise<{ nodes: CanvasNode[]; edges: CanvasEdge[]; revision?: number }> {
+    return apiFetch<{ nodes: CanvasNode[]; edges: CanvasEdge[]; revision?: number }>(
       `/api/projects/${projectId}/canvas?env=${env}`,
     );
   }
@@ -253,6 +276,32 @@ class ApiArchitectureServiceImpl implements IArchitectureService {
         body: JSON.stringify({ from, to }),
       },
     );
+  }
+
+  async saveDraft(
+    draftProject: Project,
+    revision?: number
+  ): Promise<{ revision?: number; hash?: string } | void> {
+    return apiFetch<{ revision: number; hash: string }>('/api/architecture/draft', {
+      method: 'PUT',
+      body: JSON.stringify({
+        nodes: draftProject.nodes,
+        edges: draftProject.edges,
+        providerMode: draftProject.providerMode,
+        scaleProfile: draftProject.scaleProfile,
+        revision,
+      }),
+    });
+  }
+
+  async loadDraft(): Promise<{ nodes: CanvasNode[]; edges: CanvasEdge[]; providerMode?: any; scaleProfile?: any; revision?: number; hash?: string } | null> {
+    const raw = await apiFetch<any>('/api/architecture/draft');
+    if (!raw) return null;
+    return raw;
+  }
+
+  async clearDraft(): Promise<void> {
+    await apiFetch('/api/architecture/draft', { method: 'DELETE' });
   }
 }
 

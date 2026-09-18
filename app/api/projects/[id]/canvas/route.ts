@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { ok, notFound, forbidden, unauthorized, internalError, badRequest, parseBody } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { projectRepository, environmentRepository } from '@/lib/repositories/projectRepository';
-import { architectureRepository, toCanvas } from '@/lib/repositories/architectureRepository';
+import { architectureRepository, toCanvas, RevisionConflictError } from '@/lib/repositories/architectureRepository';
 import { orgRepository } from '@/lib/repositories/orgRepository';
 import { ArchitectureReviewService } from '@/lib/services/ArchitectureReviewService';
 import type { Environment, CanvasNode, CanvasEdge } from '@/types';
@@ -18,7 +18,7 @@ const CanvasNodeSchema = z.object({
   id:           z.string(),
   type:         z.string().default('cloudNode'),
   resourceType: z.string(),
-  provider:     z.enum(['aws', 'azure']),
+  provider:     z.enum(['aws', 'azure', 'gcp']),
   label:        z.string(),
   position:     z.object({ x: z.number(), y: z.number() }),
   config:       z.record(z.string(), z.unknown()).optional().default({}),
@@ -41,10 +41,19 @@ const CanvasEdgeSchema = z.object({
 }).passthrough();
 
 const SaveCanvasSchema = z.object({
-  env:   z.enum(['development', 'staging', 'production']).optional().default('production'),
-  nodes: z.array(CanvasNodeSchema),
-  edges: z.array(CanvasEdgeSchema),
+  env:          z.enum(['development', 'staging', 'production']).optional().default('production'),
+  nodes:        z.array(CanvasNodeSchema),
+  edges:        z.array(CanvasEdgeSchema),
+  revision:     z.number().optional(),
+  scaleProfile: z.record(z.string(), z.unknown()).optional(),
 });
+
+// Used ONLY by the dev-mode DB-unreachable fallback path below (no Postgres
+// running locally). The real, production revision counter is DB-backed —
+// see architectureRepository.saveCanvas / the "architecture.revision" column
+// — specifically so it stays correct across multiple server instances. This
+// Map exists purely so `npm run dev` still works with no database at all.
+const _devFallbackRevisions = new Map<string, number>();
 
 async function resolveOrgId(req: NextRequest): Promise<string | null> {
   const orgId = req.nextUrl.searchParams.get('orgId') ?? '';
@@ -79,9 +88,9 @@ export async function GET(
     if (!env) return notFound('Environment');
 
     const arch = await architectureRepository.findByEnvironment(env.id);
-    if (!arch) return ok({ nodes: [], edges: [] });
+    if (!arch) return ok({ nodes: [], edges: [], revision: 1 });
 
-    return ok(toCanvas(arch.resources, arch.connections));
+    return ok({ ...toCanvas(arch.resources, arch.connections), revision: arch.revision });
   } catch (err) {
     console.error('[GET /api/projects/:id/canvas]', err);
     return internalError();
@@ -134,9 +143,30 @@ export async function PUT(
       );
 
       // Cast Zod-validated nodes (region is string) to CanvasNode[] (region is Region)
-      const arch = await architectureRepository.saveCanvas(env.id, body.nodes as import('@/types').CanvasNode[], body.edges as import('@/types').CanvasEdge[]);
-      return ok(toCanvas(arch.resources, arch.connections));
+      const arch = await architectureRepository.saveCanvas(
+        env.id,
+        body.nodes as import('@/types').CanvasNode[],
+        body.edges as import('@/types').CanvasEdge[],
+        body.revision,
+      );
+      const canvasData = toCanvas(arch.resources, arch.connections);
+      return ok({ ...canvasData, revision: arch.revision });
     } catch (dbErr) {
+      if (dbErr instanceof RevisionConflictError) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: {
+              code: 'CONFLICT',
+              message: 'Revision conflict: a newer architecture version exists on the server.',
+              serverRevision: dbErr.serverRevision,
+              clientRevision: dbErr.clientRevision,
+            },
+          }),
+          { status: 409, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
       // Invalidate existing approval if architecture changed in dev fallback mode as well
       ArchitectureReviewService.checkAndInvalidateOnSave(
         projectId,
@@ -145,7 +175,25 @@ export async function PUT(
         body.edges as CanvasEdge[]
       );
       if (process.env.NODE_ENV === 'development') {
-        return ok({ nodes: body.nodes, edges: body.edges });
+        const revKey = `${projectId}:${body.env}`;
+        const serverRev = _devFallbackRevisions.get(revKey) ?? 1;
+        if (body.revision !== undefined && body.revision < serverRev) {
+          return new Response(
+            JSON.stringify({
+              ok: false,
+              error: {
+                code: 'CONFLICT',
+                message: 'Revision conflict: a newer architecture version exists on the server.',
+                serverRevision: serverRev,
+                clientRevision: body.revision,
+              },
+            }),
+            { status: 409, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        const newRev = Math.max(serverRev, body.revision ?? serverRev) + 1;
+        _devFallbackRevisions.set(revKey, newRev);
+        return ok({ nodes: body.nodes, edges: body.edges, revision: newRev });
       }
       throw dbErr;
     }

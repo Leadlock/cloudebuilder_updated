@@ -79,9 +79,68 @@ function buildMockDb() {
 
 const mockDb = buildMockDb();
 
+// Executes one raw SQL statement against the in-memory mock store — mirrors
+// the small, known set of statement shapes architectureRepository issues via
+// rawExec/rawTransaction (real INSERT/UPDATE/DELETE, not ORM .create()/.update()).
+async function mockExecSql(sql: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[] }> {
+  const isInsert = /^\s*INSERT INTO/i.test(sql);
+  const isUpdate = /^\s*UPDATE/i.test(sql);
+  const isDelete = /^\s*DELETE FROM/i.test(sql);
+  const isSelect = /^\s*SELECT/i.test(sql);
+
+  if (isSelect && /FROM "architecture"/i.test(sql) && /"environmentId"/i.test(sql)) {
+    const environmentId = params[0] as string;
+    const row = [...mockDb._stores['Architecture'].values()].find((r) => (r as Record<string, unknown>)['environmentId'] === environmentId);
+    return { rows: row ? [row as Record<string, unknown>] : [] };
+  }
+  if (isDelete && /architectureResource/i.test(sql) && params[0]) {
+    const archId = params[0] as string;
+    for (const [k, v] of mockDb._stores['ArchitectureResource']) {
+      if ((v as Record<string, unknown>)['architectureId'] === archId) mockDb._stores['ArchitectureResource'].delete(k);
+    }
+    return { rows: [] };
+  }
+  if (isDelete && /architectureConnection/i.test(sql) && params[0]) {
+    const archId = params[0] as string;
+    for (const [k, v] of mockDb._stores['ArchitectureConnection']) {
+      if ((v as Record<string, unknown>)['architectureId'] === archId) mockDb._stores['ArchitectureConnection'].delete(k);
+    }
+    return { rows: [] };
+  }
+  if (isUpdate && /"architecture"/i.test(sql)) {
+    const [updatedAt, revision, id] = params as [string, number, string];
+    const row = mockDb._stores['Architecture'].get(id);
+    if (row) mockDb._stores['Architecture'].set(id, { ...row, updatedAt, revision });
+    return { rows: [] };
+  }
+  if (isInsert && /"architectureResource"/i.test(sql)) {
+    const [id, resourceType, provider, label, positionX, positionY, configJson, region, groupId, locked, architectureId] = params;
+    mockDb._stores['ArchitectureResource'].set(id as string, {
+      id, resourceType, provider, label, positionX, positionY, configJson, region, groupId, locked, architectureId,
+    });
+    return { rows: [] };
+  }
+  if (isInsert && /"architectureConnection"/i.test(sql)) {
+    const [id, label, edgeType, architectureId, sourceId, targetId] = params;
+    mockDb._stores['ArchitectureConnection'].set(id as string, { id, label, edgeType, architectureId, sourceId, targetId });
+    return { rows: [] };
+  }
+  if (isInsert && /"architecture"/i.test(sql)) {
+    const [id, environmentId, createdAt, updatedAt, revision] = params;
+    mockDb._stores['Architecture'].set(id as string, { id, environmentId, createdAt, updatedAt, revision });
+    return { rows: [] };
+  }
+  // Unknown statement shapes are tolerated as no-ops here — this file's tests
+  // don't exercise architectureRepository.saveCanvas directly beyond copyArchitecture.
+  return { rows: [] };
+}
+
 jest.mock('@/src/prisma/db', () => ({
   db: mockDb,
-  rawExec: jest.fn().mockResolvedValue(undefined),
+  rawExec: jest.fn().mockImplementation(async (sql: string, params: unknown[]) => { await mockExecSql(sql, params); }),
+  rawTransaction: jest.fn().mockImplementation(async (fn: (query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>) => Promise<unknown>) => {
+    return fn(async (sql: string, params?: unknown[]) => mockExecSql(sql, params ?? []));
+  }),
 }));
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
@@ -463,6 +522,64 @@ describe('ArchitectureAdvisor', () => {
     const vm = makeResource({ resourceType: 'azure_vm', provider: 'azure', configJson: '{}' });
     const result = advisor.analyze(baseInput([vm]));
     expect(result.recommendations.some((r) => r.id === 'R-04')).toBe(true);
+  });
+
+  // ── Scale-awareness (expectedUsers) ────────────────────────────────────────
+  // Regression coverage for the fix addressing the audit finding that a
+  // 2-node dev sandbox and a declared "10,000-user production" architecture
+  // with identical resource shapes produced identical recommendations.
+
+  test('R-03: single EC2 severity is "medium" when expectedUsers is not provided (unchanged default)', () => {
+    const ec2 = makeResource({ resourceType: 'aws_ec2', provider: 'aws', configJson: '{}' });
+    const result = advisor.analyze(baseInput([ec2]));
+    const rec = result.recommendations.find((r) => r.id === 'R-03');
+    expect(rec).toBeDefined();
+    expect(rec!.severity).toBe('medium');
+  });
+
+  test('R-03: single EC2 severity escalates to "critical" at declared 10,000+ users', () => {
+    const ec2 = makeResource({ resourceType: 'aws_ec2', provider: 'aws', configJson: '{}' });
+    const result = advisor.analyze({ ...baseInput([ec2]), expectedUsers: 10_000 });
+    const rec = result.recommendations.find((r) => r.id === 'R-03');
+    expect(rec!.severity).toBe('critical');
+    expect(rec!.description).toContain('10,000');
+  });
+
+  test('R-03: single EC2 severity de-escalates to "low" at declared low scale (<100 users)', () => {
+    const ec2 = makeResource({ resourceType: 'aws_ec2', provider: 'aws', configJson: '{}' });
+    const result = advisor.analyze({ ...baseInput([ec2]), expectedUsers: 50 });
+    const rec = result.recommendations.find((r) => r.id === 'R-03');
+    expect(rec!.severity).toBe('low');
+  });
+
+  test('SC-01: fires at just 1 static EC2 instance when expectedUsers >= 10,000 (lower threshold at scale)', () => {
+    const ec2 = makeResource({ resourceType: 'aws_ec2', provider: 'aws', configJson: '{}' });
+    const noScale = advisor.analyze(baseInput([ec2]));
+    expect(noScale.recommendations.some((r) => r.id === 'SC-01')).toBe(false); // below default >2 threshold
+
+    const atScale = advisor.analyze({ ...baseInput([ec2]), expectedUsers: 20_000 });
+    const rec = atScale.recommendations.find((r) => r.id === 'SC-01');
+    expect(rec).toBeDefined();
+    expect(rec!.severity).toBe('high');
+  });
+
+  test('P-01: no-caching severity escalates from "low" to "high" at declared 10,000+ users', () => {
+    const rds = makeResource({ resourceType: 'aws_rds', provider: 'aws', configJson: '{}' });
+    const ec2 = makeResource({ resourceType: 'aws_ec2', provider: 'aws', configJson: '{}' });
+
+    const noScale = advisor.analyze(baseInput([rds, ec2]));
+    expect(noScale.recommendations.find((r) => r.id === 'P-01')!.severity).toBe('low');
+
+    const atScale = advisor.analyze({ ...baseInput([rds, ec2]), expectedUsers: 15_000 });
+    expect(atScale.recommendations.find((r) => r.id === 'P-01')!.severity).toBe('high');
+  });
+
+  test('Scale-awareness is deterministic: same expectedUsers produces same severities', () => {
+    const ec2 = makeResource({ id: 'fixed-ec2-2', resourceType: 'aws_ec2', provider: 'aws', configJson: '{}' });
+    const a = advisor.analyze({ ...baseInput([ec2]), expectedUsers: 5_000 });
+    const b = advisor.analyze({ ...baseInput([ec2]), expectedUsers: 5_000 });
+    expect(a.recommendations.find((r) => r.id === 'R-03')!.severity)
+      .toBe(b.recommendations.find((r) => r.id === 'R-03')!.severity);
   });
 });
 

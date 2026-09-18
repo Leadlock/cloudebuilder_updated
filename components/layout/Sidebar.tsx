@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Box, Code2, ShieldCheck, DollarSign, Rocket,
   ChevronLeft, ChevronRight, Cloud, Plus, Trash2, Wand2, LayoutGrid,
   Sparkles, Brain, History, GitBranch, Shield, Upload, CheckSquare, FileCheck,
-  Activity, Scale
+  Activity, Scale, Users
 } from 'lucide-react';
 import clsx from 'clsx';
 import { AppView } from '@/types';
@@ -19,7 +19,7 @@ const NAV_GROUPS = [
   {
     label: 'Build',
     items: [
-      { id: 'canvas',     label: 'Visual Builder',    icon: Box,             requiresProject: true },
+      { id: 'canvas',     label: 'Visual Builder',    icon: Box,             requiresProject: false },
       { id: 'wizard',     label: 'Arch. Wizard',      icon: Wand2,           requiresProject: false },
       { id: 'templates',  label: 'Templates',         icon: LayoutGrid,      requiresProject: false },
       { id: 'ai-generator',label: 'AI Generator',    icon: Sparkles,        requiresProject: false },
@@ -51,13 +51,15 @@ const NAV_GROUPS = [
     items: [
       { id: 'environments', label: 'Environments',   icon: GitBranch,       requiresProject: true },
       { id: 'history',    label: 'History',           icon: History,         requiresProject: true },
+      { id: 'team',       label: 'Team',              icon: Users,           requiresProject: false, adminOnly: true },
     ],
   },
 ] as const;
 
 export default function Sidebar() {
   const { state, dispatch } = useApp();
-  const { activeView, sidebarCollapsed, projects, activeProjectId } = state;
+  const { activeView, sidebarCollapsed, projects, activeProjectId, currentUser } = state;
+  const isAdmin = currentUser?.role === 'admin';
 
   return (
     <aside className={clsx(
@@ -85,9 +87,10 @@ export default function Sidebar() {
               <p className="text-gray-600 text-[10px] uppercase tracking-widest font-medium px-2 mb-1">{group.label}</p>
             )}
             <div className="space-y-0.5">
-              {group.items.map(({ id, label, icon: Icon, requiresProject }) => {
+              {group.items.filter((item) => !('adminOnly' in item && item.adminOnly) || isAdmin).map(({ id, label, icon: Icon, requiresProject }) => {
                 const active = activeView === id;
-                const disabled = requiresProject && !activeProjectId;
+                const hasArchitecture = !!activeProjectId || (state.draftProject && state.draftProject.nodes.length > 0) || activeView === 'canvas';
+                const disabled = requiresProject && !hasArchitecture;
                 return (
                   <button
                     key={id}

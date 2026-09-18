@@ -12,6 +12,7 @@
  */
 import type { WaRule, WaFinding } from '../types';
 import { AWS_PILLARS } from '../frameworkDefinitions';
+import { SECURITY_SEVERITY } from '@/lib/domain/securitySeverity';
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -108,7 +109,7 @@ const awsSecRules: WaRule[] = [
     pillar: 'security',
     pillarLabel: SEC_PILLAR.label,
     pillarRef: SEC_PILLAR.referenceUrl,
-    severity: 'critical',
+    severity: SECURITY_SEVERITY.AWS_RDS_PUBLICLY_ACCESSIBLE,
     title: 'RDS instance publicly accessible',
     description: 'The RDS instance has publicly_accessible enabled, exposing the database directly to the internet without network-level protection.',
     frameworkReference: makeRef('security'),
@@ -137,7 +138,7 @@ const awsSecRules: WaRule[] = [
     pillar: 'security',
     pillarLabel: SEC_PILLAR.label,
     pillarRef: SEC_PILLAR.referenceUrl,
-    severity: 'critical',
+    severity: SECURITY_SEVERITY.AWS_S3_PUBLIC_ACCESS,
     title: 'S3 bucket publicly accessible',
     description: 'The S3 bucket has public access enabled, exposing all objects to unauthenticated internet access.',
     frameworkReference: makeRef('security'),
@@ -167,7 +168,7 @@ const awsSecRules: WaRule[] = [
     pillar: 'security',
     pillarLabel: SEC_PILLAR.label,
     pillarRef: SEC_PILLAR.referenceUrl,
-    severity: 'high',
+    severity: SECURITY_SEVERITY.AWS_RDS_NOT_ENCRYPTED,
     title: 'RDS storage encryption disabled',
     description: 'The RDS instance has storage encryption explicitly disabled, leaving database data at rest unprotected.',
     frameworkReference: makeRef('security'),
@@ -225,7 +226,7 @@ const awsSecRules: WaRule[] = [
     pillar: 'security',
     pillarLabel: SEC_PILLAR.label,
     pillarRef: SEC_PILLAR.referenceUrl,
-    severity: 'high',
+    severity: SECURITY_SEVERITY.AWS_S3_NOT_ENCRYPTED,
     title: 'S3 bucket encryption disabled',
     description: 'The S3 bucket does not have server-side encryption enabled, leaving stored objects unprotected at rest.',
     frameworkReference: makeRef('security'),
@@ -254,7 +255,7 @@ const awsSecRules: WaRule[] = [
     pillar: 'security',
     pillarLabel: SEC_PILLAR.label,
     pillarRef: SEC_PILLAR.referenceUrl,
-    severity: 'high',
+    severity: SECURITY_SEVERITY.AWS_NO_SECURITY_GROUPS,
     title: 'No Security Groups defined for AWS resources',
     description: 'The architecture contains AWS compute/database resources but no Security Groups are defined to control network traffic.',
     frameworkReference: makeRef('security'),
@@ -298,7 +299,7 @@ const awsRelRules: WaRule[] = [
     pillar: 'reliability',
     pillarLabel: REL_PILLAR.label,
     pillarRef: REL_PILLAR.referenceUrl,
-    severity: 'high',
+    severity: SECURITY_SEVERITY.AWS_RDS_NOT_MULTI_AZ,
     title: 'RDS not configured for Multi-AZ',
     description: 'Single-AZ RDS deployment creates a single point of failure. Automatic failover is unavailable if the primary instance fails.',
     frameworkReference: makeRef('reliability'),

@@ -85,6 +85,14 @@ export interface DiscoveryResult {
   startedAt: string;
   completedAt?: string;
   resources: DiscoveredResource[];
+  /**
+   * Topological relationships (containment/network/traffic/security/storage
+   * edges) reconstructed by the adapter from live API responses — e.g. real
+   * ALB→TargetGroup→EC2 traffic paths from DescribeTargetHealth, not just
+   * "same VPC" heuristics. sourceResourceId/targetResourceId reference the
+   * same IDs as DiscoveredResource.providerResourceId.
+   */
+  relationships: import('./discovery/types').CloudRelationship[];
   error?: string;
   /** Summary counts by resource type */
   summary: Record<string, number>;

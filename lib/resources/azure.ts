@@ -46,7 +46,7 @@ export const azureResources: ResourceDefinition[] = [
     borderColor: '#0284C7',
     monthlyBaseCost: 0,
     isContainer: true,
-    allowedChildren: ['azure_subnet', 'azure_nsg', 'azure_nat'],
+    allowedChildren: ['azure_subnet', 'azure_nsg', 'azure_nat', 'azure_route_table', 'azure_bastion'],
     defaultWidth: 780,
     defaultHeight: 460,
     defaultConfig: { addressSpace: '10.0.0.0/16', name: 'my-vnet' },
@@ -54,15 +54,7 @@ export const azureResources: ResourceDefinition[] = [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-vnet', required: true },
       { key: 'addressSpace', label: 'Address Space', type: 'cidr', defaultValue: '10.0.0.0/16', required: true },
     ],
-    securityRules: [
-      {
-        id: 'vnet-dns',
-        severity: 'low',
-        check: () => null,
-        message: 'Consider configuring custom DNS servers',
-        recommendation: 'Set custom DNS servers for enterprise name resolution',
-      },
-    ],
+    securityRules: [],
   },
   {
     type: 'azure_subnet',
@@ -102,6 +94,10 @@ export const azureResources: ResourceDefinition[] = [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-vm', required: true },
       {
         key: 'size', label: 'VM Size', type: 'select', defaultValue: 'Standard_B2s',
+        // Includes the v5 SKUs the Adaptive Scale Engine assigns at
+        // Enterprise/High-Scale/Hyper-Scale (see AdaptiveScaleEngine.ts) —
+        // without them a <select> silently falls back to its first option
+        // whenever the stored value doesn't match any listed option.
         options: [
           { label: 'Standard_B1s (1 vCPU, 1GB)', value: 'Standard_B1s' },
           { label: 'Standard_B2s (2 vCPU, 4GB)', value: 'Standard_B2s' },
@@ -109,6 +105,9 @@ export const azureResources: ResourceDefinition[] = [
           { label: 'Standard_D2s_v3 (2 vCPU, 8GB)', value: 'Standard_D2s_v3' },
           { label: 'Standard_D4s_v3 (4 vCPU, 16GB)', value: 'Standard_D4s_v3' },
           { label: 'Standard_E2s_v3 (2 vCPU, 16GB)', value: 'Standard_E2s_v3' },
+          { label: 'Standard_D4s_v5 (4 vCPU, 16GB)', value: 'Standard_D4s_v5' },
+          { label: 'Standard_D8s_v5 (8 vCPU, 32GB)', value: 'Standard_D8s_v5' },
+          { label: 'Standard_E8s_v5 (8 vCPU, 64GB)', value: 'Standard_E8s_v5' },
         ],
       },
       {
@@ -119,14 +118,17 @@ export const azureResources: ResourceDefinition[] = [
         ],
       },
       { key: 'adminUsername', label: 'Admin Username', type: 'text', defaultValue: 'azureuser' },
+      { key: 'useManagedDisk', label: 'Use Managed Disk', type: 'boolean', defaultValue: true },
+      { key: 'publicIpEnabled', label: 'Assign Public IP', type: 'boolean', defaultValue: false },
     ],
     securityRules: [
       {
         id: 'vm-managed-disk',
         severity: 'medium',
-        check: () => null,
-        message: 'Ensure managed disks are used',
+        check: (config) => !config.useManagedDisk ? 'VM is not using a managed disk' : null,
+        message: 'VM does not use an Azure Managed Disk',
         recommendation: 'Use Azure Managed Disks for better reliability and security',
+        fixAction: (config) => ({ ...config, useManagedDisk: true }),
       },
     ],
   },
@@ -141,7 +143,7 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#DBEAFE',
     borderColor: '#2563EB',
     monthlyBaseCost: 0.018,
-    defaultConfig: { sku: 'Standard_LRS', kind: 'StorageV2', httpsOnly: true, name: 'mystorageacct' },
+    defaultConfig: { sku: 'Standard_LRS', kind: 'StorageV2', httpsOnly: true, allowBlobPublicAccess: false, minimumTlsVersion: 'TLS1_2', name: 'mystorageacct' },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'mystorageacct', required: true },
       {
@@ -162,6 +164,15 @@ export const azureResources: ResourceDefinition[] = [
         ],
       },
       { key: 'httpsOnly', label: 'HTTPS Only', type: 'boolean', defaultValue: true },
+      { key: 'allowBlobPublicAccess', label: 'Allow Blob Public Access', type: 'boolean', defaultValue: false },
+      {
+        key: 'minimumTlsVersion', label: 'Minimum TLS Version', type: 'select', defaultValue: 'TLS1_2',
+        options: [
+          { label: 'TLS 1.0', value: 'TLS1_0' },
+          { label: 'TLS 1.1', value: 'TLS1_1' },
+          { label: 'TLS 1.2', value: 'TLS1_2' },
+        ],
+      },
     ],
     securityRules: [
       {
@@ -171,6 +182,22 @@ export const azureResources: ResourceDefinition[] = [
         message: 'Storage account allows non-HTTPS traffic',
         recommendation: 'Enable "Secure transfer required" to enforce HTTPS-only connections',
         fixAction: (config) => ({ ...config, httpsOnly: true }),
+      },
+      {
+        id: 'storage-public-blob-access',
+        severity: 'critical',
+        check: (config) => config.allowBlobPublicAccess ? 'Storage account allows anonymous blob public access' : null,
+        message: 'Blob containers may be publicly readable',
+        recommendation: 'Disable "Allow Blob public access" at the storage account level',
+        fixAction: (config) => ({ ...config, allowBlobPublicAccess: false }),
+      },
+      {
+        id: 'storage-tls-version',
+        severity: 'medium',
+        check: (config) => (config.minimumTlsVersion === 'TLS1_0' || config.minimumTlsVersion === 'TLS1_1') ? 'Storage account permits outdated TLS versions' : null,
+        message: 'Storage account minimum TLS version is below 1.2',
+        recommendation: 'Set minimum TLS version to 1.2 or higher',
+        fixAction: (config) => ({ ...config, minimumTlsVersion: 'TLS1_2' }),
       },
     ],
   },
@@ -185,28 +212,48 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#FCE7F3',
     borderColor: '#DB2777',
     monthlyBaseCost: 15.0,
-    defaultConfig: { tier: 'Standard', dtu: 10, maxSizeGb: 250, name: 'my-sql' },
+    defaultConfig: { tier: 'Standard', dtu: 10, maxSizeGb: 250, publicNetworkAccess: false, threatDetectionEnabled: true, name: 'my-sql' },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-sql', required: true },
       {
         key: 'tier', label: 'Service Tier', type: 'select', defaultValue: 'Standard',
+        // GP_Gen5_*/BC_Gen5_* are real Azure SQL vCore-model sku_name
+        // values, which is what this field actually feeds into Terraform
+        // generation (see TerraformGenerator._sql: sku_name = cfg['tier']).
+        // Included so the Adaptive Scale Engine's assigned values (see
+        // AdaptiveScaleEngine.ts) always have a matching option instead of
+        // the <select> silently falling back to displaying its first one.
         options: [
           { label: 'Basic', value: 'Basic' },
           { label: 'Standard', value: 'Standard' },
           { label: 'Premium', value: 'Premium' },
           { label: 'General Purpose', value: 'GeneralPurpose' },
           { label: 'Business Critical', value: 'BusinessCritical' },
+          { label: 'General Purpose Gen5 2 vCore', value: 'GP_Gen5_2' },
+          { label: 'General Purpose Gen5 8 vCore', value: 'GP_Gen5_8' },
+          { label: 'Business Critical Gen5 16 vCore', value: 'BC_Gen5_16' },
         ],
       },
       { key: 'maxSizeGb', label: 'Max Size (GB)', type: 'number', defaultValue: 250 },
+      { key: 'publicNetworkAccess', label: 'Public Network Access', type: 'boolean', defaultValue: false },
+      { key: 'threatDetectionEnabled', label: 'Azure Defender for SQL', type: 'boolean', defaultValue: true },
     ],
     securityRules: [
       {
         id: 'sql-threat-detection',
         severity: 'medium',
-        check: () => null,
+        check: (config) => !config.threatDetectionEnabled ? 'Azure Defender for SQL not configured' : null,
         message: 'Azure Defender for SQL not configured',
         recommendation: 'Enable Azure Defender for SQL to detect anomalous activities',
+        fixAction: (config) => ({ ...config, threatDetectionEnabled: true }),
+      },
+      {
+        id: 'sql-public-access',
+        severity: 'critical',
+        check: (config) => config.publicNetworkAccess ? 'Azure SQL allows public network access' : null,
+        message: 'Azure SQL Server is exposed to the public internet',
+        recommendation: 'Disable public network access and use Private Endpoint',
+        fixAction: (config) => ({ ...config, publicNetworkAccess: false }),
       },
     ],
   },
@@ -306,6 +353,48 @@ export const azureResources: ResourceDefinition[] = [
     ],
   },
   {
+    type: 'azure_route_table',
+    label: 'Route Table',
+    service: 'User Defined Route (UDR)',
+    provider: 'azure',
+    category: 'networking',
+    icon: 'RT',
+    color: '#0078D4',
+    bgColor: '#E0F2FE',
+    borderColor: '#0284C7',
+    monthlyBaseCost: 0,
+    defaultConfig: { name: 'my-route-table', disableBgpRoutePropagation: false },
+    configSchema: [
+      { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-route-table', required: true },
+      { key: 'disableBgpRoutePropagation', label: 'Disable BGP Route Propagation', type: 'boolean', defaultValue: false },
+    ],
+    securityRules: [],
+  },
+  {
+    type: 'azure_bastion',
+    label: 'Azure Bastion',
+    service: 'Azure Bastion',
+    provider: 'azure',
+    category: 'security',
+    icon: 'BAS',
+    color: '#0078D4',
+    bgColor: '#FEE2E2',
+    borderColor: '#DC2626',
+    monthlyBaseCost: 140.0,
+    defaultConfig: { sku: 'Standard', name: 'my-bastion' },
+    configSchema: [
+      { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-bastion', required: true },
+      {
+        key: 'sku', label: 'SKU', type: 'select', defaultValue: 'Standard',
+        options: [
+          { label: 'Basic', value: 'Basic' },
+          { label: 'Standard', value: 'Standard' },
+        ],
+      },
+    ],
+    securityRules: [],
+  },
+  {
     type: 'azure_key_vault',
     label: 'Key Vault',
     service: 'Azure Key Vault',
@@ -353,6 +442,10 @@ export const azureResources: ResourceDefinition[] = [
     defaultConfig: { name: 'my-aks', nodeCount: 3 },
     configSchema: [
       { key: 'name', label: 'Cluster Name', type: 'text', defaultValue: 'my-aks', required: true },
+      // nodeCount exists in defaultConfig and is written by the Adaptive
+      // Scale Engine, but was missing here — scale changes were silently
+      // invisible in the Properties Panel.
+      { key: 'nodeCount', label: 'Node Count', type: 'number', defaultValue: 3 },
     ],
     securityRules: [],
   },
@@ -486,12 +579,42 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#FEF3C7',
     borderColor: '#D97706',
     monthlyBaseCost: 73.0,
-    defaultConfig: { name: 'my-vmss', sku: 'Standard_B2s', capacity: 2, osType: 'Linux' },
+    defaultConfig: { name: 'my-vmss', sku: 'Standard_B2s', capacity: 2, osType: 'Linux', osDiskEncryption: true },
     configSchema: [
       { key: 'name', label: 'Scale Set Name', type: 'text', defaultValue: 'my-vmss', required: true },
+      {
+        key: 'sku', label: 'VM Size', type: 'select', defaultValue: 'Standard_B2s',
+        // Same superset requirement as azure_vm's "size" field — the
+        // Adaptive Scale Engine writes vmss.sku from the same value space.
+        options: [
+          { label: 'Standard_B2s (2 vCPU, 4GB)', value: 'Standard_B2s' },
+          { label: 'Standard_D2s_v3 (2 vCPU, 8GB)', value: 'Standard_D2s_v3' },
+          { label: 'Standard_D4s_v3 (4 vCPU, 16GB)', value: 'Standard_D4s_v3' },
+          { label: 'Standard_D4s_v5 (4 vCPU, 16GB)', value: 'Standard_D4s_v5' },
+          { label: 'Standard_D8s_v5 (8 vCPU, 32GB)', value: 'Standard_D8s_v5' },
+          { label: 'Standard_E8s_v5 (8 vCPU, 64GB)', value: 'Standard_E8s_v5' },
+        ],
+      },
       { key: 'capacity', label: 'Instance Count', type: 'number', defaultValue: 2 },
+      {
+        key: 'osType', label: 'OS Type', type: 'select', defaultValue: 'Linux',
+        options: [
+          { label: 'Linux (Ubuntu 22.04 LTS)', value: 'Linux' },
+          { label: 'Windows Server 2022', value: 'Windows' },
+        ],
+      },
+      { key: 'osDiskEncryption', label: 'OS Disk Encryption', type: 'boolean', defaultValue: true },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'vmss-disk-encryption',
+        severity: 'high',
+        check: (config) => !config.osDiskEncryption ? 'VMSS OS disk encryption not enabled' : null,
+        message: 'VM Scale Set OS disks are not encrypted',
+        recommendation: 'Enable Azure Disk Encryption for scale set OS/data disks',
+        fixAction: (config) => ({ ...config, osDiskEncryption: true }),
+      },
+    ],
   },
   {
     type: 'azure_cloud_boundary',

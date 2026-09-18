@@ -1,4 +1,4 @@
-import { Project, CanvasNode, CanvasEdge, CloudProvider, ArchitectureVersion, Environment } from '@/types';
+import { Project, CanvasNode, CanvasEdge, CloudProvider, ArchitectureVersion, Environment, ScaleProfile } from '@/types';
 
 // ─── Interface ────────────────────────────────────────────────────────────────
 export interface IArchitectureService {
@@ -6,14 +6,17 @@ export interface IArchitectureService {
   getProject(id: string): Promise<Project | null>;
   saveProject(project: Project): Promise<Project>;
   deleteProject(id: string): Promise<void>;
-  saveCanvas(projectId: string, nodes: CanvasNode[], edges: CanvasEdge[], env?: string): Promise<void>;
-  loadCanvas(projectId: string, env?: string): Promise<{ nodes: CanvasNode[]; edges: CanvasEdge[] }>;
+  saveCanvas(projectId: string, nodes: CanvasNode[], edges: CanvasEdge[], env?: string, revision?: number, scaleProfile?: ScaleProfile): Promise<{ revision?: number } | void>;
+  loadCanvas(projectId: string, env?: string): Promise<{ nodes: CanvasNode[]; edges: CanvasEdge[]; revision?: number }>;
   createProject(name: string, provider: CloudProvider): Promise<Project>;
   listVersions(projectId: string, env?: string): Promise<ArchitectureVersion[]>;
   saveVersion(projectId: string, summary: string, env?: string): Promise<ArchitectureVersion>;
   restoreVersion(projectId: string, versionId: string, env?: string): Promise<{ nodes: CanvasNode[]; edges: CanvasEdge[] }>;
   cloneEnvironment(projectId: string, from: string, to: string): Promise<{ cloned: boolean; from: string; to: string; nodeCount: number }>;
   promoteEnvironment(projectId: string, from: string, to: string): Promise<{ promoted: boolean; from: string; to: string; nodeCount: number }>;
+  saveDraft?(draftProject: Project, revision?: number): Promise<{ revision?: number; hash?: string } | void>;
+  loadDraft?(): Promise<{ nodes: CanvasNode[]; edges: CanvasEdge[]; providerMode?: any; scaleProfile?: any; revision?: number; hash?: string } | null>;
+  clearDraft?(): Promise<void>;
 }
 
 // ─── Mock Implementation ──────────────────────────────────────────────────────

@@ -1,8 +1,16 @@
 /**
- * CloudCraft — Real AWS Pricing Provider
+ * CloudCraft — AWS Static Rate Table Pricing Provider
  *
- * Sourced from the official AWS Price List Bulk API & AWS Public Pricing Documentation:
- * https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/index.json
+ * IMPORTANT (honesty note): unlike AzurePricingProvider, this provider does
+ * NOT make a live HTTP call to any AWS pricing endpoint. It computes prices
+ * from hardcoded on-demand rate constants below, manually transcribed from
+ * AWS's public pricing pages at the time this file was written — they are
+ * NOT fetched at request time and WILL drift from AWS's actual current
+ * pricing. The AWS Price List Bulk API
+ * (https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/index.json) is a
+ * real, public, unauthenticated endpoint that could replace this with true
+ * live pricing, but that integration is not implemented — do not present
+ * this provider's output as "live" pricing.
  *
  * Implements configuration-aware pricing for all AWS resources supported by CloudCraft:
  * - EC2: Instance family/size, OS, regional variance, attached EBS gp3/io2 volumes
@@ -18,7 +26,7 @@
  */
 import type { ICloudPricingProvider, NormalizedPrice, PriceQuery } from './types';
 
-// ─── Official AWS Regional Pricing Multipliers / Variations ──────────────────────
+// ─── AWS Regional Pricing Multipliers (static, manually transcribed) ─────────────
 // Sourced from AWS Price List API comparisons to us-east-1
 const AWS_REGION_RATE_FACTOR: Record<string, number> = {
   'us-east-1':      1.00,
@@ -53,7 +61,7 @@ const AWS_REGION_RATE_FACTOR: Record<string, number> = {
   'af-south-1':     1.18,
 };
 
-// ─── Official AWS On-Demand Linux Base Hourly (us-east-1) ────────────────────────
+// ─── AWS On-Demand Linux Base Hourly, static table (us-east-1) ───────────────────
 const EC2_BASE_HOURLY: Record<string, number> = {
   // T3 (burstable)
   't3.nano':     0.0052,
@@ -87,7 +95,7 @@ const EC2_BASE_HOURLY: Record<string, number> = {
   'r5.4xlarge':  1.008,
 };
 
-// ─── Official AWS RDS Single-AZ Base Hourly (us-east-1) ──────────────────────────
+// ─── AWS RDS Single-AZ Base Hourly, static table (us-east-1) ─────────────────────
 const RDS_BASE_HOURLY: Record<string, number> = {
   'db.t3.micro':    0.017,
   'db.t3.small':    0.034,
@@ -110,7 +118,7 @@ function getRegionFactor(region: string): number {
 }
 
 export class AwsPricingProvider implements ICloudPricingProvider {
-  readonly name = 'aws-price-list-api';
+  readonly name = 'aws-static-rate-table';
   readonly provider = 'aws' as const;
 
   async getPrice(query: PriceQuery): Promise<NormalizedPrice | null> {
@@ -159,7 +167,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
           monthlyPrice: 0,
           currency: 'USD',
           description: 'No direct charges for networking or security boundary container',
-          source: 'aws-price-list-api',
+          source: 'aws-static-rate-table',
           retrievedAt: new Date().toISOString(),
           expiresAt: new Date(Date.now() + 86400000).toISOString(),
           assumptions: ['Free tier resource boundary'],
@@ -192,11 +200,11 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: `AWS EC2 ${instanceType} (Linux, on-demand) + ${storageGb}GB gp3 EBS`,
-      source: 'aws-price-list-api',
+      source: 'aws-static-rate-table',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
-        `Live on-demand rate for ${instanceType}: $${hourly.toFixed(4)}/hr`,
+        `Static reference on-demand rate for ${instanceType}: $${hourly.toFixed(4)}/hr`,
         `Assumes 730 hours/month operation: $${computeMonthly.toFixed(2)}/mo`,
         `${storageGb}GB EBS gp3 root storage: $${storageMonthly.toFixed(2)}/mo`,
         `Region: ${region} (Rate factor: ${factor.toFixed(2)}x)`,
@@ -231,7 +239,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: `AWS RDS ${instanceClass} ${engine}${multiAz ? ' (Multi-AZ)' : ''}`,
-      source: 'aws-price-list-api',
+      source: 'aws-static-rate-table',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
@@ -266,7 +274,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: `AWS S3 Standard Storage (${storageGb}GB)`,
-      source: 'aws-price-list-api',
+      source: 'aws-static-rate-table',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
@@ -298,7 +306,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: `AWS ${lbType === 'network' ? 'Network' : 'Application'} Load Balancer`,
-      source: 'aws-price-list-api',
+      source: 'aws-static-rate-table',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
@@ -328,7 +336,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: 'AWS NAT Gateway (hourly + data processing)',
-      source: 'aws-price-list-api',
+      source: 'aws-static-rate-table',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
@@ -354,7 +362,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: 'AWS Lambda Functions (x86_64)',
-      source: 'aws-price-list-api',
+      source: 'aws-static-rate-table',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
@@ -380,7 +388,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: 'AWS CloudFront CDN Distribution',
-      source: 'aws-price-list-api',
+      source: 'aws-static-rate-table',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
@@ -410,7 +418,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: `EBS ${volumeType.toUpperCase()} Volume (${sizeGb}GB)`,
-      source: 'aws-price-list-api',
+      source: 'aws-static-rate-table',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
@@ -435,7 +443,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: 'Amazon DynamoDB (On-Demand Mode)',
-      source: 'aws-price-list-api',
+      source: 'aws-static-rate-table',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
@@ -460,7 +468,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       monthlyPrice: hourly * 730,
       currency: 'USD',
       description: 'Amazon EKS Control Plane Cluster Management',
-      source: 'aws-price-list-api',
+      source: 'aws-static-rate-table',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [

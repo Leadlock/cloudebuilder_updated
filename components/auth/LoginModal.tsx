@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ShieldCheck, UserCheck, Lock, Mail, AlertCircle, Loader2 } from 'lucide-react';
+import { ShieldCheck, Lock, Mail, User as UserIcon, Building2, AlertCircle, Loader2 } from 'lucide-react';
 import type { AuthUser } from '@/lib/api/authService';
 
 interface LoginModalProps {
@@ -11,8 +11,11 @@ interface LoginModalProps {
 }
 
 export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalProps) {
-  const [email, setEmail] = useState('admin@cloudcraft.io');
-  const [password, setPassword] = useState('Admin123!');
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [orgName, setOrgName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,17 +26,20 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
     setLoading(true);
     setError(null);
 
+    const endpoint = mode === 'signin' ? '/api/auth/login' : '/api/auth/signup';
+    const body = mode === 'signin' ? { email, password } : { email, password, name, orgName };
+
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error ?? 'Invalid email or password');
+        throw new Error(data.error?.message ?? data.error ?? 'Something went wrong');
       }
 
       onSuccess(data.user);
@@ -45,12 +51,6 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
     }
   }
 
-  const selectPreset = (presetEmail: string, presetPass: string) => {
-    setEmail(presetEmail);
-    setPassword(presetPass);
-    setError(null);
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
       <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -61,51 +61,29 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
               <Lock className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white tracking-tight">CloudCraft Authentication</h2>
-              <p className="text-xs text-slate-400">Enterprise Cloud Architecture Intelligence</p>
+              <h2 className="text-lg font-bold text-white tracking-tight">CloudCraft</h2>
+              <p className="text-xs text-slate-400">Cloud Architecture Design & Governance</p>
             </div>
           </div>
         </div>
 
-        {/* Preset quick buttons */}
         <div className="p-6 space-y-4">
-          <div>
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2">
-              Select Role / Quick Login
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => selectPreset('admin@cloudcraft.io', 'Admin123!')}
-                className={`flex flex-col items-start p-3 rounded-xl border text-left transition-all ${
-                  email === 'admin@cloudcraft.io'
-                    ? 'border-cyan-500/60 bg-cyan-950/40 text-cyan-300 ring-1 ring-cyan-500/50'
-                    : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 font-bold text-xs mb-1">
-                  <ShieldCheck className="w-4 h-4 text-cyan-400" />
-                  ADMIN
-                </div>
-                <span className="text-[10px] text-slate-400">Approve & Deploy</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => selectPreset('user@cloudcraft.io', 'User123!')}
-                className={`flex flex-col items-start p-3 rounded-xl border text-left transition-all ${
-                  email === 'user@cloudcraft.io'
-                    ? 'border-indigo-500/60 bg-indigo-950/40 text-indigo-300 ring-1 ring-indigo-500/50'
-                    : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 font-bold text-xs mb-1">
-                  <UserCheck className="w-4 h-4 text-indigo-400" />
-                  USER
-                </div>
-                <span className="text-[10px] text-slate-400">Design & Submit</span>
-              </button>
-            </div>
+          {/* Mode toggle */}
+          <div className="grid grid-cols-2 gap-1 p-1 bg-slate-950 border border-slate-800 rounded-xl">
+            <button
+              type="button"
+              onClick={() => { setMode('signin'); setError(null); }}
+              className={`py-2 rounded-lg text-xs font-semibold transition-colors ${mode === 'signin' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode('signup'); setError(null); }}
+              className={`py-2 rounded-lg text-xs font-semibold transition-colors ${mode === 'signup' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              Create Account
+            </button>
           </div>
 
           {error && (
@@ -116,6 +94,23 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
           )}
 
           <form onSubmit={handleSubmit} className="space-y-3">
+            {mode === 'signup' && (
+              <div>
+                <label className="text-xs text-slate-300 font-medium block mb-1">Full Name</label>
+                <div className="relative">
+                  <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <input
+                    type="text"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+                    placeholder="Jane Doe"
+                  />
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="text-xs text-slate-300 font-medium block mb-1">Work Email</label>
               <div className="relative">
@@ -138,13 +133,35 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                 <input
                   type="password"
                   required
+                  minLength={mode === 'signup' ? 8 : undefined}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                  placeholder="••••••••"
+                  placeholder={mode === 'signup' ? 'At least 8 characters' : '••••••••'}
                 />
               </div>
             </div>
+
+            {mode === 'signup' && (
+              <div>
+                <label className="text-xs text-slate-300 font-medium block mb-1">Organization Name</label>
+                <div className="relative">
+                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <input
+                    type="text"
+                    required
+                    value={orgName}
+                    onChange={(e) => setOrgName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+                    placeholder="Acme Inc."
+                  />
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3" />
+                  You'll be the owner of this new organization. Joining an existing one? Ask an admin to invite you instead.
+                </p>
+              </div>
+            )}
 
             <button
               type="submit"
@@ -154,13 +171,23 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Authenticating...
+                  {mode === 'signin' ? 'Signing in...' : 'Creating account...'}
                 </>
               ) : (
-                `Sign In as ${email === 'admin@cloudcraft.io' ? 'Administrator' : 'Standard User'}`
+                mode === 'signin' ? 'Sign In' : 'Create Account'
               )}
             </button>
           </form>
+
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full text-center text-[11px] text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              Cancel
+            </button>
+          )}
         </div>
       </div>
     </div>

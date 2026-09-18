@@ -26,7 +26,12 @@ export interface RequestIdentity {
  * Supports:
  * 1. HTTP-only session cookie (`cloudcraft_session`)
  * 2. `Authorization: Bearer <token>`
- * 3. `x-user-id` and `x-user-role` headers (for automated integration tests)
+ * 3. `x-user-id` / `x-user-role` headers, ONLY when `CLOUDCRAFT_ALLOW_TEST_AUTH_HEADERS=1`
+ *    is set (automated integration tests) — refused otherwise so a stray header
+ *    can never substitute for a real session in a real deployment.
+ *
+ * There is deliberately no "no session found" fallback identity: an absent
+ * or invalid session means unauthenticated, full stop.
  *
  * Returns null if no valid credentials or session are found.
  */
@@ -60,28 +65,16 @@ export function extractIdentity(req: NextRequest): RequestIdentity | null {
     }
   }
 
-  // 3. Test / Automation header support
-  const userId = req.headers.get('x-user-id');
-  if (userId) {
-    const role = req.headers.get('x-user-role') ?? (userId === 'usr-user-1' ? 'user' : 'admin');
-    const user = AuthService.getUserById(userId);
-    return {
-      userId,
-      email: user?.email,
-      role: user?.role ?? role,
-      orgIds: user ? [user.orgId] : ['dev-org-id'],
-    };
-  }
-
-  // 4. Development / demo fallback: default to preset admin user matching AppContext initial state
-  if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
-    const defaultUser = AuthService.getUserById('usr-admin-1');
-    if (defaultUser) {
+  // 3. Test / automation header support — explicitly opt-in only, never in a
+  //    deployment that hasn't deliberately set this flag.
+  if (process.env.CLOUDCRAFT_ALLOW_TEST_AUTH_HEADERS === '1') {
+    const userId = req.headers.get('x-user-id');
+    if (userId) {
       return {
-        userId: defaultUser.id,
-        email: defaultUser.email,
-        role: defaultUser.role,
-        orgIds: [defaultUser.orgId],
+        userId,
+        email: req.headers.get('x-user-email') ?? undefined,
+        role: req.headers.get('x-user-role') ?? 'user',
+        orgIds: [],
       };
     }
   }

@@ -1,4 +1,5 @@
 import { AIGeneratorResult, CanvasNode, CanvasEdge, WizardOptions, Recommendation, CostOptimization } from '@/types';
+import { SECURITY_SEVERITY } from '@/lib/domain/securitySeverity';
 import { architectureTemplates, getTemplate } from './templates';
 
 // ─── AI Generator ─────────────────────────────────────────────────────────────
@@ -123,13 +124,16 @@ export function generateRecommendations(nodes: CanvasNode[]): Recommendation[] {
     recs.push({ id: 'r1', category: 'reliability', severity: 'high', title: 'Add a Load Balancer', description: 'Your compute instances have no load balancer. Single-instance deployments are a single point of failure.', affectedResources: ec2Nodes.map((n) => n.label), action: 'Add an Application Load Balancer and distribute traffic across multiple instances.' });
   }
   if (!hasMultiAZ && rdsNodes.length > 0) {
-    recs.push({ id: 'r2', category: 'reliability', severity: 'high', title: 'Enable RDS Multi-AZ', description: 'Your RDS instance is not configured for Multi-AZ, creating a single point of failure.', affectedResources: rdsNodes.map((n) => n.label), action: 'Enable Multi-AZ deployment in the RDS configuration to ensure automatic failover.' });
+    recs.push({ id: 'r2', category: 'reliability', severity: SECURITY_SEVERITY.AWS_RDS_NOT_MULTI_AZ, title: 'Enable RDS Multi-AZ', description: 'Your RDS instance is not configured for Multi-AZ, creating a single point of failure.', affectedResources: rdsNodes.map((n) => n.label), action: 'Enable Multi-AZ deployment in the RDS configuration to ensure automatic failover.' });
   }
   if (!hasEncryption && rdsNodes.length > 0) {
-    recs.push({ id: 'r3', category: 'security', severity: 'high', title: 'Enable Encryption at Rest', description: 'One or more databases are not using encryption at rest, exposing sensitive data.', affectedResources: rdsNodes.map((n) => n.label), action: 'Enable storage encryption on all RDS instances.' });
+    recs.push({ id: 'r3', category: 'security', severity: SECURITY_SEVERITY.AWS_RDS_NOT_ENCRYPTED, title: 'Enable Encryption at Rest', description: 'One or more databases are not using encryption at rest, exposing sensitive data.', affectedResources: rdsNodes.map((n) => n.label), action: 'Enable storage encryption on all RDS instances.' });
   }
   if (!hasSG) {
-    recs.push({ id: 'r4', category: 'security', severity: 'medium', title: 'Add Security Groups', description: 'No security groups are defined. Resources are accessible without network-level controls.', affectedResources: ['All compute resources'], action: 'Define Security Groups with least-privilege rules for each resource.' });
+    // Standardized to match SECURITY_SEVERITY.AWS_NO_SECURITY_GROUPS ('high') —
+    // this recommendation previously hardcoded 'medium' here while every other
+    // engine that checks the same fact (WA, Advisor) already used 'high'.
+    recs.push({ id: 'r4', category: 'security', severity: SECURITY_SEVERITY.AWS_NO_SECURITY_GROUPS, title: 'Add Security Groups', description: 'No security groups are defined. Resources are accessible without network-level controls.', affectedResources: ['All compute resources'], action: 'Define Security Groups with least-privilege rules for each resource.' });
   }
   if (!hasNAT && nodes.some((n) => n.resourceType === 'aws_ec2')) {
     recs.push({ id: 'r5', category: 'security', severity: 'medium', title: 'Use NAT Gateway for Outbound Traffic', description: 'Compute resources in private subnets should use a NAT Gateway rather than direct internet access.', affectedResources: ec2Nodes.map((n) => n.label), action: 'Add a NAT Gateway to route outbound traffic from private subnets.' });

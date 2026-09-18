@@ -1,4 +1,5 @@
 import { ArchitectureTemplate, TemplateGenerateOptions, CanvasNode, CanvasEdge, CloudProvider, RelationshipType, NetworkScope } from '@/types';
+import { allTemplates as catalogTemplates } from '@/lib/templates/catalogData';
 
 function n(
   id: string,
@@ -60,7 +61,7 @@ function e(
   };
 }
 
-export const architectureTemplates: ArchitectureTemplate[] = [
+export const architectureTemplatesLegacy: ArchitectureTemplate[] = [
   // ─── AWS Production 1,000-User Reference Architecture ────────────────────────
   {
     id: 'aws-1000-user-production',
@@ -440,6 +441,11 @@ export const architectureTemplates: ArchitectureTemplate[] = [
     },
   },
 ];
+
+// Export the full 240-template production catalog as the primary architectureTemplates
+export const architectureTemplates: ArchitectureTemplate[] = catalogTemplates;
+
+export const legacyArchitectureTemplates = architectureTemplatesLegacy;
 
 export const TEMPLATES = architectureTemplates;
 

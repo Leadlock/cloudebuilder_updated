@@ -48,8 +48,12 @@ export const discoveryImportService = {
       }
     }
 
-    // Convert discovered resources to canvas nodes and real relationships
-    const { nodes: newNodes, edges: newEdges } = normalizeDiscoveredInfrastructure(run.resources);
+    // Convert discovered resources to canvas nodes and real relationships.
+    // run.relationships carries the adapter's precise topology graph (e.g.
+    // real ALB->TargetGroup->EC2 traffic paths from DescribeTargetHealth,
+    // SG associations) — previously discarded, now used instead of relying
+    // solely on the normalizer's own heuristic containment reconstruction.
+    const { nodes: newNodes, edges: newEdges } = normalizeDiscoveredInfrastructure(run.resources, run.relationships);
 
     let finalNodes: CanvasNode[];
     let finalEdges: CanvasEdge[];

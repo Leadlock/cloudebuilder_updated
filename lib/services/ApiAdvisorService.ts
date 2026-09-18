@@ -79,14 +79,14 @@ export function setActiveEnvironment(env: string): void {
 // ─── IAdvisorService interface ────────────────────────────────────────────────
 
 export interface IAdvisorService {
-  analyze(nodes: CanvasNode[]): Promise<AdvisorResult>;
+  analyze(nodes: CanvasNode[], expectedUsers?: number): Promise<AdvisorResult>;
 }
 
 // ─── ApiAdvisorService ────────────────────────────────────────────────────────
 
 class ApiAdvisorServiceImpl implements IAdvisorService {
 
-  async analyze(nodes: CanvasNode[]): Promise<AdvisorResult> {
+  async analyze(nodes: CanvasNode[], expectedUsers?: number): Promise<AdvisorResult> {
     const projectId = _activeProjectId;
     if (!projectId) {
       throw new Error('No active project context');
@@ -96,7 +96,7 @@ class ApiAdvisorServiceImpl implements IAdvisorService {
       `/api/projects/${projectId}/optimizations`,
       {
         method: 'POST',
-        body: JSON.stringify({ env: _activeEnvironment }),
+        body: JSON.stringify({ env: _activeEnvironment, expectedUsers }),
       },
     );
 

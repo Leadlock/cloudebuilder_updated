@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
 import { apiCostService, CostComparisonResult } from '@/lib/services/ApiCostService';
+import { costService } from '@/lib/services/CostService';
 import { formatCurrency } from '@/lib/currency/formatter';
 import { DollarSign, ArrowRightLeft, AlertTriangle, Cloud, Scale } from 'lucide-react';
 import clsx from 'clsx';
@@ -32,11 +33,23 @@ export default function CostComparisonPanel() {
           setLoading(false);
         }
       })
-      .catch(err => {
-        if (!cancelled) {
-          setError(err.message || 'Failed to compare costs. Make sure the API is running.');
-          setLoading(false);
-        }
+      .catch(() => {
+        // No persisted project (e.g. an unsaved draft) or the API is unreachable —
+        // fall back to a fully local comparison, same pattern CostPanel uses.
+        costService.compareCosts!(activeProject.nodes, displayCurrency)
+          .then(res => {
+            if (!cancelled) {
+              setData(res as CostComparisonResult);
+              setError(null);
+              setLoading(false);
+            }
+          })
+          .catch((err) => {
+            if (!cancelled) {
+              setError(err.message || 'Failed to compare costs.');
+              setLoading(false);
+            }
+          });
       });
 
     return () => { cancelled = true; };

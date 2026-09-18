@@ -2,7 +2,7 @@
  * OrganizationRepository — DB access for users and organizations.
  */
 import { db } from '@/src/prisma/db';
-import { randomUUID as uuidv4 } from 'crypto';
+import { randomUUID as uuidv4, randomBytes } from 'crypto';
 
 export interface DbUser {
   id: string;
@@ -21,7 +21,34 @@ export interface DbOrganization {
   updatedAt: string;
 }
 
+export interface DbOrgMember {
+  userId: string;
+  email: string;
+  name: string | null;
+  role: string;
+}
+
+export interface DbOrgInvite {
+  id: string;
+  orgId: string;
+  email: string;
+  role: string;
+  token: string;
+  invitedByUserId: string;
+  createdAt: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+}
+
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
 function now() { return new Date().toISOString(); }
+
+/** URL-safe slug from an org name, deduped with a short random suffix. */
+function slugify(name: string): string {
+  const base = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'org';
+  return `${base}-${randomBytes(3).toString('hex')}`;
+}
 
 export const orgRepository = {
 
@@ -92,5 +119,75 @@ export const orgRepository = {
 
     await this.addMember(org.id, userId, 'owner');
     return { userId, orgId: org.id };
+  },
+
+  // ── Auth: password-based accounts ────────────────────────────────────────
+
+  /**
+   * Auth-only lookup — the only place `passwordHash` leaves the DB layer.
+   * Never expose this row shape outside authentication code.
+   */
+  async findUserByEmailForAuth(email: string): Promise<(DbUser & { passwordHash: string | null }) | null> {
+    const row = await db.orm.public.User
+      .where({ email: email.trim().toLowerCase() })
+      .select('id', 'email', 'name', 'avatarUrl', 'passwordHash', 'createdAt', 'updatedAt')
+      .first();
+    return row ?? null;
+  },
+
+  async createUserWithPassword(input: { email: string; name: string; passwordHash: string }): Promise<DbUser> {
+    const ts = now();
+    const id = uuidv4();
+    const email = input.email.trim().toLowerCase();
+    await db.orm.public.User.create({
+      id, email, name: input.name, avatarUrl: null,
+      passwordHash: input.passwordHash, createdAt: ts, updatedAt: ts,
+    });
+    return { id, email, name: input.name, avatarUrl: null, createdAt: ts, updatedAt: ts };
+  },
+
+  /** Creates a fresh org with a generated unique slug — the signup path (vs. `createOrg`, used when the caller already has a slug). */
+  async createOrgForSignup(name: string): Promise<DbOrganization> {
+    return this.createOrg({ name, slug: slugify(name) });
+  },
+
+  async listOrgMembers(orgId: string): Promise<DbOrgMember[]> {
+    const members = await db.orm.public.OrgMember.where({ orgId }).select('userId', 'role').all();
+    const users = await Promise.all(members.map((m) => this.findUser(m.userId)));
+    return members.map((m, i) => ({
+      userId: m.userId,
+      role: m.role,
+      email: users[i]?.email ?? 'unknown',
+      name: users[i]?.name ?? null,
+    }));
+  },
+
+  // ── Auth: org invites ────────────────────────────────────────────────────
+
+  async createInvite(input: { orgId: string; email: string; role: string; invitedByUserId: string }): Promise<DbOrgInvite> {
+    const ts = now();
+    const id = uuidv4();
+    const token = randomBytes(24).toString('base64url');
+    const expiresAt = new Date(Date.now() + INVITE_TTL_MS).toISOString();
+    const email = input.email.trim().toLowerCase();
+    await db.orm.public.OrgInvite.create({
+      id, orgId: input.orgId, email, role: input.role, token,
+      invitedByUserId: input.invitedByUserId, createdAt: ts, expiresAt, acceptedAt: null,
+    });
+    return { id, orgId: input.orgId, email, role: input.role, token, invitedByUserId: input.invitedByUserId, createdAt: ts, expiresAt, acceptedAt: null };
+  },
+
+  async findInviteByToken(token: string): Promise<DbOrgInvite | null> {
+    const row = await db.orm.public.OrgInvite.where({ token }).first();
+    return row ?? null;
+  },
+
+  async markInviteAccepted(token: string): Promise<void> {
+    await db.orm.public.OrgInvite.where({ token }).update({ acceptedAt: now() });
+  },
+
+  async listPendingOrgInvites(orgId: string): Promise<DbOrgInvite[]> {
+    const rows = await db.orm.public.OrgInvite.where({ orgId, acceptedAt: null }).all();
+    return rows.filter((r) => new Date(r.expiresAt).getTime() > Date.now());
   },
 };

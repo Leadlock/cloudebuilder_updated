@@ -1,7 +1,7 @@
 /**
  * ArchitectureRepository — database access for architecture canvas, resources, connections, and versions.
  */
-import { db, rawExec } from '@/src/prisma/db';
+import { db, rawTransaction } from '@/src/prisma/db';
 import { randomUUID as uuidv4 } from 'crypto';
 import type { CanvasNode, CanvasEdge, Region } from '@/types';
 
@@ -12,8 +12,17 @@ export interface DbArchitecture {
   environmentId: string;
   createdAt: string;
   updatedAt: string;
+  revision: number;
   resources: DbArchitectureResource[];
   connections: DbArchitectureConnection[];
+}
+
+/** Thrown by saveCanvas when the caller's expectedRevision is stale relative to the DB. */
+export class RevisionConflictError extends Error {
+  constructor(public readonly serverRevision: number, public readonly clientRevision: number) {
+    super(`Revision conflict: server is at revision ${serverRevision}, client submitted ${clientRevision}.`);
+    this.name = 'RevisionConflictError';
+  }
 }
 
 export interface DbArchitectureResource {
@@ -102,13 +111,13 @@ export const architectureRepository = {
   async findByEnvironment(environmentId: string): Promise<DbArchitecture | null> {
     const row = await db.orm.public.Architecture
       .where({ environmentId })
-      .select('id', 'environmentId', 'createdAt', 'updatedAt')
+      .select('id', 'environmentId', 'createdAt', 'updatedAt', 'revision')
       .first();
     if (!row) return null;
-    return this._loadFull(row.id, row.environmentId, row.createdAt, row.updatedAt);
+    return this._loadFull(row.id, row.environmentId, row.createdAt, row.updatedAt, row.revision);
   },
 
-  async _loadFull(id: string, environmentId: string, createdAt: string, updatedAt: string): Promise<DbArchitecture> {
+  async _loadFull(id: string, environmentId: string, createdAt: string, updatedAt: string, revision: number): Promise<DbArchitecture> {
     const [resources, connections] = await Promise.all([
       db.orm.public.ArchitectureResource
         .where({ architectureId: id })
@@ -120,7 +129,7 @@ export const architectureRepository = {
         .all(),
     ]);
     return {
-      id, environmentId, createdAt, updatedAt,
+      id, environmentId, createdAt, updatedAt, revision,
       resources: resources.map((r) => ({
         ...r,
         region: r.region ?? null,
@@ -134,13 +143,25 @@ export const architectureRepository = {
     };
   },
 
+  /**
+   * Saves the canvas, optionally enforcing optimistic concurrency via
+   * `expectedRevision`. The revision counter and row lock live in the DB
+   * (the `architecture.revision` column, read with SELECT ... FOR UPDATE
+   * inside the same transaction as the write), not in process memory — so
+   * conflicts are detected correctly even when requests land on different
+   * server instances. Throws RevisionConflictError if expectedRevision is
+   * stale. The in-process per-environment lock below is an additional,
+   * same-process fast-path serialization; the DB row lock is what makes
+   * this correct across processes.
+   */
   async saveCanvas(
     environmentId: string,
     nodes: CanvasNode[],
     edges: CanvasEdge[],
+    expectedRevision?: number,
   ): Promise<DbArchitecture> {
     const prev = environmentSaveLocks.get(environmentId) ?? Promise.resolve(null as unknown as DbArchitecture);
-    const current = prev.catch(() => null as unknown as DbArchitecture).then(() => this._executeSaveCanvas(environmentId, nodes, edges));
+    const current = prev.catch(() => null as unknown as DbArchitecture).then(() => this._executeSaveCanvas(environmentId, nodes, edges, expectedRevision));
     environmentSaveLocks.set(environmentId, current);
     return current;
   },
@@ -149,82 +170,89 @@ export const architectureRepository = {
     environmentId: string,
     nodes: CanvasNode[],
     edges: CanvasEdge[],
+    expectedRevision?: number,
   ): Promise<DbArchitecture> {
     const ts = now();
 
-    // Determine whether an architecture record already exists for this environment.
-    // If it does, preserve its id and createdAt so external references (versions) remain valid.
-    const existing = await db.orm.public.Architecture
-      .where({ environmentId })
-      .select('id', 'createdAt')
-      .first();
+    let archId = '';
+    let createdAt = ts;
+    let newRevision = 1;
 
-    let archId: string;
-    let createdAt: string;
-
-    if (existing) {
-      archId = existing.id;
-      createdAt = existing.createdAt;
-      // Update the timestamp
-      await db.orm.public.Architecture.where({ id: archId }).update({ updatedAt: ts });
-      // Use raw SQL DELETE to guarantee all children are removed atomically.
-      // The Prisma ORM's .where().delete() performs per-row deletes in some
-      // configurations and can silently skip rows when FK cascade triggers
-      // run concurrently. A raw parameterised DELETE is always atomic.
-      // Delete connections first (FK: Connection→Resource), then resources.
-      await rawExec(
-        'DELETE FROM "architectureConnection" WHERE "architectureId" = $1',
-        [archId],
+    // The entire read-lock + revision-check + delete-then-reinsert sequence
+    // runs on ONE connection inside a single BEGIN/COMMIT transaction, so a
+    // mid-save crash rolls back to the prior consistent state instead of
+    // leaving orphaned/partial rows, AND the revision compare-and-increment
+    // is race-free even against a concurrent save from another server
+    // instance (the SELECT ... FOR UPDATE holds a row lock for the duration
+    // of the transaction). The Prisma-Next ORM has no transaction primitive,
+    // so this uses raw SQL for every statement in the sequence rather than
+    // mixing it with ORM calls that would run on separate connections
+    // outside the transaction.
+    await rawTransaction(async (query) => {
+      const existingResult = await query(
+        'SELECT "id", "createdAt", "revision" FROM "architecture" WHERE "environmentId" = $1 FOR UPDATE',
+        [environmentId],
       );
-      await rawExec(
-        'DELETE FROM "architectureResource" WHERE "architectureId" = $1',
-        [archId],
-      );
-    } else {
-      archId = uuidv4();
-      createdAt = ts;
-      await db.orm.public.Architecture.create({
-        id: archId,
-        environmentId,
-        createdAt: ts,
-        updatedAt: ts,
-      });
-    }
+      const existing = existingResult.rows[0] as { id: string; createdAt: string; revision: number } | undefined;
 
-    // Insert new resources
-    for (const node of nodes) {
-      const config = {
-        ...node.config,
-        ...(node.importState ? { importState: node.importState, imported: node.importState === 'imported' } : {}),
-      };
-      await db.orm.public.ArchitectureResource.create({
-        id: node.id,
-        resourceType: node.resourceType,
-        provider: node.provider,
-        label: node.label,
-        positionX: node.position.x,
-        positionY: node.position.y,
-        configJson: JSON.stringify(config),
-        region: node.region ?? null,
-        groupId: node.groupId ?? null,
-        locked: node.locked ?? false,
-        architectureId: archId,
-      });
-    }
+      if (existing) {
+        if (expectedRevision !== undefined && expectedRevision < existing.revision) {
+          throw new RevisionConflictError(existing.revision, expectedRevision);
+        }
+        archId = existing.id;
+        createdAt = existing.createdAt;
+        newRevision = existing.revision + 1;
+        await query('UPDATE "architecture" SET "updatedAt" = $1, "revision" = $2 WHERE "id" = $3', [ts, newRevision, archId]);
+        // Delete connections first (FK: Connection→Resource), then resources.
+        await query('DELETE FROM "architectureConnection" WHERE "architectureId" = $1', [archId]);
+        await query('DELETE FROM "architectureResource" WHERE "architectureId" = $1', [archId]);
+      } else {
+        archId = uuidv4();
+        createdAt = ts;
+        newRevision = 1;
+        await query(
+          'INSERT INTO "architecture" ("id", "environmentId", "createdAt", "updatedAt", "revision") VALUES ($1, $2, $3, $4, $5)',
+          [archId, environmentId, ts, ts, newRevision],
+        );
+      }
 
-    // Insert new connections (only after all resources exist to satisfy FK constraints)
-    for (const edge of edges) {
-      await db.orm.public.ArchitectureConnection.create({
-        id: edge.id,
-        label: edge.label ?? null,
-        edgeType: edge.edgeType ?? null,
-        architectureId: archId,
-        sourceId: edge.source,
-        targetId: edge.target,
-      });
-    }
+      for (const node of nodes) {
+        const config = {
+          ...node.config,
+          ...(node.importState ? { importState: node.importState, imported: node.importState === 'imported' } : {}),
+        };
+        await query(
+          `INSERT INTO "architectureResource"
+             ("id", "resourceType", "provider", "label", "positionX", "positionY", "configJson", "region", "groupId", "locked", "architectureId")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          [
+            node.id,
+            node.resourceType,
+            node.provider,
+            node.label,
+            node.position.x,
+            node.position.y,
+            JSON.stringify(config),
+            node.region ?? null,
+            node.groupId ?? null,
+            node.locked ?? false,
+            archId,
+          ],
+        );
+      }
 
-    return this._loadFull(archId, environmentId, createdAt, ts);
+      // Insert new connections (only after all resources exist to satisfy FK constraints)
+      for (const edge of edges) {
+        await query(
+          `INSERT INTO "architectureConnection"
+             ("id", "label", "edgeType", "architectureId", "sourceId", "targetId")
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [edge.id, edge.label ?? null, edge.edgeType ?? null, archId, edge.source, edge.target],
+        );
+      }
+    });
+
+    return this._loadFull(archId, environmentId, createdAt, ts, newRevision);
   },
 
   // ── Versions ───────────────────────────────────────────────────────────────

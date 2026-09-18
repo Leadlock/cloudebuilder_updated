@@ -1,0 +1,1004 @@
+[
+  {
+    "id": "table.aIGenerationHistory",
+    "label": "Create table \"aIGenerationHistory\"",
+    "summary": "Creates table \"aIGenerationHistory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "aIGenerationHistory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"aIGenerationHistory\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"aIGenerationHistory\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"aIGenerationHistory\"",
+        "sql": "CREATE TABLE \"public\".\"aIGenerationHistory\" (\n  \"architectureId\" text NOT NULL,\n  \"architectureJson\" text NOT NULL,\n  \"completedAt\" text,\n  \"createdAt\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"model\" text DEFAULT 'gemini-1.5-pro' NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"prompt\" text NOT NULL,\n  \"provider\" text DEFAULT 'gemini' NOT NULL,\n  \"status\" text DEFAULT 'completed' NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"aIGenerationHistory\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"aIGenerationHistory\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.complianceAssessment",
+    "label": "Create table \"complianceAssessment\"",
+    "summary": "Creates table \"complianceAssessment\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "complianceAssessment"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"complianceAssessment\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"complianceAssessment\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"complianceAssessment\"",
+        "sql": "CREATE TABLE \"public\".\"complianceAssessment\" (\n  \"architectureId\" text NOT NULL,\n  \"completedAt\" text,\n  \"createdAt\" text NOT NULL,\n  \"findingsJson\" text DEFAULT '[]' NOT NULL,\n  \"framework\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"overallScore\" int4 DEFAULT 0 NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"status\" text DEFAULT 'completed' NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"complianceAssessment\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"complianceAssessment\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.complianceFinding",
+    "label": "Create table \"complianceFinding\"",
+    "summary": "Creates table \"complianceFinding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "complianceFinding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"complianceFinding\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"complianceFinding\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"complianceFinding\"",
+        "sql": "CREATE TABLE \"public\".\"complianceFinding\" (\n  \"affectedResourceIds\" text DEFAULT '[]' NOT NULL,\n  \"assessmentId\" text NOT NULL,\n  \"controlId\" text NOT NULL,\n  \"createdAt\" text NOT NULL,\n  \"description\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"recommendation\" text NOT NULL,\n  \"remediation\" text NOT NULL,\n  \"ruleId\" text NOT NULL,\n  \"severity\" text NOT NULL,\n  \"title\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"complianceFinding\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"complianceFinding\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.exportJob",
+    "label": "Create table \"exportJob\"",
+    "summary": "Creates table \"exportJob\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "exportJob"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"exportJob\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"exportJob\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"exportJob\"",
+        "sql": "CREATE TABLE \"public\".\"exportJob\" (\n  \"architectureId\" text NOT NULL,\n  \"createdAt\" text NOT NULL,\n  \"format\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"status\" text DEFAULT 'completed' NOT NULL,\n  \"url\" text,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"exportJob\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"exportJob\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.gitOperation",
+    "label": "Create table \"gitOperation\"",
+    "summary": "Creates table \"gitOperation\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "gitOperation"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"gitOperation\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"gitOperation\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"gitOperation\"",
+        "sql": "CREATE TABLE \"public\".\"gitOperation\" (\n  \"commitSha\" text,\n  \"createdAt\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"operationType\" text DEFAULT 'commit' NOT NULL,\n  \"prUrl\" text,\n  \"projectId\" text NOT NULL,\n  \"status\" text DEFAULT 'pending' NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"gitOperation\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"gitOperation\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.githubConnection",
+    "label": "Create table \"githubConnection\"",
+    "summary": "Creates table \"githubConnection\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "githubConnection"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"githubConnection\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"githubConnection\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"githubConnection\"",
+        "sql": "CREATE TABLE \"public\".\"githubConnection\" (\n  \"branch\" text DEFAULT 'main' NOT NULL,\n  \"createdAt\" text NOT NULL,\n  \"githubOrg\" text NOT NULL,\n  \"githubRepo\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"installationId\" text,\n  \"projectId\" text NOT NULL,\n  \"status\" text DEFAULT 'active' NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"githubConnection\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"githubConnection\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.aIGenerationHistory.aIGenerationHistory_architectureId_idx_a096837f",
+    "label": "Create index \"aIGenerationHistory_architectureId_idx_a096837f\" on \"aIGenerationHistory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "aIGenerationHistory_architectureId_idx_a096837f",
+        "table": "aIGenerationHistory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"aIGenerationHistory_architectureId_idx_a096837f\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"aIGenerationHistory_architectureId_idx_a096837f\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"aIGenerationHistory_architectureId_idx_a096837f\"",
+        "sql": "CREATE INDEX \"aIGenerationHistory_architectureId_idx_a096837f\" ON \"public\".\"aIGenerationHistory\" (\"architectureId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"aIGenerationHistory_architectureId_idx_a096837f\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"aIGenerationHistory_architectureId_idx_a096837f\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.aIGenerationHistory.aIGenerationHistory_projectId_idx_a96e4d92",
+    "label": "Create index \"aIGenerationHistory_projectId_idx_a96e4d92\" on \"aIGenerationHistory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "aIGenerationHistory_projectId_idx_a96e4d92",
+        "table": "aIGenerationHistory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"aIGenerationHistory_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"aIGenerationHistory_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"aIGenerationHistory_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"aIGenerationHistory_projectId_idx_a96e4d92\" ON \"public\".\"aIGenerationHistory\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"aIGenerationHistory_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"aIGenerationHistory_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.architectureResource.architectureResource_architectureId_resourceType_idx_762fe503",
+    "label": "Create index \"architectureResource_architectureId_resourceType_idx_762fe503\" on \"architectureResource\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "architectureResource_architectureId_resourceType_idx_762fe503",
+        "table": "architectureResource"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"architectureResource_architectureId_resourceType_idx_762fe503\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureResource_architectureId_resourceType_idx_762fe503\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"architectureResource_architectureId_resourceType_idx_762fe503\"",
+        "sql": "CREATE INDEX \"architectureResource_architectureId_resourceType_idx_762fe503\" ON \"public\".\"architectureResource\" (\"architectureId\", \"resourceType\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"architectureResource_architectureId_resourceType_idx_762fe503\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureResource_architectureId_resourceType_idx_762fe503\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.complianceAssessment.complianceAssessment_architectureId_idx_a096837f",
+    "label": "Create index \"complianceAssessment_architectureId_idx_a096837f\" on \"complianceAssessment\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "complianceAssessment_architectureId_idx_a096837f",
+        "table": "complianceAssessment"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"complianceAssessment_architectureId_idx_a096837f\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"complianceAssessment_architectureId_idx_a096837f\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"complianceAssessment_architectureId_idx_a096837f\"",
+        "sql": "CREATE INDEX \"complianceAssessment_architectureId_idx_a096837f\" ON \"public\".\"complianceAssessment\" (\"architectureId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"complianceAssessment_architectureId_idx_a096837f\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"complianceAssessment_architectureId_idx_a096837f\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.complianceAssessment.complianceAssessment_projectId_idx_a96e4d92",
+    "label": "Create index \"complianceAssessment_projectId_idx_a96e4d92\" on \"complianceAssessment\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "complianceAssessment_projectId_idx_a96e4d92",
+        "table": "complianceAssessment"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"complianceAssessment_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"complianceAssessment_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"complianceAssessment_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"complianceAssessment_projectId_idx_a96e4d92\" ON \"public\".\"complianceAssessment\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"complianceAssessment_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"complianceAssessment_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.complianceFinding.complianceFinding_assessmentId_idx_1fe05216",
+    "label": "Create index \"complianceFinding_assessmentId_idx_1fe05216\" on \"complianceFinding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "complianceFinding_assessmentId_idx_1fe05216",
+        "table": "complianceFinding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"complianceFinding_assessmentId_idx_1fe05216\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"complianceFinding_assessmentId_idx_1fe05216\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"complianceFinding_assessmentId_idx_1fe05216\"",
+        "sql": "CREATE INDEX \"complianceFinding_assessmentId_idx_1fe05216\" ON \"public\".\"complianceFinding\" (\"assessmentId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"complianceFinding_assessmentId_idx_1fe05216\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"complianceFinding_assessmentId_idx_1fe05216\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.exportJob.exportJob_architectureId_idx_a096837f",
+    "label": "Create index \"exportJob_architectureId_idx_a096837f\" on \"exportJob\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "exportJob_architectureId_idx_a096837f",
+        "table": "exportJob"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"exportJob_architectureId_idx_a096837f\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"exportJob_architectureId_idx_a096837f\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"exportJob_architectureId_idx_a096837f\"",
+        "sql": "CREATE INDEX \"exportJob_architectureId_idx_a096837f\" ON \"public\".\"exportJob\" (\"architectureId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"exportJob_architectureId_idx_a096837f\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"exportJob_architectureId_idx_a096837f\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.exportJob.exportJob_projectId_idx_a96e4d92",
+    "label": "Create index \"exportJob_projectId_idx_a96e4d92\" on \"exportJob\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "exportJob_projectId_idx_a96e4d92",
+        "table": "exportJob"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"exportJob_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"exportJob_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"exportJob_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"exportJob_projectId_idx_a96e4d92\" ON \"public\".\"exportJob\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"exportJob_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"exportJob_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.gitOperation.gitOperation_projectId_idx_a96e4d92",
+    "label": "Create index \"gitOperation_projectId_idx_a96e4d92\" on \"gitOperation\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "gitOperation_projectId_idx_a96e4d92",
+        "table": "gitOperation"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"gitOperation_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"gitOperation_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"gitOperation_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"gitOperation_projectId_idx_a96e4d92\" ON \"public\".\"gitOperation\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"gitOperation_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"gitOperation_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.githubConnection.githubConnection_projectId_idx_a96e4d92",
+    "label": "Create index \"githubConnection_projectId_idx_a96e4d92\" on \"githubConnection\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "githubConnection_projectId_idx_a96e4d92",
+        "table": "githubConnection"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"githubConnection_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"githubConnection_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"githubConnection_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"githubConnection_projectId_idx_a96e4d92\" ON \"public\".\"githubConnection\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"githubConnection_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"githubConnection_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.aIGenerationHistory.aIGenerationHistory_projectId_fkey",
+    "label": "Add foreign key \"aIGenerationHistory_projectId_fkey\" on \"aIGenerationHistory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "aIGenerationHistory_projectId_fkey",
+        "table": "aIGenerationHistory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"aIGenerationHistory_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "aIGenerationHistory_projectId_fkey",
+          "public",
+          "\"public\".\"aIGenerationHistory\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"aIGenerationHistory_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"aIGenerationHistory\"\nADD CONSTRAINT \"aIGenerationHistory_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"aIGenerationHistory_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "aIGenerationHistory_projectId_fkey",
+          "public",
+          "\"public\".\"aIGenerationHistory\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.aIGenerationHistory.aIGenerationHistory_architectureId_fkey",
+    "label": "Add foreign key \"aIGenerationHistory_architectureId_fkey\" on \"aIGenerationHistory\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "aIGenerationHistory_architectureId_fkey",
+        "table": "aIGenerationHistory"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"aIGenerationHistory_architectureId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "aIGenerationHistory_architectureId_fkey",
+          "public",
+          "\"public\".\"aIGenerationHistory\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"aIGenerationHistory_architectureId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"aIGenerationHistory\"\nADD CONSTRAINT \"aIGenerationHistory_architectureId_fkey\"\nFOREIGN KEY (\"architectureId\")\nREFERENCES \"public\".\"architecture\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"aIGenerationHistory_architectureId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "aIGenerationHistory_architectureId_fkey",
+          "public",
+          "\"public\".\"aIGenerationHistory\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.complianceAssessment.complianceAssessment_projectId_fkey",
+    "label": "Add foreign key \"complianceAssessment_projectId_fkey\" on \"complianceAssessment\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "complianceAssessment_projectId_fkey",
+        "table": "complianceAssessment"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"complianceAssessment_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "complianceAssessment_projectId_fkey",
+          "public",
+          "\"public\".\"complianceAssessment\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"complianceAssessment_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"complianceAssessment\"\nADD CONSTRAINT \"complianceAssessment_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"complianceAssessment_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "complianceAssessment_projectId_fkey",
+          "public",
+          "\"public\".\"complianceAssessment\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.complianceAssessment.complianceAssessment_architectureId_fkey",
+    "label": "Add foreign key \"complianceAssessment_architectureId_fkey\" on \"complianceAssessment\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "complianceAssessment_architectureId_fkey",
+        "table": "complianceAssessment"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"complianceAssessment_architectureId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "complianceAssessment_architectureId_fkey",
+          "public",
+          "\"public\".\"complianceAssessment\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"complianceAssessment_architectureId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"complianceAssessment\"\nADD CONSTRAINT \"complianceAssessment_architectureId_fkey\"\nFOREIGN KEY (\"architectureId\")\nREFERENCES \"public\".\"architecture\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"complianceAssessment_architectureId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "complianceAssessment_architectureId_fkey",
+          "public",
+          "\"public\".\"complianceAssessment\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.complianceFinding.complianceFinding_assessmentId_fkey",
+    "label": "Add foreign key \"complianceFinding_assessmentId_fkey\" on \"complianceFinding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "complianceFinding_assessmentId_fkey",
+        "table": "complianceFinding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"complianceFinding_assessmentId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "complianceFinding_assessmentId_fkey",
+          "public",
+          "\"public\".\"complianceFinding\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"complianceFinding_assessmentId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"complianceFinding\"\nADD CONSTRAINT \"complianceFinding_assessmentId_fkey\"\nFOREIGN KEY (\"assessmentId\")\nREFERENCES \"public\".\"complianceAssessment\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"complianceFinding_assessmentId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "complianceFinding_assessmentId_fkey",
+          "public",
+          "\"public\".\"complianceFinding\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.exportJob.exportJob_projectId_fkey",
+    "label": "Add foreign key \"exportJob_projectId_fkey\" on \"exportJob\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "exportJob_projectId_fkey",
+        "table": "exportJob"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"exportJob_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "exportJob_projectId_fkey",
+          "public",
+          "\"public\".\"exportJob\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"exportJob_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"exportJob\"\nADD CONSTRAINT \"exportJob_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"exportJob_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "exportJob_projectId_fkey",
+          "public",
+          "\"public\".\"exportJob\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.exportJob.exportJob_architectureId_fkey",
+    "label": "Add foreign key \"exportJob_architectureId_fkey\" on \"exportJob\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "exportJob_architectureId_fkey",
+        "table": "exportJob"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"exportJob_architectureId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "exportJob_architectureId_fkey",
+          "public",
+          "\"public\".\"exportJob\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"exportJob_architectureId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"exportJob\"\nADD CONSTRAINT \"exportJob_architectureId_fkey\"\nFOREIGN KEY (\"architectureId\")\nREFERENCES \"public\".\"architecture\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"exportJob_architectureId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "exportJob_architectureId_fkey",
+          "public",
+          "\"public\".\"exportJob\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.gitOperation.gitOperation_projectId_fkey",
+    "label": "Add foreign key \"gitOperation_projectId_fkey\" on \"gitOperation\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "gitOperation_projectId_fkey",
+        "table": "gitOperation"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"gitOperation_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "gitOperation_projectId_fkey",
+          "public",
+          "\"public\".\"gitOperation\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"gitOperation_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"gitOperation\"\nADD CONSTRAINT \"gitOperation_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"gitOperation_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "gitOperation_projectId_fkey",
+          "public",
+          "\"public\".\"gitOperation\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.githubConnection.githubConnection_projectId_fkey",
+    "label": "Add foreign key \"githubConnection_projectId_fkey\" on \"githubConnection\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "githubConnection_projectId_fkey",
+        "table": "githubConnection"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"githubConnection_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "githubConnection_projectId_fkey",
+          "public",
+          "\"public\".\"githubConnection\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"githubConnection_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"githubConnection\"\nADD CONSTRAINT \"githubConnection_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"githubConnection_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "githubConnection_projectId_fkey",
+          "public",
+          "\"public\".\"githubConnection\""
+        ]
+      }
+    ]
+  }
+]

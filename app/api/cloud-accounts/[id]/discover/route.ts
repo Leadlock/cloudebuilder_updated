@@ -129,7 +129,7 @@ async function runDiscoveryAsync(
     const result = await provider.discoverAll(regions);
 
     if (result.status === 'completed') {
-      await discoveryRepository.markCompleted(runId, result.resources, result.summary);
+      await discoveryRepository.markCompleted(runId, result.resources, result.summary, result.relationships);
       // Update account status to active after successful discovery
       await cloudAccountRepository.updateStatus(accountId, orgId, 'active');
       console.info(

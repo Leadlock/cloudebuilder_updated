@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useActiveProject } from '@/context/AppContext';
+import { useApp, useActiveProject } from '@/context/AppContext';
 import { apiTerraformService } from '@/lib/services/ApiTerraformService';
 import { Code2, Copy, Check, Download, FolderOpen, RefreshCw, FileCode2, AlertTriangle } from 'lucide-react';
 import clsx from 'clsx';
@@ -14,6 +14,7 @@ const FILE_ICONS: Record<string, string> = {
 };
 
 export default function TerraformPanel() {
+  const { state } = useApp();
   const activeProject = useActiveProject();
   const [activeFile, setActiveFile] = useState<string>('main.tf');
   const [copied, setCopied] = useState(false);
@@ -23,18 +24,50 @@ export default function TerraformPanel() {
   const [apiLoading, setApiLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [warningsExpanded, setWarningsExpanded] = useState(false);
 
   const activeProjectId = activeProject?.id ?? null;
   const nodeCount = activeProject?.nodes.length ?? 0;
+  const edgeCount = activeProject?.edges.length ?? 0;
+  const provider = activeProject?.provider;
+  const architectureVersion = state.architectureVersion;
+  const updatedAt = activeProject?.updatedAt;
 
   useEffect(() => {
-    if (!activeProjectId || nodeCount === 0) {
+    if (!activeProjectId || nodeCount === 0 || !activeProject) {
+      setApiFiles(null);
       return;
     }
     let cancelled = false;
-    apiTerraformService.generateFilesFromApi().then((result) => {
+
+    // For unsaved draft projects, directly generate from live canvas state
+    if (activeProjectId === 'draft-project') {
+      try {
+        const { files: local, warnings: w } = apiTerraformService.generateFilesWithWarnings(
+          activeProject.nodes,
+          activeProject.edges,
+          activeProject.provider,
+        );
+        setApiFiles(local);
+        setWarnings(w);
+        setError(null);
+        setApiLoading(false);
+        if (!local[activeFile]) {
+          const first = Object.keys(local)[0] ?? 'main.tf';
+          setActiveFile(first);
+        }
+      } catch (e) {
+        setError('Failed to generate Terraform from live canvas state.');
+      }
+      return;
+    }
+
+    setApiLoading(true);
+    apiTerraformService.generateFilesFromApiWithWarnings().then(({ files: result, warnings: w }) => {
       if (!cancelled) {
         setApiFiles(result);
+        setWarnings(w);
         setError(null);
         setApiLoading(false);
         if (!result[activeFile]) {
@@ -45,12 +78,13 @@ export default function TerraformPanel() {
     }).catch(() => {
       if (!cancelled) {
         if (activeProject) {
-          const local = apiTerraformService.generateFiles(
+          const { files: local, warnings: w } = apiTerraformService.generateFilesWithWarnings(
             activeProject.nodes,
             activeProject.edges,
             activeProject.provider,
           );
           setApiFiles(local);
+          setWarnings(w);
           setError(null);
           setApiLoading(false);
         } else {
@@ -61,7 +95,7 @@ export default function TerraformPanel() {
       }
     });
     return () => { cancelled = true; };
-  }, [activeProjectId, nodeCount, retryCount]);
+  }, [activeProjectId, nodeCount, edgeCount, provider, architectureVersion, updatedAt, retryCount]);
 
   if (!activeProject) return null;
 
@@ -136,8 +170,9 @@ export default function TerraformPanel() {
     setRegenerating(true);
     setError(null);
     try {
-      const result = await apiTerraformService.generateFilesFromApi();
+      const { files: result, warnings: w } = await apiTerraformService.generateFilesFromApiWithWarnings();
       setApiFiles(result);
+      setWarnings(w);
       setError(null);
       setKey((k) => k + 1);
       if (!result[currentFile]) {
@@ -187,6 +222,27 @@ export default function TerraformPanel() {
 
       {/* Code area */}
       <div className="flex flex-col flex-1 min-w-0">
+        {/* Warnings banner */}
+        {warnings.length > 0 && (
+          <div className="shrink-0 border-b border-amber-800/50 bg-amber-950/40">
+            <button
+              onClick={() => setWarningsExpanded((v) => !v)}
+              className="w-full flex items-center justify-between px-4 py-2 text-left"
+            >
+              <span className="flex items-center gap-2 text-amber-300 text-xs font-medium">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                {warnings.length} resource{warnings.length === 1 ? '' : 's'} on this canvas will NOT deploy as generated — {warningsExpanded ? 'hide' : 'show'} details
+              </span>
+            </button>
+            {warningsExpanded && (
+              <ul className="px-4 pb-3 space-y-1.5">
+                {warnings.map((w, i) => (
+                  <li key={i} className="text-amber-200/80 text-xs font-mono leading-snug">• {w}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         {/* Toolbar */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800 bg-gray-900 shrink-0">
           <div className="flex items-center gap-3">

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
 import { normalizeDiscoveredInfrastructure } from '@/lib/cloud/normalizer';
 import type { DiscoveredResource } from '@/lib/cloud/types';
+import type { CloudRelationship } from '@/lib/cloud/discovery/types';
 import type { CanvasNode, CanvasEdge } from '@/types';
 import { apiArchitectureService } from '@/lib/services/ApiArchitectureService';
 import {
@@ -27,6 +28,7 @@ interface DiscoveryRun {
   startedAt: string;
   completedAt: string | null;
   resources: DiscoveredResource[];
+  relationships?: CloudRelationship[];
   summary: Record<string, number>;
   error: string | null;
 }
@@ -358,7 +360,7 @@ export default function ImportPanel() {
     }
 
     const provider = (selected === 'azure' ? 'azure' : 'aws') as 'aws' | 'azure';
-    const { nodes, edges } = normalizeDiscoveredInfrastructure(discoveryRun.resources);
+    const { nodes, edges } = normalizeDiscoveredInfrastructure(discoveryRun.resources, discoveryRun.relationships ?? []);
 
     if (nodes.length === 0) {
       setError('Discovered resources could not be normalized into valid canvas nodes.');

@@ -42,7 +42,7 @@ import {
 } from './AzureIcons';
 
 export interface CloudServiceIconProps {
-  provider?: 'aws' | 'azure' | 'multi';
+  provider?: import('@/types').CloudProvider;
   resourceType: string;
   size?: number;
   className?: string;

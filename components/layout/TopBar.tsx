@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
-import { Bell, Globe, Coins, ShieldCheck, UserCheck, LogOut, ArrowLeftRight, User, FileCheck } from 'lucide-react';
+import { Bell, Globe, Coins, ShieldCheck, UserCheck, LogOut, User, FileCheck } from 'lucide-react';
 import clsx from 'clsx';
 import { AppView, Environment } from '@/types';
 import { cloudRegionService } from '@/lib/cloud/regions/CloudRegionService';
@@ -50,26 +50,6 @@ export default function TopBar() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const handleQuickSwitchRole = async () => {
-    const targetEmail = currentUser?.role === 'admin' ? 'user@cloudcraft.io' : 'admin@cloudcraft.io';
-    const targetPass = currentUser?.role === 'admin' ? 'User123!' : 'Admin123!';
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ email: targetEmail, password: targetPass }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        dispatch({ type: 'SET_USER', user: data.user });
-        setUserMenuOpen(false);
-      }
-    } catch (e) {
-      console.error('Quick role switch failed:', e);
-    }
-  };
 
   const handleLogout = async () => {
     try {
@@ -224,15 +204,6 @@ export default function TopBar() {
                 </span>
               </div>
             </div>
-
-            {/* Role switch toggle */}
-            <button
-              onClick={handleQuickSwitchRole}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors text-left"
-            >
-              <ArrowLeftRight className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Switch to {isAdmin ? 'DevOps (USER)' : 'Admin (ADMIN)'}</span>
-            </button>
 
             {/* Sign in with another account */}
             <button

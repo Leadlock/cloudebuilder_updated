@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.ok) return parsed.response;
 
     const { email, password } = parsed.data;
-    const user = AuthService.authenticate(email, password);
+    const user = await AuthService.authenticate(email, password);
 
     if (!user) {
       return unauthorized('Invalid email or password');

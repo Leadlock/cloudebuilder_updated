@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cloudcraft_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cloudcraft_dev
+      POSTGRES_USER: cloudcraft
+      POSTGRES_PASSWORD: cloudcraft
+    ports:
+      - '5432:5432'
+    volumes:
+      - cloudcraft_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cloudcraft -d cloudcraft_dev']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  cloudcraft_pgdata:
+    driver: local

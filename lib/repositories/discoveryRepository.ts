@@ -9,6 +9,7 @@
 import { db } from '@/src/prisma/db';
 import { randomUUID as uuidv4 } from 'crypto';
 import type { DiscoveredResource, DiscoveryStatus } from '@/lib/cloud/types';
+import type { CloudRelationship } from '@/lib/cloud/discovery/types';
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
 
@@ -19,6 +20,7 @@ export interface DbDiscoveryRun {
   startedAt: string;
   completedAt: string | null;
   resources: DiscoveredResource[];
+  relationships: CloudRelationship[];
   summary: Record<string, number>;
   error: string | null;
 }
@@ -44,6 +46,7 @@ function mapRun(row: {
   startedAt: string;
   completedAt: string | null;
   resourcesJson: string;
+  relationshipsJson?: string;
   summaryJson: string;
   error: string | null;
 }): DbDiscoveryRun {
@@ -54,6 +57,7 @@ function mapRun(row: {
     startedAt: row.startedAt,
     completedAt: row.completedAt ?? null,
     resources: parseJson<DiscoveredResource[]>(row.resourcesJson, []),
+    relationships: parseJson<CloudRelationship[]>(row.relationshipsJson ?? '[]', []),
     summary: parseJson<Record<string, number>>(row.summaryJson, {}),
     error: row.error ?? null,
   };
@@ -66,7 +70,7 @@ export const discoveryRepository = {
   async findByAccount(cloudAccountId: string): Promise<DbDiscoveryRun[]> {
     const rows = await db.orm.public.DiscoveryRun
       .where({ cloudAccountId })
-      .select('id', 'cloudAccountId', 'status', 'startedAt', 'completedAt', 'resourcesJson', 'summaryJson', 'error')
+      .select('id', 'cloudAccountId', 'status', 'startedAt', 'completedAt', 'resourcesJson', 'relationshipsJson', 'summaryJson', 'error')
       .all();
     // Sort by startedAt descending (most recent first)
     return rows
@@ -77,7 +81,7 @@ export const discoveryRepository = {
   async findById(id: string): Promise<DbDiscoveryRun | null> {
     const row = await db.orm.public.DiscoveryRun
       .where({ id })
-      .select('id', 'cloudAccountId', 'status', 'startedAt', 'completedAt', 'resourcesJson', 'summaryJson', 'error')
+      .select('id', 'cloudAccountId', 'status', 'startedAt', 'completedAt', 'resourcesJson', 'relationshipsJson', 'summaryJson', 'error')
       .first();
     return row ? mapRun(row) : null;
   },
@@ -100,6 +104,7 @@ export const discoveryRepository = {
       startedAt: ts,
       completedAt: null,
       resourcesJson: '[]',
+      relationshipsJson: '[]',
       summaryJson: '{}',
       error: null,
     });
@@ -124,6 +129,7 @@ export const discoveryRepository = {
     id: string,
     resources: DiscoveredResource[],
     summary: Record<string, number>,
+    relationships: CloudRelationship[] = [],
   ): Promise<DbDiscoveryRun | null> {
     const existing = await this.findById(id);
     if (!existing) return null;
@@ -132,6 +138,7 @@ export const discoveryRepository = {
       status: 'completed',
       completedAt: ts,
       resourcesJson: JSON.stringify(resources),
+      relationshipsJson: JSON.stringify(relationships),
       summaryJson: JSON.stringify(summary),
       error: null,
     });

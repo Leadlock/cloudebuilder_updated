@@ -5,6 +5,7 @@
  * Falls back gracefully when API fails — never throws to the UI.
  */
 import type { WaAssessment, WaFinding } from '@/lib/engines/wellArchitected/types';
+import { WellArchitectedFrameworkService } from '@/lib/engines/wellArchitected/WellArchitectedFrameworkService';
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
@@ -92,26 +93,64 @@ class ApiWellArchitectedServiceImpl {
   }
 
   /**
-   * Trigger a fresh analysis for the active project.
+   * Trigger a fresh analysis for the active project or in-memory live draft.
    * Returns the new assessment.
    */
-  async analyze(): Promise<WaAssessment | null> {
+  async analyze(nodes?: any[], edges?: any[]): Promise<WaAssessment | null> {
     const projectId = _activeProjectId;
-    if (!projectId) return null;
 
-    try {
-      const data = await apiFetch<AnalyzeResponse>(
-        `/api/projects/${projectId}/well-architected/analyze`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ env: _activeEnvironment }),
-        },
-      );
-      return data.assessment;
-    } catch (err) {
-      console.warn('[WA Service] analyze failed:', err instanceof Error ? err.message : err);
-      return null;
+    if (projectId && projectId !== 'draft-project') {
+      try {
+        const data = await apiFetch<AnalyzeResponse>(
+          `/api/projects/${projectId}/well-architected/analyze`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ env: _activeEnvironment }),
+          },
+        );
+        return data.assessment;
+      } catch (err) {
+        console.warn('[WA Service] analyze API failed, falling back to live design-time engine:', err);
+      }
     }
+
+    // Live draft or API fallback using design-time rule engine
+    if (nodes && nodes.length > 0) {
+      return this.analyzeNodes(nodes, edges || []);
+    }
+    return null;
+  }
+
+  async analyzeNodes(nodes: any[], edges: any[]): Promise<WaAssessment> {
+    const waService = new WellArchitectedFrameworkService();
+    const resources: any[] = nodes.map((n: any) => ({
+      id: n.id,
+      architectureId: 'live-draft',
+      resourceType: n.resourceType,
+      provider: n.provider || (n.resourceType?.startsWith('azure_') ? 'azure' : 'aws'),
+      label: n.label || n.name || n.resourceType,
+      positionX: n.position?.x ?? 0,
+      positionY: n.position?.y ?? 0,
+      configJson: JSON.stringify(n.config || {}),
+      config: n.config || {},
+      region: n.region || null,
+      groupId: n.groupId || null,
+      locked: Boolean(n.locked),
+    }));
+    const connections: any[] = (edges || []).map((e: any) => ({
+      id: e.id,
+      architectureId: 'live-draft',
+      sourceId: e.source,
+      targetId: e.target,
+      label: e.label || null,
+      edgeType: e.relationshipType || e.edgeType || 'network',
+    }));
+    return waService.analyzeDesignTime({
+      architectureId: 'live-draft',
+      projectId: _activeProjectId || 'draft-project',
+      resources,
+      connections,
+    });
   }
 
   /**

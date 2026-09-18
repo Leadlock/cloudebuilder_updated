@@ -2,6 +2,8 @@ import { CanvasNode, CostItem, CostOptimization } from '@/types';
 import { calculateCosts } from '@/lib/analysis';
 import { generateCostOptimizations } from '@/lib/generator';
 import { DETERMINISTIC_MOCK_RATES } from '@/lib/currency/providers/MockExchangeRateProvider';
+import { CloudCostComparisonService } from '@/lib/engines/comparison/CloudCostComparisonService';
+import type { CostComparisonResult } from './ApiCostService';
 
 // ─── Interface ────────────────────────────────────────────────────────────────
 export interface ICostService {
@@ -45,6 +47,43 @@ class MockCostService implements ICostService {
         originalCostUsd: b.cost,
       })),
     }));
+  }
+
+  async compareCosts(nodes: CanvasNode[], currency: string = 'USD'): Promise<CostComparisonResult> {
+    const currentProvider = nodes.find((n) => n.provider === 'aws' || n.provider === 'azure')?.provider ?? 'aws';
+    const targetProvider = currentProvider === 'aws' ? 'azure' : 'aws';
+
+    const translatedNodes = CloudCostComparisonService.translateNodes(nodes, targetProvider);
+
+    const [currentItems, translatedItems] = await Promise.all([
+      this.calculateCosts(nodes, currency),
+      this.calculateCosts(translatedNodes, currency),
+    ]);
+
+    const toComparisonItems = (items: CostItem[]) => items.map((item) => ({
+      resourceId: item.nodeId,
+      resourceLabel: item.nodeLabel,
+      resourceType: item.resourceType,
+      monthlyUsd: item.providerCostUsd ?? item.monthlyCost,
+    }));
+
+    const sumUsd = (items: CostItem[]) => items.reduce((a, i) => a + (i.providerCostUsd ?? i.monthlyCost), 0);
+
+    return {
+      currentProvider,
+      targetProvider,
+      current: {
+        items: toComparisonItems(currentItems),
+        totalMonthlyUsd: sumUsd(currentItems),
+        totalHourlyUsd: sumUsd(currentItems) / 730,
+      },
+      translated: {
+        items: toComparisonItems(translatedItems),
+        totalMonthlyUsd: sumUsd(translatedItems),
+        totalHourlyUsd: sumUsd(translatedItems) / 730,
+      },
+      targetCurrency: (currency || 'USD').toUpperCase(),
+    };
   }
 
   generateOptimizations(nodes: CanvasNode[]): CostOptimization[] {

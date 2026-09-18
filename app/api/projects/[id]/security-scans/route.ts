@@ -4,12 +4,13 @@
  */
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { ok, created, notFound, forbidden, unauthorized, internalError, badRequest, parseBody } from '@/lib/api/response';
+import { ok, created, notFound, forbidden, unauthorized, internalError, badRequest, parseBody, tooManyRequests } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId, resolveArchitecture } from '@/lib/api/phase2d';
 import { securityAnalyzer } from '@/lib/engines/security/SecurityAnalyzer';
 import { db } from '@/src/prisma/db';
 import { randomUUID } from 'crypto';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,9 @@ export async function POST(
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
+
+    const rl = checkRateLimit(`${identity.userId}:security-scans`, RATE_LIMITS.ANALYSIS.limit, RATE_LIMITS.ANALYSIS.windowMs);
+    if (!rl.allowed) return tooManyRequests(rl.retryAfterSeconds);
 
     const { id: projectId } = await params;
 

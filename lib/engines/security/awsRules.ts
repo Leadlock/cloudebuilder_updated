@@ -6,6 +6,7 @@
  * We never fabricate findings when the field is absent/unknown.
  */
 import type { SecurityRule } from './types';
+import { SECURITY_SEVERITY } from '@/lib/domain/securitySeverity';
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -22,7 +23,7 @@ export const awsSecurityRules: SecurityRule[] = [
 
   {
     ruleId: 'AWS-S3-PUBLIC',
-    severity: 'critical',
+    severity: SECURITY_SEVERITY.AWS_S3_PUBLIC_ACCESS,
     title: 'S3 Bucket publicly accessible',
     description: 'The S3 bucket configuration enables public access, allowing unauthenticated reads or writes from the internet.',
     remediation: 'Enable S3 Block Public Access settings: set blockPublicAcls, blockPublicPolicy, ignorePublicAcls, and restrictPublicBuckets to true.',
@@ -41,7 +42,7 @@ export const awsSecurityRules: SecurityRule[] = [
 
   {
     ruleId: 'AWS-S3-NO-ENCRYPTION',
-    severity: 'high',
+    severity: SECURITY_SEVERITY.AWS_S3_NOT_ENCRYPTED,
     title: 'S3 Bucket server-side encryption disabled',
     description: 'The S3 bucket does not have server-side encryption enabled, leaving data at rest unprotected.',
     remediation: 'Enable default server-side encryption (SSE-S3 or SSE-KMS) on the bucket using aws_s3_bucket_server_side_encryption_configuration.',
@@ -81,7 +82,7 @@ export const awsSecurityRules: SecurityRule[] = [
 
   {
     ruleId: 'AWS-RDS-NO-ENCRYPTION',
-    severity: 'high',
+    severity: SECURITY_SEVERITY.AWS_RDS_NOT_ENCRYPTED,
     title: 'RDS instance storage encryption disabled',
     description: 'The RDS database instance does not have storage encryption enabled. Sensitive data at rest is unprotected.',
     remediation: 'Enable storage_encrypted on the RDS instance. Note: encryption must be enabled at creation time for existing instances, a snapshot restore is required.',
@@ -99,7 +100,7 @@ export const awsSecurityRules: SecurityRule[] = [
 
   {
     ruleId: 'AWS-RDS-PUBLICLY-ACCESSIBLE',
-    severity: 'critical',
+    severity: SECURITY_SEVERITY.AWS_RDS_PUBLICLY_ACCESSIBLE,
     title: 'RDS instance publicly accessible',
     description: 'The RDS instance has publicly_accessible set to true, exposing it directly to the internet.',
     remediation: 'Set publicly_accessible to false and place the RDS instance inside a private subnet. Use a bastion host or VPN for administrative access.',
@@ -117,7 +118,7 @@ export const awsSecurityRules: SecurityRule[] = [
 
   {
     ruleId: 'AWS-RDS-NO-MULTI-AZ',
-    severity: 'medium',
+    severity: SECURITY_SEVERITY.AWS_RDS_NOT_MULTI_AZ,
     title: 'RDS instance not configured for Multi-AZ',
     description: 'The RDS instance has Multi-AZ disabled, creating a single point of failure. Automatic failover is unavailable.',
     remediation: 'Enable Multi-AZ deployment for production RDS instances to ensure high availability and automatic failover.',

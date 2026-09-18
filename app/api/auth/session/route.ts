@@ -12,13 +12,10 @@ export async function GET(req: NextRequest) {
       return unauthorized('No active session found');
     }
 
-    const user = AuthService.getUserById(identity.userId) ?? {
-      id: identity.userId,
-      email: identity.email ?? 'user@cloudcraft.io',
-      name: identity.role === 'admin' ? 'Cloud Administrator' : 'DevOps Engineer',
-      role: (identity.role as 'admin' | 'user') ?? 'user',
-      orgId: identity.orgIds[0] ?? 'org-cloudcraft-prod',
-    };
+    const user = await AuthService.getUserById(identity.userId);
+    if (!user) {
+      return unauthorized('No active session found');
+    }
 
     return ok({
       authenticated: true,

@@ -6,11 +6,12 @@
  */
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { ok, notFound, forbidden, unauthorized, internalError, badRequest, parseBody } from '@/lib/api/response';
+import { ok, notFound, forbidden, unauthorized, internalError, badRequest, parseBody, tooManyRequests } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId, resolveArchitecture } from '@/lib/api/phase2d';
 import { wellArchitectedFrameworkService } from '@/lib/engines/wellArchitected/WellArchitectedFrameworkService';
 import { wellArchitectedRepository } from '@/lib/repositories/wellArchitectedRepository';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,10 @@ export async function POST(
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
+
+    const rl = checkRateLimit(`${identity.userId}:well-architected-analyze`, RATE_LIMITS.ANALYSIS.limit, RATE_LIMITS.ANALYSIS.windowMs);
+    if (!rl.allowed) return tooManyRequests(rl.retryAfterSeconds);
+
     const { id: projectId } = await params;
 
     const parsed = await parseBody(req, AnalyzeSchema);

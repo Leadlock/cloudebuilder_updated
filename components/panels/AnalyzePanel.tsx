@@ -3,12 +3,13 @@ import { useApp, useActiveProject } from '@/context/AppContext';
 import { Activity, ShieldCheck, Brain, CheckSquare, ArrowRight, ShieldAlert, Sparkles, Scale, AlertTriangle } from 'lucide-react';
 import clsx from 'clsx';
 import { apiSecurityService } from '@/lib/services/ApiSecurityService';
-import { apiAdvisorService } from '@/lib/services/ApiAdvisorService';
+import { apiAdvisorService, AdvisorResult } from '@/lib/services/ApiAdvisorService';
 import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedService';
 import { useEffect, useState } from 'react';
 import { SecurityIssue } from '@/types';
-import { AdvisorResult } from '@/lib/services/ApiAdvisorService';
 import { WaAssessment } from '@/lib/engines/wellArchitected/types';
+import { runSecurityScan } from '@/lib/analysis';
+import { scoreArchitecture, generateRecommendations } from '@/lib/generator';
 
 export default function AnalyzePanel() {
   const { state, dispatch } = useApp();
@@ -31,9 +32,23 @@ export default function AnalyzePanel() {
     let cancelled = false;
 
     Promise.all([
-      apiSecurityService.scan(activeProject.nodes).catch(() => []),
-      apiAdvisorService.analyze(activeProject.nodes).catch(() => null),
-      apiWellArchitectedService.analyze().catch(() => null)
+      apiSecurityService.scan(activeProject.nodes).catch(() => runSecurityScan(activeProject.nodes)),
+      apiAdvisorService.analyze(activeProject.nodes, activeProject.scaleProfile?.expectedUsers).catch((): AdvisorResult => ({
+        score: scoreArchitecture(activeProject.nodes),
+        recommendations: generateRecommendations(activeProject.nodes).map((r) => ({
+          id: r.id,
+          category: r.category as any,
+          severity: r.severity as any,
+          title: r.title,
+          description: r.description,
+          affectedResourceIds: [],
+          affectedResourceLabels: r.affectedResources,
+          rationale: r.description,
+          suggestedAction: r.action,
+        })),
+        fromApi: false,
+      })),
+      apiWellArchitectedService.analyze(activeProject.nodes, activeProject.edges).catch(() => null)
     ]).then(([sec, adv, wa]) => {
       if (cancelled) return;
       const issues = sec as SecurityIssue[];
@@ -57,7 +72,7 @@ export default function AnalyzePanel() {
     });
 
     return () => { cancelled = true; };
-  }, [activeProject?.id]);
+  }, [activeProject?.id, activeProject?.updatedAt, activeProject?.nodes.length, activeProject?.edges.length, activeProject?.scaleProfile?.expectedUsers, state.architectureVersion, state.activeEnvironment]);
 
   if (!activeProject || activeProject.nodes.length === 0) {
     return (
@@ -159,7 +174,7 @@ export default function AnalyzePanel() {
                 </div>
                 <div>
                   <h3 className="text-white font-semibold">Architecture Advisor</h3>
-                  <p className="text-slate-400 text-xs">AI-driven recommendations</p>
+                  <p className="text-slate-400 text-xs">Rule-based recommendations</p>
                 </div>
               </div>
               {!loading && advisorScore !== null && (

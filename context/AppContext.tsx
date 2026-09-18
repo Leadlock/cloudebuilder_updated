@@ -2,13 +2,16 @@
 import React, { createContext, useContext, useReducer, ReactNode, useEffect, useRef } from 'react';
 import {
   Project, CanvasNode, CanvasEdge, CloudProvider, AppView, Environment,
-  Region, ArchitectureVersion, EnvironmentState, CanvasViewMode
+  Region, ArchitectureVersion, EnvironmentState, CanvasViewMode,
+  ProviderMode, ScaleProfile, providerModeToCloudProvider, cloudProviderToProviderMode,
+  isNodeCompatibleWithProviderMode
 } from '@/types';
 import { mockProjects } from '@/lib/mockData';
 import { runSecurityScan, calculateSecurityScore, calculateCosts } from '@/lib/analysis';
 import { scoreArchitecture } from '@/lib/generator';
 import { v4 as uuidv4 } from 'uuid';
 import { applyRuleRemediation } from '@/lib/engines/security/remediation';
+import { adaptiveScaleEngine } from '@/lib/engines/capacity/AdaptiveScaleEngine';
 import { apiArchitectureService } from '@/lib/services/ApiArchitectureService';
 import type { IArchitectureService } from '@/lib/services/ArchitectureService';
 import { setActiveProjectId as setSecurityProjectId, setActiveEnvironment as setSecurityEnvironment } from '@/lib/services/ApiSecurityService';
@@ -20,9 +23,15 @@ import { setActiveProjectId as setWaProjectId, setActiveEnvironment as setWaEnvi
 
 import type { AuthUser } from '@/lib/api/authService';
 
+export type AutoSaveStatus = 'saved' | 'saving' | 'unsaved' | 'error';
+
 export interface AppState {
   projects: Project[];
   activeProjectId: string | null;
+  draftProject: Project;
+  autoSaveStatus: AutoSaveStatus;
+  lastSavedTime: string | null;
+  saveConflict: { serverRevision: number; clientRevision: number; message?: string } | null;
   activeView: AppView;
   activeCanvasMode: CanvasViewMode;
   activeEnvironment: Environment;
@@ -40,31 +49,45 @@ export interface AppState {
   currentUser: AuthUser | null;
   /** Whether the login / role switch modal is open */
   isLoginModalOpen: boolean;
+  /** True once the initial /api/auth/session check has resolved (success or failure) */
+  sessionChecked: boolean;
 }
 
 type Action =
   | { type: 'SET_VIEW'; view: AppView }
   | { type: 'SET_CANVAS_MODE'; mode: CanvasViewMode }
   | { type: 'SET_ACTIVE_PROJECT'; id: string | null }
-  | { type: 'SET_CURRENCY'; currency: string }
-  | { type: 'UPDATE_CANVAS'; nodes: CanvasNode[]; edges: CanvasEdge[] }
-  | { type: 'UPDATE_NODE_CONFIG'; nodeId: string; config: Record<string, unknown>; label: string }
-  | { type: 'SAVE_PROJECT'; project: Project }
-  | { type: 'CREATE_PROJECT'; provider: CloudProvider; name: string; nodes?: CanvasNode[]; edges?: CanvasEdge[] }
-  | { type: 'DELETE_PROJECT'; id: string }
-  | { type: 'TOGGLE_SIDEBAR' }
   | { type: 'SET_ENVIRONMENT'; env: Environment }
+  | { type: 'SET_CURRENCY'; currency: string }
+  | { type: 'TOGGLE_SIDEBAR' }
+  | { type: 'CREATE_PROJECT'; name: string; provider: CloudProvider; nodes?: CanvasNode[]; edges?: CanvasEdge[] }
+  | { type: 'DELETE_PROJECT'; id: string }
+  | { type: 'UPDATE_CANVAS'; nodes: CanvasNode[]; edges: CanvasEdge[] }
+  | { type: 'UPDATE_NODE_CONFIG'; nodeId: string; config: Record<string, unknown>; label?: string }
+  | { type: 'SAVE_PROJECT'; project: Project }
   | { type: 'SET_REGION'; region: Region }
   | { type: 'SET_PROVIDER_FILTER'; filter: 'all' | 'aws' | 'azure' }
   | { type: 'CLONE_ENVIRONMENT'; from: Environment; to: Environment }
   | { type: 'PROMOTE_ENVIRONMENT'; from: Environment; to: Environment }
-  | { type: 'SET_ENVIRONMENT_CANVAS'; env: Environment; nodes: CanvasNode[]; edges: CanvasEdge[] }
+  | { type: 'SET_ENVIRONMENT_CANVAS'; env: Environment; nodes: CanvasNode[]; edges: CanvasEdge[]; revision?: number }
   | { type: 'RESTORE_VERSION'; versionId?: string; nodes?: CanvasNode[]; edges?: CanvasEdge[] }
   | { type: 'SAVE_VERSION'; summary: string }
   | { type: 'FIX_SECURITY_ISSUE'; nodeId: string; ruleId: string }
   | { type: 'APPLY_COST_OPTIMIZATION'; optimizationId: string; nodeId?: string }
   | { type: 'SET_USER'; user: AuthUser | null }
   | { type: 'SET_LOGIN_MODAL'; open: boolean }
+  | { type: 'SET_SESSION_CHECKED' }
+  | { type: 'INIT_BLANK_ARCHITECTURE'; provider?: CloudProvider; providerMode?: ProviderMode; scaleProfile?: ScaleProfile; nodes?: CanvasNode[]; edges?: CanvasEdge[] }
+  | { type: 'SET_SCALE_PROFILE'; scaleProfile: ScaleProfile; adaptScale?: boolean }
+  | { type: 'SET_PROVIDER_MODE'; mode: ProviderMode }
+  | { type: 'CONFIRM_PROVIDER_MODE_CHANGE'; mode: ProviderMode }
+  | { type: 'SET_AUTO_SAVE_STATUS'; status: AutoSaveStatus; lastSavedTime?: string; saveConflict?: { serverRevision: number; clientRevision: number; message?: string } | null }
+  | { type: 'SAVE_NOW' }
+  | { type: 'PROMOTE_DRAFT_TO_PROJECT'; name: string }
+  | { type: 'RESOLVE_SAVE_CONFLICT'; resolution: 'reload' | 'overwrite' }
+  | { type: 'UPDATE_PROJECT_REVISION'; projectId: string; revision: number }
+  | { type: 'UPDATE_DRAFT_REVISION'; revision: number }
+  | { type: 'LOAD_DURABLE_DRAFT'; draft: { nodes: CanvasNode[]; edges: CanvasEdge[]; providerMode?: ProviderMode; scaleProfile?: ScaleProfile; revision?: number } }
   /** Internal: replaces project list after API load */
   | { type: '_LOAD_PROJECTS'; projects: Project[] }
   /** Internal: replaces a single project returned by the API after create */
@@ -90,6 +113,43 @@ function computeProject(p: Project, nodes: CanvasNode[], edges: CanvasEdge[]): P
   };
 }
 
+/**
+ * Applies a nodes/edges mutation to whichever project is active (the unsaved
+ * draft, or a saved project by id), recomputing derived stats and patching
+ * the current environment's stored nodes/edges in one place. Shared by the
+ * reducer cases that edit the canvas (UPDATE_CANVAS, UPDATE_NODE_CONFIG,
+ * SET_SCALE_PROFILE) so the draft-vs-saved-project branching only lives here.
+ */
+function applyCanvasUpdate(
+  state: AppState,
+  compute: (project: Project) => { nodes: CanvasNode[]; edges: CanvasEdge[] },
+  extra?: (project: Project) => Partial<Project>,
+): { draftProject: Project; projects: Project[] } {
+  const isDraft = !state.activeProjectId || state.activeProjectId === 'draft-project';
+
+  const apply = (project: Project): Project => {
+    const { nodes, edges } = compute(project);
+    const updated = computeProject(project, nodes, edges);
+    const envs: Record<Environment, EnvironmentState> = {
+      ...project.environments,
+      [state.activeEnvironment]: {
+        ...project.environments[state.activeEnvironment],
+        nodes,
+        edges,
+      },
+    };
+    return { ...updated, environments: envs, ...(extra ? extra(project) : {}) };
+  };
+
+  if (isDraft) {
+    return { draftProject: apply(state.draftProject), projects: state.projects };
+  }
+  return {
+    draftProject: state.draftProject,
+    projects: state.projects.map((p) => (p.id === state.activeProjectId ? apply(p) : p)),
+  };
+}
+
 /** Downsize AWS EC2 instance types one tier */
 const INSTANCE_DOWNSIZE: Record<string, string> = {
   'm5.2xlarge': 'm5.xlarge',
@@ -98,6 +158,58 @@ const INSTANCE_DOWNSIZE: Record<string, string> = {
   'r5.xlarge':  'r5.large',
   'c5.xlarge':  'c5.large',
 };
+
+export function createDefaultDraftProject(
+  provider: CloudProvider = 'aws',
+  expectedUsers = 10000,
+  initialNodes: CanvasNode[] = [],
+  initialEdges: CanvasEdge[] = []
+): Project {
+  const providerKey = provider === 'multi' ? 'aws' : provider;
+  const region: Region = providerKey === 'aws' ? 'us-east-1' : 'eastus';
+  const scaleProfile: ScaleProfile = {
+    expectedUsers,
+    requestsPerSecond: Math.max(10, Math.round(expectedUsers * 0.1)),
+    peakRequestsPerSecond: Math.max(25, Math.round(expectedUsers * 0.25)),
+    availabilityTarget: 99.9,
+    geographicDistribution: 'single-region',
+    dataGrowth: 'moderate',
+    trafficPattern: 'steady',
+  };
+  const emptyEnvs: Record<Environment, EnvironmentState> = {
+    production:  { id: 'production',  label: 'Production',  nodes: initialNodes, edges: initialEdges, region },
+    staging:     { id: 'staging',     label: 'Staging',     nodes: [], edges: [], region },
+    development: { id: 'development', label: 'Development', nodes: [], edges: [], region },
+  };
+  const scores = initialNodes.length > 0 ? scoreArchitecture(initialNodes, initialEdges) : { overall: 0 };
+  const costs = calculateCosts(initialNodes);
+  const estimatedMonthlyCost = costs.reduce((acc, c) => acc + c.monthlyCost, 0);
+
+  return {
+    id: 'draft-project',
+    name: 'Draft Architecture',
+    provider,
+    providerMode: cloudProviderToProviderMode(provider),
+    scaleProfile,
+    isDraft: true,
+    revision: 1,
+    description: 'Live interactive draft architecture',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    nodes: initialNodes,
+    edges: initialEdges,
+    resourceCount: initialNodes.length,
+    securityScore: 100,
+    architectureScore: scores.overall,
+    estimatedMonthlyCost,
+    currency: 'USD',
+    environment: 'production',
+    region,
+    versions: [],
+    environments: emptyEnvs,
+    tags: ['draft'],
+  };
+}
 
 // ─── Reducer ──────────────────────────────────────────────────────────────────
 
@@ -117,6 +229,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, currentUser: action.user };
     case 'SET_LOGIN_MODAL':
       return { ...state, isLoginModalOpen: action.open };
+    case 'SET_SESSION_CHECKED':
+      return { ...state, sessionChecked: true };
 
     case 'SET_CURRENCY': {
       const currency = action.currency.toUpperCase();
@@ -192,53 +306,260 @@ function reducer(state: AppState, action: Action): AppState {
 
     // ── SET_ENVIRONMENT: load that env's nodes/edges into the project ──────────
     case 'SET_ENVIRONMENT': {
-      if (!state.activeProjectId) return { ...state, activeEnvironment: action.env };
-      const projects = state.projects.map((p) => {
-        if (p.id !== state.activeProjectId) return p;
-        const envState = p.environments[action.env];
-        const updated = computeProject(p, envState.nodes, envState.edges);
-        return { ...updated, environment: action.env };
-      });
-      return { ...state, projects, activeEnvironment: action.env };
+      const isDraft = !state.activeProjectId || state.activeProjectId === 'draft-project';
+      const loadEnv = (project: Project): Project => {
+        const envState = project.environments[action.env];
+        return { ...computeProject(project, envState.nodes, envState.edges), environment: action.env };
+      };
+      const draftProject = isDraft ? loadEnv(state.draftProject) : state.draftProject;
+      const projects = isDraft
+        ? state.projects
+        : state.projects.map((p) => (p.id === state.activeProjectId ? loadEnv(p) : p));
+      return { ...state, draftProject, projects, activeEnvironment: action.env };
     }
 
     // ── UPDATE_CANVAS: sync nodes/edges for the active environment only ────────
     case 'UPDATE_CANVAS': {
-      const projects = state.projects.map((p) => {
-        if (p.id !== state.activeProjectId) return p;
-        const updated = computeProject(p, action.nodes, action.edges);
-        const envs: Record<Environment, EnvironmentState> = {
-          ...p.environments,
-          [state.activeEnvironment]: {
-            ...p.environments[state.activeEnvironment],
-            nodes: action.nodes,
-            edges: action.edges,
-          },
-        };
-        return { ...updated, environments: envs };
-      });
-      return { ...state, projects, architectureVersion: state.architectureVersion + 1 };
+      const { draftProject, projects } = applyCanvasUpdate(state, () => ({
+        nodes: action.nodes,
+        edges: action.edges,
+      }));
+      return {
+        ...state,
+        draftProject,
+        projects,
+        autoSaveStatus: 'unsaved',
+        architectureVersion: state.architectureVersion + 1,
+      };
     }
 
     // ── UPDATE_NODE_CONFIG: update a single node's config and recompute ────────
     case 'UPDATE_NODE_CONFIG': {
-      if (!state.activeProjectId) return state;
-      const projects = state.projects.map((p) => {
-        if (p.id !== state.activeProjectId) return p;
-        const nodes = p.nodes.map((n) =>
-          n.id === action.nodeId ? { ...n, config: action.config, label: action.label } : n
-        );
-        const updated = computeProject(p, nodes, p.edges);
-        const envs: Record<Environment, EnvironmentState> = {
-          ...p.environments,
-          [state.activeEnvironment]: {
-            ...p.environments[state.activeEnvironment],
-            nodes,
-          },
+      const { draftProject, projects } = applyCanvasUpdate(state, (project) => ({
+        nodes: project.nodes.map((n) =>
+          n.id === action.nodeId ? { ...n, config: action.config, label: action.label ?? n.label } : n
+        ),
+        edges: project.edges,
+      }));
+      return {
+        ...state,
+        draftProject,
+        projects,
+        autoSaveStatus: 'unsaved',
+        architectureVersion: state.architectureVersion + 1,
+      };
+    }
+
+    // ── INIT_BLANK_ARCHITECTURE ───────────────────────────────────────────────
+    case 'INIT_BLANK_ARCHITECTURE': {
+      const provider = action.provider || (action.providerMode ? providerModeToCloudProvider(action.providerMode) : 'aws');
+      const providerMode = action.providerMode || cloudProviderToProviderMode(provider);
+      const expectedUsers = action.scaleProfile?.expectedUsers || 10000;
+      const newDraft = createDefaultDraftProject(provider, expectedUsers, action.nodes || [], action.edges || []);
+      newDraft.providerMode = providerMode;
+      if (action.scaleProfile) {
+        newDraft.scaleProfile = action.scaleProfile;
+      }
+      return {
+        ...state,
+        activeProjectId: 'draft-project',
+        draftProject: newDraft,
+        activeView: 'canvas',
+        canvasKey: state.canvasKey + 1,
+        autoSaveStatus: 'saved',
+        lastSavedTime: 'Just now',
+        saveConflict: null,
+      };
+    }
+
+    // ── SET_SCALE_PROFILE ─────────────────────────────────────────────────────
+    case 'SET_SCALE_PROFILE': {
+      const isDraft = !state.activeProjectId || state.activeProjectId === 'draft-project';
+      const targetProj = isDraft
+        ? state.draftProject
+        : state.projects.find((p) => p.id === state.activeProjectId);
+      if (!targetProj) return state;
+
+      const { draftProject, projects } = applyCanvasUpdate(
+        state,
+        (project) => {
+          if (action.adaptScale === false || project.nodes.length === 0) {
+            return { nodes: project.nodes, edges: project.edges };
+          }
+          const adaptRes = adaptiveScaleEngine.adaptArchitectureScale(project.nodes, project.edges, action.scaleProfile);
+          return { nodes: adaptRes.nodes, edges: adaptRes.edges };
+        },
+        () => ({ scaleProfile: action.scaleProfile }),
+      );
+
+      return {
+        ...state,
+        draftProject,
+        projects,
+        autoSaveStatus: 'unsaved',
+        architectureVersion: state.architectureVersion + 1,
+        canvasKey: state.canvasKey + 1,
+      };
+    }
+
+    // ── SET_PROVIDER_MODE ─────────────────────────────────────────────────────
+    case 'SET_PROVIDER_MODE': {
+      const isDraft = !state.activeProjectId || state.activeProjectId === 'draft-project';
+      const provider = providerModeToCloudProvider(action.mode);
+      const patch = { provider, providerMode: action.mode };
+      const draftProject = isDraft ? { ...state.draftProject, ...patch } : state.draftProject;
+      const projects = isDraft
+        ? state.projects
+        : state.projects.map((p) => (p.id === state.activeProjectId ? { ...p, ...patch } : p));
+      return {
+        ...state,
+        draftProject,
+        projects,
+        autoSaveStatus: 'unsaved',
+        architectureVersion: state.architectureVersion + 1,
+      };
+    }
+
+    // ── CONFIRM_PROVIDER_MODE_CHANGE ──────────────────────────────────────────
+    case 'CONFIRM_PROVIDER_MODE_CHANGE': {
+      const isDraft = !state.activeProjectId || state.activeProjectId === 'draft-project';
+      const targetProj = isDraft
+        ? state.draftProject
+        : state.projects.find((p) => p.id === state.activeProjectId);
+      if (!targetProj) return state;
+
+      const provider = providerModeToCloudProvider(action.mode);
+      const { draftProject, projects } = applyCanvasUpdate(
+        state,
+        (project) => {
+          const filteredNodes = project.nodes.filter((n) => isNodeCompatibleWithProviderMode(n, action.mode));
+          const allowedIds = new Set(filteredNodes.map((n) => n.id));
+          const filteredEdges = project.edges.filter((e) => allowedIds.has(e.source) && allowedIds.has(e.target));
+          return { nodes: filteredNodes, edges: filteredEdges };
+        },
+        () => ({ provider, providerMode: action.mode }),
+      );
+
+      return {
+        ...state,
+        draftProject,
+        projects,
+        autoSaveStatus: 'unsaved',
+        architectureVersion: state.architectureVersion + 1,
+        canvasKey: state.canvasKey + 1,
+      };
+    }
+
+    // ── SET_AUTO_SAVE_STATUS ──────────────────────────────────────────────────
+    case 'SET_AUTO_SAVE_STATUS': {
+      return {
+        ...state,
+        autoSaveStatus: action.status,
+        lastSavedTime: action.lastSavedTime ?? state.lastSavedTime,
+        saveConflict: action.saveConflict !== undefined ? action.saveConflict : state.saveConflict,
+      };
+    }
+
+    // ── SAVE_NOW ──────────────────────────────────────────────────────────────
+    case 'SAVE_NOW': {
+      return {
+        ...state,
+        autoSaveStatus: 'saving',
+      };
+    }
+
+    // ── PROMOTE_DRAFT_TO_PROJECT ──────────────────────────────────────────────
+    case 'PROMOTE_DRAFT_TO_PROJECT': {
+      const draft = state.draftProject;
+      const newProject: Project = {
+        ...draft,
+        id: `proj-${Date.now()}`,
+        name: action.name || draft.name,
+        isDraft: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      return {
+        ...state,
+        projects: [...state.projects, newProject],
+        activeProjectId: newProject.id,
+        autoSaveStatus: 'saved',
+        lastSavedTime: 'Just now',
+        saveConflict: null,
+      };
+    }
+
+    case 'UPDATE_PROJECT_REVISION': {
+      const projects = state.projects.map((p) =>
+        p.id === action.projectId ? { ...p, revision: action.revision } : p
+      );
+      return { ...state, projects, lastSavedVersion: state.architectureVersion };
+    }
+
+    case 'UPDATE_DRAFT_REVISION': {
+      return {
+        ...state,
+        draftProject: { ...state.draftProject, revision: action.revision },
+        lastSavedVersion: state.architectureVersion,
+      };
+    }
+
+    case 'LOAD_DURABLE_DRAFT': {
+      const providerMode = action.draft.providerMode || 'AWS';
+      const provider = providerModeToCloudProvider(providerMode);
+      const scaleProfile = action.draft.scaleProfile || state.draftProject.scaleProfile;
+      const nodes = action.draft.nodes || [];
+      const edges = action.draft.edges || [];
+      const updatedDraft = computeProject(state.draftProject, nodes, edges);
+      const envs: Record<Environment, EnvironmentState> = {
+        ...state.draftProject.environments,
+        production: {
+          ...state.draftProject.environments.production,
+          nodes,
+          edges,
+        },
+      };
+      return {
+        ...state,
+        draftProject: {
+          ...updatedDraft,
+          provider,
+          providerMode,
+          scaleProfile,
+          revision: action.draft.revision ?? 1,
+          environments: envs,
+        },
+        canvasKey: state.canvasKey + 1,
+      };
+    }
+
+    case 'RESOLVE_SAVE_CONFLICT': {
+      if (action.resolution === 'overwrite') {
+        // Adopt the server's revision so the retried save carries a revision
+        // the server will actually accept, instead of looping on the same conflict.
+        const serverRevision = state.saveConflict?.serverRevision;
+        const isDraft = !state.activeProjectId || state.activeProjectId === 'draft-project';
+        const projects = serverRevision === undefined || isDraft
+          ? state.projects
+          : state.projects.map((p) => (p.id === state.activeProjectId ? { ...p, revision: serverRevision } : p));
+        const draftProject = serverRevision !== undefined && isDraft
+          ? { ...state.draftProject, revision: serverRevision }
+          : state.draftProject;
+        return {
+          ...state,
+          projects,
+          draftProject,
+          saveConflict: null,
+          autoSaveStatus: 'unsaved',
         };
-        return { ...updated, environments: envs };
-      });
-      return { ...state, projects, architectureVersion: state.architectureVersion + 1 };
+      } else {
+        return {
+          ...state,
+          saveConflict: null,
+          autoSaveStatus: 'saved',
+          canvasKey: state.canvasKey + 1,
+        };
+      }
     }
 
     case 'SAVE_PROJECT': {
@@ -249,6 +570,8 @@ function reducer(state: AppState, action: Action): AppState {
           ? state.projects.map((p) => p.id === action.project.id ? action.project : p)
           : [...state.projects, action.project],
         lastSavedVersion: state.architectureVersion,
+        autoSaveStatus: 'saved',
+        lastSavedTime: 'Just now',
       };
     }
 
@@ -386,11 +709,12 @@ function reducer(state: AppState, action: Action): AppState {
             edges: action.edges,
           },
         };
+        const revisionPatch = action.revision !== undefined ? { revision: action.revision } : {};
         if (state.activeEnvironment === action.env) {
           const updated = computeProject(p, action.nodes, action.edges);
-          return { ...updated, environments: envs };
+          return { ...updated, ...revisionPatch, environments: envs };
         }
-        return { ...p, environments: envs };
+        return { ...p, ...revisionPatch, environments: envs };
       });
       const shouldBumpKey = state.activeEnvironment === action.env;
       return {
@@ -519,6 +843,7 @@ function reducer(state: AppState, action: Action): AppState {
 const initialState: AppState = {
   projects: mockProjects,
   activeProjectId: null,
+  draftProject: createDefaultDraftProject('aws', 10000),
   activeView: 'dashboard',
   activeCanvasMode: 'architecture',
   activeEnvironment: 'production',
@@ -526,17 +851,15 @@ const initialState: AppState = {
   providerFilter: 'all',
   architectureVersion: 0,
   lastSavedVersion: 0,
+  autoSaveStatus: 'saved',
+  lastSavedTime: 'Just now',
+  saveConflict: null,
   displayCurrency: 'USD',
   canvasKey: 0,
   apiLoaded: false,
-  currentUser: {
-    id: 'usr-admin-1',
-    email: 'admin@cloudcraft.io',
-    name: 'Cloud Administrator',
-    role: 'admin',
-    orgId: 'org-cloudcraft-prod',
-  },
+  currentUser: null,
   isLoginModalOpen: false,
+  sessionChecked: false,
 };
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -601,11 +924,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     fetch('/api/auth/session', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.user) {
-          dispatch({ type: 'SET_USER', user: data.user });
+        if (data?.data?.user) {
+          dispatch({ type: 'SET_USER', user: data.data.user });
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        dispatch({ type: 'SET_SESSION_CHECKED' });
+      });
   }, []);
 
   // ── On mount: load projects from the API ────────────────────────────────────
@@ -625,6 +951,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── On mount: restore draft project from backend or localStorage ──────────
+  useEffect(() => {
+    let cancelled = false;
+    async function initDraft() {
+      let loadedFromBackend = false;
+      if (_activeService.loadDraft) {
+        try {
+          const backendDraft = await _activeService.loadDraft();
+          if (!cancelled && backendDraft && Array.isArray(backendDraft.nodes) && backendDraft.nodes.length > 0) {
+            dispatch({
+              type: 'LOAD_DURABLE_DRAFT',
+              draft: backendDraft,
+            });
+            loadedFromBackend = true;
+          }
+        } catch {}
+      }
+
+      // If backend didn't have draft, check localStorage cache
+      if (!loadedFromBackend && typeof window !== 'undefined') {
+        try {
+          const cachedDraft = localStorage.getItem('cloudcraft_draft_project');
+          if (cachedDraft) {
+            const parsed = JSON.parse(cachedDraft);
+            if (!cancelled && parsed && Array.isArray(parsed.nodes) && parsed.nodes.length > 0) {
+              dispatch({
+                type: 'LOAD_DURABLE_DRAFT',
+                draft: parsed,
+              });
+            }
+          }
+        } catch {}
+      }
+    }
+    initDraft();
+    return () => { cancelled = true; };
+  }, []);
+
   // ── Mirror mutations to the API (fire-and-forget) ───────────────────────────
   // We use a ref to the previous action so we can react after state settles.
   const lastActionRef = useRef<Action | null>(null);
@@ -637,7 +1001,190 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // After each render triggered by dispatchWithSideEffect, sync to API.
   // We track the last processed action to avoid re-running.
   const processedActionRef = useRef<Action | null>(null);
-  const canvasSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const saveInFlightRef = useRef<boolean>(false);
+  const pendingSaveRef = useRef<boolean>(false);
+  const saveSeqRef = useRef<number>(0);
+
+  const triggerAutoSave = React.useCallback((immediate = false) => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+
+    const performSave = async () => {
+      if (saveInFlightRef.current) {
+        pendingSaveRef.current = true;
+        return;
+      }
+      saveInFlightRef.current = true;
+      pendingSaveRef.current = false;
+      const seq = ++saveSeqRef.current;
+
+      const currentState = stateRef.current;
+      const isDraft = !currentState.activeProjectId || currentState.activeProjectId === 'draft-project';
+      dispatch({ type: 'SET_AUTO_SAVE_STATUS', status: 'saving' });
+
+      try {
+        if (isDraft) {
+          // 1. Persist draft to local storage as offline cache
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('cloudcraft_draft_project', JSON.stringify(currentState.draftProject));
+              localStorage.setItem('cloudcraft_draft_timestamp', Date.now().toString());
+            } catch (err) {
+              console.warn('LocalStorage draft save error:', err);
+            }
+          }
+          // 2. Persist to backend draft service
+          let backendRev: number | undefined;
+          if (_activeService.saveDraft) {
+            const res = await _activeService.saveDraft(currentState.draftProject, currentState.draftProject.revision);
+            if (res && res.revision) {
+              backendRev = res.revision;
+            }
+          }
+          if (seq !== saveSeqRef.current) {
+            // Drop stale response
+            return;
+          }
+          if (backendRev) {
+            dispatch({ type: 'UPDATE_DRAFT_REVISION', revision: backendRev });
+          }
+          const nowFormatted = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          dispatch({
+            type: 'SET_AUTO_SAVE_STATUS',
+            status: 'saved',
+            lastSavedTime: nowFormatted,
+            saveConflict: null,
+          });
+        } else {
+          // Persist active project to backend
+          const project = currentState.projects.find((p) => p.id === currentState.activeProjectId);
+          if (!project) return;
+          const currentRevision = project.revision ?? 1;
+
+          const res = await _activeService.saveCanvas(
+            project.id,
+            project.nodes,
+            project.edges,
+            currentState.activeEnvironment,
+            currentRevision,
+            project.scaleProfile
+          );
+          if (seq !== saveSeqRef.current) {
+            // Drop stale response
+            return;
+          }
+          if (res && res.revision) {
+            dispatch({ type: 'UPDATE_PROJECT_REVISION', projectId: project.id, revision: res.revision });
+          }
+          // Broadcast to other browser tabs
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('cloudcraft_tab_sync', JSON.stringify({
+                projectId: project.id,
+                env: currentState.activeEnvironment,
+                revision: res?.revision || currentRevision + 1,
+                timestamp: Date.now(),
+              }));
+            } catch {}
+          }
+          const nowFormatted = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          dispatch({
+            type: 'SET_AUTO_SAVE_STATUS',
+            status: 'saved',
+            lastSavedTime: nowFormatted,
+            saveConflict: null,
+          });
+        }
+      } catch (error: any) {
+        if (seq !== saveSeqRef.current) return;
+        console.error('AutoSave failed:', error);
+        const isConflict = error?.status === 409 || error?.code === 'CONFLICT' || error?.message?.includes('conflict');
+        dispatch({
+          type: 'SET_AUTO_SAVE_STATUS',
+          status: 'error',
+          saveConflict: isConflict ? {
+            serverRevision: error?.serverRevision || 0,
+            clientRevision: error?.clientRevision || 0,
+            message: error?.message || 'A newer version was saved elsewhere. Please reload or overwrite.',
+          } : null,
+        });
+      } finally {
+        saveInFlightRef.current = false;
+        if (pendingSaveRef.current) {
+          pendingSaveRef.current = false;
+          triggerAutoSave(true);
+        }
+      }
+    };
+
+    if (immediate) {
+      performSave();
+    } else {
+      autoSaveTimerRef.current = setTimeout(performSave, 800);
+    }
+  }, []);
+
+  // ── Online listener: flush queued auto-saves when coming online ────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleOnline = () => {
+      triggerAutoSave(true);
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [triggerAutoSave]);
+
+  // ── Multi-tab sync: listen for changes made in other browser tabs ──────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'cloudcraft_tab_sync' && e.newValue) {
+        try {
+          const syncData = JSON.parse(e.newValue);
+          if (syncData.projectId === stateRef.current.activeProjectId) {
+            _activeService.loadCanvas(syncData.projectId, syncData.env || stateRef.current.activeEnvironment).then((canvas) => {
+              if (canvas) {
+                dispatch({
+                  type: 'SET_ENVIRONMENT_CANVAS',
+                  env: syncData.env || stateRef.current.activeEnvironment,
+                  nodes: canvas.nodes ?? [],
+                  edges: canvas.edges ?? [],
+                  revision: canvas.revision,
+                });
+              }
+            }).catch(() => {});
+          }
+        } catch {}
+      } else if (e.key === 'cloudcraft_draft_project' && (!stateRef.current.activeProjectId || stateRef.current.activeProjectId === 'draft-project')) {
+        try {
+          if (e.newValue) {
+            const parsed = JSON.parse(e.newValue);
+            if (parsed && Array.isArray(parsed.nodes)) {
+              dispatch({ type: 'LOAD_DURABLE_DRAFT', draft: parsed });
+            }
+          }
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  // ── BeforeUnload listener: warn if save is in-flight ─────────────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (stateRef.current.autoSaveStatus === 'saving' || stateRef.current.autoSaveStatus === 'unsaved') {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
 
   useEffect(() => {
     const action = lastActionRef.current;
@@ -647,6 +1194,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const currentState = stateRef.current;
 
     switch (action.type) {
+      case 'SAVE_NOW': {
+        triggerAutoSave(true);
+        break;
+      }
+
       case 'CREATE_PROJECT': {
         // Find the optimistically created project (it was just pushed to state)
         const created = currentState.projects[currentState.projects.length - 1];
@@ -657,13 +1209,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         _activeService.createProject(action.name, action.provider).then(async (apiProject) => {
           // Persist the canvas to backend if initial nodes or edges exist
           if (initialNodes.length > 0 || initialEdges.length > 0) {
-            await _activeService.saveCanvas(apiProject.id, initialNodes, initialEdges, 'production').catch(() => {});
+            await _activeService.saveCanvas(apiProject.id, initialNodes, initialEdges, 'production', 1, created.scaleProfile).catch(() => {});
           }
           const mergedProject: Project = {
             ...apiProject,
             nodes: initialNodes,
             edges: initialEdges,
             resourceCount: initialNodes.length,
+            scaleProfile: created.scaleProfile,
+            providerMode: created.providerMode,
             environments: {
               ...apiProject.environments,
               production: {
@@ -685,7 +1239,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       case 'SET_ACTIVE_PROJECT': {
-        if (!action.id) break;
+        if (!action.id || action.id === 'draft-project') break;
         const targetProj = currentState.projects.find((p) => p.id === action.id);
         if (targetProj && targetProj.nodes.length === 0) {
           _activeService.loadCanvas(action.id, currentState.activeEnvironment).then((canvas) => {
@@ -695,6 +1249,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 env: currentState.activeEnvironment,
                 nodes: canvas.nodes ?? [],
                 edges: canvas.edges ?? [],
+                revision: canvas.revision,
               });
             }
           }).catch(() => {});
@@ -712,44 +1267,58 @@ export function AppProvider({ children }: { children: ReactNode }) {
         break;
       }
 
-      case 'UPDATE_CANVAS': {
-        if (!currentState.activeProjectId) break;
-        if (canvasSaveTimerRef.current) {
-          clearTimeout(canvasSaveTimerRef.current);
-        }
-        const projId = currentState.activeProjectId;
-        const env = currentState.activeEnvironment;
-        const nodes = action.nodes;
-        const edges = action.edges;
-        canvasSaveTimerRef.current = setTimeout(() => {
-          _activeService.saveCanvas(
-            projId,
-            nodes,
-            edges,
-            env,
-          ).catch(() => {});
-        }, 400);
+      case 'UPDATE_CANVAS':
+      case 'UPDATE_NODE_CONFIG':
+      case 'FIX_SECURITY_ISSUE':
+      case 'APPLY_COST_OPTIMIZATION':
+      case 'SET_SCALE_PROFILE':
+      case 'SET_PROVIDER_MODE':
+      case 'CONFIRM_PROVIDER_MODE_CHANGE': {
+        triggerAutoSave(false);
         break;
       }
 
-      case 'UPDATE_NODE_CONFIG':
-      case 'FIX_SECURITY_ISSUE': {
-        if (!currentState.activeProjectId) break;
-        const project = currentState.projects.find((p) => p.id === currentState.activeProjectId);
-        if (!project) break;
-        _activeService.saveCanvas(
-          currentState.activeProjectId,
-          project.nodes,
-          project.edges,
-          currentState.activeEnvironment,
-        ).catch(() => {});
+      case 'PROMOTE_DRAFT_TO_PROJECT': {
+        if (_activeService.clearDraft) {
+          _activeService.clearDraft().catch(() => {});
+        }
+        if (typeof window !== 'undefined') {
+          try { localStorage.removeItem('cloudcraft_draft_project'); } catch {}
+        }
+        break;
+      }
+
+      case 'RESOLVE_SAVE_CONFLICT': {
+        if (action.resolution === 'overwrite') {
+          triggerAutoSave(true);
+        } else {
+          if (currentState.activeProjectId && currentState.activeProjectId !== 'draft-project') {
+            _activeService.loadCanvas(currentState.activeProjectId, currentState.activeEnvironment).then((canvas) => {
+              if (canvas) {
+                dispatch({
+                  type: 'SET_ENVIRONMENT_CANVAS',
+                  env: currentState.activeEnvironment,
+                  nodes: canvas.nodes ?? [],
+                  edges: canvas.edges ?? [],
+                  revision: canvas.revision,
+                });
+              }
+            }).catch(() => {});
+          } else if (_activeService.loadDraft) {
+            _activeService.loadDraft().then((draft) => {
+              if (draft) {
+                dispatch({ type: 'LOAD_DURABLE_DRAFT', draft });
+              }
+            }).catch(() => {});
+          }
+        }
         break;
       }
 
       default:
         break;
     }
-  });
+  }, [triggerAutoSave]);
 
   return (
     <AppContext.Provider value={{ state, dispatch: dispatchWithSideEffect }}>
@@ -764,7 +1333,11 @@ export function useApp() {
   return ctx;
 }
 
-export function useActiveProject() {
+export function useActiveProject(): Project | null {
   const { state } = useApp();
-  return state.projects.find((p) => p.id === state.activeProjectId) ?? null;
+  if (state.activeProjectId && state.activeProjectId !== 'draft-project') {
+    const found = state.projects.find((p) => p.id === state.activeProjectId);
+    if (found) return found;
+  }
+  return state.draftProject;
 }

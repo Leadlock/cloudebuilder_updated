@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -22,6 +22,7 @@ import { getResourceDefinition } from '@/lib/resources';
 import { relationshipEngine } from '@/lib/engines/relationship/RelationshipEngine';
 import CloudNode from './CloudNode';
 import ContainerNode from './ContainerNode';
+import AzBoundaryNode from './AzBoundaryNode';
 import CloudProviderBoundary from './CloudProviderBoundary';
 import {
   TrafficEdge,
@@ -41,15 +42,26 @@ import {
 } from './ArchitectureEdges';
 import ResourcePalette from './ResourcePalette';
 import PropertiesPanel from './PropertiesPanel';
+import ConnectionInspector from './ConnectionInspector';
 import CanvasToolbar from './CanvasToolbar';
 import AddResourceModal from './AddResourceModal';
+import CanvasStartModal from './CanvasStartModal';
+import AiPromptPanel from '../panels/AiPromptPanel';
+import CompliancePanel from '../panels/CompliancePanel';
+import GitOpsPanel from '../panels/GitOpsPanel';
 import { autoLayoutArchitecture } from '@/lib/canvas/autoLayout';
 import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedService';
+import { architectureAutoFixEngine } from '@/lib/engines/autofix/ArchitectureAutoFixEngine';
+import { scaleAdvisorEngine } from '@/lib/engines/ai/ScaleAdvisorEngine';
+import { toCanonicalGraph, validateCanonicalArchitecture } from '@/lib/domain/canonicalArchitecture';
+import { ProviderMode, ScaleProfile, Region, providerModeToCloudProvider, cloudProviderToProviderMode, isNodeCompatibleWithProviderMode, inferNodeProvider } from '@/types';
+import { AlertTriangle, Check, X, Sparkles, Bot, ShieldCheck, GitMerge, Download, Loader2, Wrench, Search } from 'lucide-react';
 
 const nodeTypes = {
   cloudNode: CloudNode,
   containerNode: ContainerNode,
   cloudProviderNode: CloudProviderBoundary,
+  azBoundaryNode: AzBoundaryNode,
 };
 
 const edgeTypes = {
@@ -480,6 +492,26 @@ export default function InfraCanvas() {
   // Quick Add Resource modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
+  // AI Prompt / Compliance / GitOps overlay panels
+  const [showAiPrompt, setShowAiPrompt] = useState(false);
+  const [showCompliance, setShowCompliance] = useState(false);
+  const [showGitOps, setShowGitOps] = useState(false);
+  const [showToolsMenu, setShowToolsMenu] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const toolsMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close the tools menu on an outside click
+  useEffect(() => {
+    if (!showToolsMenu) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (toolsMenuRef.current && !toolsMenuRef.current.contains(event.target as globalThis.Node)) {
+        setShowToolsMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showToolsMenu]);
+
   // Pre-connection validation error modal state
   const [connectionError, setConnectionError] = useState<{
     title: string;
@@ -500,15 +532,40 @@ export default function InfraCanvas() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
 
   // Provider filter for multi-cloud canvas
-  const [canvasFilter, setCanvasFilter] = useState<'all' | 'aws' | 'azure'>('all');
+  const [canvasFilter, setCanvasFilter] = useState<'all' | 'aws' | 'azure' | 'gcp'>('all');
+  const [canvasSearchQuery, setCanvasSearchQuery] = useState('');
 
   // Well-Architected findings overlay state
   const [showFindings, setShowFindings] = useState(false);
   const [findingsMap, setFindingsMap] = useState<Map<string, { critical: number; high: number; medium: number; total: number }>>(new Map());
+
+  // Canvas Start Modal for initial blank architecture setup
+  const isFreshDraft = !activeProject || (activeProject.isDraft && activeProject.nodes.length === 0);
+  const [showStartModal, setShowStartModal] = useState<boolean>(false);
+  const [hasDismissedStartModal, setHasDismissedStartModal] = useState(false);
+
+  useEffect(() => {
+    if (isFreshDraft && !hasDismissedStartModal) {
+      const timer = setTimeout(() => setShowStartModal(true), 0);
+      return () => clearTimeout(timer);
+    }
+  }, [isFreshDraft, hasDismissedStartModal]);
+
+  // Provider Mode Change Confirmation Modal
+  const [pendingProviderChange, setPendingProviderChange] = useState<{
+    newMode: ProviderMode;
+    incompatibleCount: number;
+    incompatibleNodeLabels: string[];
+  } | null>(null);
+
+  // Auto-Fix execution state & banner notification
+  const [isFixing, setIsFixing] = useState(false);
+  const [bannerMessage, setBannerMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
 
   useEffect(() => {
     if (!showFindings || !activeProject) return;
@@ -590,6 +647,223 @@ export default function InfraCanvas() {
     setCanUndo(true);
     setCanRedo(false);
   }, []);
+
+  // ── Canvas Start Modal Callback ─────────────────────────────────────────────
+  const handleStartModalComplete = useCallback((options: {
+    providerMode: ProviderMode;
+    scaleProfile: ScaleProfile;
+    mode: 'manual' | 'ai';
+    aiPrompt?: string;
+    region?: Region;
+  }) => {
+    setShowStartModal(false);
+    setHasDismissedStartModal(true);
+
+    if (options.mode === 'ai' && options.aiPrompt) {
+      const rec = scaleAdvisorEngine.interpretRequirements(
+        options.aiPrompt,
+        providerModeToCloudProvider(options.providerMode)
+      );
+      dispatch({
+        type: 'INIT_BLANK_ARCHITECTURE',
+        providerMode: options.providerMode,
+        scaleProfile: options.scaleProfile,
+        nodes: rec.nodes,
+        edges: rec.edges,
+      });
+      setBannerMessage({
+        text: `✓ AI Architecture generated for ${options.scaleProfile.expectedUsers.toLocaleString()} users — Deterministically validated`,
+        type: 'success',
+      });
+      setTimeout(() => setBannerMessage(null), 4000);
+    } else {
+      dispatch({
+        type: 'INIT_BLANK_ARCHITECTURE',
+        providerMode: options.providerMode,
+        scaleProfile: options.scaleProfile,
+      });
+      setBannerMessage({
+        text: `✓ Canvas ready (${options.providerMode} mode) — Drag & drop resources from palette`,
+        type: 'info',
+      });
+      setTimeout(() => setBannerMessage(null), 3000);
+    }
+  }, [dispatch]);
+
+  // ── Provider Mode Change with Destructive Confirmation ───────────────────────
+  const handleRequestProviderModeChange = useCallback((newMode: ProviderMode) => {
+    if (!activeProject) return;
+    const currentMode = activeProject.providerMode || cloudProviderToProviderMode(activeProject.provider);
+    if (newMode === currentMode) return;
+
+    // Check for incompatible nodes
+    const currentNodes = activeProject.nodes;
+    const incompatibleNodes = currentNodes.filter((n) => !isNodeCompatibleWithProviderMode(n, newMode));
+
+    if (incompatibleNodes.length > 0) {
+      setPendingProviderChange({
+        newMode,
+        incompatibleCount: incompatibleNodes.length,
+        incompatibleNodeLabels: incompatibleNodes.slice(0, 5).map((n) => n.label),
+      });
+    } else {
+      dispatch({ type: 'SET_PROVIDER_MODE', mode: newMode });
+    }
+  }, [activeProject, dispatch]);
+
+  const confirmProviderChange = useCallback(() => {
+    if (!pendingProviderChange) return;
+    dispatch({ type: 'CONFIRM_PROVIDER_MODE_CHANGE', mode: pendingProviderChange.newMode });
+    setPendingProviderChange(null);
+    setBannerMessage({
+      text: `✓ Architecture converted to ${pendingProviderChange.newMode} mode`,
+      type: 'info',
+    });
+    setTimeout(() => setBannerMessage(null), 3000);
+  }, [pendingProviderChange, dispatch]);
+
+  // ── Auto-Fix Engine Interaction ─────────────────────────────────────────────
+  const handleAutoFix = useCallback(() => {
+    if (!activeProject) return;
+    setIsFixing(true);
+
+    try {
+      const canonical = toCanonicalGraph({
+        id: activeProject.id,
+        name: activeProject.name,
+        provider: activeProject.provider,
+        providerMode: activeProject.providerMode,
+        nodes: activeProject.nodes,
+        edges: activeProject.edges,
+        scaleProfile: activeProject.scaleProfile,
+      });
+
+      const fixResult = architectureAutoFixEngine.fixArchitecture(
+        activeProject.nodes,
+        activeProject.edges,
+        canonical
+      );
+
+      const laidOut = autoLayoutArchitecture(fixResult.nodes, fixResult.edges);
+
+      const rfNodes = toReactFlowNodes(laidOut.nodes);
+      const rfEdges = toReactFlowEdges(laidOut.edges, laidOut.nodes);
+      setNodes(rfNodes);
+      setEdges(rfEdges);
+
+      dispatch({
+        type: 'UPDATE_CANVAS',
+        nodes: laidOut.nodes,
+        edges: laidOut.edges,
+      });
+
+      const fixCount = fixResult.changesApplied.length;
+      setBannerMessage({
+        text: `✓ Architecture fixed (${fixCount} repair${fixCount === 1 ? '' : 's'} applied) — Changes saved`,
+        type: 'success',
+      });
+      setTimeout(() => setBannerMessage(null), 4000);
+    } catch (err) {
+      console.error('AutoFix failed:', err);
+      setBannerMessage({
+        text: 'Auto-Fix encountered an unexpected issue.',
+        type: 'error',
+      });
+      setTimeout(() => setBannerMessage(null), 4000);
+    } finally {
+      setIsFixing(false);
+    }
+  }, [activeProject, dispatch, setNodes, setEdges]);
+
+  // ── AI Prompt Panel: merge generated graph into the canvas ──────────────────
+  const handleApplyAiGraph = useCallback((newNodes: CanvasNode[], newEdges: CanvasEdge[]) => {
+    if (!activeProject) return;
+    const mergedNodes = [...activeProject.nodes, ...newNodes];
+    const mergedEdges = [...activeProject.edges, ...newEdges];
+    const laidOut = autoLayoutArchitecture(mergedNodes, mergedEdges);
+
+    setNodes(toReactFlowNodes(laidOut.nodes));
+    setEdges(toReactFlowEdges(laidOut.edges, laidOut.nodes));
+    dispatch({ type: 'UPDATE_CANVAS', nodes: laidOut.nodes, edges: laidOut.edges });
+
+    setBannerMessage({
+      text: `✓ AI added ${newNodes.length} resource${newNodes.length === 1 ? '' : 's'} to the architecture`,
+      type: 'success',
+    });
+    setTimeout(() => setBannerMessage(null), 3500);
+  }, [activeProject, dispatch, setNodes, setEdges]);
+
+  // ── Export: download a real SVG/PNG/PDF of the architecture ─────────────────
+  const handleExport = useCallback(async (format: 'svg' | 'png' | 'pdf') => {
+    if (!activeProject) return;
+    setExporting(true);
+    try {
+      const res = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          format,
+          title: activeProject.name,
+          theme: 'dark',
+          nodes: activeProject.nodes,
+          edges: activeProject.edges,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Export failed');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${activeProject.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setBannerMessage({ text: `✓ Exported ${format.toUpperCase()}`, type: 'success' });
+      setTimeout(() => setBannerMessage(null), 3000);
+    } catch (err: any) {
+      setBannerMessage({ text: err.message || 'Export failed', type: 'error' });
+      setTimeout(() => setBannerMessage(null), 4000);
+    } finally {
+      setExporting(false);
+    }
+  }, [activeProject]);
+
+  // ── Workload Scale Adaptation ───────────────────────────────────────────────
+  const handleScaleChange = useCallback((newUsers: number) => {
+    if (!activeProject) return;
+    const currentProfile: ScaleProfile = activeProject.scaleProfile || {
+      expectedUsers: 10000,
+      requestsPerSecond: 50,
+      peakRequestsPerSecond: 150,
+      availabilityTarget: 99.9,
+      trafficPattern: 'steady',
+    };
+
+    const updatedProfile: ScaleProfile = {
+      ...currentProfile,
+      expectedUsers: newUsers,
+      requestsPerSecond: Math.max(1, Math.round(newUsers * 0.005)),
+      peakRequestsPerSecond: Math.round(Math.max(1, Math.round(newUsers * 0.005)) * 3),
+      geographicDistribution: newUsers >= 100000 ? 'multi-region' : 'single-region',
+    };
+
+    dispatch({
+      type: 'SET_SCALE_PROFILE',
+      scaleProfile: updatedProfile,
+      adaptScale: true,
+    });
+
+    setBannerMessage({
+      text: `✓ Scale updated to ${newUsers.toLocaleString()} users — Capacity, cost, and analysis refreshed`,
+      type: 'info',
+    });
+    setTimeout(() => setBannerMessage(null), 3500);
+  }, [activeProject, dispatch]);
 
   // ── Canvas sync ──────────────────────────────────────────────────────────────
   const getCanvasNodes = useCallback((): CanvasNode[] => {
@@ -1041,10 +1315,17 @@ export default function InfraCanvas() {
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNodeId(node.id);
+    setSelectedEdgeId(null);
+  }, []);
+
+  const onEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
+    setSelectedEdgeId(edge.id);
+    setSelectedNodeId(null);
   }, []);
 
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
+    setSelectedEdgeId(null);
   }, []);
 
   // ── Recursive Descendants Helper ─────────────────────────────────────────────
@@ -1143,6 +1424,18 @@ export default function InfraCanvas() {
     }
   }, [onNodesChange, syncToStore, nodes, setNodes, getDescendantIds, findContainerAtPosition]);
 
+  // ── Wrapped Edges Change to capture edge deletions/disconnections ───────────
+  const onEdgesChangeWrapped: typeof onEdgesChange = useCallback((changes) => {
+    onEdgesChange(changes);
+    const hasRemoval = changes.some((c) => c.type === 'remove');
+    if (hasRemoval) {
+      const removedIds = new Set(changes.filter((c) => c.type === 'remove').map((c) => (c as any).id));
+      const remainingEdges = edges.filter((e) => !removedIds.has(e.id));
+      pushHistory(nodes, edges);
+      setTimeout(() => syncToStore(nodes, remainingEdges), 0);
+    }
+  }, [onEdgesChange, edges, nodes, pushHistory, syncToStore]);
+
   // ── Auto-layout (Logical Cloud Architecture) ─────────────────────────────────
   const handleAutoLayout = useCallback(() => {
     if (nodes.length === 0) return;
@@ -1218,15 +1511,27 @@ export default function InfraCanvas() {
   const handleDeleteSelected = useCallback(() => {
     const selectedIds = nodes.filter((n) => n.selected).map((n) => n.id);
     if (selectedNodeId && !selectedIds.includes(selectedNodeId)) selectedIds.push(selectedNodeId);
-    if (selectedIds.length === 0) return;
-    const newNodes = nodes.filter((n) => !selectedIds.includes(n.id));
-    const newEdges = edges.filter((e) => !selectedIds.includes(e.source) && !selectedIds.includes(e.target));
+    const selectedEdgeIds = edges.filter((e) => e.selected).map((e) => e.id);
+    if (selectedEdgeId && !selectedEdgeIds.includes(selectedEdgeId)) selectedEdgeIds.push(selectedEdgeId);
+
+    if (selectedIds.length === 0 && selectedEdgeIds.length === 0) return;
+
+    const newNodes = selectedIds.length > 0 ? nodes.filter((n) => !selectedIds.includes(n.id)) : nodes;
+    const newEdges = edges.filter(
+      (e) => !selectedEdgeIds.includes(e.id) && !selectedIds.includes(e.source) && !selectedIds.includes(e.target)
+    );
+
     pushHistory(nodes, edges);
     setNodes(newNodes);
     setEdges(newEdges);
-    setSelectedNodeId(null);
+    if (selectedNodeId && selectedIds.includes(selectedNodeId)) {
+      setSelectedNodeId(null);
+    }
+    if (selectedEdgeId && selectedEdgeIds.includes(selectedEdgeId)) {
+      setSelectedEdgeId(null);
+    }
     syncToStore(newNodes, newEdges);
-  }, [nodes, edges, setNodes, setEdges, selectedNodeId, syncToStore, pushHistory]);
+  }, [nodes, edges, setNodes, setEdges, selectedNodeId, selectedEdgeId, syncToStore, pushHistory]);
 
   // ── Quick Add Resource ───────────────────────────────────────────────────────
   const handleQuickAdd = useCallback((resourceType: string) => {
@@ -1287,7 +1592,7 @@ export default function InfraCanvas() {
       if ((e.ctrlKey || e.metaKey) && e.key === 'c') { e.preventDefault(); handleCopy(); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'v') { e.preventDefault(); handlePaste(); }
       if (e.key === 'Delete' || e.key === 'Backspace') { handleDeleteSelected(); }
-      if (e.key === 'Escape') { setSelectedNodeId(null); setIsAddModalOpen(false); }
+      if (e.key === 'Escape') { setSelectedNodeId(null); setSelectedEdgeId(null); setIsAddModalOpen(false); }
       if (e.key === 'a' || e.key === 'A') { setIsAddModalOpen(true); }
     }
     window.addEventListener('keydown', onKeyDown);
@@ -1301,63 +1606,131 @@ export default function InfraCanvas() {
     dispatch({ type: 'UPDATE_NODE_CONFIG', nodeId, config, label });
   }
 
-  // ── Multi-cloud filter ───────────────────────────────────────────────────────
+  // ── Multi-cloud filter + search ─────────────────────────────────────────────
+  const normalizedSearch = canvasSearchQuery.trim().toLowerCase();
+  const searchMatchCount = normalizedSearch
+    ? nodes.filter((n) => {
+        const label = (n.data?.label as string | undefined)?.toLowerCase() ?? '';
+        const resourceType = (n.data?.resourceType as string | undefined)?.toLowerCase() ?? '';
+        return label.includes(normalizedSearch) || resourceType.includes(normalizedSearch);
+      }).length
+    : 0;
+
   const visibleNodes = nodes.map((n) => {
-    if (canvasFilter === 'all' || activeProject?.provider !== 'multi') return n;
-    const existing = activeProject.nodes.find((cn) => cn.id === n.id);
-    const nodeProvider = existing?.provider ?? 'aws';
-    if (nodeProvider !== canvasFilter) {
+    let dim = false;
+
+    if (canvasFilter !== 'all' && activeProject?.provider === 'multi') {
+      const existing = activeProject.nodes.find((cn) => cn.id === n.id);
+      const nodeProvider = existing ? inferNodeProvider(existing) : 'aws';
+      if (nodeProvider !== canvasFilter) dim = true;
+    }
+
+    if (!dim && normalizedSearch) {
+      const label = (n.data?.label as string | undefined)?.toLowerCase() ?? '';
+      const resourceType = (n.data?.resourceType as string | undefined)?.toLowerCase() ?? '';
+      if (!label.includes(normalizedSearch) && !resourceType.includes(normalizedSearch)) dim = true;
+    }
+
+    if (dim) {
       return { ...n, style: { ...n.style, opacity: 0.15, pointerEvents: 'none' as const } };
     }
     return n;
   });
 
+  // ── Availability Zone visual grouping ───────────────────────────────────────
+  // Purely a rendering overlay computed from each subnet's existing
+  // config.availabilityZone field — not a canonical resource, never
+  // persisted, never affects Terraform/validation/containment. Only drawn
+  // when 2+ subnets under the same VPC/VNet share an AZ, since that's the
+  // case (multi-AZ HA layouts) where the grouping is actually informative.
+  const azBoundaryNodes: Node[] = useMemo(() => {
+    const subnetNodes = nodes.filter(
+      (n) => n.data.resourceType === 'aws_subnet' || n.data.resourceType === 'azure_subnet'
+    );
+    const groups = new Map<string, Node[]>();
+    for (const s of subnetNodes) {
+      const az = (s.data.config?.availabilityZone as string | undefined)?.trim();
+      const parentId = s.data.groupId as string | undefined;
+      if (!az || !parentId) continue;
+      const key = `${parentId}::${az}`;
+      const arr = groups.get(key) ?? [];
+      arr.push(s);
+      groups.set(key, arr);
+    }
+
+    const boundaries: Node[] = [];
+    const PADDING = 24;
+    const HEADER_PADDING = 30;
+    for (const [key, members] of groups) {
+      if (members.length < 2) continue;
+      const az = key.split('::')[1];
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const m of members) {
+        const w = (m.data.width as number) || 340;
+        const h = (m.data.height as number) || 220;
+        minX = Math.min(minX, m.position.x);
+        minY = Math.min(minY, m.position.y);
+        maxX = Math.max(maxX, m.position.x + w);
+        maxY = Math.max(maxY, m.position.y + h);
+      }
+      const boxWidth = (maxX - minX) + PADDING * 2;
+      const boxHeight = (maxY - minY) + HEADER_PADDING + PADDING;
+      boundaries.push({
+        id: `az-boundary::${key}`,
+        type: 'azBoundaryNode',
+        position: { x: minX - PADDING, y: minY - HEADER_PADDING },
+        // Top-level width/height (not just data.width/height) are required
+        // so React Flow's onlyRenderVisibleElements viewport culling can
+        // compute this node's bounds — without them it defensively hides
+        // the node (visibility: hidden) since it can't tell if it's on screen.
+        width: boxWidth,
+        height: boxHeight,
+        draggable: false,
+        selectable: false,
+        focusable: false,
+        zIndex: -2,
+        data: {
+          label: `Availability Zone: ${az}`,
+          width: boxWidth,
+          height: boxHeight,
+        },
+      });
+    }
+    return boundaries;
+  }, [nodes]);
+
   const selectedNode = activeProject?.nodes.find((n) => n.id === selectedNodeId) ?? null;
+  const selectedEdge = activeProject?.edges.find((e) => e.id === selectedEdgeId) ?? null;
+  const selectedEdgeSourceNode = selectedEdge ? (activeProject?.nodes.find((n) => n.id === selectedEdge.source) ?? null) : null;
+  const selectedEdgeTargetNode = selectedEdge ? (activeProject?.nodes.find((n) => n.id === selectedEdge.target) ?? null) : null;
   const hasSelected = nodes.some((n) => n.selected) || !!selectedNodeId;
 
   if (!activeProject) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-slate-950 text-slate-500">
-        <div className="text-center max-w-md w-full px-6 py-8 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl">
-          <div className="w-12 h-12 bg-blue-900/30 text-blue-400 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-          </div>
-          <p className="text-xl font-bold text-white mb-2">No active architecture</p>
-          <p className="text-sm text-slate-400 mb-8">Start building by creating a new architecture, opening an existing one, or importing from your cloud provider.</p>
-          
-          <div className="space-y-3">
-            <button 
-              onClick={() => dispatch({ type: 'SET_VIEW', view: 'wizard' })}
-              className="w-full flex items-center gap-3 px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <svg className="w-5 h-5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              Create Architecture
-            </button>
-            
-            <button 
-              onClick={() => dispatch({ type: 'SET_VIEW', view: 'dashboard' })}
-              className="w-full flex items-center gap-3 px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-xl text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500"
-            >
-              <svg className="w-5 h-5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
-              </svg>
-              Open Existing Architecture
-            </button>
-            
-            <button 
-              onClick={() => dispatch({ type: 'SET_VIEW', view: 'import' })}
-              className="w-full flex items-center gap-3 px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-xl text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500"
-            >
-              <svg className="w-5 h-5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-              </svg>
-              Import Cloud Infrastructure
-            </button>
-          </div>
+      <div className="flex-1 flex flex-col items-center justify-center bg-slate-950 text-slate-400 px-4">
+        <p className="text-sm font-medium text-white mb-2">No active architecture</p>
+        <p className="text-xs text-slate-500 mb-6 text-center max-w-xs">
+          Start building by creating a new architecture, opening an existing one, or importing from your cloud provider.
+        </p>
+        <div className="flex flex-col gap-2 w-full max-w-xs">
+          <button
+            onClick={() => dispatch({ type: 'SET_VIEW', view: 'wizard' })}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium transition-colors"
+          >
+            Create Architecture
+          </button>
+          <button
+            onClick={() => dispatch({ type: 'SET_VIEW', view: 'dashboard' })}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-lg text-xs font-medium transition-colors"
+          >
+            Open Existing Architecture
+          </button>
+          <button
+            onClick={() => dispatch({ type: 'SET_VIEW', view: 'import' })}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-lg text-xs font-medium transition-colors"
+          >
+            Import Cloud Infrastructure
+          </button>
         </div>
       </div>
     );
@@ -1381,6 +1754,8 @@ export default function InfraCanvas() {
           onUndo={handleUndo}
           onRedo={handleRedo}
           onAutoLayout={handleAutoLayout}
+          onAutoFix={handleAutoFix}
+          isFixing={isFixing}
           onFitView={handleFitView}
           onZoomIn={handleZoomIn}
           onZoomOut={handleZoomOut}
@@ -1389,12 +1764,41 @@ export default function InfraCanvas() {
           onOpenAddModal={() => setIsAddModalOpen(true)}
           showFindings={showFindings}
           onToggleFindings={() => setShowFindings((v) => !v)}
+          providerMode={activeProject?.providerMode || (activeProject ? cloudProviderToProviderMode(activeProject.provider) : 'AWS')}
+          onSelectProviderMode={handleRequestProviderModeChange}
+          expectedUsers={activeProject?.scaleProfile?.expectedUsers || 10000}
+          onSelectExpectedUsers={handleScaleChange}
+          autoSaveStatus={state.autoSaveStatus}
+          lastSavedTime={state.lastSavedTime}
+          onSaveNow={() => dispatch({ type: 'SAVE_NOW' })}
         />
+
+        {/* Resource search — filters/dims canvas nodes by label or resource type,
+            useful once an architecture grows past what's visible at a glance.
+            Positioned below the main toolbar row (not top-4) to avoid
+            overlapping the Add Resource / Auto Layout / Auto-Fix buttons. */}
+        <div className="absolute top-16 left-4 z-20 flex items-center gap-2">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={canvasSearchQuery}
+              onChange={(e) => setCanvasSearchQuery(e.target.value)}
+              placeholder="Search resources…"
+              className="w-48 pl-8 pr-2.5 py-1.5 bg-slate-900/90 border border-slate-700/80 rounded-xl text-xs text-white placeholder:text-slate-500 shadow-2xl backdrop-blur-md focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-all"
+            />
+          </div>
+          {normalizedSearch && (
+            <span className="px-2 py-1 rounded-lg text-[11px] font-medium bg-slate-900/90 border border-slate-700/80 text-slate-300 shadow-2xl backdrop-blur-md">
+              {searchMatchCount} match{searchMatchCount === 1 ? '' : 'es'}
+            </span>
+          )}
+        </div>
 
         {/* Multi-cloud filter bar */}
         {activeProject.provider === 'multi' && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 bg-slate-900/90 border border-slate-700/80 rounded-xl px-1.5 py-1 shadow-2xl backdrop-blur-md">
-            {(['all', 'aws', 'azure'] as const).map((f) => (
+            {(['all', 'aws', 'azure', 'gcp'] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setCanvasFilter(f)}
@@ -1408,16 +1812,117 @@ export default function InfraCanvas() {
           </div>
         )}
 
+        {/* Tools menu — a single compact button instead of a permanently-expanded
+            bar, so it doesn't sit on top of (and block clicks on) canvas nodes
+            that happen to be positioned in the top-right corner. */}
+        <div className="absolute top-4 right-4 z-20" ref={toolsMenuRef}>
+          <button
+            type="button"
+            id="btn-toggle-tools-menu"
+            onClick={() => setShowToolsMenu((v) => !v)}
+            title="Architecture Tools"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium shadow-2xl backdrop-blur-md border transition-colors ${
+              showToolsMenu || showAiPrompt || showCompliance || showGitOps
+                ? 'bg-slate-800 text-white border-slate-600'
+                : 'bg-slate-900/90 text-slate-300 border-slate-700/80 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Wrench className="w-3.5 h-3.5" />
+            <span>Tools</span>
+          </button>
+
+          {showToolsMenu && (
+            <div className="absolute right-0 top-full mt-1 w-52 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden py-1">
+              <button
+                type="button"
+                id="btn-toggle-ai-prompt"
+                onClick={() => { setShowAiPrompt((v) => !v); setShowToolsMenu(false); }}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors ${
+                  showAiPrompt ? 'text-fuchsia-300 bg-fuchsia-500/10' : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                <Bot className="w-3.5 h-3.5" />
+                <span>AI Architect</span>
+              </button>
+              <button
+                type="button"
+                id="btn-toggle-compliance"
+                onClick={() => { setShowCompliance((v) => !v); setShowToolsMenu(false); }}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors ${
+                  showCompliance ? 'text-emerald-300 bg-emerald-500/10' : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Compliance</span>
+              </button>
+              <button
+                type="button"
+                id="btn-toggle-gitops"
+                onClick={() => { setShowGitOps((v) => !v); setShowToolsMenu(false); }}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors ${
+                  showGitOps ? 'text-blue-300 bg-blue-500/10' : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                <GitMerge className="w-3.5 h-3.5" />
+                <span>GitOps</span>
+              </button>
+              <div className="h-px bg-slate-800 my-1" />
+              {(['svg', 'png', 'pdf'] as const).map((fmt) => (
+                <button
+                  key={fmt}
+                  type="button"
+                  onClick={() => { handleExport(fmt); setShowToolsMenu(false); }}
+                  disabled={exporting}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+                >
+                  {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                  <span>Export as {fmt.toUpperCase()}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {showAiPrompt && (
+          <AiPromptPanel
+            projectId={activeProject.id}
+            environmentId={state.activeEnvironment}
+            provider={activeProject.provider}
+            onClose={() => setShowAiPrompt(false)}
+            onApplyGraph={handleApplyAiGraph}
+          />
+        )}
+
+        {showCompliance && (
+          <CompliancePanel
+            projectId={activeProject.id}
+            architectureId={activeProject.id}
+            resources={activeProject.nodes}
+            onClose={() => setShowCompliance(false)}
+          />
+        )}
+
+        {showGitOps && (
+          <GitOpsPanel
+            projectId={activeProject.id}
+            architectureId={activeProject.id}
+            nodes={activeProject.nodes}
+            edges={activeProject.edges}
+            onClose={() => setShowGitOps(false)}
+          />
+        )}
+
         {/* React Flow Core */}
         <ReactFlow
-          nodes={visibleNodes}
+          nodes={[...visibleNodes, ...azBoundaryNodes]}
           edges={edges}
           onNodesChange={onNodesChangeWrapped}
-          onEdgesChange={onEdgesChange}
+          onEdgesChange={onEdgesChangeWrapped}
           onConnect={onConnect}
           onDrop={onDrop}
           onDragOver={onDragOver}
           onNodeClick={onNodeClick}
+          onEdgeClick={onEdgeClick}
           onPaneClick={onPaneClick}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
@@ -1429,6 +1934,7 @@ export default function InfraCanvas() {
           proOptions={{ hideAttribution: true }}
           minZoom={0.2}
           maxZoom={2.0}
+          onlyRenderVisibleElements
         >
           {/* Architecture Blueprint Grid Background */}
           <Background
@@ -1459,6 +1965,23 @@ export default function InfraCanvas() {
           node={selectedNode}
           onClose={() => setSelectedNodeId(null)}
           onUpdate={handleNodeUpdate}
+        />
+      )}
+
+      {/* Connection Inspector (Right) */}
+      {selectedEdge && (
+        <ConnectionInspector
+          edge={selectedEdge}
+          sourceNode={selectedEdgeSourceNode}
+          targetNode={selectedEdgeTargetNode}
+          onClose={() => setSelectedEdgeId(null)}
+          onDelete={() => {
+            const newEdges = edges.filter((e) => e.id !== selectedEdge.id);
+            pushHistory(nodes, edges);
+            setEdges(newEdges);
+            setSelectedEdgeId(null);
+            syncToStore(nodes, newEdges);
+          }}
         />
       )}
 
@@ -1528,6 +2051,71 @@ export default function InfraCanvas() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Blank Canvas Start Modal */}
+      <CanvasStartModal
+        isOpen={showStartModal}
+        onClose={() => {
+          setShowStartModal(false);
+          setHasDismissedStartModal(true);
+        }}
+        onStart={handleStartModalComplete}
+      />
+
+      {/* Provider Change Warning Confirmation Modal */}
+      {pendingProviderChange && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-amber-500/60 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <div className="flex items-center gap-3 mb-3 text-amber-400">
+              <AlertTriangle className="w-6 h-6 shrink-0" />
+              <h3 className="text-lg font-bold text-white">Change Cloud Mode</h3>
+            </div>
+            <p className="text-sm text-slate-300 mb-3 leading-relaxed">
+              Changing this architecture to <strong className="text-amber-400">{pendingProviderChange.newMode}</strong>-only will remove{' '}
+              <strong className="text-white">{pendingProviderChange.incompatibleCount} incompatible resource{pendingProviderChange.incompatibleCount === 1 ? '' : 's'}</strong>:
+            </p>
+            <ul className="text-xs bg-slate-950/80 rounded-lg p-3 border border-slate-800 text-slate-400 mb-4 list-disc list-inside space-y-1">
+              {pendingProviderChange.incompatibleNodeLabels.map((lbl, i) => (
+                <li key={i}>{lbl}</li>
+              ))}
+              {pendingProviderChange.incompatibleCount > pendingProviderChange.incompatibleNodeLabels.length && (
+                <li>...and {pendingProviderChange.incompatibleCount - pendingProviderChange.incompatibleNodeLabels.length} more</li>
+              )}
+            </ul>
+            <p className="text-xs text-slate-400 mb-5">
+              CloudCraft never silently deletes resources. Do you want to continue?
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                id="btn-cancel-provider-change"
+                onClick={() => setPendingProviderChange(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-provider-change"
+                onClick={confirmProviderChange}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-semibold transition-colors shadow-md shadow-amber-600/20"
+              >
+                Continue & Remove Incompatible
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Status Notification Banner */}
+      {bannerMessage && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-slate-900/95 border border-slate-700 text-white text-xs font-semibold shadow-2xl backdrop-blur-md animate-fade-in">
+          {bannerMessage.type === 'success' && <Check className="w-4 h-4 text-emerald-400 shrink-0" />}
+          {bannerMessage.type === 'info' && <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />}
+          {bannerMessage.type === 'error' && <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />}
+          <span>{bannerMessage.text}</span>
         </div>
       )}
     </div>

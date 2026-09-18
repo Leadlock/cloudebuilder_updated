@@ -69,7 +69,7 @@ export default function AdvisorPanel() {
       return;
     }
     let cancelled = false;
-    apiAdvisorService.analyze(activeProject.nodes).then((r) => {
+    apiAdvisorService.analyze(activeProject.nodes, activeProject.scaleProfile?.expectedUsers).then((r) => {
       if (!cancelled) {
         setResult(r);
         setError(null);
@@ -95,7 +95,7 @@ export default function AdvisorPanel() {
       }
     });
     return () => { cancelled = true; };
-  }, [activeProjectId, nodeCount, retryCount]);
+  }, [activeProjectId, nodeCount, retryCount, activeProject?.scaleProfile?.expectedUsers]);
 
   const isStale = state.architectureVersion > state.lastSavedVersion;
 

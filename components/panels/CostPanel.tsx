@@ -28,13 +28,18 @@ export default function CostPanel() {
 
   const nodeCount = activeProject?.nodes.length ?? 0;
   const activeProjectId = activeProject?.id ?? null;
+  const architectureVersion = state.architectureVersion;
+  const updatedAt = activeProject?.updatedAt;
 
   // Run cost estimation via the API-backed service whenever project, nodes, or currency changes.
   useEffect(() => {
     if (!activeProject || nodeCount === 0) {
+      setCosts([]);
+      setCalculating(false);
       return;
     }
     let cancelled = false;
+    setCalculating(true);
     apiCostService.calculateCosts(activeProject.nodes, displayCurrency).then((result) => {
       if (!cancelled) {
         setCosts(result);
@@ -59,7 +64,7 @@ export default function CostPanel() {
       }
     });
     return () => { cancelled = true; };
-  }, [activeProjectId, nodeCount, retryCount, displayCurrency]);
+  }, [activeProjectId, nodeCount, architectureVersion, updatedAt, retryCount, displayCurrency]);
 
   const allOptimizations = useMemo(
     () => (activeProject ? apiCostService.generateOptimizations(activeProject.nodes) : []),
@@ -171,8 +176,11 @@ export default function CostPanel() {
           <div className="flex items-center gap-3">
             <DollarSign className="w-5 h-5 text-orange-400" />
             <h2 className="text-white font-bold text-lg">Cost Estimate</h2>
-            <span className="text-xs px-2.5 py-0.5 bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 rounded-full font-medium">
-              Official {activeProject.provider.toUpperCase()} Real Pricing
+            <span
+              className="text-xs px-2.5 py-0.5 bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 rounded-full font-medium"
+              title="Estimated from public on-demand list prices. Azure pricing is fetched live from the Azure Retail Prices API; AWS pricing uses a static reference rate table, not a live API call. Neither reflects negotiated discounts, Reserved Instances, or Savings Plans."
+            >
+              {activeProject.provider.toUpperCase()} List-Price Estimate
             </span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">

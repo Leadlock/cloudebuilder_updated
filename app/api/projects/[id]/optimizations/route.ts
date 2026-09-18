@@ -15,8 +15,11 @@ import { randomUUID } from 'crypto';
 export const dynamic = 'force-dynamic';
 
 const RequestSchema = z.object({
-  env:       z.string().optional().default('production'),
-  versionId: z.string().optional(),
+  env:           z.string().optional().default('production'),
+  versionId:     z.string().optional(),
+  // User-declared scale context from the canvas scale-profile selector —
+  // see OptimizationInput.expectedUsers for how the advisor uses it.
+  expectedUsers: z.number().positive().optional(),
 });
 
 export async function POST(
@@ -58,6 +61,7 @@ export async function POST(
       versionId: body.versionId,
       resources: arch.resources,
       connections: arch.connections,
+      expectedUsers: body.expectedUsers,
     });
 
     const now = new Date().toISOString();

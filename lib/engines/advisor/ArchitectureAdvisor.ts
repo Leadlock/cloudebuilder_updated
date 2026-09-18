@@ -6,6 +6,7 @@
  * Does NOT rely on React Flow positions; uses ArchitectureResource relationships.
  */
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
+import { SECURITY_SEVERITY } from '@/lib/domain/securitySeverity';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,17 @@ export interface OptimizationInput {
   versionId?: string;
   resources: DbArchitectureResource[];
   connections: DbArchitectureConnection[];
+  /**
+   * User-declared expected concurrent/active user count for this
+   * architecture (from the canvas scale-profile selector), if set. This is
+   * a DECLARED value, not a measured or verified fact — the advisor uses it
+   * only to adjust severity/thresholds on checks that are genuinely more or
+   * less consequential at different scales (e.g. a single EC2 instance is a
+   * reasonable choice for a 100-user internal tool but a critical risk for
+   * a declared 10,000-user production system). When absent, checks fall
+   * back to their previous scale-agnostic behavior rather than guessing.
+   */
+  expectedUsers?: number;
 }
 
 export interface OptimizationResult {
@@ -67,6 +79,7 @@ export class ArchitectureAdvisor {
   private _generateRecommendations(input: OptimizationInput): ArchitectureRecommendation[] {
     const recs: ArchitectureRecommendation[] = [];
     const resources = input.resources;
+    const expectedUsers = input.expectedUsers;
 
     const byType = this._byType(resources);
 
@@ -96,7 +109,7 @@ export class ArchitectureAdvisor {
       recs.push({
         id: 'R-02',
         category: 'reliability',
-        severity: 'high',
+        severity: SECURITY_SEVERITY.AWS_RDS_NOT_MULTI_AZ,
         title: 'RDS instance(s) not configured for Multi-AZ',
         description: `${rdsNoMultiAz.length} RDS instance(s) are single-AZ deployments. A database failure would cause an outage with no automatic failover.`,
         affectedResourceIds: rdsNoMultiAz.map((r) => r.id),
@@ -106,14 +119,25 @@ export class ArchitectureAdvisor {
       });
     }
 
-    // R-03: Single EC2 instance (no HA)
+    // R-03: Single EC2 instance (no HA). Severity scales with the declared
+    // expected user count — a single instance is a defensible choice for a
+    // small internal tool, but a critical risk for a system the user has
+    // declared is meant to serve production-scale traffic.
     if (ec2Resources.length === 1 && albResources.length === 0) {
+      const severity: ArchitectureRecommendation['severity'] =
+        expectedUsers === undefined ? 'medium' :
+        expectedUsers >= 10_000 ? 'critical' :
+        expectedUsers >= 1_000 ? 'high' :
+        expectedUsers < 100 ? 'low' :
+        'medium';
       recs.push({
         id: 'R-03',
         category: 'reliability',
-        severity: 'medium',
+        severity,
         title: 'Single EC2 instance — no high availability',
-        description: 'Only one EC2 instance is present with no load balancer. Hardware failure, patching, or deployment issues will cause downtime.',
+        description: expectedUsers !== undefined
+          ? `Only one EC2 instance is present with no load balancer, for an architecture declared to serve ~${expectedUsers.toLocaleString()} users. Hardware failure, patching, or deployment issues will cause a full outage.`
+          : 'Only one EC2 instance is present with no load balancer. Hardware failure, patching, or deployment issues will cause downtime.',
         affectedResourceIds: ec2Resources.map((r) => r.id),
         affectedResourceLabels: ec2Resources.map((r) => r.label),
         rationale: 'High availability requires at minimum two instances across different Availability Zones behind a load balancer.',
@@ -147,7 +171,7 @@ export class ArchitectureAdvisor {
       recs.push({
         id: 'S-01',
         category: 'security',
-        severity: 'high',
+        severity: SECURITY_SEVERITY.AWS_NO_SECURITY_GROUPS,
         title: 'No AWS Security Groups defined',
         description: `The architecture contains ${awsResources.length} AWS resource(s) but no Security Groups are defined. Without security groups, traffic control relies on network ACLs alone.`,
         affectedResourceIds: awsResources.map((r) => r.id),
@@ -183,7 +207,7 @@ export class ArchitectureAdvisor {
       recs.push({
         id: 'S-03',
         category: 'security',
-        severity: 'high',
+        severity: SECURITY_SEVERITY.AWS_RDS_NOT_ENCRYPTED,
         title: 'RDS storage encryption disabled',
         description: `${rdsUnencrypted.length} RDS instance(s) have storage encryption explicitly disabled.`,
         affectedResourceIds: rdsUnencrypted.map((r) => r.id),
@@ -199,7 +223,7 @@ export class ArchitectureAdvisor {
       recs.push({
         id: 'S-04',
         category: 'security',
-        severity: 'critical',
+        severity: SECURITY_SEVERITY.AWS_S3_PUBLIC_ACCESS,
         title: 'S3 bucket(s) publicly accessible',
         description: `${s3Public.length} S3 bucket(s) have publicAccess enabled, exposing data to the internet without authentication.`,
         affectedResourceIds: s3Public.map((r) => r.id),
@@ -284,14 +308,23 @@ export class ArchitectureAdvisor {
 
     // ── Scalability ────────────────────────────────────────────────────────────
 
-    // SC-01: Many EC2 instances without Auto Scaling Group
-    if (ec2Resources.length > 2) {
+    // SC-01: EC2 instances without Auto Scaling Group. The instance-count
+    // threshold and severity scale with the declared expected user count —
+    // a static fleet that's merely inefficient at low scale becomes a real
+    // scalability risk at high declared scale, so the check fires earlier
+    // and louder there.
+    const asgScaleThreshold = expectedUsers !== undefined && expectedUsers >= 10_000 ? 0 : 2;
+    if (ec2Resources.length > asgScaleThreshold) {
+      const severity: RecommendationSeverity =
+        expectedUsers !== undefined && expectedUsers >= 10_000 ? 'high' : 'medium';
       recs.push({
         id: 'SC-01',
         category: 'scalability',
-        severity: 'medium',
+        severity,
         title: 'Multiple EC2 instances without Auto Scaling Group',
-        description: `${ec2Resources.length} static EC2 instances found. Static fleets cannot scale in response to traffic changes, leading to over-provisioning during low-traffic periods.`,
+        description: expectedUsers !== undefined
+          ? `${ec2Resources.length} static EC2 instance(s) found for an architecture declared to serve ~${expectedUsers.toLocaleString()} users. Static fleets cannot react to traffic changes and are a scalability risk at this declared scale.`
+          : `${ec2Resources.length} static EC2 instances found. Static fleets cannot scale in response to traffic changes, leading to over-provisioning during low-traffic periods.`,
         affectedResourceIds: ec2Resources.map((r) => r.id),
         affectedResourceLabels: ec2Resources.map((r) => r.label),
         rationale: 'Auto Scaling Groups automatically adjust instance count based on metrics (CPU, memory, request count), optimizing both cost and availability.',
@@ -301,15 +334,24 @@ export class ArchitectureAdvisor {
 
     // ── Performance ───────────────────────────────────────────────────────────
 
-    // P-01: No caching layer
+    // P-01: No caching layer. A missing cache is a minor optimization at low
+    // traffic but a real bottleneck at declared high scale, so severity
+    // scales with expectedUsers rather than staying fixed at 'low'.
     const hasCaching = resources.some((r) => ['aws_elasticache', 'azure_redis_cache'].includes(r.resourceType));
     if (rdsResources.length > 0 && ec2Resources.length > 0 && !hasCaching) {
+      const severity: RecommendationSeverity =
+        expectedUsers === undefined ? 'low' :
+        expectedUsers >= 10_000 ? 'high' :
+        expectedUsers >= 1_000 ? 'medium' :
+        'low';
       recs.push({
         id: 'P-01',
         category: 'performance',
-        severity: 'low',
+        severity,
         title: 'No caching layer detected',
-        description: 'Database and compute resources are present with no caching layer. Frequently read data is served directly from the database on every request.',
+        description: expectedUsers !== undefined
+          ? `Database and compute resources are present with no caching layer, for an architecture declared to serve ~${expectedUsers.toLocaleString()} users. Frequently read data is served directly from the database on every request.`
+          : 'Database and compute resources are present with no caching layer. Frequently read data is served directly from the database on every request.',
         affectedResourceIds: rdsResources.map((r) => r.id),
         affectedResourceLabels: rdsResources.map((r) => r.label),
         rationale: 'In-memory caches (ElastiCache/Redis) can reduce database read load by 90%+ for read-heavy workloads, improving latency and reducing RDS instance size requirements.',

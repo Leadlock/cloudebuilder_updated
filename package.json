@@ -15,6 +15,7 @@
     "db:update": "prisma db update"
   },
   "dependencies": {
+    "@aws-sdk/client-cloudwatch": "^3.1135.0",
     "@aws-sdk/client-ec2": "^3.1127.0",
     "@aws-sdk/client-elastic-load-balancing-v2": "^3.1127.0",
     "@aws-sdk/client-rds": "^3.1127.0",
@@ -28,6 +29,9 @@
     "@azure/arm-sql": "^11.0.0",
     "@azure/arm-storage": "^20.1.0",
     "@azure/identity": "^4.13.2",
+    "@google-cloud/monitoring": "^6.1.0",
+    "@google/genai": "^2.23.0",
+    "@octokit/rest": "^22.0.1",
     "@prisma/cli-engine": "^0.3.0",
     "@prisma/client": "^7.10.0",
     "@prisma/orm-postgres": "^8.0.0-rc.8",
@@ -35,10 +39,12 @@
     "dotenv": "^17.4.2",
     "lucide-react": "^1.42.0",
     "next": "16.3.4",
+    "pdfkit": "^0.20.2",
     "prisma": "^8.0.0-rc.13",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "reactflow": "^11.11.4",
+    "socket.io": "^4.8.3",
     "uuid": "^14.0.2",
     "zod": "^4.5.4"
   },
@@ -46,6 +52,7 @@
     "@tailwindcss/postcss": "^4",
     "@types/jest": "^30.0.0",
     "@types/node": "^20",
+    "@types/pdfkit": "^0.17.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/uuid": "^10.0.0",

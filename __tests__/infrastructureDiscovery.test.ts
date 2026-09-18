@@ -713,4 +713,78 @@ describe('Production Infrastructure Discovery & Import', () => {
     });
   });
 
+  describe('11. Explicit adapter-reconstructed relationships (discoverTopology graph)', () => {
+    // Regression test for the discoverAll()/DiscoveryImportService wiring:
+    // adapters compute a precise CloudRelationship[] graph (real ALB->TargetGroup->EC2
+    // traffic paths, SG associations) via discoverTopology(), which is now passed as
+    // normalizeDiscoveredInfrastructure's second argument instead of being discarded.
+    // This exercises that top-level argument specifically, separate from the
+    // per-resource metadata.relationships path covered by the tests above.
+    const albResource: DiscoveredResource = {
+      provider: 'aws',
+      resourceType: 'alb',
+      providerResourceId: 'alb-web-1',
+      name: 'web-alb',
+      region: 'us-east-1',
+      status: 'active',
+      configuration: { resourceId: 'alb-web-1' },
+      metadata: {},
+    };
+    const ec2Resource: DiscoveredResource = {
+      provider: 'aws',
+      resourceType: 'ec2-instance',
+      providerResourceId: 'i-0abc123',
+      name: 'web-1',
+      region: 'us-east-1',
+      status: 'running',
+      configuration: { resourceId: 'i-0abc123' },
+      metadata: {},
+    };
+    const sgResource: DiscoveredResource = {
+      provider: 'aws',
+      resourceType: 'security-group',
+      providerResourceId: 'sg-web-1',
+      name: 'web-sg',
+      region: 'us-east-1',
+      status: 'active',
+      configuration: { resourceId: 'sg-web-1' },
+      metadata: {},
+    };
+
+    it('converts an explicit traffic relationship (ALB -> EC2) into a CanvasEdge', () => {
+      const { nodes, edges } = normalizeDiscoveredInfrastructure(
+        [albResource, ec2Resource],
+        [{ sourceResourceId: 'alb-web-1', targetResourceId: 'i-0abc123', relationshipType: 'traffic', label: 'Forwards to' }],
+      );
+      expect(nodes).toHaveLength(2);
+      const albNode = nodes.find((n) => n.label === 'web-alb')!;
+      const ec2Node = nodes.find((n) => n.label === 'web-1')!;
+      expect(edges.some((e) => e.source === albNode.id && e.target === ec2Node.id && e.edgeType === 'data')).toBe(true);
+    });
+
+    it('converts an explicit security relationship (SG -> EC2) into a CanvasEdge', () => {
+      const { nodes, edges } = normalizeDiscoveredInfrastructure(
+        [sgResource, ec2Resource],
+        [{ sourceResourceId: 'sg-web-1', targetResourceId: 'i-0abc123', relationshipType: 'security', label: 'Protects' }],
+      );
+      const sgNode = nodes.find((n) => n.label === 'web-sg')!;
+      const ec2Node = nodes.find((n) => n.label === 'web-1')!;
+      expect(edges.some((e) => e.source === sgNode.id && e.target === ec2Node.id && e.edgeType === 'security')).toBe(true);
+    });
+
+    it('ignores a relationship whose endpoints are not in the resource set (no dangling edge)', () => {
+      const { edges } = normalizeDiscoveredInfrastructure(
+        [ec2Resource],
+        [{ sourceResourceId: 'alb-does-not-exist', targetResourceId: 'i-0abc123', relationshipType: 'traffic' }],
+      );
+      expect(edges).toHaveLength(0);
+    });
+
+    it('defaults to an empty relationships array when none is passed (backward compatible)', () => {
+      const { nodes, edges } = normalizeDiscoveredInfrastructure([ec2Resource]);
+      expect(nodes).toHaveLength(1);
+      expect(edges).toHaveLength(0);
+    });
+  });
+
 });

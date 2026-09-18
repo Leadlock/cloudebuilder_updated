@@ -1,0 +1,686 @@
+[
+  {
+    "id": "table.currencyExchangeRate",
+    "label": "Create table \"currencyExchangeRate\"",
+    "summary": "Creates table \"currencyExchangeRate\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "currencyExchangeRate"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"currencyExchangeRate\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"currencyExchangeRate\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"currencyExchangeRate\"",
+        "sql": "CREATE TABLE \"public\".\"currencyExchangeRate\" (\n  \"baseCurrency\" text NOT NULL,\n  \"expiresAt\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"rate\" float8 NOT NULL,\n  \"retrievedAt\" text NOT NULL,\n  \"source\" text NOT NULL,\n  \"targetCurrency\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"currencyExchangeRate\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"currencyExchangeRate\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.orgInvite",
+    "label": "Create table \"orgInvite\"",
+    "summary": "Creates table \"orgInvite\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "orgInvite"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"orgInvite\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"orgInvite\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"orgInvite\"",
+        "sql": "CREATE TABLE \"public\".\"orgInvite\" (\n  \"acceptedAt\" text,\n  \"createdAt\" text NOT NULL,\n  \"email\" text NOT NULL,\n  \"expiresAt\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"invitedByUserId\" text NOT NULL,\n  \"orgId\" text NOT NULL,\n  \"role\" text DEFAULT 'member' NOT NULL,\n  \"token\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"orgInvite\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"orgInvite\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.wellArchitectedAssessment",
+    "label": "Create table \"wellArchitectedAssessment\"",
+    "summary": "Creates table \"wellArchitectedAssessment\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "wellArchitectedAssessment"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"wellArchitectedAssessment\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"wellArchitectedAssessment\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"wellArchitectedAssessment\"",
+        "sql": "CREATE TABLE \"public\".\"wellArchitectedAssessment\" (\n  \"architectureId\" text NOT NULL,\n  \"completedAt\" text,\n  \"confidence\" text DEFAULT 'design-time' NOT NULL,\n  \"createdAt\" text NOT NULL,\n  \"findingsJson\" text DEFAULT '[]' NOT NULL,\n  \"framework\" text NOT NULL,\n  \"frameworkVersion\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"isStale\" bool DEFAULT false NOT NULL,\n  \"overallScore\" int4 DEFAULT 0 NOT NULL,\n  \"pillarScoresJson\" text DEFAULT '[]' NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"provider\" text NOT NULL,\n  \"source\" text NOT NULL,\n  \"sourceLabel\" text DEFAULT 'Design-time assessment' NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"wellArchitectedAssessment\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"wellArchitectedAssessment\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.wellArchitectedFinding",
+    "label": "Create table \"wellArchitectedFinding\"",
+    "summary": "Creates table \"wellArchitectedFinding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "wellArchitectedFinding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"wellArchitectedFinding\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"wellArchitectedFinding\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"wellArchitectedFinding\"",
+        "sql": "CREATE TABLE \"public\".\"wellArchitectedFinding\" (\n  \"affectedResourceIds\" text DEFAULT '[]' NOT NULL,\n  \"assessmentId\" text NOT NULL,\n  \"description\" text NOT NULL,\n  \"detectedAt\" text NOT NULL,\n  \"evidenceJson\" text DEFAULT '{}' NOT NULL,\n  \"frameworkReference\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"pillar\" text NOT NULL,\n  \"pillarLabel\" text NOT NULL,\n  \"pillarRef\" text NOT NULL,\n  \"provider\" text NOT NULL,\n  \"recommendation\" text NOT NULL,\n  \"remediation\" text NOT NULL,\n  \"resourceState\" text,\n  \"ruleId\" text NOT NULL,\n  \"severity\" text NOT NULL,\n  \"source\" text NOT NULL,\n  \"sourceLabel\" text NOT NULL,\n  \"title\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"wellArchitectedFinding\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"wellArchitectedFinding\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "column.public.user.passwordHash",
+    "label": "Add column \"passwordHash\" to \"user\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "passwordHash",
+        "table": "user"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"passwordHash\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "user",
+          "passwordHash"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"passwordHash\"",
+        "sql": "ALTER TABLE \"public\".\"user\" ADD COLUMN \"passwordHash\" text"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"passwordHash\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "user",
+          "passwordHash"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.currencyExchangeRate.currencyExchangeRate_baseCurrency_targetCurrency_key",
+    "label": "Add unique constraint on \"currencyExchangeRate\" (baseCurrency, targetCurrency)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "currencyExchangeRate_baseCurrency_targetCurrency_key",
+        "table": "currencyExchangeRate"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"currencyExchangeRate_baseCurrency_targetCurrency_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "currencyExchangeRate_baseCurrency_targetCurrency_key",
+          "public",
+          "\"public\".\"currencyExchangeRate\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"currencyExchangeRate_baseCurrency_targetCurrency_key\"",
+        "sql": "ALTER TABLE \"public\".\"currencyExchangeRate\" ADD CONSTRAINT \"currencyExchangeRate_baseCurrency_targetCurrency_key\" UNIQUE (\"baseCurrency\", \"targetCurrency\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"currencyExchangeRate_baseCurrency_targetCurrency_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "currencyExchangeRate_baseCurrency_targetCurrency_key",
+          "public",
+          "\"public\".\"currencyExchangeRate\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.orgInvite.orgInvite_token_key",
+    "label": "Add unique constraint on \"orgInvite\" (token)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "orgInvite_token_key",
+        "table": "orgInvite"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"orgInvite_token_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "orgInvite_token_key",
+          "public",
+          "\"public\".\"orgInvite\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"orgInvite_token_key\"",
+        "sql": "ALTER TABLE \"public\".\"orgInvite\" ADD CONSTRAINT \"orgInvite_token_key\" UNIQUE (\"token\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"orgInvite_token_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "orgInvite_token_key",
+          "public",
+          "\"public\".\"orgInvite\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.currencyExchangeRate.currencyExchangeRate_baseCurrency_targetCurrency_idx_7672893a",
+    "label": "Create index \"currencyExchangeRate_baseCurrency_targetCurrency_idx_7672893a\" on \"currencyExchangeRate\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "currencyExchangeRate_baseCurrency_targetCurrency_idx_7672893a",
+        "table": "currencyExchangeRate"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"currencyExchangeRate_baseCurrency_targetCurrency_idx_7672893a\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"currencyExchangeRate_baseCurrency_targetCurrency_idx_7672893a\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"currencyExchangeRate_baseCurrency_targetCurrency_idx_7672893a\"",
+        "sql": "CREATE INDEX \"currencyExchangeRate_baseCurrency_targetCurrency_idx_7672893a\" ON \"public\".\"currencyExchangeRate\" (\"baseCurrency\", \"targetCurrency\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"currencyExchangeRate_baseCurrency_targetCurrency_idx_7672893a\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"currencyExchangeRate_baseCurrency_targetCurrency_idx_7672893a\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.orgInvite.orgInvite_email_idx_46df9cad",
+    "label": "Create index \"orgInvite_email_idx_46df9cad\" on \"orgInvite\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "orgInvite_email_idx_46df9cad",
+        "table": "orgInvite"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"orgInvite_email_idx_46df9cad\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"orgInvite_email_idx_46df9cad\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"orgInvite_email_idx_46df9cad\"",
+        "sql": "CREATE INDEX \"orgInvite_email_idx_46df9cad\" ON \"public\".\"orgInvite\" (\"email\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"orgInvite_email_idx_46df9cad\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"orgInvite_email_idx_46df9cad\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.orgInvite.orgInvite_orgId_idx_c5e5aabe",
+    "label": "Create index \"orgInvite_orgId_idx_c5e5aabe\" on \"orgInvite\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "orgInvite_orgId_idx_c5e5aabe",
+        "table": "orgInvite"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"orgInvite_orgId_idx_c5e5aabe\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"orgInvite_orgId_idx_c5e5aabe\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"orgInvite_orgId_idx_c5e5aabe\"",
+        "sql": "CREATE INDEX \"orgInvite_orgId_idx_c5e5aabe\" ON \"public\".\"orgInvite\" (\"orgId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"orgInvite_orgId_idx_c5e5aabe\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"orgInvite_orgId_idx_c5e5aabe\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.wellArchitectedAssessment.wellArchitectedAssessment_architectureId_idx_a096837f",
+    "label": "Create index \"wellArchitectedAssessment_architectureId_idx_a096837f\" on \"wellArchitectedAssessment\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "wellArchitectedAssessment_architectureId_idx_a096837f",
+        "table": "wellArchitectedAssessment"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"wellArchitectedAssessment_architectureId_idx_a096837f\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"wellArchitectedAssessment_architectureId_idx_a096837f\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"wellArchitectedAssessment_architectureId_idx_a096837f\"",
+        "sql": "CREATE INDEX \"wellArchitectedAssessment_architectureId_idx_a096837f\" ON \"public\".\"wellArchitectedAssessment\" (\"architectureId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"wellArchitectedAssessment_architectureId_idx_a096837f\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"wellArchitectedAssessment_architectureId_idx_a096837f\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.wellArchitectedAssessment.wellArchitectedAssessment_projectId_idx_a96e4d92",
+    "label": "Create index \"wellArchitectedAssessment_projectId_idx_a96e4d92\" on \"wellArchitectedAssessment\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "wellArchitectedAssessment_projectId_idx_a96e4d92",
+        "table": "wellArchitectedAssessment"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"wellArchitectedAssessment_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"wellArchitectedAssessment_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"wellArchitectedAssessment_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"wellArchitectedAssessment_projectId_idx_a96e4d92\" ON \"public\".\"wellArchitectedAssessment\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"wellArchitectedAssessment_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"wellArchitectedAssessment_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.wellArchitectedFinding.wellArchitectedFinding_assessmentId_idx_1fe05216",
+    "label": "Create index \"wellArchitectedFinding_assessmentId_idx_1fe05216\" on \"wellArchitectedFinding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "wellArchitectedFinding_assessmentId_idx_1fe05216",
+        "table": "wellArchitectedFinding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"wellArchitectedFinding_assessmentId_idx_1fe05216\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"wellArchitectedFinding_assessmentId_idx_1fe05216\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"wellArchitectedFinding_assessmentId_idx_1fe05216\"",
+        "sql": "CREATE INDEX \"wellArchitectedFinding_assessmentId_idx_1fe05216\" ON \"public\".\"wellArchitectedFinding\" (\"assessmentId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"wellArchitectedFinding_assessmentId_idx_1fe05216\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"wellArchitectedFinding_assessmentId_idx_1fe05216\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.orgInvite.orgInvite_orgId_fkey",
+    "label": "Add foreign key \"orgInvite_orgId_fkey\" on \"orgInvite\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "orgInvite_orgId_fkey",
+        "table": "orgInvite"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"orgInvite_orgId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "orgInvite_orgId_fkey",
+          "public",
+          "\"public\".\"orgInvite\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"orgInvite_orgId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"orgInvite\"\nADD CONSTRAINT \"orgInvite_orgId_fkey\"\nFOREIGN KEY (\"orgId\")\nREFERENCES \"public\".\"organization\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"orgInvite_orgId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "orgInvite_orgId_fkey",
+          "public",
+          "\"public\".\"orgInvite\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.wellArchitectedAssessment.wellArchitectedAssessment_projectId_fkey",
+    "label": "Add foreign key \"wellArchitectedAssessment_projectId_fkey\" on \"wellArchitectedAssessment\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "wellArchitectedAssessment_projectId_fkey",
+        "table": "wellArchitectedAssessment"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"wellArchitectedAssessment_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "wellArchitectedAssessment_projectId_fkey",
+          "public",
+          "\"public\".\"wellArchitectedAssessment\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"wellArchitectedAssessment_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"wellArchitectedAssessment\"\nADD CONSTRAINT \"wellArchitectedAssessment_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"wellArchitectedAssessment_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "wellArchitectedAssessment_projectId_fkey",
+          "public",
+          "\"public\".\"wellArchitectedAssessment\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.wellArchitectedAssessment.wellArchitectedAssessment_architectureId_fkey",
+    "label": "Add foreign key \"wellArchitectedAssessment_architectureId_fkey\" on \"wellArchitectedAssessment\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "wellArchitectedAssessment_architectureId_fkey",
+        "table": "wellArchitectedAssessment"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"wellArchitectedAssessment_architectureId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "wellArchitectedAssessment_architectureId_fkey",
+          "public",
+          "\"public\".\"wellArchitectedAssessment\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"wellArchitectedAssessment_architectureId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"wellArchitectedAssessment\"\nADD CONSTRAINT \"wellArchitectedAssessment_architectureId_fkey\"\nFOREIGN KEY (\"architectureId\")\nREFERENCES \"public\".\"architecture\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"wellArchitectedAssessment_architectureId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "wellArchitectedAssessment_architectureId_fkey",
+          "public",
+          "\"public\".\"wellArchitectedAssessment\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.wellArchitectedFinding.wellArchitectedFinding_assessmentId_fkey",
+    "label": "Add foreign key \"wellArchitectedFinding_assessmentId_fkey\" on \"wellArchitectedFinding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "wellArchitectedFinding_assessmentId_fkey",
+        "table": "wellArchitectedFinding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"wellArchitectedFinding_assessmentId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "wellArchitectedFinding_assessmentId_fkey",
+          "public",
+          "\"public\".\"wellArchitectedFinding\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"wellArchitectedFinding_assessmentId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"wellArchitectedFinding\"\nADD CONSTRAINT \"wellArchitectedFinding_assessmentId_fkey\"\nFOREIGN KEY (\"assessmentId\")\nREFERENCES \"public\".\"wellArchitectedAssessment\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"wellArchitectedFinding_assessmentId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "wellArchitectedFinding_assessmentId_fkey",
+          "public",
+          "\"public\".\"wellArchitectedFinding\""
+        ]
+      }
+    ]
+  }
+]

@@ -431,3 +431,8 @@ export function autoLayoutArchitecture(nodes: CanvasNode[], edges: CanvasEdge[])
 
   return { nodes: zOrderedNodes, edges: cleanEdges };
 }
+
+export const layoutByCloud = autoLayoutArchitecture;
+export const layoutByNetwork = autoLayoutArchitecture;
+export const layoutByTier = autoLayoutArchitecture;
+

@@ -1,4 +1,5 @@
 import { ResourceDefinition } from '@/types';
+import { SECURITY_SEVERITY } from '@/lib/domain/securitySeverity';
 
 export const awsResources: ResourceDefinition[] = [
   {
@@ -13,7 +14,7 @@ export const awsResources: ResourceDefinition[] = [
     borderColor: '#7C3AED',
     monthlyBaseCost: 0,
     isContainer: true,
-    allowedChildren: ['aws_subnet', 'aws_igw', 'aws_nat', 'aws_sg', 'aws_route_table'],
+    allowedChildren: ['aws_subnet', 'aws_igw', 'aws_nat', 'aws_sg', 'aws_route_table', 'aws_nacl'],
     defaultWidth: 780,
     defaultHeight: 520,
     defaultConfig: { cidrBlock: '10.0.0.0/16', enableDnsSupport: true, enableDnsHostnames: true, name: 'my-vpc' },
@@ -45,7 +46,7 @@ export const awsResources: ResourceDefinition[] = [
     borderColor: '#047857',
     monthlyBaseCost: 0,
     isContainer: true,
-    allowedChildren: ['aws_ec2', 'aws_rds', 'aws_alb', 'aws_nat', 'aws_lambda', 'aws_ecs', 'aws_auto_scaling', 'aws_elasticache'],
+    allowedChildren: ['aws_ec2', 'aws_rds', 'aws_alb', 'aws_nat', 'aws_lambda', 'aws_ecs', 'aws_auto_scaling', 'aws_elasticache', 'aws_nacl'],
     defaultWidth: 340,
     defaultHeight: 240,
     defaultConfig: { cidrBlock: '10.0.1.0/24', availabilityZone: 'us-east-1a', mapPublicIpOnLaunch: false, name: 'my-subnet' },
@@ -101,6 +102,11 @@ export const awsResources: ResourceDefinition[] = [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-ec2', required: true },
       {
         key: 'instanceType', label: 'Instance Type', type: 'select', defaultValue: 't3.medium',
+        // Includes the c6g.* Graviton tiers the Adaptive Scale Engine assigns
+        // at Enterprise/High-Scale/Hyper-Scale (see AdaptiveScaleEngine.ts) —
+        // without them here, a <select> silently falls back to displaying
+        // its first option whenever the stored value doesn't match any
+        // listed option, misrepresenting the real (correctly-scaled) value.
         options: [
           { label: 't3.micro (2 vCPU, 1GB)', value: 't3.micro' },
           { label: 't3.small (2 vCPU, 2GB)', value: 't3.small' },
@@ -111,6 +117,9 @@ export const awsResources: ResourceDefinition[] = [
           { label: 'm5.large (2 vCPU, 8GB)', value: 'm5.large' },
           { label: 'c5.large (2 vCPU, 4GB)', value: 'c5.large' },
           { label: 'r5.large (2 vCPU, 16GB)', value: 'r5.large' },
+          { label: 'c6g.xlarge (4 vCPU, 8GB Graviton)', value: 'c6g.xlarge' },
+          { label: 'c6g.2xlarge (8 vCPU, 16GB Graviton)', value: 'c6g.2xlarge' },
+          { label: 'c6g.4xlarge (16 vCPU, 32GB Graviton)', value: 'c6g.4xlarge' },
         ],
       },
       {
@@ -149,18 +158,21 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#DBEAFE',
     borderColor: '#2563EB',
     monthlyBaseCost: 0.023,
-    defaultConfig: { bucketName: 'my-bucket', versioning: true, encryption: true, publicAccess: false, name: 'my-s3' },
+    defaultConfig: { bucketName: 'my-bucket', versioning: true, encryption: true, publicAccess: false, blockPublicAcls: true, blockPublicPolicy: true, loggingEnabled: false, name: 'my-s3' },
     configSchema: [
       { key: 'name', label: 'Name Tag', type: 'text', defaultValue: 'my-s3', required: true },
       { key: 'bucketName', label: 'Bucket Name', type: 'text', defaultValue: 'my-bucket', required: true },
       { key: 'versioning', label: 'Enable Versioning', type: 'boolean', defaultValue: true },
       { key: 'encryption', label: 'Enable Server-side Encryption', type: 'boolean', defaultValue: true },
       { key: 'publicAccess', label: 'Allow Public Access', type: 'boolean', defaultValue: false },
+      { key: 'blockPublicAcls', label: 'Block Public ACLs', type: 'boolean', defaultValue: true },
+      { key: 'blockPublicPolicy', label: 'Block Public Bucket Policies', type: 'boolean', defaultValue: true },
+      { key: 'loggingEnabled', label: 'Enable Access Logging', type: 'boolean', defaultValue: false },
     ],
     securityRules: [
       {
         id: 's3-encryption',
-        severity: 'high',
+        severity: SECURITY_SEVERITY.AWS_S3_NOT_ENCRYPTED,
         check: (config) => !config.encryption ? 'S3 bucket encryption not enabled' : null,
         message: 'S3 bucket does not have server-side encryption enabled',
         recommendation: 'Enable SSE-S3 or SSE-KMS encryption for data at rest',
@@ -168,11 +180,35 @@ export const awsResources: ResourceDefinition[] = [
       },
       {
         id: 's3-public',
-        severity: 'critical',
+        severity: SECURITY_SEVERITY.AWS_S3_PUBLIC_ACCESS,
         check: (config) => config.publicAccess ? 'S3 bucket is publicly accessible' : null,
         message: 'S3 bucket has public access enabled',
         recommendation: 'Block all public access unless absolutely necessary',
         fixAction: (config) => ({ ...config, publicAccess: false }),
+      },
+      {
+        id: 's3-block-public-access',
+        severity: 'high',
+        check: (config) => (!config.blockPublicAcls || !config.blockPublicPolicy) ? 'S3 Block Public Access is not fully enabled' : null,
+        message: 'S3 bucket does not have Block Public Access fully enabled at the account/bucket level',
+        recommendation: 'Enable Block Public ACLs and Block Public Policy to prevent accidental exposure',
+        fixAction: (config) => ({ ...config, blockPublicAcls: true, blockPublicPolicy: true }),
+      },
+      {
+        id: 's3-versioning',
+        severity: 'low',
+        check: (config) => !config.versioning ? 'S3 bucket versioning disabled' : null,
+        message: 'S3 bucket does not have versioning enabled',
+        recommendation: 'Enable versioning to protect against accidental deletion/overwrite',
+        fixAction: (config) => ({ ...config, versioning: true }),
+      },
+      {
+        id: 's3-logging',
+        severity: 'low',
+        check: (config) => !config.loggingEnabled ? 'S3 access logging disabled' : null,
+        message: 'S3 bucket does not have server access logging enabled',
+        recommendation: 'Enable access logging for audit and incident-response visibility',
+        fixAction: (config) => ({ ...config, loggingEnabled: true }),
       },
     ],
   },
@@ -187,7 +223,7 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#FCE7F3',
     borderColor: '#DB2777',
     monthlyBaseCost: 48.6,
-    defaultConfig: { engine: 'postgres', instanceClass: 'db.t3.medium', multiAz: true, encrypted: true, allocatedStorage: 50, name: 'my-rds' },
+    defaultConfig: { engine: 'postgres', instanceClass: 'db.t3.medium', multiAz: true, encrypted: true, allocatedStorage: 50, publiclyAccessible: false, backupRetentionPeriod: 7, deletionProtection: true, name: 'my-rds' },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-rds', required: true },
       {
@@ -202,22 +238,34 @@ export const awsResources: ResourceDefinition[] = [
       },
       {
         key: 'instanceClass', label: 'Instance Class', type: 'select', defaultValue: 'db.t3.medium',
+        // Includes the t4g/r6g Graviton tiers the Adaptive Scale Engine
+        // assigns across every scale tier (see AdaptiveScaleEngine.ts) — see
+        // the instanceType comment above for why this list must stay a
+        // superset of what that engine can write.
         options: [
           { label: 'db.t3.micro (1 vCPU, 1GB)', value: 'db.t3.micro' },
           { label: 'db.t3.small (2 vCPU, 2GB)', value: 'db.t3.small' },
           { label: 'db.t3.medium (2 vCPU, 4GB)', value: 'db.t3.medium' },
           { label: 'db.m5.large (2 vCPU, 8GB)', value: 'db.m5.large' },
           { label: 'db.r5.large (2 vCPU, 16GB)', value: 'db.r5.large' },
+          { label: 'db.t4g.micro (2 vCPU, 1GB Graviton)', value: 'db.t4g.micro' },
+          { label: 'db.t4g.medium (2 vCPU, 4GB Graviton)', value: 'db.t4g.medium' },
+          { label: 'db.r6g.xlarge (4 vCPU, 32GB Graviton)', value: 'db.r6g.xlarge' },
+          { label: 'db.r6g.2xlarge (8 vCPU, 64GB Graviton)', value: 'db.r6g.2xlarge' },
+          { label: 'db.r6g.4xlarge (16 vCPU, 128GB Graviton)', value: 'db.r6g.4xlarge' },
         ],
       },
       { key: 'allocatedStorage', label: 'Allocated Storage (GB)', type: 'number', defaultValue: 50 },
       { key: 'multiAz', label: 'Multi-AZ Deployment', type: 'boolean', defaultValue: true },
       { key: 'encrypted', label: 'Enable Encryption', type: 'boolean', defaultValue: true },
+      { key: 'publiclyAccessible', label: 'Publicly Accessible', type: 'boolean', defaultValue: false },
+      { key: 'backupRetentionPeriod', label: 'Backup Retention (days)', type: 'number', defaultValue: 7 },
+      { key: 'deletionProtection', label: 'Deletion Protection', type: 'boolean', defaultValue: true },
     ],
     securityRules: [
       {
         id: 'rds-encryption',
-        severity: 'high',
+        severity: SECURITY_SEVERITY.AWS_RDS_NOT_ENCRYPTED,
         check: (config) => !config.encrypted ? 'RDS instance encryption not enabled' : null,
         message: 'RDS instance storage is not encrypted',
         recommendation: 'Enable storage encryption for sensitive data protection',
@@ -225,11 +273,35 @@ export const awsResources: ResourceDefinition[] = [
       },
       {
         id: 'rds-multi-az',
-        severity: 'medium',
+        severity: SECURITY_SEVERITY.AWS_RDS_NOT_MULTI_AZ,
         check: (config) => !config.multiAz ? 'RDS not configured for high availability' : null,
         message: 'RDS instance is not deployed in Multi-AZ',
         recommendation: 'Enable Multi-AZ for production workloads to ensure high availability',
         fixAction: (config) => ({ ...config, multiAz: true }),
+      },
+      {
+        id: 'rds-public-access',
+        severity: SECURITY_SEVERITY.AWS_RDS_PUBLICLY_ACCESSIBLE,
+        check: (config) => config.publiclyAccessible ? 'RDS instance is publicly accessible' : null,
+        message: 'RDS instance is publicly accessible from the internet',
+        recommendation: 'Disable public accessibility; use a private subnet and bastion/VPN for admin access',
+        fixAction: (config) => ({ ...config, publiclyAccessible: false }),
+      },
+      {
+        id: 'rds-no-deletion-protection',
+        severity: 'medium',
+        check: (config) => !config.deletionProtection ? 'RDS deletion protection disabled' : null,
+        message: 'RDS instance can be accidentally deleted',
+        recommendation: 'Enable deletion protection for production databases',
+        fixAction: (config) => ({ ...config, deletionProtection: true }),
+      },
+      {
+        id: 'rds-backup-retention',
+        severity: 'low',
+        check: (config) => (typeof config.backupRetentionPeriod === 'number' && config.backupRetentionPeriod < 7) ? 'RDS backup retention below 7 days' : null,
+        message: 'RDS automated backup retention period is short',
+        recommendation: 'Set backup retention to at least 7 days for production workloads',
+        fixAction: (config) => ({ ...config, backupRetentionPeriod: 7 }),
       },
     ],
   },
@@ -371,6 +443,11 @@ export const awsResources: ResourceDefinition[] = [
     configSchema: [
       { key: 'name', label: 'Service Name', type: 'text', defaultValue: 'my-ecs', required: true },
       { key: 'desiredCount', label: 'Desired Tasks', type: 'number', defaultValue: 2 },
+      // cpu/memory exist in defaultConfig and are written by the Adaptive
+      // Scale Engine, but were missing here — meaning task-size scale
+      // changes were silently invisible in the Properties Panel.
+      { key: 'cpu', label: 'Task CPU (units, 1024 = 1 vCPU)', type: 'number', defaultValue: 256 },
+      { key: 'memory', label: 'Task Memory (MB)', type: 'number', defaultValue: 512 },
     ],
     securityRules: [],
   },
@@ -452,6 +529,35 @@ export const awsResources: ResourceDefinition[] = [
     securityRules: [],
   },
   {
+    type: 'aws_nacl',
+    label: 'Network ACL',
+    service: 'VPC Network Access Control List',
+    provider: 'aws',
+    category: 'security',
+    icon: 'NACL',
+    color: '#DD344C',
+    bgColor: '#FEE2E2',
+    borderColor: '#DC2626',
+    monthlyBaseCost: 0,
+    defaultConfig: { name: 'my-nacl', allowAllInbound: false, allowAllOutbound: true, inboundCidr: '10.0.0.0/16' },
+    configSchema: [
+      { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-nacl', required: true },
+      { key: 'allowAllInbound', label: 'Allow All Inbound Traffic', type: 'boolean', defaultValue: false },
+      { key: 'inboundCidr', label: 'Inbound Allow CIDR', type: 'cidr', defaultValue: '10.0.0.0/16' },
+      { key: 'allowAllOutbound', label: 'Allow All Outbound Traffic', type: 'boolean', defaultValue: true },
+    ],
+    securityRules: [
+      {
+        id: 'nacl-allow-all-inbound',
+        severity: 'critical',
+        check: (config) => (config.allowAllInbound && config.inboundCidr === '0.0.0.0/0') ? 'NACL allows all inbound traffic from anywhere' : null,
+        message: 'Network ACL has an allow-all inbound rule (0.0.0.0/0, all protocols/ports)',
+        recommendation: 'Scope inbound rules to specific ports/CIDRs; do not allow all traffic at the subnet boundary',
+        fixAction: (config) => ({ ...config, allowAllInbound: false }),
+      },
+    ],
+  },
+  {
     type: 'aws_sg',
     label: 'Security Group',
     service: 'Stateful Firewall',
@@ -462,21 +568,31 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#FEE2E2',
     borderColor: '#DC2626',
     monthlyBaseCost: 0,
-    defaultConfig: { allowSsh: false, allowHttp: true, allowHttps: true, name: 'my-sg' },
+    defaultConfig: { allowSsh: false, allowRdp: false, allowHttp: true, allowHttps: true, sourceCidr: '0.0.0.0/0', name: 'my-sg' },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-sg', required: true },
       { key: 'allowSsh', label: 'Allow SSH (port 22)', type: 'boolean', defaultValue: false },
+      { key: 'allowRdp', label: 'Allow RDP (port 3389)', type: 'boolean', defaultValue: false },
       { key: 'allowHttp', label: 'Allow HTTP (port 80)', type: 'boolean', defaultValue: true },
       { key: 'allowHttps', label: 'Allow HTTPS (port 443)', type: 'boolean', defaultValue: true },
+      { key: 'sourceCidr', label: 'Inbound Source CIDR', type: 'cidr', defaultValue: '0.0.0.0/0' },
     ],
     securityRules: [
       {
         id: 'sg-open-ssh',
         severity: 'critical',
-        check: (config) => config.allowSsh ? 'Security Group allows public SSH access' : null,
+        check: (config) => (config.allowSsh && config.sourceCidr === '0.0.0.0/0') ? 'Security Group allows public SSH access' : null,
         message: 'Security Group allows inbound SSH (0.0.0.0/0)',
         recommendation: 'Restrict SSH to specific IP ranges or use AWS Systems Manager Session Manager',
         fixAction: (config) => ({ ...config, allowSsh: false }),
+      },
+      {
+        id: 'sg-open-rdp',
+        severity: 'critical',
+        check: (config) => (config.allowRdp && config.sourceCidr === '0.0.0.0/0') ? 'Security Group allows public RDP access' : null,
+        message: 'Security Group allows inbound RDP (0.0.0.0/0)',
+        recommendation: 'Restrict RDP to specific IP ranges or use Session Manager / a bastion host',
+        fixAction: (config) => ({ ...config, allowRdp: false }),
       },
     ],
   },
@@ -514,7 +630,16 @@ export const awsResources: ResourceDefinition[] = [
       { key: 'name', label: 'Key Alias', type: 'text', defaultValue: 'my-kms-key', required: true },
       { key: 'enableKeyRotation', label: 'Annual Key Rotation', type: 'boolean', defaultValue: true },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'kms-key-rotation',
+        severity: 'medium',
+        check: (config) => !config.enableKeyRotation ? 'KMS key rotation disabled' : null,
+        message: 'KMS key does not have automatic annual rotation enabled',
+        recommendation: 'Enable key rotation to limit exposure from a compromised key',
+        fixAction: (config) => ({ ...config, enableKeyRotation: true }),
+      },
+    ],
   },
   {
     type: 'aws_cloudwatch',
@@ -545,13 +670,38 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#F0FDF4',
     borderColor: '#16A34A',
     monthlyBaseCost: 8.0,
-    defaultConfig: { sizeGb: 100, volumeType: 'gp3', encrypted: true, name: 'my-ebs' },
+    defaultConfig: { sizeGb: 100, volumeType: 'gp3', encrypted: true, snapshotSchedule: 'daily', name: 'my-ebs' },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-ebs', required: true },
       { key: 'sizeGb', label: 'Size (GB)', type: 'number', defaultValue: 100 },
       { key: 'encrypted', label: 'Encrypted', type: 'boolean', defaultValue: true },
+      {
+        key: 'snapshotSchedule', label: 'Automated Snapshot Schedule', type: 'select', defaultValue: 'daily',
+        options: [
+          { label: 'None', value: 'none' },
+          { label: 'Daily', value: 'daily' },
+          { label: 'Weekly', value: 'weekly' },
+        ],
+      },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'ebs-encryption',
+        severity: 'high',
+        check: (config) => !config.encrypted ? 'EBS volume is not encrypted' : null,
+        message: 'EBS volume does not have encryption enabled',
+        recommendation: 'Enable encryption at rest for EBS volumes containing sensitive data',
+        fixAction: (config) => ({ ...config, encrypted: true }),
+      },
+      {
+        id: 'ebs-no-snapshot-schedule',
+        severity: 'medium',
+        check: (config) => (!config.snapshotSchedule || config.snapshotSchedule === 'none') ? 'No automated snapshot schedule configured' : null,
+        message: 'EBS volume has no automated backup/snapshot schedule',
+        recommendation: 'Configure a snapshot schedule (e.g. via Data Lifecycle Manager) for disaster recovery',
+        fixAction: (config) => ({ ...config, snapshotSchedule: 'daily' }),
+      },
+    ],
   },
   {
     type: 'aws_dynamodb',

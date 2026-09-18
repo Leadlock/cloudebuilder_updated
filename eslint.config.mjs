@@ -30,6 +30,8 @@ const eslintConfig = defineConfig([
       ],
       "prefer-const": "warn",
       "react-hooks/exhaustive-deps": "warn",
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/preserve-manual-memoization": "warn",
     },
   },
 ]);

@@ -3,12 +3,14 @@
 // ─── Auth / Identity ───────────────────────────────────────────────────────────
 
 model User {
-  id        String  @id @default(uuid())
-  email     String  @unique
-  name      String?
-  avatarUrl String?
-  createdAt String
-  updatedAt String
+  id           String  @id @default(uuid())
+  email        String  @unique
+  name         String?
+  avatarUrl    String?
+  // scrypt-derived, format "<saltHex>:<hashHex>". Null for legacy/unmigrated rows.
+  passwordHash String?
+  createdAt    String
+  updatedAt    String
 
   memberships   OrgMember[]
   ownedProjects Project[]   @relation("ProjectOwner")
@@ -24,6 +26,7 @@ model Organization {
   members       OrgMember[]
   projects      Project[]
   cloudAccounts CloudAccount[]
+  invites       OrgInvite[]
 }
 
 model OrgMember {
@@ -36,6 +39,27 @@ model OrgMember {
   user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([orgId, userId])
+  @@index([userId])
+}
+
+// ─── Org Invites ────────────────────────────────────────────────────────────
+
+model OrgInvite {
+  id              String  @id @default(uuid())
+  orgId           String
+  email           String
+  role            String  @default("member")
+  // Opaque random token mailed to the invitee; never guessable.
+  token           String  @unique
+  invitedByUserId String
+  createdAt       String
+  expiresAt       String
+  acceptedAt      String?
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([email])
 }
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
@@ -62,6 +86,13 @@ model Project {
   optimizations        ArchOptimization[]
   terraformGens        TerraformGeneration[]
   wellArchitectedAssessments WellArchitectedAssessment[]
+  aiGenerationHistory  AIGenerationHistory[]
+  complianceAssessments ComplianceAssessment[]
+  exportJobs           ExportJob[]
+  gitOperations        GitOperation[]
+  githubConnections    GithubConnection[]
+
+  @@index([orgId])
 }
 
 // ─── Environments ─────────────────────────────────────────────────────────────
@@ -88,6 +119,11 @@ model Architecture {
   createdAt     String
   updatedAt     String
   environmentId String @unique
+  // Optimistic-concurrency counter, persisted in the DB (not in-process memory)
+  // so revision conflicts are detected correctly even across multiple server
+  // instances. Incremented atomically inside the same transaction as the
+  // canvas save — see architectureRepository.saveCanvas.
+  revision      Int    @default(1)
 
   environment Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
 
@@ -99,6 +135,9 @@ model Architecture {
   optimizations ArchOptimization[]
   terraformGens TerraformGeneration[]
   wellArchitectedAssessments WellArchitectedAssessment[]
+  aiGenerationHistory  AIGenerationHistory[]
+  complianceAssessments ComplianceAssessment[]
+  exportJobs           ExportJob[]
 }
 
 // ─── ArchitectureResource ─────────────────────────────────────────────────────
@@ -119,6 +158,8 @@ model ArchitectureResource {
   architecture      Architecture            @relation(fields: [architectureId], references: [id], onDelete: Cascade)
   sourceConnections ArchitectureConnection[] @relation("ConnectionSource")
   targetConnections ArchitectureConnection[] @relation("ConnectionTarget")
+
+  @@index([architectureId, resourceType])
 }
 
 // ─── ArchitectureConnection ───────────────────────────────────────────────────
@@ -134,6 +175,8 @@ model ArchitectureConnection {
   architecture Architecture         @relation(fields: [architectureId], references: [id], onDelete: Cascade)
   source       ArchitectureResource @relation("ConnectionSource", fields: [sourceId], references: [id], onDelete: Cascade)
   target       ArchitectureResource @relation("ConnectionTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([architectureId])
 }
 
 // ─── ArchitectureVersion ─────────────────────────────────────────────────────
@@ -174,6 +217,8 @@ model CloudAccount {
 
   org           Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
   discoveryRuns DiscoveryRun[]
+
+  @@index([orgId])
 }
 
 // ─── Discovery Runs ───────────────────────────────────────────────────────────
@@ -187,11 +232,19 @@ model DiscoveryRun {
   completedAt    String?
   // JSON array of DiscoveredResource objects — sanitised, no credentials
   resourcesJson  String  @default("[]")
+  // JSON array of CloudRelationship objects (containment/network/traffic/
+  // security/storage edges reconstructed by the adapter) — previously
+  // computed by discoverTopology() and then discarded before reaching the
+  // canvas; now persisted so the normalizer can use the adapter's precise
+  // relationship graph instead of only its own heuristic reconstruction.
+  relationshipsJson String @default("[]")
   // JSON summary counts by resource type
   summaryJson    String  @default("{}")
   error          String?
 
   cloudAccount CloudAccount @relation(fields: [cloudAccountId], references: [id], onDelete: Cascade)
+
+  @@index([cloudAccountId])
 }
 
 // ─── Phase 2D: Security Scans ─────────────────────────────────────────────────
@@ -210,6 +263,9 @@ model SecurityScan {
   project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   architecture Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
   findings     SecurityFinding[]
+
+  @@index([projectId])
+  @@index([architectureId])
 }
 
 model SecurityFinding {
@@ -227,6 +283,8 @@ model SecurityFinding {
   createdAt    String
 
   scan SecurityScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  @@index([scanId])
 }
 
 // ─── Phase 2D: Cost Estimates ─────────────────────────────────────────────────
@@ -247,6 +305,9 @@ model CostEstimate {
 
   project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   architecture Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([architectureId])
 }
 
 // ─── Phase 2D: Cost / Architecture Optimizations ──────────────────────────────
@@ -262,6 +323,9 @@ model ArchOptimization {
 
   project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   architecture Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([architectureId])
 }
 
 // ─── Phase 2D: Terraform Generations ─────────────────────────────────────────
@@ -278,6 +342,9 @@ model TerraformGeneration {
 
   project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   architecture Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([architectureId])
 }
 
 // ─── Multi-Currency & Live Exchange Rates Cache ──────────────────────────────
@@ -317,6 +384,9 @@ model WellArchitectedAssessment {
   project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   architecture Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
   findings     WellArchitectedFinding[]
+
+  @@index([projectId])
+  @@index([architectureId])
 }
 
 model WellArchitectedFinding {
@@ -341,4 +411,115 @@ model WellArchitectedFinding {
   detectedAt          String
 
   assessment WellArchitectedAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([assessmentId])
+}
+
+// ─── AI Generation History ────────────────────────────────────────────────────
+
+model AIGenerationHistory {
+  id               String  @id @default(uuid())
+  projectId        String
+  architectureId   String
+  prompt           String
+  provider         String  @default("gemini")
+  model            String  @default("gemini-1.5-pro")
+  status           String  @default("completed")
+  architectureJson String
+  createdAt        String
+  completedAt      String?
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  architecture Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([architectureId])
+}
+
+// ─── Compliance ────────────────────────────────────────────────────────────────
+
+model ComplianceAssessment {
+  id             String  @id @default(uuid())
+  projectId      String
+  architectureId String
+  framework      String
+  status         String  @default("completed")
+  overallScore   Int     @default(0)
+  findingsJson   String  @default("[]")
+  createdAt      String
+  completedAt    String?
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  architecture Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+  findings     ComplianceFinding[]
+
+  @@index([projectId])
+  @@index([architectureId])
+}
+
+model ComplianceFinding {
+  id                  String @id @default(uuid())
+  assessmentId        String
+  ruleId              String
+  controlId           String
+  severity            String
+  title               String
+  description         String
+  affectedResourceIds String @default("[]")
+  recommendation      String
+  remediation         String
+  createdAt           String
+
+  assessment ComplianceAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([assessmentId])
+}
+
+// ─── Export Jobs ───────────────────────────────────────────────────────────────
+
+model ExportJob {
+  id             String  @id @default(uuid())
+  projectId      String
+  architectureId String
+  format         String
+  status         String  @default("completed")
+  url            String?
+  createdAt      String
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  architecture Architecture @relation(fields: [architectureId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([architectureId])
+}
+
+// ─── GitOps ────────────────────────────────────────────────────────────────────
+
+model GitOperation {
+  id            String  @id @default(uuid())
+  projectId     String
+  operationType String  @default("commit")
+  status        String  @default("pending")
+  commitSha     String?
+  prUrl         String?
+  createdAt     String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model GithubConnection {
+  id             String  @id @default(uuid())
+  projectId      String
+  githubOrg      String
+  githubRepo     String
+  branch         String  @default("main")
+  installationId String?
+  status         String  @default("active")
+  createdAt      String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
 }

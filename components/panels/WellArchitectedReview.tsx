@@ -107,10 +107,20 @@ export default function WellArchitectedReview() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiWellArchitectedService.getAssessment();
-      setAssessment(data);
+      if (activeProject.id === 'draft-project') {
+        const data = await apiWellArchitectedService.analyze(activeProject.nodes, activeProject.edges);
+        setAssessment(data);
+      } else {
+        const data = await apiWellArchitectedService.getAssessment();
+        setAssessment(data);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch assessment');
+      try {
+        const data = await apiWellArchitectedService.analyze(activeProject.nodes, activeProject.edges);
+        setAssessment(data);
+      } catch (fallbackErr) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch assessment');
+      }
     } finally {
       setLoading(false);
     }
@@ -121,7 +131,7 @@ export default function WellArchitectedReview() {
     setAnalyzing(true);
     setError(null);
     try {
-      const fresh = await apiWellArchitectedService.analyze();
+      const fresh = await apiWellArchitectedService.analyze(activeProject.nodes, activeProject.edges);
       if (fresh) {
         setAssessment(fresh);
       }
@@ -133,10 +143,15 @@ export default function WellArchitectedReview() {
   };
 
   useEffect(() => {
-    Promise.resolve().then(() => {
-      fetchAssessment();
-    });
-  }, [activeProject?.id, state.activeEnvironment]);
+    fetchAssessment();
+  }, [
+    activeProject?.id,
+    activeProject?.nodes.length,
+    activeProject?.edges.length,
+    activeProject?.updatedAt,
+    state.architectureVersion,
+    state.activeEnvironment,
+  ]);
 
   // Filtered findings
   const filteredFindings = useMemo(() => {
@@ -213,8 +228,8 @@ export default function WellArchitectedReview() {
             )}
           </div>
           <p className="text-sm text-slate-400 mt-1">
-            Official {activeProject.provider === 'azure' ? 'Microsoft Azure' : 'AWS'} Well-Architected Framework
-            compliance & design-time intelligence.
+            Design-time checks mapped to the {activeProject.provider === 'azure' ? 'Microsoft Azure' : 'AWS'} Well-Architected Framework's
+            pillars — a heuristic assessment, not an official certification or compliance report.
           </p>
         </div>
 

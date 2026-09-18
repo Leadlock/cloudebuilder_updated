@@ -1,4 +1,44 @@
-export type CloudProvider = 'aws' | 'azure' | 'multi';
+export type CloudProvider = 'aws' | 'azure' | 'gcp' | 'multi';
+export type ProviderMode = 'AWS' | 'AZURE' | 'GCP' | 'MULTI_CLOUD';
+
+export function providerModeToCloudProvider(mode: ProviderMode): CloudProvider {
+  if (mode === 'AWS') return 'aws';
+  if (mode === 'AZURE') return 'azure';
+  if (mode === 'GCP') return 'gcp';
+  return 'multi';
+}
+
+export function cloudProviderToProviderMode(provider: CloudProvider): ProviderMode {
+  if (provider === 'aws') return 'AWS';
+  if (provider === 'azure') return 'AZURE';
+  if (provider === 'gcp') return 'GCP';
+  return 'MULTI_CLOUD';
+}
+
+/** Best-effort single-cloud provider for a node, falling back to its resourceType prefix when `provider` is unset. */
+export function inferNodeProvider(node: { provider?: CloudProvider; resourceType: string }): 'aws' | 'azure' | 'gcp' {
+  if (node.provider === 'aws' || node.provider === 'azure' || node.provider === 'gcp') return node.provider;
+  if (node.resourceType.startsWith('azure_')) return 'azure';
+  if (node.resourceType.startsWith('gcp_')) return 'gcp';
+  return 'aws';
+}
+
+/** Whether a node belongs in an architecture locked to the given single-cloud provider mode. Multi-cloud accepts everything. */
+export function isNodeCompatibleWithProviderMode(node: { provider?: CloudProvider; resourceType: string }, mode: ProviderMode): boolean {
+  if (mode === 'MULTI_CLOUD') return true;
+  return inferNodeProvider(node) === providerModeToCloudProvider(mode);
+}
+
+export interface ScaleProfile {
+  expectedUsers: number;
+  requestsPerSecond?: number;
+  peakRequestsPerSecond?: number;
+  availabilityTarget?: number | string; // e.g. 99.9 or '99.99%'
+  geographicDistribution?: string;
+  dataGrowth?: string;
+  trafficPattern?: string;
+}
+
 export type CanvasViewMode = 'architecture' | 'network' | 'security' | 'cost' | 'terraform' | 'deployment';
 export type AppView =
   | 'dashboard'
@@ -18,7 +58,8 @@ export type AppView =
   | 'import'
   | 'history'
   | 'environments'
-  | 'review';
+  | 'review'
+  | 'team';
 
 export type Environment = 'development' | 'staging' | 'production';
 export type ResourceCategory =
@@ -119,6 +160,17 @@ export const REGION_LABELS: Record<string, string> = {
   'qatarcentral': 'Qatar Central',
   'brazilsouth': 'Brazil South',
   'chilecentral': 'Chile Central',
+  // GCP
+  'us-central1': 'Iowa (us-central1)',
+  'us-east1': 'South Carolina (us-east1)',
+  'us-west1': 'Oregon (us-west1)',
+  'europe-west1': 'Belgium (europe-west1)',
+  'europe-west2': 'London (europe-west2)',
+  'asia-east1': 'Taiwan (asia-east1)',
+  'asia-northeast1': 'Tokyo (asia-northeast1)',
+  'asia-south1': 'Mumbai (asia-south1)',
+  'australia-southeast1': 'Sydney (australia-southeast1)',
+  'southamerica-east1': 'São Paulo (southamerica-east1)',
 };
 
 export const AWS_REGIONS: Region[] = [
@@ -136,10 +188,17 @@ export const AZURE_REGIONS: Region[] = [
   'uaenorth', 'southafricanorth', 'brazilsouth',
 ];
 
+export const GCP_REGIONS: Region[] = [
+  'us-central1', 'us-east1', 'us-west1',
+  'europe-west1', 'europe-west2',
+  'asia-east1', 'asia-northeast1', 'asia-south1',
+  'australia-southeast1', 'southamerica-east1',
+];
+
 export interface ResourceDefinition {
   type: string;
   label: string;
-  provider: 'aws' | 'azure';
+  provider: CloudProvider;
   category: ResourceCategory;
   icon: string;
   color: string;
@@ -157,6 +216,8 @@ export interface ResourceDefinition {
   minWidth?: number;
   minHeight?: number;
   service?: string;
+  terraform?: any;
+  costCalculator?: (config: any) => { monthlyCost: number; breakdown: any[] };
 }
 
 export interface ConfigField {
@@ -183,7 +244,7 @@ export interface CanvasNode {
   id: string;
   type: string;
   resourceType: string;
-  provider: 'aws' | 'azure';
+  provider: CloudProvider;
   label: string;
   position: { x: number; y: number };
   config: Record<string, unknown>;
@@ -208,7 +269,7 @@ export interface CanvasEdge {
   protocol?: string;
   port?: string | number;
   networkScope?: import('@/lib/domain/relationshipModel').NetworkScope;
-  provider?: 'aws' | 'azure' | 'multi';
+  provider?: CloudProvider;
   region?: string;
   reason?: string;
   inferred?: boolean;
@@ -230,7 +291,7 @@ export interface CanvasGroup {
   id: string;
   label: string;
   type: 'vpc' | 'vnet' | 'subnet' | 'region' | 'provider' | 'az';
-  provider?: 'aws' | 'azure';
+  provider?: CloudProvider;
   region?: Region;
   color: string;
   position: { x: number; y: number };
@@ -252,7 +313,7 @@ export interface CostItem {
   nodeId: string;
   nodeLabel: string;
   resourceType: string;
-  provider: 'aws' | 'azure';
+  provider: CloudProvider;
   region?: string;
   monthlyCost: number;
   hourlyCost?: number;
@@ -321,6 +382,10 @@ export interface Project {
   id: string;
   name: string;
   provider: CloudProvider;
+  providerMode?: ProviderMode;
+  scaleProfile?: ScaleProfile;
+  isDraft?: boolean;
+  revision?: number;
   description: string;
   createdAt: string;
   updatedAt: string;
@@ -344,7 +409,7 @@ export interface DeploymentStep {
   description: string;
   status: 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'awaiting_approval';
   output?: string;
-  provider?: 'aws' | 'azure';
+  provider?: CloudProvider;
 }
 
 export interface ArchitectureTemplate {
@@ -358,6 +423,8 @@ export interface ArchitectureTemplate {
   estimatedCost: number;
   resourceCount: number;
   features: string[];
+  isAdaptive?: boolean;
+  scaleRecommendation?: any;
   generate: (opts: TemplateGenerateOptions) => { nodes: CanvasNode[]; edges: CanvasEdge[] };
 }
 
@@ -409,7 +476,7 @@ export interface DisasterRecoveryStrategy {
 export interface ImportSource {
   id: string;
   label: string;
-  provider?: 'aws' | 'azure';
+  provider?: CloudProvider;
   icon: string;
   description: string;
 }

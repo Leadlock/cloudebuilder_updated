@@ -6,10 +6,10 @@
  * into a single unified internal structure.
  */
 
-export type PricingModel = 'on-demand' | 'consumption' | 'tier' | 'reservation';
+export type PricingModel = 'on-demand' | 'consumption' | 'tier' | 'reservation' | 'free';
 
 export interface NormalizedPrice {
-  provider: 'aws' | 'azure';
+  provider: 'aws' | 'azure' | 'gcp';
   service: string;
   resourceType: string;
   region: string;
@@ -27,7 +27,7 @@ export interface NormalizedPrice {
 }
 
 export interface PriceQuery {
-  provider: 'aws' | 'azure';
+  provider: 'aws' | 'azure' | 'gcp';
   service?: string;
   resourceType: string;
   region: string;
@@ -36,6 +36,6 @@ export interface PriceQuery {
 
 export interface ICloudPricingProvider {
   readonly name: string;
-  readonly provider: 'aws' | 'azure';
+  readonly provider: 'aws' | 'azure' | 'gcp';
   getPrice(query: PriceQuery): Promise<NormalizedPrice | null>;
 }

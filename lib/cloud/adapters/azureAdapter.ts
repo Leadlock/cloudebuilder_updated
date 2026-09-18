@@ -195,6 +195,7 @@ export class AzureDiscoveryAdapter implements InfrastructureDiscoveryProvider {
       startedAt: topology.startedAt,
       completedAt: topology.completedAt,
       resources,
+      relationships: topology.relationships,
       error: topology.error,
       summary: topology.summary,
     };

@@ -12,29 +12,75 @@
 
 const mockDb = buildMockDb();
 
+// Executes one raw SQL statement (from either rawExec or the rawTransaction
+// query callback) against the in-memory mock store — mirrors the small,
+// known set of statement shapes architectureRepository actually issues.
+// Returns { rows } like the real pg.Client.query does, so SELECT statements
+// (e.g. the row-locking SELECT ... FOR UPDATE in saveCanvas) work too.
+async function mockExecSql(sql: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[] }> {
+  const isInsert = /^\s*INSERT INTO/i.test(sql);
+  const isUpdate = /^\s*UPDATE/i.test(sql);
+  const isDelete = /^\s*DELETE FROM/i.test(sql);
+  const isSelect = /^\s*SELECT/i.test(sql);
+
+  if (isSelect && /FROM "architecture"/i.test(sql) && /"environmentId"/i.test(sql)) {
+    const environmentId = params[0] as string;
+    const row = [...mockDb._stores['Architecture'].values()].find((r) => (r as Record<string, unknown>)['environmentId'] === environmentId);
+    return { rows: row ? [row as Record<string, unknown>] : [] };
+  }
+  if (isDelete && /architectureResource/i.test(sql) && params[0]) {
+    const archId = params[0] as string;
+    for (const [k, v] of mockDb._stores['ArchitectureResource']) {
+      if ((v as Record<string, unknown>)['architectureId'] === archId) {
+        mockDb._stores['ArchitectureResource'].delete(k);
+      }
+    }
+    return { rows: [] };
+  }
+  if (isDelete && /architectureConnection/i.test(sql) && params[0]) {
+    const archId = params[0] as string;
+    for (const [k, v] of mockDb._stores['ArchitectureConnection']) {
+      if ((v as Record<string, unknown>)['architectureId'] === archId) {
+        mockDb._stores['ArchitectureConnection'].delete(k);
+      }
+    }
+    return { rows: [] };
+  }
+  if (isUpdate && /"architecture"/i.test(sql)) {
+    // UPDATE "architecture" SET "updatedAt" = $1, "revision" = $2 WHERE "id" = $3
+    const [updatedAt, revision, id] = params as [string, number, string];
+    const row = mockDb._stores['Architecture'].get(id);
+    if (row) mockDb._stores['Architecture'].set(id, { ...row, updatedAt, revision });
+    return { rows: [] };
+  }
+  if (isInsert && /"architectureResource"/i.test(sql)) {
+    const [id, resourceType, provider, label, positionX, positionY, configJson, region, groupId, locked, architectureId] = params;
+    mockDb._stores['ArchitectureResource'].set(id as string, {
+      id, resourceType, provider, label, positionX, positionY, configJson, region, groupId, locked, architectureId,
+    });
+    return { rows: [] };
+  }
+  if (isInsert && /"architectureConnection"/i.test(sql)) {
+    const [id, label, edgeType, architectureId, sourceId, targetId] = params;
+    mockDb._stores['ArchitectureConnection'].set(id as string, {
+      id, label, edgeType, architectureId, sourceId, targetId,
+    });
+    return { rows: [] };
+  }
+  if (isInsert && /"architecture"/i.test(sql)) {
+    const [id, environmentId, createdAt, updatedAt, revision] = params;
+    mockDb._stores['Architecture'].set(id as string, { id, environmentId, createdAt, updatedAt, revision });
+    return { rows: [] };
+  }
+  throw new Error(`mockExecSql: unrecognised statement shape: ${sql}`);
+}
+
 jest.mock('@/src/prisma/db', () => ({
   db: mockDb,
-  // rawExec mirrors the real function's SQL-DELETE behaviour on the mock store.
-  // Supports the two DELETE patterns used by architectureRepository.saveCanvas.
-  rawExec: jest.fn().mockImplementation(async (sql: string, params: unknown[]) => {
-    // DELETE FROM "architectureResource" WHERE "architectureId" = $1
-    if (/architectureResource/i.test(sql) && params[0]) {
-      const archId = params[0] as string;
-      for (const [k, v] of mockDb._stores['ArchitectureResource']) {
-        if ((v as Record<string, unknown>)['architectureId'] === archId) {
-          mockDb._stores['ArchitectureResource'].delete(k);
-        }
-      }
-    }
-    // DELETE FROM "architectureConnection" WHERE "architectureId" = $1
-    if (/architectureConnection/i.test(sql) && params[0]) {
-      const archId = params[0] as string;
-      for (const [k, v] of mockDb._stores['ArchitectureConnection']) {
-        if ((v as Record<string, unknown>)['architectureId'] === archId) {
-          mockDb._stores['ArchitectureConnection'].delete(k);
-        }
-      }
-    }
+  // rawExec/rawTransaction mirror the real functions' SQL behaviour against the mock store.
+  rawExec: jest.fn().mockImplementation(async (sql: string, params: unknown[]) => { await mockExecSql(sql, params); }),
+  rawTransaction: jest.fn().mockImplementation(async (fn: (query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>) => Promise<unknown>) => {
+    return fn(async (sql: string, params?: unknown[]) => mockExecSql(sql, params ?? []));
   }),
 }));
 

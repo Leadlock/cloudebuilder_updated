@@ -9,6 +9,7 @@
  * Generated Terraform uses variables for all sensitive values.
  */
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
+import { getResourceDefinition } from '@/lib/resources';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -101,6 +102,36 @@ class ReferenceResolver {
 
     return resources.find((r) => connectedIds.includes(r.id) && r.resourceType === parentType);
   }
+
+  /** Returns ALL resources of a given type connected/contained to a target (e.g. every subnet an ALB spans) */
+  resolveParents(
+    targetId: string,
+    parentType: string,
+    connections: DbArchitectureConnection[],
+    resources: DbArchitectureResource[],
+  ): DbArchitectureResource[] {
+    const found = new Map<string, DbArchitectureResource>();
+
+    const targetResource = resources.find((r) => r.id === targetId);
+    if (targetResource?.groupId) {
+      const parentByGroup = resources.find((r) => r.id === targetResource.groupId);
+      if (parentByGroup && parentByGroup.resourceType === parentType) {
+        found.set(parentByGroup.id, parentByGroup);
+      }
+    }
+
+    const connectedIds = connections
+      .filter((c) => c.targetId === targetId || c.sourceId === targetId)
+      .map((c) => (c.targetId === targetId ? c.sourceId : c.targetId));
+
+    for (const r of resources) {
+      if (connectedIds.includes(r.id) && r.resourceType === parentType) {
+        found.set(r.id, r);
+      }
+    }
+
+    return Array.from(found.values());
+  }
 }
 
 // ─── AWS Terraform Generator ─────────────────────────────────────────────────
@@ -170,22 +201,31 @@ class AwsTerraformGenerator {
           break;
         }
         case 'aws_rds': {
-          const subnet = resolver.resolveParent(r.id, 'aws_subnet', connections, resources);
-          const isSubnetImported = subnet && Boolean(this._cfg(subnet).imported || this._cfg(subnet).importState === 'imported');
+          const subnets = resolver.resolveParents(r.id, 'aws_subnet', connections, resources);
+          const subnetRefs = subnets.map((s) => {
+            const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
+            return `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
+          });
           const sg = resolver.resolveParent(r.id, 'aws_sg', connections, resources);
           const isSgImported = sg && Boolean(this._cfg(sg).imported || this._cfg(sg).importState === 'imported');
-          const subnetRef = subnet
-            ? `${isSubnetImported ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id`
-            : null;
           const sgRef = sg
             ? `[${isSgImported ? 'data.' : ''}aws_security_group.${resolver.tfNameOf(sg.id) ?? 'main'}.id]`
             : null;
+
+          if (subnetRefs.length === 0) {
+            warnings.push(`RDS instance "${r.label}" has no connected subnet — generated aws_db_instance will have no db_subnet_group_name and may fail to apply in a VPC-only account.`);
+          } else if (subnetRefs.length === 1) {
+            warnings.push(`RDS instance "${r.label}" is connected to only one subnet — AWS requires a DB subnet group spanning at least 2 Availability Zones for most instance classes.`);
+          }
 
           if (isImported) {
             blocks.push(this._dataRds(name, cfg));
             resourceMap[r.id] = `data.aws_db_instance.${name}`;
           } else {
-            blocks.push(this._rds(name, cfg, subnetRef, sgRef));
+            if (subnetRefs.length > 0) {
+              blocks.push(this._dbSubnetGroup(name, subnetRefs));
+            }
+            blocks.push(this._rds(name, cfg, subnetRefs.length > 0 ? `aws_db_subnet_group.${name}_subnet_group.name` : null, sgRef));
             resourceMap[r.id] = `aws_db_instance.${name}`;
           }
           break;
@@ -206,12 +246,20 @@ class AwsTerraformGenerator {
           const sgRef = sg
             ? `[${isSgImported ? 'data.' : ''}aws_security_group.${resolver.tfNameOf(sg.id) ?? 'main'}.id]`
             : null;
+          const subnets = resolver.resolveParents(r.id, 'aws_subnet', connections, resources);
+          const subnetRefs = subnets.map((s) => {
+            const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
+            return `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
+          });
+          if (subnetRefs.length < 2) {
+            warnings.push(`ALB "${r.label}" is connected to ${subnetRefs.length} subnet(s) — an aws_lb requires subnets in at least 2 distinct Availability Zones and will fail to apply as generated.`);
+          }
 
           if (isImported) {
             blocks.push(this._dataAlb(name, cfg));
             resourceMap[r.id] = `data.aws_lb.${name}`;
           } else {
-            blocks.push(this._alb(name, cfg, sgRef));
+            blocks.push(this._alb(name, cfg, sgRef, subnetRefs));
             resourceMap[r.id] = `aws_lb.${name}`;
           }
           break;
@@ -321,7 +369,18 @@ class AwsTerraformGenerator {
     return lines.join('\n');
   }
 
-  private _rds(name: string, cfg: Record<string, unknown>, subnetRef: string | null, sgRef: string | null): string {
+  private _dbSubnetGroup(name: string, subnetRefs: string[]): string {
+    return `resource "aws_db_subnet_group" "${name}_subnet_group" {
+  name       = "${name}-subnet-group"
+  subnet_ids = [${subnetRefs.join(', ')}]
+  tags = {
+    Name      = "${name}-subnet-group"
+    ManagedBy = "CloudCraft"
+  }
+}`;
+  }
+
+  private _rds(name: string, cfg: Record<string, unknown>, dbSubnetGroupRef: string | null, sgRef: string | null): string {
     const lines: string[] = [
       `resource "aws_db_instance" "${name}" {`,
       `  identifier              = "${name}"`,
@@ -338,6 +397,7 @@ class AwsTerraformGenerator {
       `  username                = var.db_username`,
       `  password                = var.db_password`,
     ];
+    if (dbSubnetGroupRef) lines.push(`  db_subnet_group_name    = ${dbSubnetGroupRef}`);
     if (sgRef) lines.push(`  vpc_security_group_ids  = ${sgRef}`);
     lines.push(`  tags = {`);
     lines.push(`    Name      = "${name}"`);
@@ -385,7 +445,7 @@ class AwsTerraformGenerator {
     return parts.join('\n');
   }
 
-  private _alb(name: string, cfg: Record<string, unknown>, sgRef: string | null): string {
+  private _alb(name: string, cfg: Record<string, unknown>, sgRef: string | null, subnetRefs: string[] = []): string {
     const lines: string[] = [
       `resource "aws_lb" "${name}" {`,
       `  name               = "${name}"`,
@@ -394,6 +454,11 @@ class AwsTerraformGenerator {
       `  enable_deletion_protection = false`,
     ];
     if (sgRef) lines.push(`  security_groups    = ${sgRef}`);
+    if (subnetRefs.length > 0) {
+      lines.push(`  subnets            = [${subnetRefs.join(', ')}]`);
+    } else {
+      lines.push(`  subnets            = [] # WARNING: no subnets connected to this ALB on the canvas`);
+    }
     lines.push(`  tags = {`);
     lines.push(`    Name      = "${name}"`);
     lines.push(`    ManagedBy = "CloudCraft"`);
@@ -666,11 +731,20 @@ class AzureTerraformGenerator {
             blocks.push(this._dataVm(name, cfg, rgName));
             resourceMap[r.id] = `data.azurerm_virtual_machine.${name}`;
           } else {
+            const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources);
+            const isSubnetImported = subnet && Boolean(this._cfg(subnet).imported || this._cfg(subnet).importState === 'imported');
+            const subnetPrefix = isSubnetImported ? 'data.' : '';
+            const subnetRef = subnet ? `${subnetPrefix}azurerm_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id` : null;
+            if (!subnetRef) {
+              warnings.push(`Azure VM "${r.label}" is not connected to any subnet — a network interface cannot be generated and this resource's Terraform will fail to apply.`);
+            }
+            blocks.push(this._nic(name, rgName, rgLoc, subnetRef));
             blocks.push(this._vm(name, cfg, rgName, rgLoc));
             resourceMap[r.id] = `azurerm_linux_virtual_machine.${name}`;
           }
           break;
         }
+        case 'azure_blob':
         case 'azure_storage': {
           const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
           const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
@@ -809,6 +883,20 @@ data "azurerm_network_security_group" "${name}" {
 }`;
   }
 
+  private _nic(name: string, rgName: string, rgLoc: string, subnetRef: string | null): string {
+    return `resource "azurerm_network_interface" "${name}_nic" {
+  name                = "${name}-nic"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = ${subnetRef ?? `azurerm_subnet.main.id # WARNING: subnet not connected`}
+    private_ip_address_allocation = "Dynamic"
+  }
+}`;
+  }
+
   private _vm(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
     return `resource "azurerm_linux_virtual_machine" "${name}" {
   name                = "${name}"
@@ -817,7 +905,7 @@ data "azurerm_network_security_group" "${name}" {
   size                = "${cfg['size'] ?? 'Standard_B2s'}"
   admin_username      = "${cfg['adminUsername'] ?? 'azureuser'}"
 
-  network_interface_ids = []  # TODO: attach azurerm_network_interface
+  network_interface_ids = [azurerm_network_interface.${name}_nic.id]
 
   os_disk {
     caching              = "ReadWrite"
@@ -966,6 +1054,7 @@ export class TerraformGenerator {
     const projectName = input.projectName ?? 'cloudcraft';
     const awsResources   = input.resources.filter((r) => r.provider === 'aws');
     const azureResources = input.resources.filter((r) => r.provider === 'azure');
+    const gcpResourceList = input.resources.filter((r) => r.provider === 'gcp');
 
     const warnings: string[] = [];
     const resourceMap: Record<string, string> = {};
@@ -973,6 +1062,7 @@ export class TerraformGenerator {
 
     let awsBlocks:   string[] = [];
     let azureBlocks: string[] = [];
+    let gcpBlocks:   string[] = [];
 
     if (awsResources.length > 0) {
       const result = this.awsGen.generate(awsResources, input.connections, projectName, resolver);
@@ -990,14 +1080,67 @@ export class TerraformGenerator {
       providers.push('azure');
     }
 
-    const files = this._buildFiles(awsBlocks, azureBlocks, providers, projectName, input);
+    if (gcpResourceList.length > 0) {
+      const result = this._generateGcpBlocks(gcpResourceList, resolver);
+      gcpBlocks = result.blocks;
+      warnings.push(...result.warnings);
+      Object.assign(resourceMap, result.resourceMap);
+      providers.push('gcp');
+    }
+
+    const files = this._buildFiles(awsBlocks, azureBlocks, gcpBlocks, providers, projectName, input);
 
     return { files, warnings, resourceMap, providers };
+  }
+
+  /**
+   * GCP resources carry their own `terraform.generateHcl` hook on their
+   * ResourceDefinition (lib/resources/gcp.ts) instead of a dedicated
+   * generator class like AWS/Azure — this just invokes each one.
+   */
+  private _generateGcpBlocks(
+    resources: DbArchitectureResource[],
+    resolver: ReferenceResolver,
+  ): { blocks: string[]; warnings: string[]; resourceMap: Record<string, string> } {
+    const blocks: string[] = [];
+    const warnings: string[] = [];
+    const resourceMap: Record<string, string> = {};
+    const byId = new Map(resources.map((r) => [r.id, r]));
+
+    for (const r of resources) {
+      const def = getResourceDefinition(r.resourceType);
+      if (!def?.terraform?.generateHcl) {
+        warnings.push(`No Terraform generator available for GCP resource type "${r.resourceType}" (${r.label}).`);
+        continue;
+      }
+
+      let config: Record<string, unknown>;
+      try {
+        config = JSON.parse(r.configJson || '{}');
+      } catch {
+        warnings.push(`Invalid configuration JSON for "${r.label}" — skipped.`);
+        continue;
+      }
+
+      const name = resolver.tfNameOf(r.id) || tfName((config['name'] as string) || r.label);
+      const parent = r.groupId ? byId.get(r.groupId) : undefined;
+      const parentId = parent ? (resolver.tfNameOf(parent.id) || tfName(parent.label)) : undefined;
+
+      try {
+        blocks.push(def.terraform.generateHcl(config, { name, parentId }));
+        resourceMap[r.id] = `${def.terraform.primaryResourceType ?? 'google_resource'}.${name}`;
+      } catch (err) {
+        warnings.push(`Failed to generate Terraform for "${r.label}": ${(err as Error).message}`);
+      }
+    }
+
+    return { blocks, warnings, resourceMap };
   }
 
   private _buildFiles(
     awsBlocks: string[],
     azureBlocks: string[],
+    gcpBlocks: string[],
     providers: string[],
     projectName: string,
     input: TerraformGenerationInput,
@@ -1012,10 +1155,16 @@ export class TerraformGenerator {
       mainParts.push(...awsBlocks.map((b) => b + '\n'));
     }
     if (azureBlocks.length > 0) {
-      if (awsBlocks.length > 0) mainParts.push('');
+      if (mainParts.length > 0) mainParts.push('');
       mainParts.push('# ─── Azure Resources ─────────────────────────────────────────────────────────');
       mainParts.push('');
       mainParts.push(...azureBlocks.map((b) => b + '\n'));
+    }
+    if (gcpBlocks.length > 0) {
+      if (mainParts.length > 0) mainParts.push('');
+      mainParts.push('# ─── GCP Resources ───────────────────────────────────────────────────────────');
+      mainParts.push('');
+      mainParts.push(...gcpBlocks.map((b) => b + '\n'));
     }
     files.push({ filename: 'main.tf', content: mainParts.join('\n'), provider: 'all' });
 
@@ -1037,10 +1186,12 @@ export class TerraformGenerator {
   private _providersFile(providers: string[]): string {
     const hasAws   = providers.includes('aws');
     const hasAzure = providers.includes('azure');
+    const hasGcp   = providers.includes('gcp');
 
     const required: string[] = [];
     if (hasAws)   required.push('    aws = {\n      source  = "hashicorp/aws"\n      version = "~> 5.0"\n    }');
     if (hasAzure) required.push('    azurerm = {\n      source  = "hashicorp/azurerm"\n      version = "~> 3.0"\n    }');
+    if (hasGcp)   required.push('    google = {\n      source  = "hashicorp/google"\n      version = "~> 5.0"\n    }');
 
     const parts: string[] = [
       `terraform {
@@ -1068,12 +1219,22 @@ ${required.join('\n')}
 `);
     }
 
+    if (hasGcp) {
+      parts.push(`provider "google" {
+  project = var.gcp_project_id
+  region  = var.gcp_region
+  # No credentials in Terraform — use GOOGLE_APPLICATION_CREDENTIALS env var or workload identity
+}
+`);
+    }
+
     return parts.join('\n');
   }
 
   private _variablesFile(providers: string[], input: TerraformGenerationInput): string {
     const hasAws   = providers.includes('aws');
     const hasAzure = providers.includes('azure');
+    const hasGcp   = providers.includes('gcp');
     const hasRds   = input.resources.some((r) => r.resourceType === 'aws_rds');
     const hasSql   = input.resources.some((r) => r.resourceType === 'azure_sql');
     const hasVm    = input.resources.some((r) => r.resourceType === 'azure_vm');
@@ -1104,6 +1265,19 @@ ${required.join('\n')}
   description = "Azure region for all resources"
   type        = string
   default     = "eastus"
+}`);
+    }
+
+    if (hasGcp) {
+      vars.push(`variable "gcp_project_id" {
+  description = "GCP project ID for all resources"
+  type        = string
+}
+
+variable "gcp_region" {
+  description = "GCP region for all resources"
+  type        = string
+  default     = "us-central1"
 }`);
     }
 
@@ -1189,7 +1363,7 @@ output "${name}_bucket_name" {
   value       = azurerm_mssql_server.${name}_server.fully_qualified_domain_name
   sensitive   = true
 }`);
-      } else if (r.resourceType === 'azure_storage') {
+      } else if (r.resourceType === 'azure_storage' || r.resourceType === 'azure_blob') {
         const storageName = name.replace(/_/g, '').toLowerCase().substring(0, 24);
         outputs.push(`output "${name}_storage_account_name" {
   description = "Name of the Azure Storage Account for ${r.label}"
@@ -1208,6 +1382,10 @@ output "${name}_bucket_name" {
     ];
     if (providers.includes('aws'))   lines.push(`aws_region   = "us-east-1"`);
     if (providers.includes('azure')) lines.push(`azure_location = "eastus"`);
+    if (providers.includes('gcp')) {
+      lines.push(`gcp_project_id = "my-project"`);
+      lines.push(`gcp_region   = "us-central1"`);
+    }
     lines.push('');
     lines.push('# Sensitive values — set via environment variables:');
     lines.push('# TF_VAR_db_password          = "..."');

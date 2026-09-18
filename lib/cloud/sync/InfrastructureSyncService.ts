@@ -37,7 +37,7 @@ export interface DriftItem {
   nodeId: string;
   resourceType: string;
   label: string;
-  provider: 'aws' | 'azure';
+  provider: import('@/types').CloudProvider;
   status: ResourceDriftStatus;
   cloudResourceId?: string;
   canvasConfigHash?: string;

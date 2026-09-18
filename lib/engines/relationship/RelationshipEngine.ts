@@ -9,6 +9,37 @@
 import { CanvasNode, CanvasEdge, RelationshipType, ConnectionValidationResult, NetworkScope } from '@/types';
 import { getResourceDefinition } from '@/lib/resources';
 
+/**
+ * SINGLE SOURCE OF TRUTH for whether a direct edge between two resources of
+ * different cloud providers is architecturally supportable (i.e. representable
+ * as a real VPN tunnel / interconnect / public HTTPS gateway, not raw private
+ * network transport, which does not exist between AWS and Azure).
+ *
+ * This function is the only place cross-cloud connection legitimacy is decided.
+ * Both the canvas connection-creation gate (RelationshipEngine.validateConnection,
+ * below) and the post-hoc canonical architecture validator
+ * (lib/domain/canonicalArchitecture.ts) call this exact function so they can
+ * never disagree about whether the same edge is valid.
+ */
+export function isCrossCloudConnectionSupported(sourceType: string, targetType: string): boolean {
+  const sType = sourceType;
+  const tType = targetType;
+
+  const isComputeToCompute =
+    (sType.includes('ec2') || sType.includes('vm') || sType.includes('lambda') || sType.includes('functions')) &&
+    (tType.includes('ec2') || tType.includes('vm') || tType.includes('sql') || tType.includes('storage') || tType.includes('s3'));
+
+  const isGatewayOrEdgeService =
+    sType.includes('gateway') ||
+    tType.includes('gateway') ||
+    sType.includes('front_door') ||
+    sType.includes('cloudfront') ||
+    tType.includes('front_door') ||
+    tType.includes('cloudfront');
+
+  return isComputeToCompute || isGatewayOrEdgeService;
+}
+
 export interface RelationshipRule {
   id: string;
   sourceType: string | string[];
@@ -31,6 +62,105 @@ export class RelationshipEngine {
       RelationshipEngine.instance = new RelationshipEngine();
     }
     return RelationshipEngine.instance;
+  }
+
+  /**
+   * Validates hierarchical containment between a child resource and a parent container.
+   */
+  public validateContainment(
+    childType: string,
+    parentType: string,
+    childProvider?: string,
+    parentProvider?: string
+  ): { isAllowed: boolean; error?: { code: string; message: string; technicalReason?: string } } {
+    const cProvider = childProvider || (childType.startsWith('azure_') ? 'azure' : 'aws');
+    const pProvider = parentProvider || (parentType.startsWith('azure_') ? 'azure' : 'aws');
+
+    // Cross-provider containment
+    if (cProvider !== pProvider && cProvider !== 'multi' && pProvider !== 'multi') {
+      return {
+        isAllowed: false,
+        error: {
+          code: 'CROSS_PROVIDER_CONTAINMENT',
+          message: `Cannot place ${cProvider.toUpperCase()} resource inside ${pProvider.toUpperCase()} container.`,
+          technicalReason: 'Cloud fabrics are strictly isolated across different cloud providers.',
+        },
+      };
+    }
+
+    // Nested compute
+    if (
+      (childType === 'aws_ec2' || childType === 'azure_vm') &&
+      (parentType === 'aws_ec2' || parentType === 'azure_vm')
+    ) {
+      return {
+        isAllowed: false,
+        error: {
+          code: 'NESTED_VIRTUAL_MACHINE',
+          message: 'Virtual machine cannot be nested inside another virtual machine.',
+          technicalReason: 'Virtual machines must be placed inside a Subnet.',
+        },
+      };
+    }
+
+    // Subnet inside subnet
+    if (childType.includes('subnet') && parentType.includes('subnet')) {
+      return {
+        isAllowed: false,
+        error: {
+          code: 'NESTED_SUBNET',
+          message: 'A subnet cannot be nested inside another subnet.',
+          technicalReason: 'Subnets must reside directly within a VPC or Virtual Network.',
+        },
+      };
+    }
+
+    // Inverted network hierarchy (VPC inside subnet)
+    if (
+      (childType === 'aws_vpc' || childType === 'azure_vnet') &&
+      parentType.includes('subnet')
+    ) {
+      return {
+        isAllowed: false,
+        error: {
+          code: 'INVERTED_NETWORK_HIERARCHY',
+          message: 'Network container cannot be placed inside a subnet.',
+          technicalReason: 'VPC/VNet encapsulations must be at the root or inside a Cloud Boundary.',
+        },
+      };
+    }
+
+    // Compute directly in VPC/VNet/ResourceGroup
+    if (
+      (childType === 'aws_ec2' || childType === 'azure_vm' || childType === 'aws_auto_scaling' || childType === 'azure_vmss') &&
+      (parentType === 'aws_vpc' || parentType === 'azure_vnet' || parentType === 'azure_resource_group')
+    ) {
+      return {
+        isAllowed: false,
+        error: {
+          code: 'COMPUTE_DIRECT_IN_VPC',
+          message: 'Compute instances must be contained inside a Subnet, not placed directly in VPC/VNet.',
+          technicalReason: 'Virtual machines require a subnet for network interface (ENI/NIC) and IP allocation.',
+        },
+      };
+    }
+
+    // Database directly in VPC/VNet/ResourceGroup
+    if (
+      (childType === 'aws_rds' || childType === 'azure_sql' || childType === 'aws_elasticache' || childType === 'azure_redis') &&
+      (parentType === 'aws_vpc' || parentType === 'azure_vnet' || parentType === 'azure_resource_group')
+    ) {
+      return {
+        isAllowed: false,
+        error: {
+          code: 'DATABASE_DIRECT_IN_VPC',
+          message: 'Databases must reside in a dedicated Database Subnet.',
+          technicalReason: 'Managed database services require explicit private subnet assignment for security isolation.',
+        },
+      };
+    }
+
+    return { isAllowed: true };
   }
 
   /**
@@ -91,11 +221,7 @@ export class RelationshipEngine {
     // Rule 2: Cross-Cloud boundary connectivity validation
     if (sProvider !== tProvider) {
       // Validate whether cross-cloud communication is technically feasible
-      const isComputeToCompute =
-        (sType.includes('ec2') || sType.includes('vm') || sType.includes('lambda') || sType.includes('functions')) &&
-        (tType.includes('ec2') || tType.includes('vm') || tType.includes('sql') || tType.includes('storage') || tType.includes('s3'));
-
-      if (isComputeToCompute) {
+      if (isCrossCloudConnectionSupported(sType, tType)) {
         return {
           isValid: true,
           relationshipType: 'CONNECTS_TO',
@@ -583,13 +709,16 @@ export class RelationshipEngine {
       }
     }
 
-    // Default fallback: If both resources are generic compute or support standard networking
+    // Default fallback: no explicit rule matched this resource-type pair.
+    // The connection is still allowed (over-blocking unmodeled but legitimate
+    // pairs would be worse), but per the "no fabricated cloud facts" rule we
+    // do NOT assert a specific protocol/port we have no basis for — this is
+    // surfaced to the user as unverified rather than presented as a known fact.
     return {
       isValid: true,
       relationshipType: 'NETWORK_FLOW',
       networkScope: 'private',
-      protocol: 'TCP',
-      label: 'TCP Flow',
+      label: 'Unclassified Connection (protocol/port not verified)',
     };
   }
 }
