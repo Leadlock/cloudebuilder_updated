@@ -31,7 +31,7 @@ export async function GET(
     if (!identity) return unauthorized();
     const { id: projectId } = await params;
 
-    const orgId = await resolveOrgId(req);
+    const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return badRequest('orgId required');
 
     const role = await getOrgRole(identity.userId, orgId);
@@ -70,7 +70,7 @@ export async function POST(
     if (!parsed.ok) return parsed.response;
     const body = parsed.data;
 
-    const orgId = await resolveOrgId(req);
+    const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return badRequest('orgId required');
 
     const role = await getOrgRole(identity.userId, orgId);

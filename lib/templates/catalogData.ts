@@ -14,7 +14,7 @@
  * Total: 240 distinct, production-grade cloud architecture templates.
  */
 
-import { ArchitectureTemplate, CanvasNode, CanvasEdge, CloudProvider, RelationshipType, NetworkScope, TemplateGenerateOptions } from '@/types';
+import { ArchitectureTemplate, CanvasNode, CanvasEdge, RelationshipType, NetworkScope, TemplateGenerateOptions } from '@/types';
 
 // Helper to create nodes
 function n(
@@ -441,8 +441,45 @@ const categories = [
   'Multi-cloud',
 ] as const;
 
+interface AwsPatternItem {
+  name: string;
+  compute: AwsTemplateSpec['computeType'];
+  db: AwsTemplateSpec['dbType'];
+  cost: number;
+  tags: string[];
+  cdn?: boolean;
+  waf?: boolean;
+  dns?: boolean;
+  redis?: boolean;
+  s3?: boolean;
+  sqs?: boolean;
+  isMultiAz?: boolean;
+}
+
+interface AzurePatternItem {
+  name: string;
+  compute: AzureTemplateSpec['computeType'];
+  db: AzureTemplateSpec['dbType'];
+  cost: number;
+  tags: string[];
+  fd?: boolean;
+  waf?: boolean;
+  redis?: boolean;
+  storage?: boolean;
+  isZone?: boolean;
+}
+
+interface MultiPatternItem {
+  name: string;
+  cost: number;
+  protocol: string;
+  port: number;
+  label: string;
+  tags: string[];
+}
+
 // Patterns definition for 8 categories x 10 templates each
-const patterns = {
+const patterns: Record<string, { aws: AwsPatternItem[]; azure: AzurePatternItem[]; multi: MultiPatternItem[] }> = {
   'Web Applications': {
     aws: [
       { name: 'Production 3-Tier Web Application', compute: 'ec2', db: 'rds', cost: 380, redis: true, s3: true, tags: ['3-tier', 'rds', 'ec2'] },
@@ -770,25 +807,25 @@ export function generateTemplateCatalog(): ArchitectureTemplate[] {
           name: item.name,
           category: cat,
           description: `Enterprise AWS architecture for ${cat.toLowerCase()}: ${item.name}. Features automated sizing, multi-AZ resilience, and verified canonical graph integrity.`,
-          complexity: (item as any).waf ? 'complex' : item.compute === 'lambda' ? 'simple' : 'moderate',
+          complexity: item.waf ? 'complex' : item.compute === 'lambda' ? 'simple' : 'moderate',
           cost: item.cost,
           features: [
             `Engineered for ${cat} workloads`,
             `Compute tier: ${item.compute.toUpperCase()}`,
             `Database tier: ${item.db.toUpperCase()}`,
-            (item as any).isMultiAz ? 'Multi-AZ high availability' : 'Regional resilience',
-            (item as any).cdn ? 'Global CloudFront CDN acceleration' : 'VPC isolated ingress',
+            item.isMultiAz ? 'Multi-AZ high availability' : 'Regional resilience',
+            item.cdn ? 'Global CloudFront CDN acceleration' : 'VPC isolated ingress',
           ],
           tags: item.tags,
-          computeType: item.compute as any,
-          dbType: item.db as any,
-          useCdn: (item as any).cdn,
-          useWaf: (item as any).waf,
-          useDns: (item as any).dns,
-          useRedis: (item as any).redis,
-          useS3: (item as any).s3,
-          useSqs: (item as any).sqs,
-          isMultiAz: (item as any).isMultiAz,
+          computeType: item.compute,
+          dbType: item.db,
+          useCdn: item.cdn,
+          useWaf: item.waf,
+          useDns: item.dns,
+          useRedis: item.redis,
+          useS3: item.s3,
+          useSqs: item.sqs,
+          isMultiAz: item.isMultiAz,
         })
       );
     }
@@ -807,23 +844,23 @@ export function generateTemplateCatalog(): ArchitectureTemplate[] {
           name: item.name,
           category: cat,
           description: `Production Azure architecture for ${cat.toLowerCase()}: ${item.name}. Built with native Azure resource hierarchies, verified VNet containment, and deterministic capacity models.`,
-          complexity: (item as any).waf ? 'complex' : item.compute === 'functions' ? 'simple' : 'moderate',
+          complexity: item.waf ? 'complex' : item.compute === 'functions' ? 'simple' : 'moderate',
           cost: item.cost,
           features: [
             `Engineered for ${cat} workloads`,
             `Compute tier: ${item.compute.toUpperCase()}`,
             `Data persistence: ${item.db.toUpperCase()}`,
-            (item as any).isZone ? 'Zone-redundant high availability' : 'Regional Resource Group scoping',
-            (item as any).fd ? 'Azure Front Door global acceleration' : 'Application Gateway ingress',
+            item.isZone ? 'Zone-redundant high availability' : 'Regional Resource Group scoping',
+            item.fd ? 'Azure Front Door global acceleration' : 'Application Gateway ingress',
           ],
           tags: item.tags,
-          computeType: item.compute as any,
-          dbType: item.db as any,
-          useFrontDoor: (item as any).fd,
-          useWaf: (item as any).waf,
-          useRedis: (item as any).redis,
-          useStorage: (item as any).storage,
-          isZoneRedundant: (item as any).isZone,
+          computeType: item.compute,
+          dbType: item.db,
+          useFrontDoor: item.fd,
+          useWaf: item.waf,
+          useRedis: item.redis,
+          useStorage: item.storage,
+          isZoneRedundant: item.isZone,
         })
       );
     }

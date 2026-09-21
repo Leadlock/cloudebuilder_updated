@@ -68,7 +68,7 @@ function AcceptInviteForm() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-white tracking-tight">Join Organization</h1>
-              <p className="text-xs text-slate-400">You've been invited to CloudCraft</p>
+              <p className="text-xs text-slate-400">You&apos;ve been invited to CloudCraft</p>
             </div>
           </div>
         </div>

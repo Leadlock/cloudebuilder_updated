@@ -228,7 +228,7 @@ export default function WellArchitectedReview() {
             )}
           </div>
           <p className="text-sm text-slate-400 mt-1">
-            Design-time checks mapped to the {activeProject.provider === 'azure' ? 'Microsoft Azure' : 'AWS'} Well-Architected Framework's
+            Design-time checks mapped to the {activeProject.provider === 'azure' ? 'Microsoft Azure' : 'AWS'} Well-Architected Framework&apos;s
             pillars — a heuristic assessment, not an official certification or compliance report.
           </p>
         </div>

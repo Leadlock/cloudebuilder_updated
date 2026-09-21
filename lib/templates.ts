@@ -1,5 +1,6 @@
 import { ArchitectureTemplate, TemplateGenerateOptions, CanvasNode, CanvasEdge, CloudProvider, RelationshipType, NetworkScope } from '@/types';
 import { allTemplates as catalogTemplates } from '@/lib/templates/catalogData';
+import { allReferenceArchitectures } from '@/lib/templates/referenceArchitectures';
 
 function n(
   id: string,
@@ -442,8 +443,13 @@ export const architectureTemplatesLegacy: ArchitectureTemplate[] = [
   },
 ];
 
-// Export the full 240-template production catalog as the primary architectureTemplates
-export const architectureTemplates: ArchitectureTemplate[] = catalogTemplates;
+// architectureTemplates = hand-built reference architectures (distinct topologies,
+// see lib/templates/referenceArchitectures.ts) first, followed by the parameterized
+// quick-start catalog (lib/templates/catalogData.ts) for broader labeled variety.
+export const architectureTemplates: ArchitectureTemplate[] = [
+  ...allReferenceArchitectures,
+  ...catalogTemplates,
+];
 
 export const legacyArchitectureTemplates = architectureTemplatesLegacy;
 

@@ -1,4 +1,3 @@
-export { architectureService } from './ArchitectureService';
 export type { IArchitectureService } from './ArchitectureService';
 
 export { apiArchitectureService } from './ApiArchitectureService';
@@ -21,9 +20,3 @@ export type { TerraformApiResponse, IApiTerraformService } from './ApiTerraformS
 
 export { apiAdvisorService, setActiveProjectId as setAdvisorProjectId, setActiveEnvironment as setAdvisorEnvironment } from './ApiAdvisorService';
 export type { IAdvisorService, AdvisorResult } from './ApiAdvisorService';
-
-export { deploymentService } from './DeploymentService';
-export type { IDeploymentService, DeployStep, DeployResult } from './DeploymentService';
-
-export { importService } from './ImportService';
-export type { IImportService, ImportedResource, ImportResult } from './ImportService';

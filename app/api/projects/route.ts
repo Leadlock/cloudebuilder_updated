@@ -5,7 +5,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ok, created, badRequest, forbidden, unauthorized, internalError, parseBody } from '@/lib/api/response';
-import { extractIdentity, getOrgRole } from '@/lib/api/auth';
+import { extractIdentity, getOrgRole, resolveOrgIds } from '@/lib/api/auth';
 import { projectRepository } from '@/lib/repositories/projectRepository';
 import { orgRepository } from '@/lib/repositories/orgRepository';
 import type { CloudProvider, Region } from '@/types';
@@ -28,8 +28,13 @@ export async function GET(req: NextRequest) {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
 
-    // In dev mode auto-provision org context
+    // Prefer an explicit orgId, then the caller's own org membership — never
+    // assume an unrelated caller belongs to the shared dev-mode org below.
     let orgId = req.nextUrl.searchParams.get('orgId') ?? '';
+    if (!orgId) {
+      const memberOrgIds = await resolveOrgIds(identity.userId);
+      orgId = memberOrgIds[0] ?? '';
+    }
     if (!orgId && process.env.NODE_ENV === 'development') {
       try {
         const ctx = await orgRepository.ensureDevContext();
@@ -47,6 +52,7 @@ export async function GET(req: NextRequest) {
       const projects = await projectRepository.list(orgId);
       return ok(projects);
     } catch (dbErr) {
+      console.error('[GET /api/projects] projectRepository.list failed:', dbErr instanceof Error ? dbErr.stack ?? dbErr.message : dbErr);
       if (process.env.NODE_ENV === 'development') {
         return ok(mockProjects);
       }
@@ -67,8 +73,12 @@ export async function POST(req: NextRequest) {
     if (!parsed.ok) return parsed.response;
     const body = parsed.data;
 
-    // Resolve orgId
+    // Resolve orgId: prefer an explicit orgId, then the caller's own org membership.
     let orgId = body.orgId ?? '';
+    if (!orgId) {
+      const memberOrgIds = await resolveOrgIds(identity.userId);
+      orgId = memberOrgIds[0] ?? '';
+    }
     if (!orgId && process.env.NODE_ENV === 'development') {
       try {
         const ctx = await orgRepository.ensureDevContext();
@@ -95,6 +105,7 @@ export async function POST(req: NextRequest) {
       });
       return created(project);
     } catch (dbErr) {
+      console.error('[POST /api/projects] projectRepository.create failed:', dbErr instanceof Error ? dbErr.stack ?? dbErr.message : dbErr);
       if (process.env.NODE_ENV === 'development') {
         const fallbackProject = {
           id: `proj-${Date.now()}`,

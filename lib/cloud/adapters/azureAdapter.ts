@@ -112,7 +112,7 @@ export class AzureDiscoveryAdapter implements InfrastructureDiscoveryProvider {
       const resourceClient = new ResourceManagementClient(credential, this._subscriptionId);
 
       const missingPermissions: string[] = [];
-      let subscriptionName = this._subscriptionId;
+      const subscriptionName = this._subscriptionId;
 
       try {
         const rg = resourceClient.resourceGroups.list();

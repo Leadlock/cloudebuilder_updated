@@ -5,7 +5,7 @@
  */
 import { db } from '@/src/prisma/db';
 import { randomUUID as uuidv4 } from 'crypto';
-import type { WaAssessment, WaFinding } from '@/lib/engines/wellArchitected/types';
+import type { WaAssessment, WaFinding, WaProvider, WaPillar, WaSeverity, AnalysisSource, ResourceState } from '@/lib/engines/wellArchitected/types';
 
 // ─── DB Types ─────────────────────────────────────────────────────────────────
 
@@ -183,7 +183,7 @@ class WellArchitectedRepository {
     return {
       architectureId,
       projectId: row.projectId,
-      provider: row.provider as any,
+      provider: row.provider as WaProvider,
       framework: row.framework,
       frameworkVersion: row.frameworkVersion,
       frameworkSource: '',
@@ -191,9 +191,9 @@ class WellArchitectedRepository {
       pillarScores,
       findings,
       evaluatedAt: row.createdAt,
-      source: row.source as any,
+      source: row.source as AnalysisSource,
       sourceLabel: row.sourceLabel,
-      confidence: row.confidence as any,
+      confidence: row.confidence as 'design-time' | 'live-cloud',
       isStale: row.isStale,
     };
   }
@@ -207,11 +207,11 @@ class WellArchitectedRepository {
     return {
       id: row['id'] as string,
       ruleId: row['ruleId'] as string,
-      provider: row['provider'] as any,
-      pillar: row['pillar'] as any,
+      provider: row['provider'] as WaProvider,
+      pillar: row['pillar'] as WaPillar,
       pillarLabel: row['pillarLabel'] as string,
       pillarRef: row['pillarRef'] as string,
-      severity: row['severity'] as any,
+      severity: row['severity'] as WaSeverity,
       title: row['title'] as string,
       description: row['description'] as string,
       affectedResourceIds,
@@ -220,10 +220,10 @@ class WellArchitectedRepository {
       recommendation: row['recommendation'] as string,
       remediation: row['remediation'] as string,
       frameworkReference: row['frameworkReference'] as string,
-      source: row['source'] as any,
+      source: row['source'] as AnalysisSource,
       sourceLabel: row['sourceLabel'] as string,
       detectedAt: row['detectedAt'] as string,
-      resourceState: row['resourceState'] as any,
+      resourceState: row['resourceState'] as ResourceState,
     };
   }
 }

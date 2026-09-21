@@ -11,11 +11,18 @@
 import type { ICostService } from './CostService';
 import type { CanvasNode, CostItem, CostOptimization } from '@/types';
 
+export interface CostComparisonItem {
+  resourceId: string;
+  resourceLabel: string;
+  resourceType: string;
+  monthlyUsd: number;
+}
+
 export interface CostComparisonResult {
   currentProvider: string;
   targetProvider: string;
-  current: { items: any[]; totalMonthlyUsd: number; totalHourlyUsd: number };
-  translated: { items: any[]; totalMonthlyUsd: number; totalHourlyUsd: number };
+  current: { items: CostComparisonItem[]; totalMonthlyUsd: number; totalHourlyUsd: number };
+  translated: { items: CostComparisonItem[]; totalMonthlyUsd: number; totalHourlyUsd: number };
   targetCurrency: string;
 }
 

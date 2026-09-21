@@ -33,23 +33,13 @@ import {
   ok, created, notFound, forbidden, unauthorized, internalError,
 } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
-import { orgRepository } from '@/lib/repositories/orgRepository';
+import { resolveOrgId } from '@/lib/api/phase2d';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
 import { discoveryRepository } from '@/lib/repositories/discoveryRepository';
 import { createDiscoveryProvider } from '@/lib/cloud/provider';
 import type { CloudCredentials } from '@/lib/cloud/types';
 
 export const dynamic = 'force-dynamic';
-
-async function resolveOrgId(req: NextRequest): Promise<string> {
-  const orgId = req.nextUrl.searchParams.get('orgId') ?? '';
-  if (orgId) return orgId;
-  if (process.env.NODE_ENV === 'development') {
-    const ctx = await orgRepository.ensureDevContext();
-    return ctx.orgId;
-  }
-  return '';
-}
 
 export async function POST(
   req: NextRequest,
@@ -60,7 +50,7 @@ export async function POST(
     if (!identity) return unauthorized();
 
     const { id } = await ctx.params;
-    const orgId = await resolveOrgId(req);
+    const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return forbidden();
 
     // Authorization check: must be org member

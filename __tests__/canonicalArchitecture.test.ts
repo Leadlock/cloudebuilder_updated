@@ -205,8 +205,10 @@ describe('Canonical Architecture Model & Validation', () => {
 });
 
 describe('Template Gallery — Commercial Reference Architectures', () => {
-  it('contains all 240 production templates across 8 categories x 3 providers x 10 each', () => {
-    expect(TEMPLATES).toHaveLength(240);
+  it('contains the 240 parameterized templates plus the hand-built reference architectures', () => {
+    // See __tests__/templateLibrary.test.ts for exhaustive checks on the
+    // reference architectures specifically (lib/templates/referenceArchitectures.ts).
+    expect(TEMPLATES.length).toBeGreaterThanOrEqual(251);
   });
 
   it('every template has valid canonical representation and passes relationship validation', () => {

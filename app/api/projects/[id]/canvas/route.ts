@@ -3,50 +3,16 @@
  * PUT /api/projects/[id]/canvas          — save nodes + edges for the active environment
  */
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
 import { ok, notFound, forbidden, unauthorized, internalError, badRequest, parseBody } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { projectRepository, environmentRepository } from '@/lib/repositories/projectRepository';
 import { architectureRepository, toCanvas, RevisionConflictError } from '@/lib/repositories/architectureRepository';
-import { orgRepository } from '@/lib/repositories/orgRepository';
+import { resolveOrgId } from '@/lib/api/phase2d';
 import { ArchitectureReviewService } from '@/lib/services/ArchitectureReviewService';
+import { SaveCanvasSchema } from '@/lib/api/schemas/canvasSchema';
 import type { Environment, CanvasNode, CanvasEdge } from '@/types';
 
 export const dynamic = 'force-dynamic';
-
-const CanvasNodeSchema = z.object({
-  id:           z.string(),
-  type:         z.string().default('cloudNode'),
-  resourceType: z.string(),
-  provider:     z.enum(['aws', 'azure', 'gcp']),
-  label:        z.string(),
-  position:     z.object({ x: z.number(), y: z.number() }),
-  config:       z.record(z.string(), z.unknown()).optional().default({}),
-  region:       z.string().optional().nullable(),
-  groupId:      z.string().optional().nullable(),
-  parentId:     z.string().optional().nullable(),
-  width:        z.number().optional().nullable(),
-  height:       z.number().optional().nullable(),
-  locked:       z.boolean().optional().nullable(),
-  selected:     z.boolean().optional().nullable(),
-  importState:  z.string().optional().nullable(),
-}).passthrough();
-
-const CanvasEdgeSchema = z.object({
-  id:       z.string(),
-  source:   z.string(),
-  target:   z.string(),
-  label:    z.string().optional().nullable(),
-  edgeType: z.enum(['data', 'network', 'security', 'management']).optional().nullable(),
-}).passthrough();
-
-const SaveCanvasSchema = z.object({
-  env:          z.enum(['development', 'staging', 'production']).optional().default('production'),
-  nodes:        z.array(CanvasNodeSchema),
-  edges:        z.array(CanvasEdgeSchema),
-  revision:     z.number().optional(),
-  scaleProfile: z.record(z.string(), z.unknown()).optional(),
-});
 
 // Used ONLY by the dev-mode DB-unreachable fallback path below (no Postgres
 // running locally). The real, production revision counter is DB-backed —
@@ -54,16 +20,6 @@ const SaveCanvasSchema = z.object({
 // — specifically so it stays correct across multiple server instances. This
 // Map exists purely so `npm run dev` still works with no database at all.
 const _devFallbackRevisions = new Map<string, number>();
-
-async function resolveOrgId(req: NextRequest): Promise<string | null> {
-  const orgId = req.nextUrl.searchParams.get('orgId') ?? '';
-  if (orgId) return orgId;
-  if (process.env.NODE_ENV === 'development') {
-    const ctx = await orgRepository.ensureDevContext();
-    return ctx.orgId;
-  }
-  return null;
-}
 
 export async function GET(
   req: NextRequest,
@@ -74,7 +30,7 @@ export async function GET(
     if (!identity) return unauthorized();
     const { id: projectId } = await params;
 
-    const orgId = await resolveOrgId(req);
+    const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return badRequest('orgId required');
 
     const role = await getOrgRole(identity.userId, orgId);
@@ -110,7 +66,7 @@ export async function PUT(
     if (!parsed.ok) return parsed.response;
     const body = parsed.data;
 
-    const orgId = await resolveOrgId(req);
+    const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return badRequest('orgId required');
 
     const role = await getOrgRole(identity.userId, orgId);
@@ -126,7 +82,7 @@ export async function PUT(
       }
 
       const envKey = body.env as Environment;
-      let env = await environmentRepository.findByKey(projectId, envKey);
+      const env = await environmentRepository.findByKey(projectId, envKey);
       if (!env) {
         if (process.env.NODE_ENV === 'development') {
           return ok({ nodes: body.nodes, edges: body.edges });
@@ -166,6 +122,8 @@ export async function PUT(
           { status: 409, headers: { 'Content-Type': 'application/json' } }
         );
       }
+
+      console.error('[PUT /api/projects/:id/canvas] architectureRepository.saveCanvas failed:', dbErr instanceof Error ? dbErr.stack ?? dbErr.message : dbErr);
 
       // Invalidate existing approval if architecture changed in dev fallback mode as well
       ArchitectureReviewService.checkAndInvalidateOnSave(

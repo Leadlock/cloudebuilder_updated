@@ -14,7 +14,7 @@
  *   PUT    /api/projects/:id/canvas   — save canvas
  */
 import type { IArchitectureService } from './ArchitectureService';
-import type { Project, CanvasNode, CanvasEdge, CloudProvider, Environment, Region, ArchitectureVersion, ScaleProfile } from '@/types';
+import type { Project, CanvasNode, CanvasEdge, CloudProvider, Environment, Region, ArchitectureVersion, ScaleProfile, ProviderMode } from '@/types';
 
 // ─── Client config ────────────────────────────────────────────────────────────
 
@@ -31,7 +31,7 @@ function getBaseUrl(): string {
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
 interface ApiSuccess<T> { ok: true; data: T }
-interface ApiError { ok: false; error: { code: string; message: string } }
+interface ApiError { ok: false; error: { code: string; message: string; serverRevision?: number; clientRevision?: number } }
 type ApiEnvelope<T> = ApiSuccess<T> | ApiError;
 
 export interface ApiFetchError extends Error {
@@ -56,11 +56,11 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     const err: ApiFetchError = new Error(`API ${path} → ${envelope.error.code}: ${envelope.error.message}`);
     err.status = res.status;
     err.code = envelope.error.code;
-    if ((envelope.error as any)?.serverRevision !== undefined) {
-      err.serverRevision = (envelope.error as any).serverRevision;
+    if (envelope.error.serverRevision !== undefined) {
+      err.serverRevision = envelope.error.serverRevision;
     }
-    if ((envelope.error as any)?.clientRevision !== undefined) {
-      err.clientRevision = (envelope.error as any).clientRevision;
+    if (envelope.error.clientRevision !== undefined) {
+      err.clientRevision = envelope.error.clientRevision;
     }
     throw err;
   }
@@ -294,8 +294,8 @@ class ApiArchitectureServiceImpl implements IArchitectureService {
     });
   }
 
-  async loadDraft(): Promise<{ nodes: CanvasNode[]; edges: CanvasEdge[]; providerMode?: any; scaleProfile?: any; revision?: number; hash?: string } | null> {
-    const raw = await apiFetch<any>('/api/architecture/draft');
+  async loadDraft(): Promise<{ nodes: CanvasNode[]; edges: CanvasEdge[]; providerMode?: ProviderMode; scaleProfile?: ScaleProfile; revision?: number; hash?: string } | null> {
+    const raw = await apiFetch<{ nodes: CanvasNode[]; edges: CanvasEdge[]; providerMode?: ProviderMode; scaleProfile?: ScaleProfile; revision?: number; hash?: string } | null>('/api/architecture/draft');
     if (!raw) return null;
     return raw;
   }

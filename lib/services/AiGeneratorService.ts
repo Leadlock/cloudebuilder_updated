@@ -2,17 +2,29 @@ import { GoogleGenAI } from '@google/genai';
 import { awsResources } from '../resources/aws';
 import { azureResources } from '../resources/azure';
 import { gcpResources } from '../resources/gcp';
-import type { CanvasNode, CanvasEdge } from '@/types';
 import { db } from '../../src/prisma/db';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Build RDE valid-type sets once at module load for fast O(1) validation
-const RDE_VALID_TYPES = new Set<string>([
-  ...awsResources.map(r => r.type),
-  ...azureResources.map(r => r.type),
-  ...gcpResources.map(r => r.type),
-]);
+/** Shape of the JSON graph the LLM is prompted to emit — unverified until validateAgainstRde runs. */
+interface RawAiResource {
+  id: string;
+  resourceType: string;
+  label?: string;
+  config?: Record<string, unknown>;
+  parentId?: string | null;
+}
+
+interface RawAiConnection {
+  sourceId: string;
+  targetId: string;
+  label?: string;
+}
+
+interface RawAiGraph {
+  resources?: RawAiResource[];
+  connections?: RawAiConnection[];
+}
 
 /**
  * Validates and filters AI-generated graph output against the RDE catalog.
@@ -20,11 +32,11 @@ const RDE_VALID_TYPES = new Set<string>([
  * Returns { validated: graph, rejected: string[] } where rejected lists unsupported types.
  */
 function validateAgainstRde(
-  graph: any,
+  graph: RawAiGraph,
   validTypes: Set<string>
-): { resources: any[]; connections: any[]; rejected: string[] } {
+): { resources: RawAiResource[]; connections: RawAiConnection[]; rejected: string[] } {
   const rejected: string[] = [];
-  const validResources = (graph.resources ?? []).filter((r: any) => {
+  const validResources = (graph.resources ?? []).filter((r) => {
     if (!validTypes.has(r.resourceType)) {
       rejected.push(r.resourceType);
       return false;
@@ -32,9 +44,9 @@ function validateAgainstRde(
     return true;
   });
 
-  const validIds = new Set(validResources.map((r: any) => r.id));
+  const validIds = new Set(validResources.map((r) => r.id));
   const validConnections = (graph.connections ?? []).filter(
-    (c: any) => validIds.has(c.sourceId) && validIds.has(c.targetId)
+    (c) => validIds.has(c.sourceId) && validIds.has(c.targetId)
   );
 
   return { resources: validResources, connections: validConnections, rejected };
@@ -50,7 +62,7 @@ export class AiGeneratorService {
     projectId: string,
     environmentId: string,
     provider: 'aws' | 'azure' | 'gcp' = 'aws'
-  ): Promise<{ architectureJson: any; historyId: string; rejectedTypes: string[] }> {
+  ): Promise<{ architectureJson: { resources: RawAiResource[]; connections: RawAiConnection[] }; historyId: string; rejectedTypes: string[] }> {
     // Select the correct resource catalog for the target provider
     const resources =
       provider === 'aws' ? awsResources :
@@ -105,7 +117,7 @@ Rules:
     });
 
     const outputText = response.text || '{}';
-    let rawGraph: any;
+    let rawGraph: RawAiGraph;
     try {
       rawGraph = JSON.parse(outputText);
     } catch {

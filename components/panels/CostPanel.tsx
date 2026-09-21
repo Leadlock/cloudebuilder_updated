@@ -22,6 +22,7 @@ export default function CostPanel() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [calculating, setCalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [usingFallback, setUsingFallback] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [costs, setCosts] = useState<CostItem[]>([]);
   const [expandedBreakdown, setExpandedBreakdown] = useState<Record<string, boolean>>({});
@@ -44,6 +45,7 @@ export default function CostPanel() {
       if (!cancelled) {
         setCosts(result);
         setError(null);
+        setUsingFallback(false);
         setCalculating(false);
       }
     }).catch(() => {
@@ -52,12 +54,17 @@ export default function CostPanel() {
           if (!cancelled) {
             setCosts(localCosts);
             setError(null);
+            // The API-backed estimate failed — this is a deterministic fixture
+            // fallback, not live pricing. Never present it as equivalent; see
+            // the cost-engine skill's rule on not conflating pricing sources.
+            setUsingFallback(true);
             setCalculating(false);
           }
         }).catch(() => {
           if (!cancelled) {
             setError('Cost estimation failed. Unable to retrieve estimate from server.');
             setCosts([]);
+            setUsingFallback(false);
             setCalculating(false);
           }
         });
@@ -168,6 +175,16 @@ export default function CostPanel() {
             >
               Return to Builder
             </button>
+          </div>
+        )}
+
+        {usingFallback && (
+          <div className="bg-amber-900/30 border border-amber-800/50 rounded-xl p-4 flex items-center gap-3 mb-6">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+            <p className="text-amber-300 text-sm">
+              The live pricing service is unreachable — showing an <strong>offline estimate</strong> from cached
+              reference rates. Figures below may not reflect current pricing.
+            </p>
           </div>
         )}
 

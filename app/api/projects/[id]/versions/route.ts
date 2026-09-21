@@ -8,7 +8,7 @@ import { ok, created, notFound, forbidden, unauthorized, internalError, badReque
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { projectRepository, environmentRepository } from '@/lib/repositories/projectRepository';
 import { architectureRepository, toCanvas } from '@/lib/repositories/architectureRepository';
-import { orgRepository } from '@/lib/repositories/orgRepository';
+import { resolveOrgId } from '@/lib/api/phase2d';
 import type { Environment } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -20,16 +20,6 @@ const CreateVersionSchema = z.object({
   author:  z.string().optional(),
 });
 
-async function resolveOrgId(req: NextRequest): Promise<string | null> {
-  const orgId = req.nextUrl.searchParams.get('orgId') ?? '';
-  if (orgId) return orgId;
-  if (process.env.NODE_ENV === 'development') {
-    const ctx = await orgRepository.ensureDevContext();
-    return ctx.orgId;
-  }
-  return null;
-}
-
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -39,7 +29,7 @@ export async function GET(
     if (!identity) return unauthorized();
     const { id: projectId } = await params;
 
-    const orgId = await resolveOrgId(req);
+    const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return badRequest('orgId required');
 
     const role = await getOrgRole(identity.userId, orgId);
@@ -91,7 +81,7 @@ export async function POST(
     if (!parsed.ok) return parsed.response;
     const body = parsed.data;
 
-    const orgId = await resolveOrgId(req);
+    const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return badRequest('orgId required');
 
     const role = await getOrgRole(identity.userId, orgId);

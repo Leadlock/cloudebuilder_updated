@@ -15,6 +15,7 @@ export default function CostComparisonPanel() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [usingFallback, setUsingFallback] = useState(false);
   const [data, setData] = useState<CostComparisonResult | null>(null);
 
   const nodeCount = activeProject?.nodes.length ?? 0;
@@ -30,23 +31,27 @@ export default function CostComparisonPanel() {
         if (!cancelled) {
           setData(res);
           setError(null);
+          setUsingFallback(false);
           setLoading(false);
         }
       })
       .catch(() => {
         // No persisted project (e.g. an unsaved draft) or the API is unreachable —
         // fall back to a fully local comparison, same pattern CostPanel uses.
+        // This is a deterministic-fixture estimate, not live pricing, so it is
+        // flagged to the user rather than presented as equivalent to the API result.
         costService.compareCosts!(activeProject.nodes, displayCurrency)
           .then(res => {
             if (!cancelled) {
-              setData(res as CostComparisonResult);
+              setData(res);
               setError(null);
+              setUsingFallback(true);
               setLoading(false);
             }
           })
-          .catch((err) => {
+          .catch((err: unknown) => {
             if (!cancelled) {
-              setError(err.message || 'Failed to compare costs.');
+              setError(err instanceof Error ? err.message : 'Failed to compare costs.');
               setLoading(false);
             }
           });
@@ -110,6 +115,16 @@ export default function CostComparisonPanel() {
           <h2 className="text-2xl font-bold text-white">Multi-Cloud Cost Comparison</h2>
         </div>
 
+        {usingFallback && (
+          <div className="bg-amber-900/30 border border-amber-800/50 rounded-xl p-4 flex items-center gap-3 mb-6">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+            <p className="text-amber-300 text-sm">
+              The live pricing service is unreachable — showing an <strong>offline estimate</strong> from cached
+              reference rates. Figures below may not reflect current pricing.
+            </p>
+          </div>
+        )}
+
         {/* Top Summary Banner */}
         <div className="bg-gradient-to-r from-slate-900 to-slate-800 border border-slate-700 rounded-2xl p-6 mb-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
           <div className="flex-1 text-center md:text-left">
@@ -156,7 +171,7 @@ export default function CostComparisonPanel() {
             <div className={clsx("p-3 rounded-t-xl border-b-2 font-bold uppercase tracking-wider text-sm", data.currentProvider === 'aws' ? "bg-orange-500/10 border-orange-500 text-orange-400" : "bg-blue-500/10 border-blue-500 text-blue-400")}>
               {data.currentProvider} Architecture
             </div>
-            {data.current.items.map((item: any) => {
+            {data.current.items.map((item) => {
               const def = getResourceDefinition(item.resourceType);
               return (
                 <div key={item.resourceId} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
@@ -182,7 +197,7 @@ export default function CostComparisonPanel() {
             <div className={clsx("p-3 rounded-t-xl border-b-2 font-bold uppercase tracking-wider text-sm", data.targetProvider === 'aws' ? "bg-orange-500/10 border-orange-500 text-orange-400" : "bg-blue-500/10 border-blue-500 text-blue-400")}>
               {data.targetProvider} Architecture
             </div>
-            {data.translated.items.map((item: any) => {
+            {data.translated.items.map((item) => {
               const def = getResourceDefinition(item.resourceType);
               return (
                 <div key={item.resourceId} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">

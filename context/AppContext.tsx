@@ -19,7 +19,6 @@ import { setActiveProjectId as setCostProjectId, setActiveEnvironment as setCost
 import { setActiveProjectId as setTerraformProjectId, setActiveEnvironment as setTerraformEnvironment } from '@/lib/services/ApiTerraformService';
 import { setActiveProjectId as setAdvisorProjectId, setActiveEnvironment as setAdvisorEnvironment } from '@/lib/services/ApiAdvisorService';
 import { setActiveProjectId as setWaProjectId, setActiveEnvironment as setWaEnvironment } from '@/lib/services/ApiWellArchitectedService';
-// MockArchitectureService remains available via @/lib/services (architectureService export)
 
 import type { AuthUser } from '@/lib/api/authService';
 
@@ -867,9 +866,8 @@ const initialState: AppState = {
 const AppContext = createContext<{ state: AppState; dispatch: React.Dispatch<Action> } | null>(null);
 
 // ─── Service reference (injectable for testing) ───────────────────────────────
-// Default: ApiArchitectureService (HTTP-backed). Falls back to mock on error.
-// The mock service (architectureService from ArchitectureService.ts) remains
-// available for fallback and testing.
+// Default: ApiArchitectureService (HTTP-backed). No in-memory fallback exists —
+// see IArchitectureService in ArchitectureService.ts. Overridable below for tests.
 
 let _activeService: IArchitectureService = apiArchitectureService;
 
@@ -948,7 +946,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     });
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── On mount: restore draft project from backend or localStorage ──────────
@@ -1318,7 +1315,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       default:
         break;
     }
-  }, [triggerAutoSave]);
+    // Deliberately depends on `state`: this effect's job is to mirror every
+    // dispatched action exactly once (via the lastActionRef/processedActionRef
+    // guard above) to the backend API. Actions are dispatched through
+    // dispatchWithSideEffect, which records the action in a ref (not state) and
+    // then calls the reducer — so the only reliable render-time signal that a
+    // new action may be waiting to be processed is a state change. A narrower
+    // dependency (e.g. only `triggerAutoSave`) makes this effect run once on
+    // mount and never again, silently disabling API persistence for every
+    // action handled above (CREATE_PROJECT, DELETE_PROJECT, SET_ACTIVE_PROJECT,
+    // canvas autosave triggers, etc.) — do not narrow this back down.
+  }, [state, triggerAutoSave]);
 
   return (
     <AppContext.Provider value={{ state, dispatch: dispatchWithSideEffect }}>

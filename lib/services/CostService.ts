@@ -8,7 +8,7 @@ import type { CostComparisonResult } from './ApiCostService';
 // ─── Interface ────────────────────────────────────────────────────────────────
 export interface ICostService {
   calculateCosts(nodes: CanvasNode[], currency?: string): Promise<CostItem[]>;
-  compareCosts?(nodes: CanvasNode[], currency?: string): Promise<any>;
+  compareCosts?(nodes: CanvasNode[], currency?: string): Promise<CostComparisonResult>;
   generateOptimizations(nodes: CanvasNode[]): CostOptimization[];
   applyOptimization(nodes: CanvasNode[], optimizationId: string): CanvasNode[];
 }

@@ -38,9 +38,28 @@ cd cloudcraft
 # Install dependencies (already done if scaffolded)
 npm install
 
+# Start a local PostgreSQL database (see docker-compose.yml)
+docker compose up -d
+
+# Copy .env.example to .env and fill in DATABASE_URL / ENCRYPTION_KEY, then
+# create the schema in the fresh database
+npm run db:migrate   # or: npx prisma db init   (first-time / empty database)
+
 # Start the development server
 npm run dev
 ```
+
+If `db:migrate` fails with a `MARKER_MISMATCH` or `PATH_UNREACHABLE` error, the
+local database's schema state has drifted from `src/prisma/contract.prisma`
+(usually a stale Docker volume from a previous checkout). Since this is a
+disposable local dev database, the fastest fix is:
+
+```bash
+npm run db:reset
+```
+
+which recreates the Postgres container from scratch and reapplies the current
+contract.
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
@@ -112,6 +131,7 @@ That's it — the resource will automatically appear in the palette, properties 
 
 ## Notes
 
-- No real cloud credentials are used. All cloud operations are mocked.
-- Projects are saved in-memory (React state). Refresh resets to mock data.
-- Terraform output is generated locally — no backend required.
+- Projects, versions, and org/team data are persisted in PostgreSQL via Prisma — not in-memory. Refresh does not reset your data.
+- Cloud account credentials (for live infrastructure import) are encrypted at rest with `ENCRYPTION_KEY` (AES-256-GCM); see `.env.example`.
+- Cost estimates and Terraform generation call real API routes backed by the engines in `lib/engines/`; if the API is unreachable, panels fall back to a deterministic offline estimate and say so in the UI — this is never silently presented as live data.
+- AWS on-demand pricing is a static, hand-maintained reference table, not a live pricing API call; Azure pricing is fetched live from the Azure Retail Prices API. Neither reflects negotiated discounts, Reserved Instances, or Savings Plans.

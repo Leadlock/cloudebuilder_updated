@@ -158,7 +158,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                 </div>
                 <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
                   <ShieldCheck className="w-3 h-3" />
-                  You'll be the owner of this new organization. Joining an existing one? Ask an admin to invite you instead.
+                  You&apos;ll be the owner of this new organization. Joining an existing one? Ask an admin to invite you instead.
                 </p>
               </div>
             )}

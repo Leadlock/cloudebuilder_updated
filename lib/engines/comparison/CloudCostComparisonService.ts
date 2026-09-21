@@ -43,7 +43,7 @@ export class CloudCostComparisonService {
       const translatedType = map[node.resourceType] || node.resourceType;
       
       // Attempt rudimentary translation of config if needed, otherwise rely on default mapping
-      let config = { ...node.config };
+      const config = { ...node.config };
       
       if (node.resourceType === 'aws_ec2' && targetProvider === 'azure') {
         const type = String(config.instanceType || '').toLowerCase();

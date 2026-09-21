@@ -59,7 +59,7 @@ import type {
   DiscoveredTopology,
   DiscoveryOptions,
 } from '../discovery/types';
-import { retryWithBackoff, computeConfigHash, sanitizeResourceId } from '../discovery/utils';
+import { retryWithBackoff, computeConfigHash } from '../discovery/utils';
 import type { InfrastructureDiscoveryProvider } from '../provider';
 
 // ─── Minimum required permissions for discovery ───────────────────────────────
@@ -526,7 +526,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     let nextToken: string | undefined = undefined;
 
     do {
-      const resp: any = await retryWithBackoff(() =>
+      const resp = await retryWithBackoff(() =>
         ec2.send(new DescribeVpcsCommand({ NextToken: nextToken })),
       );
       for (const vpc of resp.Vpcs ?? []) {
@@ -572,7 +572,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     let nextToken: string | undefined = undefined;
 
     do {
-      const resp: any = await retryWithBackoff(() =>
+      const resp = await retryWithBackoff(() =>
         ec2.send(new DescribeSubnetsCommand({ NextToken: nextToken })),
       );
       for (const subnet of resp.Subnets ?? []) {
@@ -618,7 +618,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     let nextToken: string | undefined = undefined;
 
     do {
-      const resp: any = await retryWithBackoff(() =>
+      const resp = await retryWithBackoff(() =>
         ec2.send(new DescribeInstancesCommand({ NextToken: nextToken })),
       );
       for (const reservation of resp.Reservations ?? []) {
@@ -636,8 +636,8 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             architecture: instance.Architecture ?? 'x86_64',
             platform: instance.Platform ?? 'linux',
             keyName: instance.KeyName ?? '',
-            securityGroupIds: (instance.SecurityGroups ?? []).map((sg: any) => sg.GroupId).filter(Boolean),
-            blockDeviceMappings: (instance.BlockDeviceMappings ?? []).map((bdm: any) => ({
+            securityGroupIds: (instance.SecurityGroups ?? []).map((sg) => sg.GroupId).filter(Boolean),
+            blockDeviceMappings: (instance.BlockDeviceMappings ?? []).map((bdm) => ({
               deviceName: bdm.DeviceName,
               volumeId: bdm.Ebs?.VolumeId,
             })),
@@ -675,7 +675,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     const ec2 = await this._makeEc2Client(region);
     const results: CloudResource[] = [];
     try {
-      const resp: any = await retryWithBackoff(() =>
+      const resp = await retryWithBackoff(() =>
         ec2.send(new DescribeInternetGatewaysCommand({})),
       );
       for (const igw of resp.InternetGateways ?? []) {
@@ -701,7 +701,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
           tags: tagsToMap(igw.Tags),
           status: 'available',
           configuration: config,
-          parentResourceId: attachedVpcId,
+          parentResourceId: attachedVpcId ?? undefined,
           metadata: { attachments: igw.Attachments ?? [] },
           configurationHash: computeConfigHash(config),
           discoveredAt: now(),
@@ -717,7 +717,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     const ec2 = await this._makeEc2Client(region);
     const results: CloudResource[] = [];
     try {
-      const resp: any = await retryWithBackoff(() =>
+      const resp = await retryWithBackoff(() =>
         ec2.send(new DescribeNatGatewaysCommand({})),
       );
       for (const nat of resp.NatGateways ?? []) {
@@ -760,22 +760,22 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     const ec2 = await this._makeEc2Client(region);
     const results: CloudResource[] = [];
     try {
-      const resp: any = await retryWithBackoff(() =>
+      const resp = await retryWithBackoff(() =>
         ec2.send(new DescribeRouteTablesCommand({})),
       );
       for (const rt of resp.RouteTables ?? []) {
         const id = safeString(rt.RouteTableId);
         if (!id) continue;
         const name = nameTag(rt.Tags) || id;
-        const isMain = rt.Associations?.some((a: any) => a.Main) ?? false;
+        const isMain = rt.Associations?.some((a) => a.Main) ?? false;
         const associatedSubnetIds = (rt.Associations ?? [])
-          .map((a: any) => a.SubnetId)
+          .map((a) => a.SubnetId)
           .filter(Boolean);
         const config = {
           vpcId: rt.VpcId ?? null,
           isMain,
           associatedSubnetIds,
-          routes: (rt.Routes ?? []).map((r: any) => ({
+          routes: (rt.Routes ?? []).map((r) => ({
             destinationCidr: r.DestinationCidrBlock,
             gatewayId: r.GatewayId,
             natGatewayId: r.NatGatewayId,
@@ -811,7 +811,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     const ec2 = await this._makeEc2Client(region);
     const results: CloudResource[] = [];
     try {
-      const resp: any = await retryWithBackoff(() =>
+      const resp = await retryWithBackoff(() =>
         ec2.send(new DescribeSecurityGroupsCommand({})),
       );
       for (const sg of resp.SecurityGroups ?? []) {
@@ -822,9 +822,9 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
           groupName: sg.GroupName,
           description: sg.Description,
           vpcId: sg.VpcId ?? null,
-          allowHttp: (sg.IpPermissions ?? []).some((p: any) => p.FromPort === 80),
-          allowHttps: (sg.IpPermissions ?? []).some((p: any) => p.FromPort === 443),
-          allowSsh: (sg.IpPermissions ?? []).some((p: any) => p.FromPort === 22),
+          allowHttp: (sg.IpPermissions ?? []).some((p) => p.FromPort === 80),
+          allowHttps: (sg.IpPermissions ?? []).some((p) => p.FromPort === 443),
+          allowSsh: (sg.IpPermissions ?? []).some((p) => p.FromPort === 22),
           source: 'aws-api',
           imported: true,
         };
@@ -856,7 +856,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     const ec2 = await this._makeEc2Client(region);
     const results: CloudResource[] = [];
     try {
-      const resp: any = await retryWithBackoff(() =>
+      const resp = await retryWithBackoff(() =>
         ec2.send(new DescribeVolumesCommand({})),
       );
       for (const vol of resp.Volumes ?? []) {
@@ -884,7 +884,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
           tags: tagsToMap(vol.Tags),
           status: safeString(vol.State) || 'in-use',
           configuration: config,
-          parentResourceId: attachedInstanceId,
+          parentResourceId: attachedInstanceId ?? undefined,
           metadata: {},
           configurationHash: computeConfigHash(config),
           discoveredAt: now(),
@@ -949,12 +949,12 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
 
   private async _discoverRdsInstances(region: string, accountId: string): Promise<CloudResource[]> {
     const rds = await this._makeRdsClient(region);
-    const resp: any = await retryWithBackoff(() => rds.send(new DescribeDBInstancesCommand({})));
-    return (resp.DBInstances ?? []).map((db: any) => {
+    const resp = await retryWithBackoff(() => rds.send(new DescribeDBInstancesCommand({})));
+    return (resp.DBInstances ?? []).map((db) => {
       const arn = safeString(db.DBInstanceArn);
       const name = db.DBInstanceIdentifier ?? 'unnamed-rds';
       const subnetGroupVpcId = db.DBSubnetGroup?.VpcId ?? null;
-      const subnets = (db.DBSubnetGroup?.Subnets ?? []).map((s: any) => s.SubnetIdentifier);
+      const subnets = (db.DBSubnetGroup?.Subnets ?? []).map((s) => s.SubnetIdentifier);
 
       const config = {
         name,
@@ -968,7 +968,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         subnetId: subnets[0] ?? null,
         endpoint: db.Endpoint?.Address ?? null,
         port: db.Endpoint?.Port ?? 5432,
-        securityGroupIds: (db.VpcSecurityGroups ?? []).map((sg: any) => sg.VpcSecurityGroupId),
+        securityGroupIds: (db.VpcSecurityGroups ?? []).map((sg) => sg.VpcSecurityGroupId),
         source: 'aws-api',
         imported: true,
       };
@@ -985,7 +985,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         tags: tagsToMap(db.TagList),
         status: db.DBInstanceStatus ?? 'available',
         configuration: config,
-        parentResourceId: subnets[0] || subnetGroupVpcId,
+        parentResourceId: subnets[0] || subnetGroupVpcId || undefined,
         metadata: {
           publiclyAccessible: db.PubliclyAccessible ?? false,
         },
@@ -997,11 +997,11 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
 
   private async _discoverLoadBalancers(region: string, accountId: string): Promise<CloudResource[]> {
     const elb = await this._makeElbClient(region);
-    const resp: any = await retryWithBackoff(() => elb.send(new DescribeLoadBalancersCommand({})));
-    return (resp.LoadBalancers ?? []).map((lb: any) => {
+    const resp = await retryWithBackoff(() => elb.send(new DescribeLoadBalancersCommand({})));
+    return (resp.LoadBalancers ?? []).map((lb) => {
       const arn = safeString(lb.LoadBalancerArn);
       const name = lb.LoadBalancerName ?? 'unnamed-lb';
-      const subnetIds = (lb.AvailabilityZones ?? []).map((az: any) => az.SubnetId).filter(Boolean);
+      const subnetIds = (lb.AvailabilityZones ?? []).map((az) => az.SubnetId).filter(Boolean);
 
       const config = {
         name,
@@ -1029,7 +1029,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         configuration: config,
         parentResourceId: subnetIds[0] || lb.VpcId,
         metadata: {
-          availabilityZones: (lb.AvailabilityZones ?? []).map((az: any) => az.ZoneName),
+          availabilityZones: (lb.AvailabilityZones ?? []).map((az) => az.ZoneName),
         },
         configurationHash: computeConfigHash(config),
         discoveredAt: now(),
@@ -1041,19 +1041,19 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     const elb = await this._makeElbClient(region);
     const results: CloudResource[] = [];
     try {
-      const resp: any = await retryWithBackoff(() => elb.send(new DescribeTargetGroupsCommand({})));
+      const resp = await retryWithBackoff(() => elb.send(new DescribeTargetGroupsCommand({})));
       for (const tg of resp.TargetGroups ?? []) {
         const arn = safeString(tg.TargetGroupArn);
         const name = tg.TargetGroupName ?? 'tg';
         let targetInstanceIds: string[] = [];
 
         try {
-          const health: any = await retryWithBackoff(() =>
+          const health = await retryWithBackoff(() =>
             elb.send(new DescribeTargetHealthCommand({ TargetGroupArn: arn })),
           );
           targetInstanceIds = (health.TargetHealthDescriptions ?? [])
-            .map((th: any) => th.Target?.Id)
-            .filter(Boolean);
+            .map((th) => th.Target?.Id)
+            .filter((id): id is string => Boolean(id));
         } catch {
           // Non-fatal
         }

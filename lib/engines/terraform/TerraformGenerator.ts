@@ -770,6 +770,16 @@ class AzureTerraformGenerator {
           resourceMap[r.id] = `azurerm_mssql_server.${name}_server`;
           break;
         }
+        case 'azure_cosmos_db': {
+          const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          blocks.push(this._cosmosDb(name, cfg, rgName, rgLoc));
+          resourceMap[r.id] = `azurerm_cosmosdb_account.${name}`;
+          break;
+        }
         case 'azure_nsg': {
           const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
           const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
@@ -969,6 +979,26 @@ resource "azurerm_mssql_database" "${name}" {
   sku_name     = "${cfg['tier'] ?? 'S0'}"
 
   transparent_data_encryption_enabled = true
+}`;
+  }
+
+  private _cosmosDb(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
+    return `resource "azurerm_cosmosdb_account" "${name}" {
+  name                          = "${name}"
+  resource_group_name           = ${rgName}
+  location                      = ${rgLoc}
+  offer_type                    = "Standard"
+  kind                          = "GlobalDocumentDB"
+  public_network_access_enabled = ${cfg['publicNetworkAccess'] === true}
+
+  consistency_policy {
+    consistency_level = "${cfg['defaultConsistency'] ?? 'Session'}"
+  }
+
+  geo_location {
+    location          = ${rgLoc}
+    failover_priority = 0
+  }
 }`;
   }
 

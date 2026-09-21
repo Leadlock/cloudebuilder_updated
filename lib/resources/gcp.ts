@@ -29,7 +29,7 @@ export const gcpResources: ResourceDefinition[] = [
     securityRules: [],
     terraform: {
       primaryResourceType: 'google_project',
-      generateHcl: (config: any, _ctx: any) =>
+      generateHcl: (config, _ctx) =>
         `resource "google_project" "${config.projectId}" {\n  name       = "${config.name}"\n  project_id = "${config.projectId}"\n  billing_account = "${config.billingAccount}"\n}`,
     },
     costCalculator: () => ({ monthlyCost: 0, breakdown: [] }),
@@ -73,7 +73,7 @@ export const gcpResources: ResourceDefinition[] = [
     securityRules: [],
     terraform: {
       primaryResourceType: 'google_compute_region',
-      generateHcl: (config: any, _ctx: any) =>
+      generateHcl: (config, _ctx) =>
         `# Region: ${config.name}\n# Note: GCP regions are referenced in resource configurations, not declared as separate resources.`,
     },
     costCalculator: () => ({ monthlyCost: 0, breakdown: [] }),
@@ -114,7 +114,7 @@ export const gcpResources: ResourceDefinition[] = [
     securityRules: [],
     terraform: {
       primaryResourceType: 'google_compute_zone',
-      generateHcl: (config: any, _ctx: any) =>
+      generateHcl: (config, _ctx) =>
         `# Zone: ${config.name}\n# Note: Zones are referenced in zonal resource configurations (e.g. google_compute_instance).`,
     },
     costCalculator: () => ({ monthlyCost: 0, breakdown: [] }),
@@ -145,7 +145,7 @@ export const gcpResources: ResourceDefinition[] = [
     securityRules: [],
     terraform: {
       primaryResourceType: 'google_compute_network',
-      generateHcl: (config: any, ctx: any) => {
+      generateHcl: (config, ctx) => {
         const resourceName = ctx.name || config.name;
         return `resource "google_compute_network" "${resourceName}" {\n  name                    = "${config.name}"\n  auto_create_subnetworks = ${config.autoCreateSubnetworks}\n  routing_mode            = "${config.routingMode}"\n}`;
       }
@@ -176,7 +176,7 @@ export const gcpResources: ResourceDefinition[] = [
     securityRules: [],
     terraform: {
       primaryResourceType: 'google_compute_subnetwork',
-      generateHcl: (config: any, ctx: any) => {
+      generateHcl: (config, ctx) => {
         const resourceName = ctx.name || config.name;
         return `resource "google_compute_subnetwork" "${resourceName}" {\n  name          = "${config.name}"\n  ip_cidr_range = "${config.ipCidrRange}"\n  region        = "${config.region}"\n  network       = \${google_compute_network.\${ctx.parentId}.id}\n}`;
       }
@@ -222,10 +222,11 @@ export const gcpResources: ResourceDefinition[] = [
     ],
     terraform: {
       primaryResourceType: 'google_compute_firewall',
-      generateHcl: (config: any, ctx: any) => {
+      generateHcl: (config, ctx) => {
         const resourceName = ctx.name || config.name;
         const block = config.action === 'deny' ? 'deny' : 'allow';
-        return `resource "google_compute_firewall" "${resourceName}" {\n  name      = "${config.name}"\n  network   = \${google_compute_network.\${ctx.parentId}.name}\n  direction = "${config.direction || 'INGRESS'}"\n\n  ${block} {\n    protocol = "${config.protocol}"\n    ports    = [${config.ports.split(',').map((p:string)=>`"${p.trim()}"`).join(', ')}]\n  }\n\n  source_ranges = ["${config.sourceRanges || '0.0.0.0/0'}"]\n}`;
+        const ports = String(config.ports ?? '').split(',').map((p) => `"${p.trim()}"`).join(', ');
+        return `resource "google_compute_firewall" "${resourceName}" {\n  name      = "${config.name}"\n  network   = \${google_compute_network.\${ctx.parentId}.name}\n  direction = "${config.direction || 'INGRESS'}"\n\n  ${block} {\n    protocol = "${config.protocol}"\n    ports    = [${ports}]\n  }\n\n  source_ranges = ["${config.sourceRanges || '0.0.0.0/0'}"]\n}`;
       }
     },
     costCalculator: () => ({ monthlyCost: 0, breakdown: [] })
@@ -263,14 +264,14 @@ export const gcpResources: ResourceDefinition[] = [
     ],
     terraform: {
       primaryResourceType: 'google_compute_instance',
-      generateHcl: (config: any, ctx: any) => {
+      generateHcl: (config, ctx) => {
         const resourceName = ctx.name || config.name;
         const accessConfig = config.assignPublicIp ? '\n    access_config {\n      // Ephemeral IP\n    }' : '';
         const tagsLine = config.tags ? `\n  tags = [${String(config.tags).split(',').map((t: string) => `"${t.trim()}"`).join(', ')}]` : '';
         return `resource "google_compute_instance" "${resourceName}" {\n  name         = "${config.name}"\n  machine_type = "${config.machineType}"\n  zone         = "${config.zone}"${tagsLine}\n\n  boot_disk {\n    initialize_params {\n      image = "${config.image}"\n    }\n  }\n\n  network_interface {\n    subnetwork = \${google_compute_subnetwork.\${ctx.parentId}.id}${accessConfig}\n  }\n}`;
       }
     },
-    costCalculator: (config: any) => ({ monthlyCost: config.machineType === 'e2-micro' ? 5 : 25, breakdown: [] })
+    costCalculator: (config) => ({ monthlyCost: config.machineType === 'e2-micro' ? 5 : 25, breakdown: [] })
   },
   {
     type: 'gcp_mig',
@@ -294,11 +295,11 @@ export const gcpResources: ResourceDefinition[] = [
     securityRules: [],
     terraform: {
       primaryResourceType: 'google_compute_instance_group_manager',
-      generateHcl: (config: any, ctx: any) => {
+      generateHcl: (config, _ctx) => {
         return `resource "google_compute_instance_group_manager" "${config.name}" {\n  name = "${config.name}"\n  zone = "${config.zone}"\n  target_size = ${config.targetSize}\n}`;
       }
     },
-    costCalculator: (config: any) => ({ monthlyCost: Number(config.targetSize || 2) * 25, breakdown: [] })
+    costCalculator: (config) => ({ monthlyCost: Number(config.targetSize || 2) * 25, breakdown: [] })
   },
   {
     type: 'gcp_load_balancer',
@@ -319,7 +320,7 @@ export const gcpResources: ResourceDefinition[] = [
     securityRules: [],
     terraform: {
       primaryResourceType: 'google_compute_global_forwarding_rule',
-      generateHcl: (config: any, ctx: any) => {
+      generateHcl: (config, _ctx) => {
         return `resource "google_compute_global_forwarding_rule" "${config.name}" {\n  name = "${config.name}"\n}`;
       }
     },
@@ -367,7 +368,7 @@ export const gcpResources: ResourceDefinition[] = [
     ],
     terraform: {
       primaryResourceType: 'google_storage_bucket',
-      generateHcl: (config: any, ctx: any) => {
+      generateHcl: (config, _ctx) => {
         return `resource "google_storage_bucket" "${config.name}" {\n  name                        = "${config.name}"\n  location                    = "${config.location}"\n  storage_class               = "${config.storageClass}"\n  force_destroy               = ${config.forceDestroy}\n  public_access_prevention    = "${config.publicAccessPrevention || 'enforced'}"\n  uniform_bucket_level_access = ${config.uniformBucketLevelAccess !== false}\n\n  versioning {\n    enabled = ${!!config.versioning}\n  }\n}`;
       }
     },
@@ -423,7 +424,7 @@ export const gcpResources: ResourceDefinition[] = [
     ],
     terraform: {
       primaryResourceType: 'google_sql_database_instance',
-      generateHcl: (config: any, ctx: any) => {
+      generateHcl: (config, _ctx) => {
         return `resource "google_sql_database_instance" "${config.name}" {\n  name             = "${config.name}"\n  database_version = "${config.databaseVersion}"\n  region           = "${config.region}"\n\n  settings {\n    tier = "${config.tier}"\n\n    ip_configuration {\n      ipv4_enabled    = ${!!config.publicIpEnabled}\n      require_ssl     = ${config.requireSsl !== false}\n    }\n\n    backup_configuration {\n      enabled = ${config.backupEnabled !== false}\n    }\n  }\n}`;
       }
     },
@@ -450,7 +451,7 @@ export const gcpResources: ResourceDefinition[] = [
     securityRules: [],
     terraform: {
       primaryResourceType: 'google_cloud_run_service',
-      generateHcl: (config: any, ctx: any) => {
+      generateHcl: (config, _ctx) => {
         return `resource "google_cloud_run_service" "${config.name}" {\n  name     = "${config.name}"\n  location = "${config.location}"\n\n  template {\n    spec {\n      containers {\n        image = "${config.image}"\n      }\n    }\n  }\n}`;
       }
     },
@@ -478,7 +479,7 @@ export const gcpResources: ResourceDefinition[] = [
     securityRules: [],
     terraform: {
       primaryResourceType: 'google_cloudfunctions_function',
-      generateHcl: (config: any, ctx: any) => {
+      generateHcl: (config, _ctx) => {
         return `resource "google_cloudfunctions_function" "${config.name}" {\n  name        = "${config.name}"\n  runtime     = "${config.runtime}"\n  entry_point = "${config.entryPoint}"\n  region      = "${config.region}"\n}`;
       }
     },
@@ -503,7 +504,7 @@ export const gcpResources: ResourceDefinition[] = [
     securityRules: [],
     terraform: {
       primaryResourceType: 'google_api_gateway_gateway',
-      generateHcl: (config: any, ctx: any) => {
+      generateHcl: (config, _ctx) => {
         return `resource "google_api_gateway_gateway" "${config.name}" {\n  gateway_id = "${config.name}"\n}`;
       }
     },
@@ -528,7 +529,7 @@ export const gcpResources: ResourceDefinition[] = [
     securityRules: [],
     terraform: {
       primaryResourceType: 'google_compute_backend_bucket',
-      generateHcl: (config: any, ctx: any) => {
+      generateHcl: (config, _ctx) => {
         return `resource "google_compute_backend_bucket" "${config.name}" {\n  name        = "${config.name}"\n  enable_cdn  = true\n}`;
       }
     },
@@ -554,7 +555,7 @@ export const gcpResources: ResourceDefinition[] = [
     securityRules: [],
     terraform: {
       primaryResourceType: 'google_dns_managed_zone',
-      generateHcl: (config: any, ctx: any) => {
+      generateHcl: (config, _ctx) => {
         return `resource "google_dns_managed_zone" "${config.name}" {\n  name     = "${config.name}"\n  dns_name = "${config.dnsName}"\n}`;
       }
     },
@@ -581,7 +582,7 @@ export const gcpResources: ResourceDefinition[] = [
     securityRules: [],
     terraform: {
       primaryResourceType: 'google_compute_router_nat',
-      generateHcl: (config: any, ctx: any) => {
+      generateHcl: (config, _ctx) => {
         return `resource "google_compute_router_nat" "${config.name}" {\n  name                               = "${config.name}"\n  router                             = "${config.router}"\n  region                             = "${config.region}"\n  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"\n}`;
       }
     },
@@ -616,7 +617,7 @@ export const gcpResources: ResourceDefinition[] = [
     ],
     terraform: {
       primaryResourceType: 'google_service_account',
-      generateHcl: (config: any, ctx: any) => {
+      generateHcl: (config, _ctx) => {
         return `resource "google_service_account" "${config.accountId}" {\n  account_id   = "${config.accountId}"\n  display_name = "${config.displayName}"\n}`;
       }
     },

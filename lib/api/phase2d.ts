@@ -4,14 +4,25 @@
  */
 import { NextRequest } from 'next/server';
 import { orgRepository } from '@/lib/repositories/orgRepository';
+import { resolveOrgIds } from '@/lib/api/auth';
 import { projectRepository, environmentRepository } from '@/lib/repositories/projectRepository';
 import { architectureRepository } from '@/lib/repositories/architectureRepository';
 import type { DbArchitecture } from '@/lib/repositories/architectureRepository';
 import type { DbProject } from '@/lib/repositories/projectRepository';
 
-export async function resolveOrgId(req: NextRequest): Promise<string | null> {
+/**
+ * Resolves the org a request should operate against: an explicit orgId query
+ * param first, then the calling user's own org membership. The dev-mode
+ * fallback only applies when the caller has no org of their own — it must
+ * never override a real user's actual membership.
+ */
+export async function resolveOrgId(req: NextRequest, userId?: string): Promise<string | null> {
   const orgId = req.nextUrl.searchParams.get('orgId') ?? '';
   if (orgId) return orgId;
+  if (userId) {
+    const memberOrgIds = await resolveOrgIds(userId);
+    if (memberOrgIds[0]) return memberOrgIds[0];
+  }
   if (process.env.NODE_ENV === 'development') {
     try {
       const ctx = await orgRepository.ensureDevContext();

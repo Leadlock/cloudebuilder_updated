@@ -5,11 +5,15 @@ import { toCanonicalGraph, validateCanonicalArchitecture, fromCanonicalGraph } f
 import { CanvasNode, CanvasEdge } from '@/types';
 
 describe('CloudCraft Commercial Quality & Enterprise Robustness', () => {
-  describe('240-Template Catalog Integrity', () => {
-    it('contains exactly 240 templates across 8 categories x 3 providers x 10 each', () => {
-      expect(architectureTemplates).toHaveLength(240);
+  describe('Template Catalog Integrity', () => {
+    it('contains the parameterized 240-template catalog plus the hand-built reference architectures', () => {
+      // 240 parameterized quick-start variations (lib/templates/catalogData.ts)
+      // + 11 hand-built, structurally distinct reference architectures
+      // (lib/templates/referenceArchitectures.ts) — see templateLibrary.test.ts
+      // for the checks specific to the reference architectures themselves.
+      expect(architectureTemplates.length).toBeGreaterThanOrEqual(251);
 
-      const categories = [
+      const originalEightCategories = [
         'Web Applications',
         'High Availability',
         'SaaS',
@@ -20,17 +24,20 @@ describe('CloudCraft Commercial Quality & Enterprise Robustness', () => {
         'Multi-cloud',
       ];
 
-      for (const cat of categories) {
+      for (const cat of originalEightCategories) {
         const catTemplates = architectureTemplates.filter((t) => t.category === cat);
-        expect(catTemplates).toHaveLength(30);
+        // At least the original 30 (10 aws + 10 azure + 10 multi) from the
+        // parameterized catalog; some categories now have additional
+        // reference architectures on top of that baseline.
+        expect(catTemplates.length).toBeGreaterThanOrEqual(30);
 
         const aws = catTemplates.filter((t) => t.provider === 'aws');
         const azure = catTemplates.filter((t) => t.provider === 'azure');
         const multi = catTemplates.filter((t) => t.provider === 'multi');
 
-        expect(aws).toHaveLength(10);
-        expect(azure).toHaveLength(10);
-        expect(multi).toHaveLength(10);
+        expect(aws.length).toBeGreaterThanOrEqual(10);
+        expect(azure.length).toBeGreaterThanOrEqual(10);
+        expect(multi.length).toBeGreaterThanOrEqual(10);
       }
     });
 

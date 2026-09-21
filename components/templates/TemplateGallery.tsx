@@ -5,9 +5,25 @@ import { architectureTemplates } from '@/lib/templates';
 import { CloudProvider } from '@/types';
 import { LayoutGrid, DollarSign, Server } from 'lucide-react';
 import { formatCurrency } from '@/lib/currency/formatter';
+import { calculateCosts } from '@/lib/analysis';
 import clsx from 'clsx';
 
-const categories = ['All', 'Web Applications', 'High Availability', 'SaaS', 'E-Commerce', 'Microservices', 'Data & Analytics', 'Disaster Recovery', 'Multi-cloud'];
+// Estimated monthly cost per template, computed from the SAME resource graph
+// the template actually generates (via the shared static-rate-table cost
+// calculator used elsewhere as the offline estimate) — never a hand-typed
+// number. Memoized once per template id since `generate()` is a pure function
+// of the template definition.
+const templateCostCache = new Map<string, number>();
+function estimateTemplateCostUsd(templateId: string, generate: () => { nodes: { resourceType: string }[] }): number {
+  const cached = templateCostCache.get(templateId);
+  if (cached !== undefined) return cached;
+  const { nodes } = generate();
+  const total = calculateCosts(nodes as Parameters<typeof calculateCosts>[0]).reduce((sum, item) => sum + item.monthlyCost, 0);
+  templateCostCache.set(templateId, total);
+  return total;
+}
+
+const categories = ['All', 'Web Applications', 'High Availability', 'SaaS', 'E-Commerce', 'Microservices', 'Serverless', 'Containers / Kubernetes', 'Data & Analytics', 'Disaster Recovery', 'Multi-cloud'];
 
 export default function TemplateGallery() {
   const { state, dispatch } = useApp();
@@ -104,7 +120,17 @@ export default function TemplateGallery() {
               <div className="p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex-1 min-w-0 pr-2">
-                    <h3 className="text-white font-semibold text-sm">{t.name}</h3>
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="text-white font-semibold text-sm">{t.name}</h3>
+                      {t.isReferenceArchitecture && (
+                        <span
+                          className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-900/50 text-indigo-300 border border-indigo-800 font-medium shrink-0"
+                          title={t.sourceReferences?.length ? `Based on: ${t.sourceReferences.map((r) => r.label).join(', ')}` : 'Hand-modeled reference architecture'}
+                        >
+                          Reference Architecture
+                        </span>
+                      )}
+                    </div>
                     <p className="text-gray-500 text-xs mt-0.5 line-clamp-2">{t.description}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
@@ -136,7 +162,13 @@ export default function TemplateGallery() {
                 {/* Stats */}
                 <div className="flex items-center gap-4 text-xs text-gray-500 mb-4">
                   <span className="flex items-center gap-1"><Server className="w-3 h-3" />{t.resourceCount} resources</span>
-                  <span className="flex items-center gap-1"><DollarSign className="w-3 h-3" />~{formatCurrency(t.estimatedCost * (activeCurrency === 'USD' ? 1.0 : exchangeRate), activeCurrency)}/mo</span>
+                  <span
+                    className="flex items-center gap-1"
+                    title="Estimated from static reference rates against this template's actual resource graph — not a live price quote."
+                  >
+                    <DollarSign className="w-3 h-3" />
+                    ~{formatCurrency(estimateTemplateCostUsd(t.id, () => t.generate({})) * (activeCurrency === 'USD' ? 1.0 : exchangeRate), activeCurrency)}/mo (est.)
+                  </span>
                 </div>
 
                 {/* Action */}

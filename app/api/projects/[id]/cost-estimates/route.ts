@@ -39,7 +39,7 @@ export async function POST(
     const queryCurrency = req.nextUrl.searchParams.get('currency');
     const targetCurrency = (body.currency || queryCurrency || 'USD').toUpperCase();
 
-    const orgId = await resolveOrgId(req);
+    const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return badRequest('orgId required');
 
     const role = await getOrgRole(identity.userId, orgId);

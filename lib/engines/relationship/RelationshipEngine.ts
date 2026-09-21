@@ -577,6 +577,20 @@ export class RelationshipEngine {
         };
       }
 
+      // Valid: Storage -> Functions (Blob trigger / Event Grid event source) —
+      // the one legitimate exception to the "storage never initiates" rule
+      // below, mirroring the SQS -> Lambda event-source carve-out elsewhere
+      // in this engine. Must be checked before the blanket rejection.
+      if (sType === 'azure_storage' && tType === 'azure_functions') {
+        return {
+          isValid: true,
+          relationshipType: 'TRIGGERS',
+          networkScope: 'internal',
+          protocol: 'Blob Trigger',
+          label: 'Trigger / Event',
+        };
+      }
+
       // Invalid: Storage/Database initiating connection to Compute
       if ((sType === 'azure_sql' || sType === 'azure_storage' || sType === 'azure_redis') && (tType === 'azure_vm' || tType === 'azure_vmss' || tType === 'azure_functions' || tType === 'azure_aks')) {
         return {

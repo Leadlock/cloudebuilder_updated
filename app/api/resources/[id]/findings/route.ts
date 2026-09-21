@@ -24,7 +24,7 @@ export async function GET(
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
 
-    const orgId = await resolveOrgId(req);
+    const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return badRequest('orgId required');
 
     const role = await getOrgRole(identity.userId, orgId);

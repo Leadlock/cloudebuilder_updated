@@ -28,7 +28,14 @@ export default function DisasterRecovery() {
   async function handleGenerate() {
     setGenerating(true);
     await new Promise((r) => setTimeout(r, 1200));
-    const template = architectureTemplates.find((t) => t.id === 'disaster-recovery')!;
+    // 'ref-aws-dr-warm-standby' is the only DR strategy with a distinct,
+    // hand-modeled topology today (see lib/templates/referenceArchitectures.ts).
+    // The other strategies (backup, pilot-light, hot-standby, multi-region
+    // active-active) don't yet have their own differentiated diagrams, so we
+    // fall back to the warm-standby topology rather than crash on a
+    // non-existent template id — this is a known gap, not a silent fake.
+    const template =
+      architectureTemplates.find((t) => t.id === 'ref-aws-dr-warm-standby') ?? architectureTemplates[0];
     const { nodes, edges } = template.generate({});
     dispatch({ type: 'CREATE_PROJECT', provider: 'multi', name: `DR — ${selectedStrategy.name}`, nodes, edges });
     setGenerating(false);

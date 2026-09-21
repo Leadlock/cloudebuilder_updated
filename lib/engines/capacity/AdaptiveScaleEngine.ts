@@ -75,7 +75,7 @@ export class AdaptiveScaleEngine {
     profile: ScaleProfile
   ): ScaleAdaptationResult {
     const nodes: CanvasNode[] = JSON.parse(JSON.stringify(inputNodes));
-    let edges: CanvasEdge[] = JSON.parse(JSON.stringify(inputEdges));
+    const edges: CanvasEdge[] = JSON.parse(JSON.stringify(inputEdges));
     const appliedChanges: string[] = [];
 
     // ── 1. Separate User-Provided Values vs Calculated Assumptions ───────────

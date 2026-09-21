@@ -6,6 +6,8 @@
  */
 import type { WaAssessment, WaFinding } from '@/lib/engines/wellArchitected/types';
 import { WellArchitectedFrameworkService } from '@/lib/engines/wellArchitected/WellArchitectedFrameworkService';
+import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
+import type { CanvasNode, CanvasEdge } from '@/types';
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
@@ -96,7 +98,7 @@ class ApiWellArchitectedServiceImpl {
    * Trigger a fresh analysis for the active project or in-memory live draft.
    * Returns the new assessment.
    */
-  async analyze(nodes?: any[], edges?: any[]): Promise<WaAssessment | null> {
+  async analyze(nodes?: CanvasNode[], edges?: CanvasEdge[]): Promise<WaAssessment | null> {
     const projectId = _activeProjectId;
 
     if (projectId && projectId !== 'draft-project') {
@@ -121,23 +123,22 @@ class ApiWellArchitectedServiceImpl {
     return null;
   }
 
-  async analyzeNodes(nodes: any[], edges: any[]): Promise<WaAssessment> {
+  async analyzeNodes(nodes: CanvasNode[], edges: CanvasEdge[]): Promise<WaAssessment> {
     const waService = new WellArchitectedFrameworkService();
-    const resources: any[] = nodes.map((n: any) => ({
+    const resources: DbArchitectureResource[] = nodes.map((n) => ({
       id: n.id,
       architectureId: 'live-draft',
       resourceType: n.resourceType,
       provider: n.provider || (n.resourceType?.startsWith('azure_') ? 'azure' : 'aws'),
-      label: n.label || n.name || n.resourceType,
+      label: n.label || n.resourceType,
       positionX: n.position?.x ?? 0,
       positionY: n.position?.y ?? 0,
       configJson: JSON.stringify(n.config || {}),
-      config: n.config || {},
-      region: n.region || null,
+      region: (n.config?.region as string) ?? null,
       groupId: n.groupId || null,
       locked: Boolean(n.locked),
     }));
-    const connections: any[] = (edges || []).map((e: any) => ({
+    const connections: DbArchitectureConnection[] = (edges || []).map((e) => ({
       id: e.id,
       architectureId: 'live-draft',
       sourceId: e.source,
