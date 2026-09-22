@@ -948,6 +948,89 @@ describe('TerraformGenerator — AWS', () => {
       expect(main.content).toContain('enable_deletion_protection = true');
     });
   });
+
+  describe('DynamoDB Terraform generation (previously completely unsupported)', () => {
+    test('generates a table with the configured partition and sort keys', () => {
+      const table = makeResource({ id: 'ddb-1', resourceType: 'aws_dynamodb', provider: 'aws', configJson: JSON.stringify({ name: 'orders', partitionKeyName: 'orderId', partitionKeyType: 'S', sortKeyName: 'createdAt', sortKeyType: 'N' }) });
+      const result = gen.generate(awsInput([table]));
+      expect(result.warnings.some((w) => w.includes('aws_dynamodb') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_dynamodb_table" "orders"');
+      expect(main.content).toContain('hash_key     = "orderId"');
+      expect(main.content).toContain('range_key    = "createdAt"');
+    });
+
+    test('PROVISIONED billing mode emits read/write capacity; PAY_PER_REQUEST omits it', () => {
+      const provisioned = makeResource({ id: 'ddb-1', resourceType: 'aws_dynamodb', provider: 'aws', configJson: JSON.stringify({ name: 'provisioned_table', billingMode: 'PROVISIONED', readCapacity: 20, writeCapacity: 10 }) });
+      const provisionedResult = gen.generate(awsInput([provisioned]));
+      const provisionedMain = provisionedResult.files.find((f) => f.filename === 'main.tf')!;
+      expect(provisionedMain.content).toContain('read_capacity  = 20');
+      expect(provisionedMain.content).toContain('write_capacity = 10');
+
+      const onDemand = makeResource({ id: 'ddb-2', resourceType: 'aws_dynamodb', provider: 'aws', configJson: JSON.stringify({ name: 'ondemand_table', billingMode: 'PAY_PER_REQUEST' }) });
+      const onDemandResult = gen.generate(awsInput([onDemand]));
+      const onDemandMain = onDemandResult.files.find((f) => f.filename === 'main.tf')!;
+      expect(onDemandMain.content).not.toContain('read_capacity');
+    });
+
+    test('streamEnabled generates stream_enabled/stream_view_type', () => {
+      const table = makeResource({ id: 'ddb-1', resourceType: 'aws_dynamodb', provider: 'aws', configJson: JSON.stringify({ name: 'streamed_table', streamEnabled: true, streamViewType: 'NEW_IMAGE' }) });
+      const result = gen.generate(awsInput([table]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('stream_enabled   = true');
+      expect(main.content).toContain('stream_view_type = "NEW_IMAGE"');
+    });
+  });
+
+  describe('ElastiCache Terraform generation (previously completely unsupported)', () => {
+    test('generates a replication group with the configured node type and count', () => {
+      const cache = makeResource({ id: 'cache-1', resourceType: 'aws_elasticache', provider: 'aws', configJson: JSON.stringify({ name: 'session_cache', nodeType: 'cache.r6g.large', numNodes: 3 }) });
+      const result = gen.generate(awsInput([cache]));
+      expect(result.warnings.some((w) => w.includes('aws_elasticache') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_elasticache_replication_group" "session_cache"');
+      expect(main.content).toContain('node_type             = "cache.r6g.large"');
+      expect(main.content).toContain('num_cache_clusters    = 3');
+      expect(main.content).toContain('automatic_failover_enabled = true');
+    });
+
+    test('single-node cluster disables automatic failover regardless of the config value', () => {
+      const cache = makeResource({ id: 'cache-1', resourceType: 'aws_elasticache', provider: 'aws', configJson: JSON.stringify({ name: 'solo_cache', numNodes: 1, automaticFailoverEnabled: true }) });
+      const result = gen.generate(awsInput([cache]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('automatic_failover_enabled = false');
+    });
+  });
+
+  describe('SQS Terraform generation (previously completely unsupported)', () => {
+    test('generates a queue with encryption and the configured retention/timeout', () => {
+      const queue = makeResource({ id: 'sqs-1', resourceType: 'aws_sqs', provider: 'aws', configJson: JSON.stringify({ name: 'orders_queue', visibilityTimeoutSeconds: 60, messageRetentionSeconds: 86400 }) });
+      const result = gen.generate(awsInput([queue]));
+      expect(result.warnings.some((w) => w.includes('aws_sqs') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_sqs_queue" "orders_queue"');
+      expect(main.content).toContain('visibility_timeout_seconds = 60');
+      expect(main.content).toContain('message_retention_seconds  = 86400');
+      expect(main.content).toContain('sqs_managed_sse_enabled    = true');
+    });
+
+    test('fifoQueue appends .fifo to the queue name and sets fifo_queue', () => {
+      const queue = makeResource({ id: 'sqs-1', resourceType: 'aws_sqs', provider: 'aws', configJson: JSON.stringify({ name: 'ordered_events', fifoQueue: true, contentBasedDeduplication: true }) });
+      const result = gen.generate(awsInput([queue]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('name                       = "ordered_events.fifo"');
+      expect(main.content).toContain('fifo_queue                 = true');
+      expect(main.content).toContain('content_based_deduplication = true');
+    });
+
+    test('dead-letter queue ARN generates a redrive_policy', () => {
+      const queue = makeResource({ id: 'sqs-1', resourceType: 'aws_sqs', provider: 'aws', configJson: JSON.stringify({ name: 'monitored_queue', deadLetterTargetArn: 'arn:aws:sqs:us-east-1:123456789012:monitored-dlq', maxReceiveCount: 3 }) });
+      const result = gen.generate(awsInput([queue]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('redrive_policy');
+      expect(main.content).toContain('maxReceiveCount     = 3');
+    });
+  });
 });
 
 describe('TerraformGenerator — Azure', () => {

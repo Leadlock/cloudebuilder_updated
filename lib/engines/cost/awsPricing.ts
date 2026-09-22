@@ -59,6 +59,15 @@ const RDS_HOURLY_USD: Record<string, number> = {
   'db.r5.xlarge':   0.600,
 };
 
+/** ElastiCache (Redis) on-demand hourly node prices — AWS public list price, us-east-1 */
+const CACHE_HOURLY_USD: Record<string, number> = {
+  'cache.t3.micro':   0.017,
+  'cache.t3.small':   0.034,
+  'cache.t3.medium':  0.068,
+  'cache.r6g.large':  0.216,
+  'cache.r6g.xlarge': 0.432,
+};
+
 /** Regional price multipliers relative to us-east-1 */
 const REGION_MULTIPLIER: Record<string, number> = {
   'us-east-1':      1.00,
@@ -102,6 +111,8 @@ export class AwsPricingProvider implements PricingProvider {
       case 'aws_ebs':        return this._ebs(resource, config, region, mult);
       case 'aws_dynamodb':   return this._dynamodb(resource, config, region, mult);
       case 'aws_eks':        return this._eks(resource, config, region, mult);
+      case 'aws_elasticache': return this._elasticache(resource, config, region, mult);
+      case 'aws_sqs':        return this._sqs(resource, config, region, mult);
       case 'aws_vpc':
       case 'aws_subnet':
       case 'aws_igw':
@@ -456,11 +467,104 @@ export class AwsPricingProvider implements PricingProvider {
 
   private _dynamodb(
     resource: DbArchitectureResource,
-    _config: Record<string, unknown>,
+    config: Record<string, unknown>,
     region: string,
     _mult: number,
   ): CostLineItem {
-    const monthly = 5.0;
+    const billingMode = (config['billingMode'] as string) || 'PAY_PER_REQUEST';
+    const storageGb = Math.max(0, Number(config['estimatedStorageGb'] ?? 5));
+    const freeStorageGb = 25;
+    const storageMonthly = Math.max(0, storageGb - freeStorageGb) * 0.25;
+    const breakdown: { label: string; monthlyUsd: number }[] = [];
+    let capacityMonthly = 0;
+
+    if (billingMode === 'PROVISIONED') {
+      const readCapacity = Math.max(0, Number(config['readCapacity'] ?? 5));
+      const writeCapacity = Math.max(0, Number(config['writeCapacity'] ?? 5));
+      const readMonthly = readCapacity * 0.00013 * 730;
+      const writeMonthly = writeCapacity * 0.00065 * 730;
+      breakdown.push(
+        { label: `Provisioned read capacity (${readCapacity} RCU)`, monthlyUsd: readMonthly },
+        { label: `Provisioned write capacity (${writeCapacity} WCU)`, monthlyUsd: writeMonthly },
+      );
+      capacityMonthly = readMonthly + writeMonthly;
+    } else {
+      const readUnits = Math.max(0, Number(config['estimatedReadRequestUnitsPerMonth'] ?? 1_000_000));
+      const writeUnits = Math.max(0, Number(config['estimatedWriteRequestUnitsPerMonth'] ?? 500_000));
+      const readMonthly = (readUnits / 1_000_000) * 0.25;
+      const writeMonthly = (writeUnits / 1_000_000) * 1.25;
+      breakdown.push(
+        { label: `On-demand read request units (${readUnits.toLocaleString()}/mo)`, monthlyUsd: readMonthly },
+        { label: `On-demand write request units (${writeUnits.toLocaleString()}/mo)`, monthlyUsd: writeMonthly },
+      );
+      capacityMonthly = readMonthly + writeMonthly;
+    }
+    breakdown.push({ label: `Storage (${storageGb}GB, 25GB free)`, monthlyUsd: storageMonthly });
+
+    const monthly = capacityMonthly + storageMonthly;
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: monthly / 730,
+      monthlyUsd: monthly,
+      breakdown,
+      assumptions: [
+        `Billing mode: ${billingMode}`,
+        'Includes 25GB free tier storage',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-dynamodb-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _elasticache(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const nodeType = (config['nodeType'] as string) ?? 'cache.t3.medium';
+    const numNodes = Math.max(1, Number(config['numNodes'] ?? 2));
+    const baseHourly = CACHE_HOURLY_USD[nodeType] ?? CACHE_HOURLY_USD['cache.t3.medium']!;
+    const hourly = baseHourly * mult * numNodes;
+    const monthly = toMonthly(hourly);
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: `ElastiCache ${nodeType} x${numNodes} node(s)`, monthlyUsd: monthly },
+      ],
+      assumptions: [
+        `Node type: ${nodeType}, ${numNodes} node(s)`,
+        'Backup/snapshot storage not included',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-elasticache-ondemand-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _sqs(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    _mult: number,
+  ): CostLineItem {
+    const requests = Math.max(0, Number(config['estimatedRequestsPerMonth'] ?? 1_000_000));
+    const freeRequests = 1_000_000;
+    const billableRequests = Math.max(0, requests - freeRequests);
+    const monthly = (billableRequests / 1_000_000) * 0.40;
+
     return {
       resourceId: resource.id,
       resourceLabel: resource.label,
@@ -470,13 +574,13 @@ export class AwsPricingProvider implements PricingProvider {
       hourlyUsd: monthly / 730,
       monthlyUsd: monthly,
       breakdown: [
-        { label: 'DynamoDB on-demand reads/writes & storage', monthlyUsd: monthly },
+        { label: `Requests (${requests.toLocaleString()}/mo, 1M free)`, monthlyUsd: monthly },
       ],
       assumptions: [
-        'Includes 25GB free tier storage',
+        'Includes AWS Free Tier: 1,000,000 requests/mo',
         `Region: ${region}`,
       ],
-      pricingSource: 'aws-dynamodb-list-price',
+      pricingSource: 'aws-sqs-list-price',
       confidence: 'estimate',
     };
   }

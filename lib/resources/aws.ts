@@ -1106,11 +1106,106 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#EEF2FF',
     borderColor: '#4F46E5',
     monthlyBaseCost: 5.0,
-    defaultConfig: { tableName: 'my-table', billingMode: 'PAY_PER_REQUEST', name: 'my-table' },
+    defaultConfig: {
+      tableName: 'my-table', billingMode: 'PAY_PER_REQUEST', readCapacity: 5, writeCapacity: 5,
+      partitionKeyName: 'id', partitionKeyType: 'S', sortKeyName: '', sortKeyType: 'S',
+      pointInTimeRecovery: true, serverSideEncryption: true, tableClass: 'STANDARD', deletionProtection: false,
+      streamEnabled: false, streamViewType: 'NEW_AND_OLD_IMAGES', ttlAttribute: '',
+      estimatedStorageGb: 5, estimatedReadRequestUnitsPerMonth: 1000000, estimatedWriteRequestUnitsPerMonth: 500000,
+      name: 'my-table', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Table Name', type: 'text', defaultValue: 'my-table', required: true },
+      { key: 'partitionKeyName', label: 'Partition Key Name', type: 'text', defaultValue: 'id', required: true },
+      {
+        key: 'partitionKeyType', label: 'Partition Key Type', type: 'select', defaultValue: 'S',
+        options: [
+          { label: 'String', value: 'S' },
+          { label: 'Number', value: 'N' },
+          { label: 'Binary', value: 'B' },
+        ],
+      },
+      { key: 'sortKeyName', label: 'Sort Key Name (optional)', type: 'text', defaultValue: '', placeholder: 'blank = no sort key' },
+      {
+        key: 'sortKeyType', label: 'Sort Key Type', type: 'select', defaultValue: 'S',
+        visibleWhen: (c) => Boolean(c['sortKeyName']),
+        options: [
+          { label: 'String', value: 'S' },
+          { label: 'Number', value: 'N' },
+          { label: 'Binary', value: 'B' },
+        ],
+      },
+      {
+        key: 'billingMode', label: 'Billing Mode', type: 'select', defaultValue: 'PAY_PER_REQUEST', section: 'Compute / Capacity',
+        options: [
+          { label: 'On-Demand (Pay Per Request)', value: 'PAY_PER_REQUEST' },
+          { label: 'Provisioned', value: 'PROVISIONED' },
+        ],
+      },
+      {
+        key: 'readCapacity', label: 'Read Capacity Units', type: 'number', defaultValue: 5, min: 1, max: 40000,
+        section: 'Compute / Capacity', visibleWhen: (c) => c['billingMode'] === 'PROVISIONED',
+      },
+      {
+        key: 'writeCapacity', label: 'Write Capacity Units', type: 'number', defaultValue: 5, min: 1, max: 40000,
+        section: 'Compute / Capacity', visibleWhen: (c) => c['billingMode'] === 'PROVISIONED',
+      },
+      {
+        key: 'tableClass', label: 'Table Class', type: 'select', defaultValue: 'STANDARD', section: 'Storage', advanced: true,
+        options: [
+          { label: 'Standard', value: 'STANDARD' },
+          { label: 'Standard-Infrequent Access', value: 'STANDARD_INFREQUENT_ACCESS' },
+        ],
+      },
+      { key: 'serverSideEncryption', label: 'Server-Side Encryption (KMS)', type: 'boolean', defaultValue: true, section: 'Security' },
+      { key: 'pointInTimeRecovery', label: 'Point-in-Time Recovery', type: 'boolean', defaultValue: true, section: 'Backup & Recovery' },
+      { key: 'deletionProtection', label: 'Deletion Protection', type: 'boolean', defaultValue: false, section: 'Backup & Recovery' },
+      { key: 'streamEnabled', label: 'DynamoDB Streams', type: 'boolean', defaultValue: false, section: 'Advanced', advanced: true },
+      {
+        key: 'streamViewType', label: 'Stream View Type', type: 'select', defaultValue: 'NEW_AND_OLD_IMAGES', section: 'Advanced', advanced: true,
+        visibleWhen: (c) => c['streamEnabled'] === true,
+        options: [
+          { label: 'Keys Only', value: 'KEYS_ONLY' },
+          { label: 'New Image', value: 'NEW_IMAGE' },
+          { label: 'Old Image', value: 'OLD_IMAGE' },
+          { label: 'New and Old Images', value: 'NEW_AND_OLD_IMAGES' },
+        ],
+      },
+      { key: 'ttlAttribute', label: 'TTL Attribute Name', type: 'text', defaultValue: '', section: 'Advanced', advanced: true, placeholder: 'blank = TTL disabled' },
+      {
+        key: 'estimatedStorageGb', label: 'Estimated Storage (GB)', type: 'number', defaultValue: 5, min: 0, section: 'Cost Estimation',
+        description: 'Used only to estimate monthly cost — has no effect on the deployed table.',
+      },
+      {
+        key: 'estimatedReadRequestUnitsPerMonth', label: 'Estimated Read Request Units/Month', type: 'number', defaultValue: 1000000, min: 0,
+        section: 'Cost Estimation', visibleWhen: (c) => c['billingMode'] === 'PAY_PER_REQUEST',
+        description: 'Used only to estimate monthly cost — has no effect on the deployed table.',
+      },
+      {
+        key: 'estimatedWriteRequestUnitsPerMonth', label: 'Estimated Write Request Units/Month', type: 'number', defaultValue: 500000, min: 0,
+        section: 'Cost Estimation', visibleWhen: (c) => c['billingMode'] === 'PAY_PER_REQUEST',
+        description: 'Used only to estimate monthly cost — has no effect on the deployed table.',
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'dynamodb-encryption',
+        severity: 'medium',
+        check: (config) => config.serverSideEncryption === false ? 'DynamoDB table encryption disabled' : null,
+        message: 'DynamoDB table does not have server-side encryption enabled',
+        recommendation: 'Enable server-side encryption (KMS) to protect data at rest',
+        fixAction: (config) => ({ ...config, serverSideEncryption: true }),
+      },
+      {
+        id: 'dynamodb-pitr',
+        severity: 'low',
+        check: (config) => config.pointInTimeRecovery === false ? 'DynamoDB point-in-time recovery disabled' : null,
+        message: 'DynamoDB table does not have point-in-time recovery enabled',
+        recommendation: 'Enable point-in-time recovery for protection against accidental writes/deletes',
+        fixAction: (config) => ({ ...config, pointInTimeRecovery: true }),
+      },
+    ],
   },
   {
     type: 'aws_unsupported',
@@ -1193,12 +1288,75 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#FCE7F3',
     borderColor: '#DB2777',
     monthlyBaseCost: 34.0,
-    defaultConfig: { name: 'my-redis-cache', nodeType: 'cache.t3.medium', numNodes: 2, transitEncryption: true, atRestEncryption: true },
+    defaultConfig: {
+      name: 'my-redis-cache', engine: 'redis', engineVersion: '7.1', nodeType: 'cache.t3.medium', numNodes: 2,
+      port: 6379, automaticFailoverEnabled: true, multiAzEnabled: true, transitEncryption: true, atRestEncryption: true,
+      snapshotRetentionLimit: 5, tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Cluster Name', type: 'text', defaultValue: 'my-redis-cache', required: true },
-      { key: 'numNodes', label: 'Number of Nodes', type: 'number', defaultValue: 2 },
+      {
+        key: 'engine', label: 'Engine', type: 'select', defaultValue: 'redis',
+        options: [
+          { label: 'Redis', value: 'redis' },
+          { label: 'Valkey', value: 'valkey' },
+        ],
+      },
+      { key: 'engineVersion', label: 'Engine Version', type: 'text', defaultValue: '7.1', placeholder: 'e.g. 7.1' },
+      {
+        key: 'nodeType', label: 'Node Type', type: 'select', defaultValue: 'cache.t3.medium', section: 'Compute / Capacity',
+        options: [
+          { label: 'cache.t3.micro (2 vCPU, 0.5GB)', value: 'cache.t3.micro' },
+          { label: 'cache.t3.small (2 vCPU, 1.4GB)', value: 'cache.t3.small' },
+          { label: 'cache.t3.medium (2 vCPU, 3.1GB)', value: 'cache.t3.medium' },
+          { label: 'cache.r6g.large (2 vCPU, 13GB)', value: 'cache.r6g.large' },
+          { label: 'cache.r6g.xlarge (4 vCPU, 26GB)', value: 'cache.r6g.xlarge' },
+        ],
+      },
+      { key: 'numNodes', label: 'Number of Nodes', type: 'number', defaultValue: 2, min: 1, max: 6, section: 'Availability & Scaling' },
+      {
+        key: 'automaticFailoverEnabled', label: 'Automatic Failover', type: 'boolean', defaultValue: true, section: 'Availability & Scaling',
+        visibleWhen: (c) => Number(c['numNodes'] ?? 1) > 1,
+      },
+      {
+        key: 'multiAzEnabled', label: 'Multi-AZ', type: 'boolean', defaultValue: true, section: 'Availability & Scaling',
+        visibleWhen: (c) => Number(c['numNodes'] ?? 1) > 1,
+      },
+      { key: 'transitEncryption', label: 'Encryption in Transit', type: 'boolean', defaultValue: true, section: 'Security' },
+      { key: 'atRestEncryption', label: 'Encryption at Rest', type: 'boolean', defaultValue: true, section: 'Security' },
+      { key: 'port', label: 'Port', type: 'number', defaultValue: 6379, min: 1, max: 65535, section: 'Identity & Access', advanced: true },
+      {
+        key: 'snapshotRetentionLimit', label: 'Snapshot Retention (days)', type: 'number', defaultValue: 5, min: 0, max: 35,
+        section: 'Backup & Recovery',
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'elasticache-transit-encryption',
+        severity: 'high',
+        check: (config) => config.transitEncryption === false ? 'ElastiCache transit encryption disabled' : null,
+        message: 'ElastiCache cluster does not encrypt data in transit',
+        recommendation: 'Enable transit encryption to protect data moving between clients and the cluster',
+        fixAction: (config) => ({ ...config, transitEncryption: true }),
+      },
+      {
+        id: 'elasticache-at-rest-encryption',
+        severity: 'medium',
+        check: (config) => config.atRestEncryption === false ? 'ElastiCache at-rest encryption disabled' : null,
+        message: 'ElastiCache cluster does not encrypt data at rest',
+        recommendation: 'Enable at-rest encryption to protect data on disk/snapshots',
+        fixAction: (config) => ({ ...config, atRestEncryption: true }),
+      },
+      {
+        id: 'elasticache-no-failover',
+        severity: 'medium',
+        check: (config) => (Number(config.numNodes) > 1 && config.automaticFailoverEnabled === false) ? 'ElastiCache multi-node cluster without automatic failover' : null,
+        message: 'Multi-node ElastiCache cluster does not have automatic failover enabled',
+        recommendation: 'Enable automatic failover for high availability',
+        fixAction: (config) => ({ ...config, automaticFailoverEnabled: true }),
+      },
+    ],
   },
   {
     type: 'aws_sqs',
@@ -1211,12 +1369,63 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#FDF2F8',
     borderColor: '#E11D48',
     monthlyBaseCost: 0.40,
-    defaultConfig: { name: 'my-app-queue', fifoQueue: false, encryption: true },
+    defaultConfig: {
+      name: 'my-app-queue', queueName: 'my-app-queue', fifoQueue: false, contentBasedDeduplication: false, encryption: true,
+      kmsMasterKeyId: '', visibilityTimeoutSeconds: 30, messageRetentionSeconds: 345600, delaySeconds: 0,
+      receiveWaitTimeSeconds: 0, deadLetterTargetArn: '', maxReceiveCount: 5,
+      estimatedRequestsPerMonth: 1000000, tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Queue Name', type: 'text', defaultValue: 'my-app-queue', required: true },
       { key: 'fifoQueue', label: 'FIFO Queue', type: 'boolean', defaultValue: false },
+      {
+        key: 'contentBasedDeduplication', label: 'Content-Based Deduplication', type: 'boolean', defaultValue: false,
+        visibleWhen: (c) => c['fifoQueue'] === true,
+      },
+      { key: 'encryption', label: 'Server-Side Encryption', type: 'boolean', defaultValue: true, section: 'Security' },
+      {
+        key: 'kmsMasterKeyId', label: 'KMS Key ID', type: 'text', defaultValue: '', section: 'Security', advanced: true,
+        visibleWhen: (c) => c['encryption'] === true,
+        placeholder: 'blank = SQS-managed SSE (SSE-SQS)',
+      },
+      { key: 'visibilityTimeoutSeconds', label: 'Visibility Timeout (seconds)', type: 'number', defaultValue: 30, min: 0, max: 43200, section: 'Advanced' },
+      { key: 'messageRetentionSeconds', label: 'Message Retention (seconds)', type: 'number', defaultValue: 345600, min: 60, max: 1209600, section: 'Advanced', advanced: true },
+      { key: 'delaySeconds', label: 'Delivery Delay (seconds)', type: 'number', defaultValue: 0, min: 0, max: 900, section: 'Advanced', advanced: true },
+      {
+        key: 'receiveWaitTimeSeconds', label: 'Long Polling Wait Time (seconds)', type: 'number', defaultValue: 0, min: 0, max: 20,
+        section: 'Advanced', advanced: true,
+      },
+      {
+        key: 'deadLetterTargetArn', label: 'Dead-Letter Queue ARN', type: 'text', defaultValue: '', section: 'Backup & Recovery',
+        placeholder: 'arn:aws:sqs:... (blank = no DLQ)',
+      },
+      {
+        key: 'maxReceiveCount', label: 'Max Receive Count Before DLQ', type: 'number', defaultValue: 5, min: 1, max: 1000,
+        section: 'Backup & Recovery', visibleWhen: (c) => Boolean(c['deadLetterTargetArn']),
+      },
+      {
+        key: 'estimatedRequestsPerMonth', label: 'Estimated Requests/Month', type: 'number', defaultValue: 1000000, min: 0, section: 'Cost Estimation',
+        description: 'Used only to estimate monthly cost — has no effect on the deployed queue.',
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'sqs-encryption',
+        severity: 'medium',
+        check: (config) => config.encryption === false ? 'SQS queue encryption disabled' : null,
+        message: 'SQS queue does not have server-side encryption enabled',
+        recommendation: 'Enable server-side encryption (SSE-SQS or SSE-KMS) to protect message content at rest',
+        fixAction: (config) => ({ ...config, encryption: true }),
+      },
+      {
+        id: 'sqs-no-dlq',
+        severity: 'low',
+        check: (config) => !config.deadLetterTargetArn ? 'SQS queue has no dead-letter queue configured' : null,
+        message: 'SQS queue has no dead-letter queue for handling failed message processing',
+        recommendation: 'Configure a dead-letter queue to capture messages that repeatedly fail processing',
+      },
+    ],
   },
   {
     type: 'aws_cloud_boundary',

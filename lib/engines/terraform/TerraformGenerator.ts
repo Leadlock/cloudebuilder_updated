@@ -339,6 +339,32 @@ class AwsTerraformGenerator {
           // Public internet traffic entrypoint marker (no standalone terraform resource)
           break;
         }
+        case 'aws_dynamodb': {
+          blocks.push(this._dynamodb(name, cfg));
+          resourceMap[r.id] = `aws_dynamodb_table.${name}`;
+          break;
+        }
+        case 'aws_elasticache': {
+          const subnets = resolver.resolveParents(r.id, 'aws_subnet', connections, resources);
+          const subnetRefs = subnets.map((s) => {
+            const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
+            return `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
+          });
+          const sg = resolver.resolveParent(r.id, 'aws_sg', connections, resources);
+          const isSgImported = sg && Boolean(this._cfg(sg).imported || this._cfg(sg).importState === 'imported');
+          const sgRef = sg ? `[${isSgImported ? 'data.' : ''}aws_security_group.${resolver.tfNameOf(sg.id) ?? 'main'}.id]` : null;
+          if (subnetRefs.length > 0) {
+            blocks.push(this._elasticacheSubnetGroup(name, subnetRefs));
+          }
+          blocks.push(this._elasticache(name, cfg, subnetRefs.length > 0 ? `aws_elasticache_subnet_group.${name}_subnet_group.name` : null, sgRef));
+          resourceMap[r.id] = `aws_elasticache_replication_group.${name}`;
+          break;
+        }
+        case 'aws_sqs': {
+          blocks.push(this._sqs(name, cfg));
+          resourceMap[r.id] = `aws_sqs_queue.${name}`;
+          break;
+        }
         default: {
           warnings.push(`Unsupported AWS resource type: ${r.resourceType} (resource: ${r.label})`);
         }
@@ -653,6 +679,117 @@ class AwsTerraformGenerator {
     }
 
     return parts.join('\n\n');
+  }
+
+  private _dynamodb(name: string, cfg: Record<string, unknown>): string {
+    const billingMode = (cfg['billingMode'] as string) || 'PAY_PER_REQUEST';
+    const partitionKeyName = (cfg['partitionKeyName'] as string) || 'id';
+    const partitionKeyType = (cfg['partitionKeyType'] as string) || 'S';
+    const sortKeyName = cfg['sortKeyName'] as string | undefined;
+    const sortKeyType = (cfg['sortKeyType'] as string) || 'S';
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const lines: string[] = [
+      `resource "aws_dynamodb_table" "${name}" {`,
+      `  name         = "${cfg['tableName'] ?? name}"`,
+      `  billing_mode = "${billingMode}"`,
+      `  hash_key     = "${partitionKeyName}"`,
+    ];
+    if (sortKeyName) lines.push(`  range_key    = "${sortKeyName}"`);
+    if (billingMode === 'PROVISIONED') {
+      lines.push(`  read_capacity  = ${cfg['readCapacity'] ?? 5}`, `  write_capacity = ${cfg['writeCapacity'] ?? 5}`);
+    }
+    if ((cfg['tableClass'] as string) === 'STANDARD_INFREQUENT_ACCESS') {
+      lines.push(`  table_class = "STANDARD_INFREQUENT_ACCESS"`);
+    }
+    lines.push(`  deletion_protection_enabled = ${cfg['deletionProtection'] === true}`);
+
+    lines.push(`  attribute {`, `    name = "${partitionKeyName}"`, `    type = "${partitionKeyType}"`, `  }`);
+    if (sortKeyName) {
+      lines.push(`  attribute {`, `    name = "${sortKeyName}"`, `    type = "${sortKeyType}"`, `  }`);
+    }
+
+    lines.push(`  point_in_time_recovery {`, `    enabled = ${cfg['pointInTimeRecovery'] !== false}`, `  }`);
+    if (cfg['serverSideEncryption'] !== false) {
+      lines.push(`  server_side_encryption {`, `    enabled = true`, `  }`);
+    }
+    if (cfg['streamEnabled'] === true) {
+      lines.push(`  stream_enabled   = true`, `  stream_view_type = "${cfg['streamViewType'] ?? 'NEW_AND_OLD_IMAGES'}"`);
+    }
+    if (cfg['ttlAttribute']) {
+      lines.push(`  ttl {`, `    attribute_name = "${cfg['ttlAttribute']}"`, `    enabled        = true`, `  }`);
+    }
+
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    return lines.join('\n');
+  }
+
+  private _elasticacheSubnetGroup(name: string, subnetRefs: string[]): string {
+    return `resource "aws_elasticache_subnet_group" "${name}_subnet_group" {
+  name       = "${name}-subnet-group"
+  subnet_ids = [${subnetRefs.join(', ')}]
+}`;
+  }
+
+  private _elasticache(name: string, cfg: Record<string, unknown>, subnetGroupRef: string | null, sgRef: string | null): string {
+    const numNodes = Number(cfg['numNodes'] ?? 2);
+    const multiAz = numNodes > 1 && cfg['multiAzEnabled'] !== false;
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const lines: string[] = [
+      `resource "aws_elasticache_replication_group" "${name}" {`,
+      `  replication_group_id = "${name}"`,
+      `  description           = "Managed by CloudCraft"`,
+      `  engine                = "${cfg['engine'] ?? 'redis'}"`,
+      `  engine_version        = "${cfg['engineVersion'] ?? '7.1'}"`,
+      `  node_type             = "${cfg['nodeType'] ?? 'cache.t3.medium'}"`,
+      `  num_cache_clusters    = ${numNodes}`,
+      `  port                  = ${cfg['port'] ?? 6379}`,
+      `  automatic_failover_enabled = ${numNodes > 1 && cfg['automaticFailoverEnabled'] !== false}`,
+      `  multi_az_enabled           = ${multiAz}`,
+      `  at_rest_encryption_enabled = ${cfg['atRestEncryption'] !== false}`,
+      `  transit_encryption_enabled = ${cfg['transitEncryption'] !== false}`,
+      `  snapshot_retention_limit   = ${cfg['snapshotRetentionLimit'] ?? 5}`,
+    ];
+    if (subnetGroupRef) lines.push(`  subnet_group_name     = ${subnetGroupRef}`);
+    if (sgRef) lines.push(`  security_group_ids    = ${sgRef}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    return lines.join('\n');
+  }
+
+  private _sqs(name: string, cfg: Record<string, unknown>): string {
+    const isFifo = cfg['fifoQueue'] === true;
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const lines: string[] = [
+      `resource "aws_sqs_queue" "${name}" {`,
+      `  name                       = "${cfg['queueName'] ?? name}${isFifo ? '.fifo' : ''}"`,
+      `  fifo_queue                 = ${isFifo}`,
+    ];
+    if (isFifo) {
+      lines.push(`  content_based_deduplication = ${cfg['contentBasedDeduplication'] === true}`);
+    }
+    lines.push(
+      `  visibility_timeout_seconds = ${cfg['visibilityTimeoutSeconds'] ?? 30}`,
+      `  message_retention_seconds  = ${cfg['messageRetentionSeconds'] ?? 345600}`,
+      `  delay_seconds              = ${cfg['delaySeconds'] ?? 0}`,
+      `  receive_wait_time_seconds  = ${cfg['receiveWaitTimeSeconds'] ?? 0}`,
+    );
+    if (cfg['encryption'] !== false) {
+      if (cfg['kmsMasterKeyId']) {
+        lines.push(`  kms_master_key_id          = "${cfg['kmsMasterKeyId']}"`);
+      } else {
+        lines.push(`  sqs_managed_sse_enabled    = true`);
+      }
+    }
+    if (cfg['deadLetterTargetArn']) {
+      lines.push(`  redrive_policy = jsonencode({`, `    deadLetterTargetArn = "${cfg['deadLetterTargetArn']}"`, `    maxReceiveCount     = ${cfg['maxReceiveCount'] ?? 5}`, `  })`);
+    }
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    return lines.join('\n');
   }
 
   private _s3(name: string, cfg: Record<string, unknown>): string {

@@ -412,4 +412,37 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
     expect(withPc.items[0].monthlyUsd).toBeGreaterThan(base.items[0].monthlyUsd);
     expect(withPc.items[0].breakdown.some((b) => b.label.includes('Provisioned concurrency'))).toBe(true);
   });
+
+  test('DynamoDB cost scales with configured capacity/usage (previously a flat $5 regardless of config)', () => {
+    const light = makeResource({ resourceType: 'aws_dynamodb', provider: 'aws', configJson: JSON.stringify({ billingMode: 'PAY_PER_REQUEST', estimatedReadRequestUnitsPerMonth: 100_000, estimatedWriteRequestUnitsPerMonth: 50_000, estimatedStorageGb: 1 }) });
+    const heavy = makeResource({ resourceType: 'aws_dynamodb', provider: 'aws', configJson: JSON.stringify({ billingMode: 'PAY_PER_REQUEST', estimatedReadRequestUnitsPerMonth: 100_000_000, estimatedWriteRequestUnitsPerMonth: 50_000_000, estimatedStorageGb: 500 }) });
+    const lightResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [light] }, 'TEST');
+    const heavyResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [heavy] }, 'TEST');
+    expect(heavyResult.items[0].monthlyUsd).toBeGreaterThan(lightResult.items[0].monthlyUsd);
+  });
+
+  test('DynamoDB PROVISIONED mode prices off read/write capacity units', () => {
+    const small = makeResource({ resourceType: 'aws_dynamodb', provider: 'aws', configJson: JSON.stringify({ billingMode: 'PROVISIONED', readCapacity: 5, writeCapacity: 5 }) });
+    const large = makeResource({ resourceType: 'aws_dynamodb', provider: 'aws', configJson: JSON.stringify({ billingMode: 'PROVISIONED', readCapacity: 500, writeCapacity: 500 }) });
+    const smallResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [small] }, 'TEST');
+    const largeResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [large] }, 'TEST');
+    expect(largeResult.items[0].monthlyUsd).toBeGreaterThan(smallResult.items[0].monthlyUsd);
+  });
+
+  test('ElastiCache cost scales with node type and count', () => {
+    const small = makeResource({ resourceType: 'aws_elasticache', provider: 'aws', configJson: JSON.stringify({ nodeType: 'cache.t3.micro', numNodes: 1 }) });
+    const large = makeResource({ resourceType: 'aws_elasticache', provider: 'aws', configJson: JSON.stringify({ nodeType: 'cache.r6g.xlarge', numNodes: 3 }) });
+    const smallResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [small] }, 'TEST');
+    const largeResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [large] }, 'TEST');
+    expect(largeResult.items[0].monthlyUsd).toBeGreaterThan(smallResult.items[0].monthlyUsd);
+  });
+
+  test('SQS usage within the free tier costs $0; usage above it does not', () => {
+    const freeTier = makeResource({ resourceType: 'aws_sqs', provider: 'aws', configJson: JSON.stringify({ estimatedRequestsPerMonth: 500_000 }) });
+    const heavy = makeResource({ resourceType: 'aws_sqs', provider: 'aws', configJson: JSON.stringify({ estimatedRequestsPerMonth: 100_000_000 }) });
+    const freeResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [freeTier] }, 'TEST');
+    const heavyResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [heavy] }, 'TEST');
+    expect(freeResult.items[0].monthlyUsd).toBeCloseTo(0, 5);
+    expect(heavyResult.items[0].monthlyUsd).toBeGreaterThan(0);
+  });
 });

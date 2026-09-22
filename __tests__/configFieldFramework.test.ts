@@ -231,6 +231,47 @@ describe('aws_alb — deepened config schema', () => {
   });
 });
 
+describe('aws_dynamodb — deepened config schema', () => {
+  const def = getResourceDefinition('aws_dynamodb')!;
+
+  test('readCapacity/writeCapacity are only visible in PROVISIONED billing mode', () => {
+    const field = def.configSchema.find((f) => f.key === 'readCapacity')!;
+    expect(field.visibleWhen!({ billingMode: 'PROVISIONED' })).toBe(true);
+    expect(field.visibleWhen!({ billingMode: 'PAY_PER_REQUEST' })).toBe(false);
+  });
+
+  test('has security rules for encryption and point-in-time recovery', () => {
+    expect(def.securityRules!.some((r) => r.id === 'dynamodb-encryption')).toBe(true);
+    expect(def.securityRules!.some((r) => r.id === 'dynamodb-pitr')).toBe(true);
+  });
+});
+
+describe('aws_elasticache — deepened config schema', () => {
+  const def = getResourceDefinition('aws_elasticache')!;
+
+  test('automaticFailoverEnabled and multiAzEnabled are only visible for multi-node clusters', () => {
+    const field = def.configSchema.find((f) => f.key === 'automaticFailoverEnabled')!;
+    expect(field.visibleWhen!({ numNodes: 3 })).toBe(true);
+    expect(field.visibleWhen!({ numNodes: 1 })).toBe(false);
+  });
+});
+
+describe('aws_sqs — deepened config schema', () => {
+  const def = getResourceDefinition('aws_sqs')!;
+
+  test('contentBasedDeduplication is only visible for FIFO queues', () => {
+    const field = def.configSchema.find((f) => f.key === 'contentBasedDeduplication')!;
+    expect(field.visibleWhen!({ fifoQueue: true })).toBe(true);
+    expect(field.visibleWhen!({ fifoQueue: false })).toBe(false);
+  });
+
+  test('maxReceiveCount is only visible once a dead-letter queue ARN is set', () => {
+    const field = def.configSchema.find((f) => f.key === 'maxReceiveCount')!;
+    expect(field.visibleWhen!({ deadLetterTargetArn: 'arn:aws:sqs:us-east-1:123456789012:dlq' })).toBe(true);
+    expect(field.visibleWhen!({})).toBe(false);
+  });
+});
+
 describe('azure_storage — deepened config schema', () => {
   const def = getResourceDefinition('azure_storage')!;
 
