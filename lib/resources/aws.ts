@@ -817,17 +817,57 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#FEF3C7',
     borderColor: '#D97706',
     monthlyBaseCost: 15,
-    defaultConfig: { launchType: 'FARGATE', desiredCount: 2, cpu: 256, memory: 512, name: 'my-ecs' },
+    defaultConfig: {
+      launchType: 'FARGATE', desiredCount: 2, cpu: 256, memory: 512, name: 'my-ecs',
+      containerImage: 'nginx:latest', containerPort: 80, assignPublicIp: false,
+      minCapacity: 1, maxCapacity: 10, healthCheckGracePeriodSeconds: 0, logRetentionDays: 30,
+      environmentVariables: {}, tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Service Name', type: 'text', defaultValue: 'my-ecs', required: true },
-      { key: 'desiredCount', label: 'Desired Tasks', type: 'number', defaultValue: 2 },
+      { key: 'containerImage', label: 'Container Image', type: 'text', defaultValue: 'nginx:latest', placeholder: 'repo/image:tag' },
+      { key: 'containerPort', label: 'Container Port', type: 'number', defaultValue: 80, min: 1, max: 65535 },
+      {
+        key: 'launchType', label: 'Launch Type', type: 'select', defaultValue: 'FARGATE', section: 'Compute / Capacity',
+        options: [
+          { label: 'Fargate (serverless)', value: 'FARGATE' },
+          { label: 'EC2 (self-managed capacity)', value: 'EC2' },
+        ],
+      },
+      { key: 'desiredCount', label: 'Desired Tasks', type: 'number', defaultValue: 2, min: 0, max: 1000, section: 'Compute / Capacity' },
       // cpu/memory exist in defaultConfig and are written by the Adaptive
       // Scale Engine, but were missing here — meaning task-size scale
       // changes were silently invisible in the Properties Panel.
-      { key: 'cpu', label: 'Task CPU (units, 1024 = 1 vCPU)', type: 'number', defaultValue: 256 },
-      { key: 'memory', label: 'Task Memory (MB)', type: 'number', defaultValue: 512 },
+      { key: 'cpu', label: 'Task CPU (units, 1024 = 1 vCPU)', type: 'number', defaultValue: 256, section: 'Compute / Capacity' },
+      { key: 'memory', label: 'Task Memory (MB)', type: 'number', defaultValue: 512, section: 'Compute / Capacity' },
+      { key: 'assignPublicIp', label: 'Assign Public IP', type: 'boolean', defaultValue: false, section: 'Networking' },
+      {
+        key: 'minCapacity', label: 'Autoscaling Min Tasks', type: 'number', defaultValue: 1, min: 0, max: 1000,
+        section: 'Availability & Scaling', advanced: true,
+      },
+      {
+        key: 'maxCapacity', label: 'Autoscaling Max Tasks', type: 'number', defaultValue: 10, min: 1, max: 1000,
+        section: 'Availability & Scaling', advanced: true,
+      },
+      {
+        key: 'healthCheckGracePeriodSeconds', label: 'Health Check Grace Period (sec)', type: 'number', defaultValue: 0, min: 0, max: 2147483647,
+        section: 'Availability & Scaling', advanced: true,
+        description: 'Only relevant when the service is attached to a load balancer target group.',
+      },
+      { key: 'logRetentionDays', label: 'CloudWatch Log Retention (days)', type: 'number', defaultValue: 30, min: 1, max: 3650, section: 'Monitoring' },
+      { key: 'environmentVariables', label: 'Environment Variables', type: 'keyvalue', defaultValue: {}, section: 'Advanced' },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'ecs-public-ip',
+        severity: 'medium',
+        check: (config) => config.assignPublicIp === true ? 'ECS tasks auto-assign a public IP' : null,
+        message: 'ECS service is configured to assign public IPs to its tasks',
+        recommendation: 'Disable public IP assignment for tasks in private subnets; route ingress through a load balancer instead',
+        fixAction: (config) => ({ ...config, assignPublicIp: false }),
+      },
+    ],
   },
   {
     type: 'aws_eks',

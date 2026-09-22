@@ -580,11 +580,92 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#FEF3C7',
     borderColor: '#D97706',
     monthlyBaseCost: 0,
-    defaultConfig: { name: 'my-func', runtime: 'node' },
+    defaultConfig: {
+      name: 'my-func', runtime: 'node', runtimeVersion: '20', osType: 'Linux', planType: 'Y1',
+      httpsOnly: true, alwaysOn: false, minimumTlsVersion: '1.2', publicNetworkAccess: true,
+      memoryMb: 512, estimatedInvocationsPerMonth: 1000000, estimatedAvgDurationMs: 100,
+      appSettings: {}, tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'App Name', type: 'text', defaultValue: 'my-func', required: true },
+      {
+        key: 'runtime', label: 'Runtime Stack', type: 'select', defaultValue: 'node',
+        options: [
+          { label: 'Node.js', value: 'node' },
+          { label: 'Python', value: 'python' },
+          { label: '.NET', value: 'dotnet' },
+          { label: 'Java', value: 'java' },
+          { label: 'PowerShell', value: 'powershell' },
+        ],
+      },
+      { key: 'runtimeVersion', label: 'Runtime Version', type: 'text', defaultValue: '20', placeholder: 'e.g. 20 for Node.js, 3.11 for Python' },
+      {
+        key: 'osType', label: 'OS Type', type: 'select', defaultValue: 'Linux',
+        options: [
+          { label: 'Linux', value: 'Linux' },
+          { label: 'Windows', value: 'Windows' },
+        ],
+      },
+      {
+        key: 'planType', label: 'Hosting Plan', type: 'select', defaultValue: 'Y1', section: 'Compute / Capacity',
+        options: [
+          { label: 'Consumption (Y1) — pay per execution', value: 'Y1' },
+          { label: 'Premium (EP1)', value: 'EP1' },
+          { label: 'Premium (EP2)', value: 'EP2' },
+          { label: 'Dedicated (B1 App Service Plan)', value: 'B1' },
+          { label: 'Dedicated (S1 App Service Plan)', value: 'S1' },
+        ],
+      },
+      {
+        key: 'alwaysOn', label: 'Always On', type: 'boolean', defaultValue: false, section: 'Compute / Capacity',
+        visibleWhen: (c) => c['planType'] !== 'Y1',
+        description: 'Not available on the Consumption plan — the platform cold-starts Consumption functions instead.',
+      },
+      { key: 'httpsOnly', label: 'HTTPS Only', type: 'boolean', defaultValue: true, section: 'Security' },
+      { key: 'publicNetworkAccess', label: 'Public Network Access', type: 'boolean', defaultValue: true, section: 'Security' },
+      {
+        key: 'minimumTlsVersion', label: 'Minimum TLS Version', type: 'select', defaultValue: '1.2', section: 'Security', advanced: true,
+        options: [
+          { label: 'TLS 1.0', value: '1.0' },
+          { label: 'TLS 1.1', value: '1.1' },
+          { label: 'TLS 1.2', value: '1.2' },
+        ],
+      },
+      { key: 'appSettings', label: 'Application Settings', type: 'keyvalue', defaultValue: {}, section: 'Advanced' },
+      {
+        key: 'memoryMb', label: 'Memory per Execution (MB)', type: 'number', defaultValue: 512, min: 128, max: 1536,
+        section: 'Cost Estimation', visibleWhen: (c) => c['planType'] === 'Y1',
+        description: 'Consumption plan only. Used only to estimate monthly cost — has no effect on the deployed app.',
+      },
+      {
+        key: 'estimatedInvocationsPerMonth', label: 'Estimated Invocations/Month', type: 'number', defaultValue: 1000000, min: 0,
+        section: 'Cost Estimation', visibleWhen: (c) => c['planType'] === 'Y1',
+        description: 'Consumption plan only. Used only to estimate monthly cost — has no effect on the deployed app.',
+      },
+      {
+        key: 'estimatedAvgDurationMs', label: 'Estimated Avg Duration (ms)', type: 'number', defaultValue: 100, min: 1,
+        section: 'Cost Estimation', visibleWhen: (c) => c['planType'] === 'Y1',
+        description: 'Consumption plan only. Used only to estimate monthly cost — has no effect on the deployed app.',
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'functions-public-access',
+        severity: 'medium',
+        check: (config) => config.publicNetworkAccess === true ? 'Function App allows public network access' : null,
+        message: 'Function App is reachable from the public internet',
+        recommendation: 'Disable public network access and use Private Endpoint for internal-only functions',
+      },
+      {
+        id: 'functions-https-only',
+        severity: 'high',
+        check: (config) => config.httpsOnly === false ? 'Function App allows non-HTTPS traffic' : null,
+        message: 'Function App does not enforce HTTPS-only connections',
+        recommendation: 'Enable HTTPS Only to prevent unencrypted traffic',
+        fixAction: (config) => ({ ...config, httpsOnly: true }),
+      },
+    ],
   },
   {
     type: 'azure_aks',

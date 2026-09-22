@@ -277,11 +277,50 @@ export class AzurePricingProvider implements PricingProvider {
 
   private _functions(
     resource: DbArchitectureResource,
-    _config: Record<string, unknown>,
+    config: Record<string, unknown>,
     region: string,
-    _mult: number,
+    mult: number,
   ): CostLineItem {
-    const monthly = 5.0;
+    const planType = (config['planType'] as string) || 'Y1';
+
+    // Premium/Dedicated plans bill a fixed hourly SKU rate regardless of executions.
+    const planHourlyUsd: Record<string, number> = { EP1: 0.173, EP2: 0.346, B1: 0.018, S1: 0.036 };
+    if (planType !== 'Y1' && planHourlyUsd[planType] !== undefined) {
+      const hourly = planHourlyUsd[planType]! * mult;
+      const monthly = toMonthly(hourly);
+      return {
+        resourceId: resource.id,
+        resourceLabel: resource.label,
+        resourceType: resource.resourceType,
+        provider: 'azure',
+        region,
+        hourlyUsd: hourly,
+        monthlyUsd: monthly,
+        breakdown: [
+          { label: `Azure Functions ${planType} plan (always-on)`, monthlyUsd: monthly },
+        ],
+        assumptions: [
+          `${planType} plan: fixed hourly rate regardless of execution count`,
+          `Region: ${region}`,
+        ],
+        pricingSource: 'azure-functions-premium-list-price',
+        confidence: 'estimate',
+      };
+    }
+
+    // Consumption (Y1): $0.20 per million executions + $0.000016/GB-s, with a free grant.
+    const invocations = Math.max(0, Number(config['estimatedInvocationsPerMonth'] ?? 1_000_000));
+    const avgDurationMs = Math.max(0, Number(config['estimatedAvgDurationMs'] ?? 100));
+    const memoryMb = Math.max(128, Number(config['memoryMb'] ?? 512));
+    const freeExecutions = 1_000_000;
+    const freeGbSeconds = 400_000;
+    const gbSeconds = invocations * (memoryMb / 1024) * (avgDurationMs / 1000);
+    const billableExecutions = Math.max(0, invocations - freeExecutions);
+    const billableGbSeconds = Math.max(0, gbSeconds - freeGbSeconds);
+    const executionCost = (billableExecutions / 1_000_000) * 0.20;
+    const computeCost = billableGbSeconds * 0.000016;
+    const monthly = executionCost + computeCost;
+
     return {
       resourceId: resource.id,
       resourceLabel: resource.label,
@@ -291,13 +330,15 @@ export class AzurePricingProvider implements PricingProvider {
       hourlyUsd: monthly / 730,
       monthlyUsd: monthly,
       breakdown: [
-        { label: 'Azure Functions consumption & memory executions', monthlyUsd: monthly },
+        { label: `Executions (${invocations.toLocaleString()}/mo, 1M free)`, monthlyUsd: executionCost },
+        { label: `Compute (${memoryMb}MB x ${avgDurationMs}ms, 400K GB-s free)`, monthlyUsd: computeCost },
       ],
       assumptions: [
-        'Includes 1M executions and 400,000 GB-s free tier grant',
+        'Consumption (Y1) plan: pay-per-execution',
+        `${invocations.toLocaleString()} invocations/mo at ${avgDurationMs}ms average duration assumed`,
         `Region: ${region}`,
       ],
-      pricingSource: 'azure-functions-list-price',
+      pricingSource: 'azure-functions-consumption-list-price',
       confidence: 'estimate',
     };
   }

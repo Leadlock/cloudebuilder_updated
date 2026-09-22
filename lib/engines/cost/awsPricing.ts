@@ -113,6 +113,7 @@ export class AwsPricingProvider implements PricingProvider {
       case 'aws_eks':        return this._eks(resource, config, region, mult);
       case 'aws_elasticache': return this._elasticache(resource, config, region, mult);
       case 'aws_sqs':        return this._sqs(resource, config, region, mult);
+      case 'aws_ecs':        return this._ecs(resource, config, region, mult);
       case 'aws_vpc':
       case 'aws_subnet':
       case 'aws_igw':
@@ -581,6 +582,62 @@ export class AwsPricingProvider implements PricingProvider {
         `Region: ${region}`,
       ],
       pricingSource: 'aws-sqs-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _ecs(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const launchType = (config['launchType'] as string) || 'FARGATE';
+    const desiredCount = Math.max(0, Number(config['desiredCount'] ?? 2));
+
+    if (launchType !== 'FARGATE') {
+      return {
+        resourceId: resource.id,
+        resourceLabel: resource.label,
+        resourceType: resource.resourceType,
+        provider: 'aws',
+        region,
+        hourlyUsd: 0,
+        monthlyUsd: 0,
+        breakdown: [],
+        assumptions: [
+          'EC2 launch type: task compute is billed via the underlying EC2 instances/Auto Scaling group, not as a separate ECS charge',
+          `Region: ${region}`,
+        ],
+        pricingSource: 'aws-ecs-ec2-no-separate-charge',
+        confidence: 'estimate',
+      };
+    }
+
+    // Fargate us-east-1 list price: $0.04048/vCPU-hour, $0.004445/GB-hour.
+    const vcpu = Number(config['cpu'] ?? 256) / 1024;
+    const memoryGb = Number(config['memory'] ?? 512) / 1024;
+    const hourlyPerTask = (vcpu * 0.04048 + memoryGb * 0.004445) * mult;
+    const hourly = hourlyPerTask * desiredCount;
+    const monthly = toMonthly(hourly);
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: `Fargate ${vcpu} vCPU / ${memoryGb.toFixed(2)}GB x ${desiredCount} task(s)`, monthlyUsd: monthly },
+      ],
+      assumptions: [
+        `Launch type: Fargate, ${desiredCount} desired task(s)`,
+        `${vcpu} vCPU / ${memoryGb.toFixed(2)}GB per task`,
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-fargate-list-price',
       confidence: 'estimate',
     };
   }

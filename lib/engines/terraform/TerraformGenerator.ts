@@ -365,6 +365,22 @@ class AwsTerraformGenerator {
           resourceMap[r.id] = `aws_sqs_queue.${name}`;
           break;
         }
+        case 'aws_ecs': {
+          const subnets = resolver.resolveParents(r.id, 'aws_subnet', connections, resources);
+          const subnetRefs = subnets.map((s) => {
+            const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
+            return `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
+          });
+          const sg = resolver.resolveParent(r.id, 'aws_sg', connections, resources);
+          const isSgImported = sg && Boolean(this._cfg(sg).imported || this._cfg(sg).importState === 'imported');
+          const sgRef = sg ? `${isSgImported ? 'data.' : ''}aws_security_group.${resolver.tfNameOf(sg.id) ?? 'main'}.id` : null;
+          if (subnetRefs.length === 0) {
+            warnings.push(`ECS service "${r.label}" is not connected to any subnet — the generated aws_ecs_service will have no network configuration and will fail to apply.`);
+          }
+          blocks.push(this._ecs(name, cfg, subnetRefs, sgRef));
+          resourceMap[r.id] = `aws_ecs_service.${name}`;
+          break;
+        }
         default: {
           warnings.push(`Unsupported AWS resource type: ${r.resourceType} (resource: ${r.label})`);
         }
@@ -790,6 +806,124 @@ class AwsTerraformGenerator {
     }
     lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
     return lines.join('\n');
+  }
+
+  /**
+   * Generates a Fargate/EC2 ECS service: cluster, CloudWatch log group,
+   * IAM execution role, task definition (single container), and the
+   * service itself. Networking is only attached when the service is
+   * connected to a subnet on the canvas.
+   */
+  private _ecs(name: string, cfg: Record<string, unknown>, subnetRefs: string[], sgRef: string | null): string {
+    const launchType = (cfg['launchType'] as string) || 'FARGATE';
+    const isFargate = launchType === 'FARGATE';
+    const envVars = (cfg['environmentVariables'] && typeof cfg['environmentVariables'] === 'object')
+      ? cfg['environmentVariables'] as Record<string, string> : {};
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+    const containerPort = cfg['containerPort'] ?? 80;
+
+    const envJson = Object.entries(envVars).filter(([k]) => k)
+      .map(([k, v]) => `        { "name": "${k}", "value": ${JSON.stringify(v)} }`).join(',\n');
+
+    const parts: string[] = [
+      `resource "aws_ecs_cluster" "${name}_cluster" {
+  name = "${name}-cluster"
+  tags = {
+    Name      = "${name}-cluster"
+    ManagedBy = "CloudCraft"
+  }
+}`,
+      `resource "aws_cloudwatch_log_group" "${name}_logs" {
+  name              = "/ecs/${name}"
+  retention_in_days = ${cfg['logRetentionDays'] ?? 30}
+}`,
+      `resource "aws_iam_role" "${name}_exec_role" {
+  name = "${name}-exec-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+    }]
+  })
+}`,
+      `resource "aws_iam_role_policy_attachment" "${name}_exec_policy" {
+  role       = aws_iam_role.${name}_exec_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}`,
+      `resource "aws_ecs_task_definition" "${name}" {
+  family                   = "${name}"
+  requires_compatibilities = ["${launchType}"]
+  network_mode             = "${isFargate ? 'awsvpc' : 'bridge'}"
+  cpu                      = "${cfg['cpu'] ?? 256}"
+  memory                   = "${cfg['memory'] ?? 512}"
+  execution_role_arn       = aws_iam_role.${name}_exec_role.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "${name}"
+      image     = "${cfg['containerImage'] ?? 'nginx:latest'}"
+      essential = true
+      portMappings = [
+        { containerPort = ${containerPort}, hostPort = ${isFargate ? containerPort : 0}, protocol = "tcp" }
+      ]${envJson ? `,\n      environment = [\n${envJson}\n      ]` : ''}
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.${name}_logs.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "${name}"
+        }
+      }
+    }
+  ])
+
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+${tagLines.join('\n')}
+  }
+}`,
+    ];
+
+    const serviceLines: string[] = [
+      `resource "aws_ecs_service" "${name}" {`,
+      `  name            = "${name}"`,
+      `  cluster         = aws_ecs_cluster.${name}_cluster.id`,
+      `  task_definition = aws_ecs_task_definition.${name}.arn`,
+      `  desired_count   = ${cfg['desiredCount'] ?? 2}`,
+      `  launch_type     = "${launchType}"`,
+    ];
+    if (Number(cfg['healthCheckGracePeriodSeconds'] ?? 0) > 0) {
+      serviceLines.push(`  health_check_grace_period_seconds = ${cfg['healthCheckGracePeriodSeconds']}`);
+    }
+    if (isFargate) {
+      serviceLines.push(`  network_configuration {`);
+      serviceLines.push(`    subnets          = [${subnetRefs.join(', ')}]`);
+      if (sgRef) serviceLines.push(`    security_groups  = [${sgRef}]`);
+      serviceLines.push(`    assign_public_ip = ${cfg['assignPublicIp'] === true}`);
+      serviceLines.push(`  }`);
+    }
+    serviceLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    parts.push(serviceLines.join('\n'));
+
+    const minCap = Number(cfg['minCapacity'] ?? 1);
+    const maxCap = Number(cfg['maxCapacity'] ?? 10);
+    if (maxCap > minCap) {
+      parts.push(
+        `resource "aws_appautoscaling_target" "${name}_scaling" {
+  max_capacity       = ${maxCap}
+  min_capacity       = ${minCap}
+  resource_id        = "service/\${aws_ecs_cluster.${name}_cluster.name}/\${aws_ecs_service.${name}.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+}`,
+      );
+    }
+
+    return parts.join('\n\n');
   }
 
   private _s3(name: string, cfg: Record<string, unknown>): string {
@@ -1295,6 +1429,16 @@ class AzureTerraformGenerator {
           resourceMap[r.id] = `azurerm_cosmosdb_account.${name}`;
           break;
         }
+        case 'azure_functions': {
+          const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          blocks.push(this._functionApp(name, cfg, rgName, rgLoc));
+          resourceMap[r.id] = `${cfg['osType'] === 'Windows' ? 'azurerm_windows_function_app' : 'azurerm_linux_function_app'}.${name}`;
+          break;
+        }
         case 'azure_nsg': {
           const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
           const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
@@ -1597,6 +1741,79 @@ data "azurerm_network_security_group" "${name}" {
     failover_priority = 0
   }
 }`;
+  }
+
+  /**
+   * Generates a Function App plus the storage account and hosting plan it
+   * requires. A dedicated storage account is created per function app
+   * (the standard pattern) rather than assuming one exists on the canvas.
+   */
+  private _functionApp(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
+    const isWindows = cfg['osType'] === 'Windows';
+    const resourceType = isWindows ? 'azurerm_windows_function_app' : 'azurerm_linux_function_app';
+    const planType = (cfg['planType'] as string) || 'Y1';
+    const skuName = planType === 'Y1' ? 'Y1' : planType;
+    const storageName = `${name}fnsa`.replace(/[^a-z0-9]/gi, '').toLowerCase().substring(0, 24);
+    const runtime = (cfg['runtime'] as string) || 'node';
+    const runtimeVersion = (cfg['runtimeVersion'] as string) || '20';
+    const appSettings = (cfg['appSettings'] && typeof cfg['appSettings'] === 'object') ? cfg['appSettings'] as Record<string, string> : {};
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const runtimeKeyMap: Record<string, string> = { node: 'node_version', python: 'python_version', dotnet: 'dotnet_version', java: 'java_version', powershell: 'powershell_core_version' };
+    const runtimeKey = runtimeKeyMap[runtime] ?? 'node_version';
+
+    const parts: string[] = [
+      `resource "azurerm_storage_account" "${name}_sa" {
+  name                     = "${storageName}"
+  resource_group_name      = ${rgName}
+  location                 = ${rgLoc}
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+  tags = {
+    ManagedBy = "CloudCraft"
+  }
+}`,
+      `resource "azurerm_service_plan" "${name}_plan" {
+  name                = "${name}-plan"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+  os_type             = "${isWindows ? 'Windows' : 'Linux'}"
+  sku_name            = "${skuName}"
+}`,
+    ];
+
+    const appLines: string[] = [
+      `resource "${resourceType}" "${name}" {`,
+      `  name                       = "${name}"`,
+      `  resource_group_name        = ${rgName}`,
+      `  location                   = ${rgLoc}`,
+      `  service_plan_id            = azurerm_service_plan.${name}_plan.id`,
+      `  storage_account_name       = azurerm_storage_account.${name}_sa.name`,
+      `  storage_account_access_key = azurerm_storage_account.${name}_sa.primary_access_key`,
+      `  https_only                 = ${cfg['httpsOnly'] !== false}`,
+      `  public_network_access_enabled = ${cfg['publicNetworkAccess'] !== false}`,
+      `  site_config {`,
+      `    minimum_tls_version = "${cfg['minimumTlsVersion'] ?? '1.2'}"`,
+    ];
+    if (planType !== 'Y1') {
+      appLines.push(`    always_on           = ${cfg['alwaysOn'] === true}`);
+    }
+    appLines.push(`    application_stack {`, `      ${runtimeKey} = "${runtimeVersion}"`, `    }`, `  }`);
+
+    if (Object.keys(appSettings).length > 0) {
+      appLines.push(`  app_settings = {`);
+      for (const [k, v] of Object.entries(appSettings)) {
+        if (!k) continue;
+        appLines.push(`    "${k}" = "${v}"`);
+      }
+      appLines.push(`  }`);
+    }
+
+    appLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    parts.push(appLines.join('\n'));
+
+    return parts.join('\n\n');
   }
 
   private _nsg(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {

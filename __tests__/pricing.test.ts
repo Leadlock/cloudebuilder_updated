@@ -445,4 +445,35 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
     expect(freeResult.items[0].monthlyUsd).toBeCloseTo(0, 5);
     expect(heavyResult.items[0].monthlyUsd).toBeGreaterThan(0);
   });
+
+  test('ECS Fargate cost scales with task CPU/memory and desired count', () => {
+    const small = makeResource({ resourceType: 'aws_ecs', provider: 'aws', configJson: JSON.stringify({ launchType: 'FARGATE', cpu: 256, memory: 512, desiredCount: 1 }) });
+    const large = makeResource({ resourceType: 'aws_ecs', provider: 'aws', configJson: JSON.stringify({ launchType: 'FARGATE', cpu: 2048, memory: 4096, desiredCount: 5 }) });
+    const smallResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [small] }, 'TEST');
+    const largeResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [large] }, 'TEST');
+    expect(largeResult.items[0].monthlyUsd).toBeGreaterThan(smallResult.items[0].monthlyUsd);
+  });
+
+  test('ECS EC2 launch type has no separate charge (billed via the underlying instances)', () => {
+    const ec2Launch = makeResource({ resourceType: 'aws_ecs', provider: 'aws', configJson: JSON.stringify({ launchType: 'EC2', cpu: 1024, memory: 2048, desiredCount: 3 }) });
+    const result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [ec2Launch] }, 'TEST');
+    expect(result.items[0].monthlyUsd).toBe(0);
+  });
+
+  test('Azure Functions Premium/Dedicated plans price as a fixed hourly SKU regardless of executions', () => {
+    const light = makeResource({ resourceType: 'azure_functions', provider: 'azure', configJson: JSON.stringify({ planType: 'B1', estimatedInvocationsPerMonth: 1 }) });
+    const heavy = makeResource({ resourceType: 'azure_functions', provider: 'azure', configJson: JSON.stringify({ planType: 'B1', estimatedInvocationsPerMonth: 999_999_999 }) });
+    const lightResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [light] }, 'TEST');
+    const heavyResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [heavy] }, 'TEST');
+    expect(lightResult.items[0].monthlyUsd).toBeCloseTo(heavyResult.items[0].monthlyUsd, 5);
+    expect(lightResult.items[0].monthlyUsd).toBeGreaterThan(0);
+  });
+
+  test('Azure Functions Consumption plan scales with invocations (previously a flat $5 regardless of config)', () => {
+    const light = makeResource({ resourceType: 'azure_functions', provider: 'azure', configJson: JSON.stringify({ planType: 'Y1', memoryMb: 128, estimatedInvocationsPerMonth: 1_000_000, estimatedAvgDurationMs: 50 }) });
+    const heavy = makeResource({ resourceType: 'azure_functions', provider: 'azure', configJson: JSON.stringify({ planType: 'Y1', memoryMb: 1536, estimatedInvocationsPerMonth: 50_000_000, estimatedAvgDurationMs: 800 }) });
+    const lightResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [light] }, 'TEST');
+    const heavyResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [heavy] }, 'TEST');
+    expect(heavyResult.items[0].monthlyUsd).toBeGreaterThan(lightResult.items[0].monthlyUsd);
+  });
 });

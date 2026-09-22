@@ -1031,6 +1031,51 @@ describe('TerraformGenerator — AWS', () => {
       expect(main.content).toContain('maxReceiveCount     = 3');
     });
   });
+
+  describe('ECS Terraform generation (previously completely unsupported)', () => {
+    function ecsWithSubnet(ecsConfig: Record<string, unknown>) {
+      const subnet = makeResource({ id: 'sub-1', resourceType: 'aws_subnet', provider: 'aws', configJson: JSON.stringify({ name: 'app_subnet' }) });
+      const svc = makeResource({ id: 'ecs-1', resourceType: 'aws_ecs', provider: 'aws', configJson: JSON.stringify(ecsConfig), groupId: 'sub-1' });
+      const conn = makeConnection('sub-1', 'ecs-1');
+      return gen.generate(awsInput([subnet, svc], [conn]));
+    }
+
+    test('generates a cluster, task definition, execution role, and service', () => {
+      const result = ecsWithSubnet({ name: 'api_service', containerImage: 'myorg/api:v1', containerPort: 3000 });
+      expect(result.warnings.some((w) => w.includes('aws_ecs') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_ecs_cluster" "api_service_cluster"');
+      expect(main.content).toContain('resource "aws_ecs_task_definition" "api_service"');
+      expect(main.content).toContain('resource "aws_iam_role" "api_service_exec_role"');
+      expect(main.content).toContain('resource "aws_ecs_service" "api_service"');
+      expect(main.content).toContain('image     = "myorg/api:v1"');
+    });
+
+    test('Fargate service gets awsvpc network_configuration; EC2 launch type omits it', () => {
+      const fargate = ecsWithSubnet({ name: 'fargate_svc', launchType: 'FARGATE' });
+      const fargateMain = fargate.files.find((f) => f.filename === 'main.tf')!;
+      expect(fargateMain.content).toContain('network_mode             = "awsvpc"');
+      expect(fargateMain.content).toContain('network_configuration {');
+
+      const ec2 = ecsWithSubnet({ name: 'ec2_svc', launchType: 'EC2' });
+      const ec2Main = ec2.files.find((f) => f.filename === 'main.tf')!;
+      expect(ec2Main.content).toContain('network_mode             = "bridge"');
+      expect(ec2Main.content).not.toContain('network_configuration {');
+    });
+
+    test('environment variables flow into the task definition container_definitions', () => {
+      const result = ecsWithSubnet({ name: 'configured_svc', environmentVariables: { STAGE: 'prod' } });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('"name": "STAGE", "value": "prod"');
+    });
+
+    test('maxCapacity > minCapacity generates an autoscaling target', () => {
+      const result = ecsWithSubnet({ name: 'scaled_svc', minCapacity: 2, maxCapacity: 20 });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_appautoscaling_target" "scaled_svc_scaling"');
+      expect(main.content).toContain('max_capacity       = 20');
+    });
+  });
 });
 
 describe('TerraformGenerator — Azure', () => {
@@ -1069,6 +1114,50 @@ describe('TerraformGenerator — Azure', () => {
     const result = gen.generate(azureInput([st]));
     const main = result.files.find((f) => f.filename === 'main.tf')!;
     expect(main.content).toContain('enable_https_traffic_only');
+  });
+
+  describe('Function App Terraform generation (previously completely unsupported)', () => {
+    function functionsWithRg(fnConfig: Record<string, unknown>) {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const fn = makeResource({ id: 'fn-1', resourceType: 'azure_functions', provider: 'azure', configJson: JSON.stringify(fnConfig) });
+      const conn = makeConnection('rg-1', 'fn-1');
+      return gen.generate(azureInput([rg, fn], [conn]));
+    }
+
+    test('osType=Windows generates azurerm_windows_function_app; Linux (default) generates azurerm_linux_function_app', () => {
+      const windows = functionsWithRg({ name: 'win_func', osType: 'Windows' });
+      const windowsMain = windows.files.find((f) => f.filename === 'main.tf')!;
+      expect(windowsMain.content).toContain('resource "azurerm_windows_function_app" "win_func"');
+
+      const linux = functionsWithRg({ name: 'linux_func' });
+      const linuxMain = linux.files.find((f) => f.filename === 'main.tf')!;
+      expect(linuxMain.content).toContain('resource "azurerm_linux_function_app" "linux_func"');
+    });
+
+    test('generates a dedicated storage account and service plan the app depends on', () => {
+      const result = functionsWithRg({ name: 'my_func' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_storage_account" "my_func_sa"');
+      expect(main.content).toContain('resource "azurerm_service_plan" "my_func_plan"');
+      expect(main.content).toContain('storage_account_name       = azurerm_storage_account.my_func_sa.name');
+    });
+
+    test('Consumption plan (Y1) omits always_on; Premium/Dedicated plans include it', () => {
+      const consumption = functionsWithRg({ name: 'consumption_func', planType: 'Y1' });
+      const consumptionMain = consumption.files.find((f) => f.filename === 'main.tf')!;
+      expect(consumptionMain.content).not.toContain('always_on');
+
+      const premium = functionsWithRg({ name: 'premium_func', planType: 'EP1', alwaysOn: true });
+      const premiumMain = premium.files.find((f) => f.filename === 'main.tf')!;
+      expect(premiumMain.content).toContain('always_on           = true');
+      expect(premiumMain.content).toContain('sku_name            = "EP1"');
+    });
+
+    test('application settings flow into app_settings', () => {
+      const result = functionsWithRg({ name: 'configured_func', appSettings: { FEATURE_FLAG: 'on' } });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('"FEATURE_FLAG" = "on"');
+    });
   });
 
   describe('Storage account config depth round-trip', () => {

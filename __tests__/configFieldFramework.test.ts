@@ -272,6 +272,35 @@ describe('aws_sqs — deepened config schema', () => {
   });
 });
 
+describe('aws_ecs — deepened config schema', () => {
+  const def = getResourceDefinition('aws_ecs')!;
+
+  test('alwaysOn-style autoscaling and health check fields are advanced but core launch settings stay in Basic', () => {
+    const basicKeys = def.configSchema.filter((f) => !f.advanced).map((f) => f.key);
+    expect(basicKeys).toEqual(expect.arrayContaining(['containerImage', 'containerPort', 'desiredCount']));
+  });
+
+  test('has a security rule for public IP assignment', () => {
+    expect(def.securityRules!.some((r) => r.id === 'ecs-public-ip')).toBe(true);
+  });
+});
+
+describe('azure_functions — deepened config schema', () => {
+  const def = getResourceDefinition('azure_functions')!;
+
+  test('alwaysOn is only visible for non-Consumption plans', () => {
+    const field = def.configSchema.find((f) => f.key === 'alwaysOn')!;
+    expect(field.visibleWhen!({ planType: 'EP1' })).toBe(true);
+    expect(field.visibleWhen!({ planType: 'Y1' })).toBe(false);
+  });
+
+  test('cost-estimation fields are only visible for the Consumption plan', () => {
+    const field = def.configSchema.find((f) => f.key === 'estimatedInvocationsPerMonth')!;
+    expect(field.visibleWhen!({ planType: 'Y1' })).toBe(true);
+    expect(field.visibleWhen!({ planType: 'EP1' })).toBe(false);
+  });
+});
+
 describe('azure_storage — deepened config schema', () => {
   const def = getResourceDefinition('azure_storage')!;
 
