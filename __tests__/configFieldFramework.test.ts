@@ -285,6 +285,39 @@ describe('aws_ecs — deepened config schema', () => {
   });
 });
 
+describe('aws_eks — deepened config schema', () => {
+  const def = getResourceDefinition('aws_eks')!;
+
+  test('publicAccessCidrs is only visible when the public endpoint is enabled', () => {
+    const field = def.configSchema.find((f) => f.key === 'publicAccessCidrs')!;
+    expect(field.visibleWhen!({ endpointPublicAccess: true })).toBe(true);
+    expect(field.visibleWhen!({ endpointPublicAccess: false })).toBe(false);
+  });
+
+  test('clusterLogTypes uses the multiselect type', () => {
+    const field = def.configSchema.find((f) => f.key === 'clusterLogTypes')!;
+    expect(field.type).toBe('multiselect');
+  });
+
+  test('has a security rule for an open public endpoint', () => {
+    expect(def.securityRules!.some((r) => r.id === 'eks-public-endpoint-open')).toBe(true);
+  });
+});
+
+describe('azure_aks — deepened config schema', () => {
+  const def = getResourceDefinition('azure_aks')!;
+
+  test('minNodeCount/maxNodeCount are only visible when the cluster autoscaler is enabled', () => {
+    const field = def.configSchema.find((f) => f.key === 'minNodeCount')!;
+    expect(field.visibleWhen!({ enableAutoScaling: true })).toBe(true);
+    expect(field.visibleWhen!({ enableAutoScaling: false })).toBe(false);
+  });
+
+  test('has a security rule for disabled Azure AD RBAC', () => {
+    expect(def.securityRules!.some((r) => r.id === 'aks-no-rbac')).toBe(true);
+  });
+});
+
 describe('azure_functions — deepened config schema', () => {
   const def = getResourceDefinition('azure_functions')!;
 

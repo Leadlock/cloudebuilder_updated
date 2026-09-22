@@ -381,6 +381,19 @@ class AwsTerraformGenerator {
           resourceMap[r.id] = `aws_ecs_service.${name}`;
           break;
         }
+        case 'aws_eks': {
+          const subnets = resolver.resolveParents(r.id, 'aws_subnet', connections, resources);
+          const subnetRefs = subnets.map((s) => {
+            const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
+            return `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
+          });
+          if (subnetRefs.length < 2) {
+            warnings.push(`EKS cluster "${r.label}" is connected to ${subnetRefs.length} subnet(s) — EKS requires subnets in at least 2 distinct Availability Zones and will fail to apply as generated.`);
+          }
+          blocks.push(this._eks(name, cfg, subnetRefs));
+          resourceMap[r.id] = `aws_eks_cluster.${name}`;
+          break;
+        }
         default: {
           warnings.push(`Unsupported AWS resource type: ${r.resourceType} (resource: ${r.label})`);
         }
@@ -926,6 +939,130 @@ ${tagLines.join('\n')}
     return parts.join('\n\n');
   }
 
+  /**
+   * Generates an EKS cluster with its own IAM role plus a single managed
+   * node group with its own IAM role and the three policies AWS requires
+   * for worker nodes to join the cluster.
+   */
+  private _eks(name: string, cfg: Record<string, unknown>, subnetRefs: string[]): string {
+    const subnetsHcl = subnetRefs.length > 0 ? `[${subnetRefs.join(', ')}]` : `[] # WARNING: no subnets connected to this EKS cluster on the canvas`;
+    const logTypes = Array.isArray(cfg['clusterLogTypes']) ? cfg['clusterLogTypes'] as string[] : ['api', 'audit'];
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const parts: string[] = [
+      `resource "aws_iam_role" "${name}_cluster_role" {
+  name = "${name}-cluster-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "eks.amazonaws.com" }
+    }]
+  })
+}`,
+      `resource "aws_iam_role_policy_attachment" "${name}_cluster_policy" {
+  role       = aws_iam_role.${name}_cluster_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+}`,
+    ];
+
+    const clusterLines: string[] = [
+      `resource "aws_eks_cluster" "${name}" {`,
+      `  name     = "${name}"`,
+      `  role_arn = aws_iam_role.${name}_cluster_role.arn`,
+      `  version  = "${cfg['version'] ?? '1.30'}"`,
+      ``,
+      `  vpc_config {`,
+      `    subnet_ids              = ${subnetsHcl}`,
+      `    endpoint_public_access  = ${cfg['endpointPublicAccess'] !== false}`,
+      `    endpoint_private_access = ${cfg['endpointPrivateAccess'] === true}`,
+    ];
+    if (cfg['endpointPublicAccess'] !== false) {
+      clusterLines.push(`    public_access_cidrs     = ["${cfg['publicAccessCidrs'] ?? '0.0.0.0/0'}"]`);
+    }
+    clusterLines.push(`  }`);
+    if (logTypes.length > 0) {
+      clusterLines.push(`  enabled_cluster_log_types = [${logTypes.map((t) => `"${t}"`).join(', ')}]`);
+    }
+    if (cfg['secretsEncryption'] !== false) {
+      clusterLines.push(
+        `  encryption_config {`,
+        `    resources = ["secrets"]`,
+        `    provider {`,
+        `      key_arn = aws_kms_key.${name}_secrets.arn`,
+        `    }`,
+        `  }`,
+      );
+    }
+    clusterLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`);
+    clusterLines.push(`  depends_on = [aws_iam_role_policy_attachment.${name}_cluster_policy]`, `}`);
+    parts.push(clusterLines.join('\n'));
+
+    if (cfg['secretsEncryption'] !== false) {
+      parts.push(`resource "aws_kms_key" "${name}_secrets" {
+  description         = "EKS Secrets encryption for ${name}"
+  enable_key_rotation = true
+}`);
+    }
+
+    parts.push(
+      `resource "aws_iam_role" "${name}_node_role" {
+  name = "${name}-node-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+    }]
+  })
+}`,
+      `resource "aws_iam_role_policy_attachment" "${name}_node_worker_policy" {
+  role       = aws_iam_role.${name}_node_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+}`,
+      `resource "aws_iam_role_policy_attachment" "${name}_node_cni_policy" {
+  role       = aws_iam_role.${name}_node_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+}`,
+      `resource "aws_iam_role_policy_attachment" "${name}_node_ecr_policy" {
+  role       = aws_iam_role.${name}_node_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}`,
+      `resource "aws_eks_node_group" "${name}_nodes" {
+  cluster_name    = aws_eks_cluster.${name}.name
+  node_group_name = "${name}-nodes"
+  node_role_arn   = aws_iam_role.${name}_node_role.arn
+  subnet_ids      = ${subnetsHcl}
+  instance_types  = ["${cfg['nodeInstanceType'] ?? 't3.medium'}"]
+  capacity_type   = "${cfg['capacityType'] ?? 'ON_DEMAND'}"
+  disk_size       = ${cfg['nodeDiskSizeGb'] ?? 20}
+
+  scaling_config {
+    desired_size = ${cfg['nodeCount'] ?? 3}
+    min_size     = ${cfg['nodeCount'] ?? 3}
+    max_size     = ${cfg['nodeCount'] ?? 3}
+  }
+
+  tags = {
+    Name      = "${name}-nodes"
+    ManagedBy = "CloudCraft"
+${tagLines.join('\n')}
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.${name}_node_worker_policy,
+    aws_iam_role_policy_attachment.${name}_node_cni_policy,
+    aws_iam_role_policy_attachment.${name}_node_ecr_policy,
+  ]
+}`,
+    );
+
+    return parts.join('\n\n');
+  }
+
   private _s3(name: string, cfg: Record<string, unknown>): string {
     const bucketName = (cfg['bucketName'] as string) ?? name;
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
@@ -1439,6 +1576,16 @@ class AzureTerraformGenerator {
           resourceMap[r.id] = `${cfg['osType'] === 'Windows' ? 'azurerm_windows_function_app' : 'azurerm_linux_function_app'}.${name}`;
           break;
         }
+        case 'azure_aks': {
+          const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          blocks.push(this._aks(name, cfg, rgName, rgLoc));
+          resourceMap[r.id] = `azurerm_kubernetes_cluster.${name}`;
+          break;
+        }
         case 'azure_nsg': {
           const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
           const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
@@ -1814,6 +1961,43 @@ data "azurerm_network_security_group" "${name}" {
     parts.push(appLines.join('\n'));
 
     return parts.join('\n\n');
+  }
+
+  private _aks(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+    const autoscale = cfg['enableAutoScaling'] === true;
+
+    const lines: string[] = [
+      `resource "azurerm_kubernetes_cluster" "${name}" {`,
+      `  name                = "${name}"`,
+      `  resource_group_name = ${rgName}`,
+      `  location            = ${rgLoc}`,
+      `  dns_prefix          = "${cfg['dnsPrefix'] ?? name}"`,
+      `  sku_tier            = "${cfg['skuTier'] ?? 'Free'}"`,
+      `  private_cluster_enabled = ${cfg['privateClusterEnabled'] === true}`,
+    ];
+    if (cfg['kubernetesVersion']) {
+      lines.push(`  kubernetes_version  = "${cfg['kubernetesVersion']}"`);
+    }
+    lines.push(
+      ``,
+      `  default_node_pool {`,
+      `    name       = "default"`,
+      `    vm_size    = "${cfg['nodeVmSize'] ?? 'Standard_D2s_v3'}"`,
+      `    node_count = ${cfg['nodeCount'] ?? 3}`,
+    );
+    if (autoscale) {
+      lines.push(`    enable_auto_scaling = true`, `    min_count           = ${cfg['minNodeCount'] ?? 1}`, `    max_count           = ${cfg['maxNodeCount'] ?? 5}`);
+    }
+    lines.push(`  }`, ``);
+    lines.push(`  identity {`, `    type = "SystemAssigned"`, `  }`);
+    lines.push(``, `  network_profile {`, `    network_plugin = "${cfg['networkPlugin'] ?? 'azure'}"`, `  }`);
+    if (cfg['rbacEnabled'] !== false) {
+      lines.push(``, `  azure_active_directory_role_based_access_control {`, `    azure_rbac_enabled = true`, `  }`);
+    }
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    return lines.join('\n');
   }
 
   private _nsg(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {

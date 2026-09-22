@@ -345,12 +345,31 @@ export class AzurePricingProvider implements PricingProvider {
 
   private _aks(
     resource: DbArchitectureResource,
-    _config: Record<string, unknown>,
+    config: Record<string, unknown>,
     region: string,
-    _mult: number,
+    mult: number,
   ): CostLineItem {
-    const hourly = 0.10;
-    const monthly = toMonthly(hourly);
+    const skuTier = (config['skuTier'] as string) || 'Free';
+    const controlPlaneHourly = skuTier === 'Standard' ? 0.10 * mult : 0;
+    const controlPlaneMonthly = toMonthly(controlPlaneHourly);
+
+    const nodeVmSize = (config['nodeVmSize'] as string) ?? 'Standard_D2s_v3';
+    const nodeCount = Math.max(0, Number(config['nodeCount'] ?? 3));
+    const nodeBaseHourly = VM_HOURLY_USD[nodeVmSize] ?? VM_HOURLY_USD['Standard_B2s']!;
+    const nodesHourly = nodeBaseHourly * mult * nodeCount;
+    const nodesMonthly = toMonthly(nodesHourly);
+
+    const hourly = controlPlaneHourly + nodesHourly;
+    const monthly = controlPlaneMonthly + nodesMonthly;
+
+    const breakdown: { label: string; monthlyUsd: number }[] = [];
+    if (skuTier === 'Standard') {
+      breakdown.push({ label: 'AKS cluster control plane Uptime SLA ($0.10/hr)', monthlyUsd: controlPlaneMonthly });
+    } else {
+      breakdown.push({ label: 'AKS cluster control plane (Free tier, no SLA charge)', monthlyUsd: 0 });
+    }
+    breakdown.push({ label: `Node pool: ${nodeVmSize} x${nodeCount}`, monthlyUsd: nodesMonthly });
+
     return {
       resourceId: resource.id,
       resourceLabel: resource.label,
@@ -359,11 +378,10 @@ export class AzurePricingProvider implements PricingProvider {
       region,
       hourlyUsd: hourly,
       monthlyUsd: monthly,
-      breakdown: [
-        { label: 'AKS cluster control plane Uptime SLA ($0.10/hr)', monthlyUsd: monthly },
-      ],
+      breakdown,
       assumptions: [
-        'Cluster management with 99.95% SLA',
+        `SKU tier: ${skuTier}`,
+        `${nodeCount} x ${nodeVmSize} node(s)`,
         `Region: ${region}`,
       ],
       pricingSource: 'azure-aks-list-price',

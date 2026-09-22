@@ -644,12 +644,25 @@ export class AwsPricingProvider implements PricingProvider {
 
   private _eks(
     resource: DbArchitectureResource,
-    _config: Record<string, unknown>,
+    config: Record<string, unknown>,
     region: string,
-    _mult: number,
+    mult: number,
   ): CostLineItem {
-    const hourly = 0.10;
-    const monthly = hourly * 730;
+    const controlPlaneHourly = 0.10 * mult;
+    const controlPlaneMonthly = toMonthly(controlPlaneHourly);
+
+    const nodeInstanceType = (config['nodeInstanceType'] as string) ?? 't3.medium';
+    const nodeCount = Math.max(0, Number(config['nodeCount'] ?? 3));
+    const isSpot = config['capacityType'] === 'SPOT';
+    const nodeBaseHourly = EC2_HOURLY_USD[nodeInstanceType] ?? EC2_HOURLY_USD['t3.medium']!;
+    // Spot typically runs ~70% below on-demand; a rough estimate, not a live spot price.
+    const nodeHourlyEach = nodeBaseHourly * mult * (isSpot ? 0.3 : 1);
+    const nodesHourly = nodeHourlyEach * nodeCount;
+    const nodesMonthly = toMonthly(nodesHourly);
+
+    const hourly = controlPlaneHourly + nodesHourly;
+    const monthly = controlPlaneMonthly + nodesMonthly;
+
     return {
       resourceId: resource.id,
       resourceLabel: resource.label,
@@ -659,10 +672,12 @@ export class AwsPricingProvider implements PricingProvider {
       hourlyUsd: hourly,
       monthlyUsd: monthly,
       breakdown: [
-        { label: 'EKS cluster control plane ($0.10/hr)', monthlyUsd: monthly },
+        { label: 'EKS cluster control plane ($0.10/hr)', monthlyUsd: controlPlaneMonthly },
+        { label: `Worker nodes: ${nodeInstanceType} x${nodeCount}${isSpot ? ' (Spot, ~70% off)' : ''}`, monthlyUsd: nodesMonthly },
       ],
       assumptions: [
         'Fixed control plane management fee',
+        `${nodeCount} x ${nodeInstanceType} worker node(s), ${isSpot ? 'Spot (rough estimate, not a live spot price)' : 'On-Demand'}`,
         `Region: ${region}`,
       ],
       pricingSource: 'aws-eks-list-price',

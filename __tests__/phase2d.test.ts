@@ -1076,6 +1076,46 @@ describe('TerraformGenerator — AWS', () => {
       expect(main.content).toContain('max_capacity       = 20');
     });
   });
+
+  describe('EKS Terraform generation (previously completely unsupported)', () => {
+    function eksWithSubnets(eksConfig: Record<string, unknown>) {
+      const subnetA = makeResource({ id: 'sub-a', resourceType: 'aws_subnet', provider: 'aws', configJson: JSON.stringify({ name: 'subnet_a' }) });
+      const subnetB = makeResource({ id: 'sub-b', resourceType: 'aws_subnet', provider: 'aws', configJson: JSON.stringify({ name: 'subnet_b' }) });
+      const cluster = makeResource({ id: 'eks-1', resourceType: 'aws_eks', provider: 'aws', configJson: JSON.stringify(eksConfig) });
+      const conns = [makeConnection('sub-a', 'eks-1'), makeConnection('sub-b', 'eks-1')];
+      return gen.generate(awsInput([subnetA, subnetB, cluster], conns));
+    }
+
+    test('generates a cluster, node group, and both IAM roles with their required policy attachments', () => {
+      const result = eksWithSubnets({ name: 'prod_cluster', nodeInstanceType: 'm5.large', nodeCount: 4 });
+      expect(result.warnings.some((w) => w.includes('aws_eks') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_eks_cluster" "prod_cluster"');
+      expect(main.content).toContain('resource "aws_eks_node_group" "prod_cluster_nodes"');
+      expect(main.content).toContain('AmazonEKSClusterPolicy');
+      expect(main.content).toContain('AmazonEKSWorkerNodePolicy');
+      expect(main.content).toContain('AmazonEKS_CNI_Policy');
+      expect(main.content).toContain('instance_types  = ["m5.large"]');
+      expect(main.content).toContain('desired_size = 4');
+    });
+
+    test('secretsEncryption=true generates a KMS key and encryption_config block', () => {
+      const withEnc = eksWithSubnets({ name: 'encrypted_cluster', secretsEncryption: true });
+      const withEncMain = withEnc.files.find((f) => f.filename === 'main.tf')!;
+      expect(withEncMain.content).toContain('resource "aws_kms_key" "encrypted_cluster_secrets"');
+      expect(withEncMain.content).toContain('encryption_config {');
+
+      const withoutEnc = eksWithSubnets({ name: 'unencrypted_cluster', secretsEncryption: false });
+      const withoutEncMain = withoutEnc.files.find((f) => f.filename === 'main.tf')!;
+      expect(withoutEncMain.content).not.toContain('aws_kms_key');
+    });
+
+    test('enabled_cluster_log_types reflects the configured log types', () => {
+      const result = eksWithSubnets({ name: 'audited_cluster', clusterLogTypes: ['api', 'audit', 'scheduler'] });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('enabled_cluster_log_types = ["api", "audit", "scheduler"]');
+    });
+  });
 });
 
 describe('TerraformGenerator — Azure', () => {
@@ -1114,6 +1154,39 @@ describe('TerraformGenerator — Azure', () => {
     const result = gen.generate(azureInput([st]));
     const main = result.files.find((f) => f.filename === 'main.tf')!;
     expect(main.content).toContain('enable_https_traffic_only');
+  });
+
+  describe('AKS Terraform generation (previously completely unsupported)', () => {
+    function aksWithRg(aksConfig: Record<string, unknown>) {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const cluster = makeResource({ id: 'aks-1', resourceType: 'azure_aks', provider: 'azure', configJson: JSON.stringify(aksConfig) });
+      const conn = makeConnection('rg-1', 'aks-1');
+      return gen.generate(azureInput([rg, cluster], [conn]));
+    }
+
+    test('generates a cluster with SystemAssigned identity and the configured node pool', () => {
+      const result = aksWithRg({ name: 'prod_aks', nodeVmSize: 'Standard_D4s_v3', nodeCount: 5 });
+      expect(result.warnings.some((w) => w.includes('azure_aks') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_kubernetes_cluster" "prod_aks"');
+      expect(main.content).toContain('vm_size    = "Standard_D4s_v3"');
+      expect(main.content).toContain('node_count = 5');
+      expect(main.content).toContain('type = "SystemAssigned"');
+    });
+
+    test('enableAutoScaling adds min/max count to the default node pool', () => {
+      const result = aksWithRg({ name: 'scaled_aks', enableAutoScaling: true, minNodeCount: 2, maxNodeCount: 8 });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('enable_auto_scaling = true');
+      expect(main.content).toContain('min_count           = 2');
+      expect(main.content).toContain('max_count           = 8');
+    });
+
+    test('rbacEnabled=true generates the Azure AD RBAC block', () => {
+      const result = aksWithRg({ name: 'rbac_aks', rbacEnabled: true });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('azure_active_directory_role_based_access_control {');
+    });
   });
 
   describe('Function App Terraform generation (previously completely unsupported)', () => {

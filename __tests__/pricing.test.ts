@@ -476,4 +476,36 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
     const heavyResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [heavy] }, 'TEST');
     expect(heavyResult.items[0].monthlyUsd).toBeGreaterThan(lightResult.items[0].monthlyUsd);
   });
+
+  test('EKS cost includes worker node compute, not just the control plane (previously a flat $0.10/hr ignoring node config)', () => {
+    const small = makeResource({ resourceType: 'aws_eks', provider: 'aws', configJson: JSON.stringify({ nodeInstanceType: 't3.medium', nodeCount: 1 }) });
+    const large = makeResource({ resourceType: 'aws_eks', provider: 'aws', configJson: JSON.stringify({ nodeInstanceType: 'm5.xlarge', nodeCount: 10 }) });
+    const smallResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [small] }, 'TEST');
+    const largeResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [large] }, 'TEST');
+    expect(largeResult.items[0].monthlyUsd).toBeGreaterThan(smallResult.items[0].monthlyUsd);
+  });
+
+  test('EKS Spot capacity type costs less than On-Demand for the same nodes', () => {
+    const onDemand = makeResource({ resourceType: 'aws_eks', provider: 'aws', configJson: JSON.stringify({ capacityType: 'ON_DEMAND', nodeCount: 3 }) });
+    const spot = makeResource({ resourceType: 'aws_eks', provider: 'aws', configJson: JSON.stringify({ capacityType: 'SPOT', nodeCount: 3 }) });
+    const onDemandResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [onDemand] }, 'TEST');
+    const spotResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [spot] }, 'TEST');
+    expect(spotResult.items[0].monthlyUsd).toBeLessThan(onDemandResult.items[0].monthlyUsd);
+  });
+
+  test('AKS Free tier has no control plane charge; Standard tier does (previously always charged $0.10/hr)', () => {
+    const free = makeResource({ resourceType: 'azure_aks', provider: 'azure', configJson: JSON.stringify({ skuTier: 'Free', nodeCount: 1 }) });
+    const standard = makeResource({ resourceType: 'azure_aks', provider: 'azure', configJson: JSON.stringify({ skuTier: 'Standard', nodeCount: 1 }) });
+    const freeResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [free] }, 'TEST');
+    const standardResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [standard] }, 'TEST');
+    expect(standardResult.items[0].monthlyUsd).toBeGreaterThan(freeResult.items[0].monthlyUsd);
+  });
+
+  test('AKS cost scales with node VM size and count', () => {
+    const small = makeResource({ resourceType: 'azure_aks', provider: 'azure', configJson: JSON.stringify({ nodeVmSize: 'Standard_B2s', nodeCount: 1 }) });
+    const large = makeResource({ resourceType: 'azure_aks', provider: 'azure', configJson: JSON.stringify({ nodeVmSize: 'Standard_D4s_v3', nodeCount: 10 }) });
+    const smallResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [small] }, 'TEST');
+    const largeResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [large] }, 'TEST');
+    expect(largeResult.items[0].monthlyUsd).toBeGreaterThan(smallResult.items[0].monthlyUsd);
+  });
 });

@@ -678,15 +678,74 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#FEF3C7',
     borderColor: '#D97706',
     monthlyBaseCost: 70.0,
-    defaultConfig: { name: 'my-aks', nodeCount: 3 },
+    defaultConfig: {
+      name: 'my-aks', dnsPrefix: 'my-aks', kubernetesVersion: '', nodeVmSize: 'Standard_D2s_v3', nodeCount: 3,
+      enableAutoScaling: false, minNodeCount: 1, maxNodeCount: 5, skuTier: 'Free', privateClusterEnabled: false,
+      networkPlugin: 'azure', rbacEnabled: true, tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Cluster Name', type: 'text', defaultValue: 'my-aks', required: true },
+      { key: 'dnsPrefix', label: 'DNS Prefix', type: 'text', defaultValue: 'my-aks', placeholder: 'used to build the API server FQDN' },
+      { key: 'kubernetesVersion', label: 'Kubernetes Version', type: 'text', defaultValue: '', placeholder: 'blank = AKS default' },
+      {
+        key: 'nodeVmSize', label: 'Node VM Size', type: 'select', defaultValue: 'Standard_D2s_v3', section: 'Compute / Capacity',
+        options: [
+          { label: 'Standard_B2s (2 vCPU, 4GB)', value: 'Standard_B2s' },
+          { label: 'Standard_D2s_v3 (2 vCPU, 8GB)', value: 'Standard_D2s_v3' },
+          { label: 'Standard_D4s_v3 (4 vCPU, 16GB)', value: 'Standard_D4s_v3' },
+          { label: 'Standard_D4s_v5 (4 vCPU, 16GB)', value: 'Standard_D4s_v5' },
+        ],
+      },
       // nodeCount exists in defaultConfig and is written by the Adaptive
       // Scale Engine, but was missing here — scale changes were silently
       // invisible in the Properties Panel.
-      { key: 'nodeCount', label: 'Node Count', type: 'number', defaultValue: 3 },
+      { key: 'nodeCount', label: 'Node Count', type: 'number', defaultValue: 3, min: 1, max: 100, section: 'Compute / Capacity' },
+      {
+        key: 'enableAutoScaling', label: 'Cluster Autoscaler', type: 'boolean', defaultValue: false, section: 'Availability & Scaling',
+      },
+      {
+        key: 'minNodeCount', label: 'Autoscaler Min Nodes', type: 'number', defaultValue: 1, min: 1, max: 100,
+        section: 'Availability & Scaling', visibleWhen: (c) => c['enableAutoScaling'] === true,
+      },
+      {
+        key: 'maxNodeCount', label: 'Autoscaler Max Nodes', type: 'number', defaultValue: 5, min: 1, max: 100,
+        section: 'Availability & Scaling', visibleWhen: (c) => c['enableAutoScaling'] === true,
+      },
+      {
+        key: 'skuTier', label: 'SKU Tier', type: 'select', defaultValue: 'Free', section: 'Availability & Scaling',
+        options: [
+          { label: 'Free (no SLA)', value: 'Free' },
+          { label: 'Standard (financially-backed SLA)', value: 'Standard' },
+        ],
+      },
+      { key: 'privateClusterEnabled', label: 'Private Cluster', type: 'boolean', defaultValue: false, section: 'Networking' },
+      {
+        key: 'networkPlugin', label: 'Network Plugin', type: 'select', defaultValue: 'azure', section: 'Networking', advanced: true,
+        options: [
+          { label: 'Azure CNI', value: 'azure' },
+          { label: 'Kubenet', value: 'kubenet' },
+        ],
+      },
+      { key: 'rbacEnabled', label: 'Azure AD RBAC', type: 'boolean', defaultValue: true, section: 'Security' },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'aks-no-private-cluster',
+        severity: 'medium',
+        check: (config) => config.privateClusterEnabled === false ? 'AKS API server is publicly accessible' : null,
+        message: 'AKS cluster does not use a private cluster endpoint',
+        recommendation: 'Enable Private Cluster to keep the Kubernetes API server off the public internet',
+      },
+      {
+        id: 'aks-no-rbac',
+        severity: 'high',
+        check: (config) => config.rbacEnabled === false ? 'AKS Azure AD RBAC disabled' : null,
+        message: 'AKS cluster does not have Azure AD RBAC integration enabled',
+        recommendation: 'Enable Azure AD RBAC for centralized, auditable cluster access control',
+        fixAction: (config) => ({ ...config, rbacEnabled: true }),
+      },
+    ],
   },
   {
     type: 'azure_public_ip',
