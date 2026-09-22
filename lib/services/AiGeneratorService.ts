@@ -1,7 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { awsResources } from '../resources/aws';
 import { azureResources } from '../resources/azure';
-import { gcpResources } from '../resources/gcp';
 import { db } from '../../src/prisma/db';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -61,13 +60,10 @@ export class AiGeneratorService {
     prompt: string,
     projectId: string,
     environmentId: string,
-    provider: 'aws' | 'azure' | 'gcp' = 'aws'
+    provider: 'aws' | 'azure' = 'aws'
   ): Promise<{ architectureJson: { resources: RawAiResource[]; connections: RawAiConnection[] }; historyId: string; rejectedTypes: string[] }> {
     // Select the correct resource catalog for the target provider
-    const resources =
-      provider === 'aws' ? awsResources :
-      provider === 'azure' ? azureResources :
-      gcpResources;  // Fixed: was empty [] for GCP
+    const resources = provider === 'aws' ? awsResources : azureResources;
 
     // Narrow the valid-type set to just the target provider for prompt efficiency
     const providerValidTypes = new Set(resources.map(r => r.type));

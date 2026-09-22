@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required parameters: prompt, projectId, environmentId' }, { status: 400 });
     }
 
-    const validProvider = (provider as 'aws' | 'azure' | 'gcp') || 'aws';
+    const validProvider = (provider as 'aws' | 'azure') || 'aws';
 
     // Generates the graph and saves to AIGenerationHistory table
     const result = await AiGeneratorService.generateArchitecture(

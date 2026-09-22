@@ -290,7 +290,7 @@ describe('Cost Comparison Ranking Determinism', () => {
     const list = [
       { name: 'Azure Architecture', provider: 'azure', totalMonthly: 120 },
       { name: 'AWS Architecture', provider: 'aws', totalMonthly: 350 },
-      { name: 'GCP Alternative', provider: 'gcp', totalMonthly: 210 },
+      { name: 'Reserved Instance Plan', provider: 'aws', totalMonthly: 210 },
       { name: 'On-Premise Baseline', provider: 'onprem', totalMonthly: 350 },
     ];
 

@@ -4,7 +4,6 @@
  * Integrates with actual cloud monitoring APIs:
  *  - AWS:   CloudWatch (GetMetricStatistics via @aws-sdk/client-cloudwatch)
  *  - Azure: Azure Monitor REST API (management.azure.com)
- *  - GCP:   Cloud Monitoring (@google-cloud/monitoring MetricServiceClient)
  *
  * Rules:
  *  1. NEVER return Math.random() or synthetic values.
@@ -299,109 +298,6 @@ async function getAzureMetrics(
   }
 }
 
-// ─── GCP Cloud Monitoring ─────────────────────────────────────────────────────
-
-async function getGcpMetrics(
-  resourceId: string,
-  resourceType: string,
-  region: string,
-  credentials: Record<string, string>
-): Promise<ResourceMetrics> {
-  const key = cacheKey('gcp', resourceId, region);
-  const cached = getCached(key);
-  if (cached) return cached;
-
-  const projectId = credentials['projectId'] || process.env['GCP_PROJECT_ID'] || process.env['GOOGLE_CLOUD_PROJECT'];
-  const keyFilePath = process.env['GOOGLE_APPLICATION_CREDENTIALS'];
-
-  if (!projectId) {
-    const m = unavailable(
-      'GCP credentials not configured. Set GCP_PROJECT_ID and GOOGLE_APPLICATION_CREDENTIALS environment variables.',
-      'gcp-monitoring'
-    );
-    setCache(key, m);
-    return m;
-  }
-
-  try {
-    const monitoring = await import('@google-cloud/monitoring');
-    const client = new monitoring.MetricServiceClient(
-      keyFilePath ? { keyFilename: keyFilePath } : undefined
-    );
-
-    const now = Math.floor(Date.now() / 1000);
-    const fiveMinutesAgo = now - 300;
-
-    // Map resource type to GCP metric type
-    let metricType = 'compute.googleapis.com/instance/cpu/utilization';
-    let resourceTypeFilter = 'gce_instance';
-    let resourceLabel = 'instance_id';
-
-    if (resourceType === 'gcp_sql_instance') {
-      metricType = 'cloudsql.googleapis.com/database/cpu/utilization';
-      resourceTypeFilter = 'cloudsql_database';
-      resourceLabel = 'database_id';
-    } else if (resourceType === 'gcp_cloud_run') {
-      metricType = 'run.googleapis.com/container/cpu/utilizations';
-      resourceTypeFilter = 'cloud_run_revision';
-      resourceLabel = 'service_name';
-    } else if (resourceType === 'gcp_cloud_function') {
-      metricType = 'cloudfunctions.googleapis.com/function/execution_count';
-      resourceTypeFilter = 'cloud_function';
-      resourceLabel = 'function_name';
-    }
-
-    const [timeSeries] = await client.listTimeSeries({
-      name: `projects/${projectId}`,
-      filter: `metric.type="${metricType}" AND resource.labels.${resourceLabel}="${resourceId}"`,
-      interval: {
-        startTime: { seconds: fiveMinutesAgo },
-        endTime: { seconds: now },
-      },
-      view: 'FULL',
-    });
-
-    if (!timeSeries || timeSeries.length === 0) {
-      // No data for this resource (may not exist or have no recent activity)
-      const m: ResourceMetrics = {
-        status: 'unknown',
-        unavailableReason: 'No time series data returned from Cloud Monitoring for this resource.',
-        dataSource: 'gcp-monitoring',
-        retrievedAt: new Date().toISOString(),
-      };
-      setCache(key, m);
-      return m;
-    }
-
-    const series = timeSeries[0];
-    const points = series.points ?? [];
-    const latestPoint = points.sort((a, b) => {
-      const ta = Number(a.interval?.endTime?.seconds ?? 0);
-      const tb = Number(b.interval?.endTime?.seconds ?? 0);
-      return tb - ta;
-    })[0];
-
-    const rawValue = latestPoint?.value?.doubleValue ?? latestPoint?.value?.int64Value;
-    const cpu = rawValue !== undefined ? Math.round(Number(rawValue) * 10000) / 100 : undefined; // Convert 0-1 to 0-100
-
-    const metrics: ResourceMetrics = {
-      status: cpu !== undefined ? deriveStatus(cpu) : 'unknown',
-      cpuUtilization: cpu,
-      dataSource: 'gcp-monitoring',
-      retrievedAt: new Date().toISOString(),
-    };
-
-    setCache(key, metrics);
-    return metrics;
-  } catch (err: any) {
-    const reason = err?.message ?? 'GCP Cloud Monitoring API call failed';
-    console.error('[ObservabilityService] GCP Monitoring error:', reason);
-    const m = unavailable(`GCP Monitoring error: ${reason}`, 'gcp-monitoring');
-    setCache(key, m);
-    return m;
-  }
-}
-
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export interface MetricsRequest {
@@ -426,10 +322,6 @@ export class ObservabilityService {
 
     if (req.provider === 'azure') {
       return getAzureMetrics(req.resourceId, req.region, creds);
-    }
-
-    if (req.provider === 'gcp') {
-      return getGcpMetrics(req.resourceId, req.resourceType, req.region, creds);
     }
 
     return { status: 'unknown', unavailableReason: `Unsupported provider: ${req.provider}` };

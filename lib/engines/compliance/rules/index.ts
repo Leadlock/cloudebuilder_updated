@@ -43,7 +43,6 @@ function getConfig(node: CanvasNode, key: string): unknown {
 function nodeProvider(type: string): string {
   if (type.startsWith('aws_')) return 'aws';
   if (type.startsWith('azure_')) return 'azure';
-  if (type.startsWith('gcp_')) return 'gcp';
   return 'unknown';
 }
 
@@ -88,14 +87,6 @@ export const soc2Rules: ComplianceRule[] = [
           affected.push(r.id);
           evidence.push(`${r.label} (azure_storage): enableHttpsTrafficOnly=false`);
         }
-        if (r.resourceType === 'gcp_sql_instance' && cfg['diskEncryption'] === false) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (gcp_sql_instance): diskEncryption=false`);
-        }
-        if (r.resourceType === 'gcp_storage_bucket' && cfg['defaultKmsKeyName'] === undefined && cfg['encryption'] === false) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (gcp_storage_bucket): no KMS key / encryption not configured`);
-        }
       });
 
       return {
@@ -103,7 +94,7 @@ export const soc2Rules: ComplianceRule[] = [
         affectedResourceIds: [...new Set(affected)],
         evidence,
         recommendation: 'Enable server-side encryption on all databases, volumes, and storage buckets.',
-        remediation: 'AWS: Set storageEncrypted=true on RDS, encrypted=true on EBS, configure SSE on S3. Azure: Enable TDE on SQL, HTTPS-only on storage. GCP: Enable CMEK on Cloud SQL and GCS buckets.',
+        remediation: 'AWS: Set storageEncrypted=true on RDS, encrypted=true on EBS, configure SSE on S3. Azure: Enable TDE on SQL, HTTPS-only on storage.',
         providers: [...providers],
       };
     },
@@ -135,10 +126,6 @@ export const soc2Rules: ComplianceRule[] = [
         if (r.resourceType === 'azure_nsg' && cfgStr.includes('0.0.0.0/0')) {
           affected.push(r.id);
           evidence.push(`${r.label} (azure_nsg): source address includes 0.0.0.0/0`);
-        }
-        if (r.resourceType === 'gcp_firewall' && cfgStr.includes('0.0.0.0/0')) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (gcp_firewall): source ranges include 0.0.0.0/0`);
         }
       });
 
@@ -181,10 +168,6 @@ export const soc2Rules: ComplianceRule[] = [
           affected.push(r.id);
           evidence.push(`${r.label} (azure_storage): enableHttpsTrafficOnly=false`);
         }
-        if (r.resourceType === 'gcp_cloud_run' && cfg['allowUnauthenticated'] === true && cfg['ingressHttp'] === true) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (gcp_cloud_run): allows unauthenticated HTTP traffic`);
-        }
       });
 
       return {
@@ -202,12 +185,12 @@ export const soc2Rules: ComplianceRule[] = [
     framework: 'SOC2',
     controlId: 'CC7.2',
     title: 'Logging and monitoring must be enabled',
-    description: 'CloudTrail, Azure Monitor, or GCP Audit Logs must be present in the architecture for security event detection.',
+    description: 'CloudTrail or Azure Monitor must be present in the architecture for security event detection.',
     severity: 'medium',
     reference: 'https://www.aicpa.org/resources/article/soc-2-cc7-system-operations',
     evaluate: (resources) => {
       const providers = new Set<string>();
-      const hasLogging: Record<string, boolean> = { aws: false, azure: false, gcp: false };
+      const hasLogging: Record<string, boolean> = { aws: false, azure: false };
 
       resources.forEach(r => {
         const p = nodeProvider(r.resourceType);
@@ -216,7 +199,6 @@ export const soc2Rules: ComplianceRule[] = [
 
         if (r.resourceType === 'aws_cloudtrail' || (cfg['enableCloudTrail'] === true)) hasLogging.aws = true;
         if (r.resourceType === 'azure_log_analytics' || (cfg['diagnosticsEnabled'] === true)) hasLogging.azure = true;
-        if (r.resourceType === 'gcp_logging' || (cfg['auditLogsEnabled'] === true)) hasLogging.gcp = true;
       });
 
       const affected: string[] = [];
@@ -225,7 +207,6 @@ export const soc2Rules: ComplianceRule[] = [
       // Check: if there are cloud resources but no logging for that provider
       const awsResources = resources.filter(r => r.resourceType.startsWith('aws_'));
       const azureResources = resources.filter(r => r.resourceType.startsWith('azure_'));
-      const gcpResources = resources.filter(r => r.resourceType.startsWith('gcp_'));
 
       if (awsResources.length > 0 && !hasLogging.aws) {
         awsResources.forEach(r => affected.push(r.id));
@@ -235,16 +216,12 @@ export const soc2Rules: ComplianceRule[] = [
         azureResources.forEach(r => affected.push(r.id));
         evidence.push(`${azureResources.length} Azure resource(s) present but no Log Analytics Workspace found in architecture`);
       }
-      if (gcpResources.length > 0 && !hasLogging.gcp) {
-        gcpResources.forEach(r => affected.push(r.id));
-        evidence.push(`${gcpResources.length} GCP resource(s) present but no Cloud Logging resource found in architecture`);
-      }
 
       return {
         passed: affected.length === 0,
         affectedResourceIds: [...new Set(affected)],
         evidence,
-        recommendation: 'Add CloudTrail (AWS), Log Analytics Workspace (Azure), or Cloud Logging (GCP) to your architecture.',
+        recommendation: 'Add CloudTrail (AWS) or Log Analytics Workspace (Azure) to your architecture.',
         remediation: 'Enable audit logging for all API calls and data access events. Configure log retention for at least 90 days.',
         providers: [...providers],
       };
@@ -277,13 +254,6 @@ export const soc2Rules: ComplianceRule[] = [
             evidence.push(`${r.label} (aws_rds): backupRetentionPeriod=${retention} days (recommended ≥7)`);
           }
         }
-        if (r.resourceType === 'gcp_sql_instance') {
-          const backupsEnabled = cfg['backupsEnabled'];
-          if (backupsEnabled === false) {
-            affected.push(r.id);
-            evidence.push(`${r.label} (gcp_sql_instance): backupsEnabled=false`);
-          }
-        }
         if (r.resourceType === 'azure_sql') {
           const backupEnabled = cfg['backupEnabled'];
           if (backupEnabled === false) {
@@ -298,7 +268,7 @@ export const soc2Rules: ComplianceRule[] = [
         affectedResourceIds: [...new Set(affected)],
         evidence,
         recommendation: 'Enable automated backups with a minimum 7-day retention period on all databases.',
-        remediation: 'Set backupRetentionPeriod≥7 on AWS RDS, enable backups on Cloud SQL, enable Azure SQL backup.',
+        remediation: 'Set backupRetentionPeriod≥7 on AWS RDS, enable Azure SQL backup.',
         providers: [...providers],
       };
     },
@@ -333,10 +303,6 @@ export const hipaaRules: ComplianceRule[] = [
           affected.push(r.id);
           evidence.push(`${r.label} (azure_sql): publicNetworkAccess=true`);
         }
-        if (r.resourceType === 'gcp_sql_instance' && cfg['ipv4Enabled'] === true && !cfg['requireSsl']) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (gcp_sql_instance): ipv4Enabled=true without requireSsl`);
-        }
       });
 
       return {
@@ -344,7 +310,7 @@ export const hipaaRules: ComplianceRule[] = [
         affectedResourceIds: [...new Set(affected)],
         evidence,
         recommendation: 'Place databases in private subnets and disable public internet access.',
-        remediation: 'Set publiclyAccessible=false on RDS. Disable public network access on Azure SQL. Disable IPv4 or require SSL on Cloud SQL.',
+        remediation: 'Set publiclyAccessible=false on RDS. Disable public network access on Azure SQL.',
         providers: [...providers],
       };
     },
@@ -378,13 +344,6 @@ export const hipaaRules: ComplianceRule[] = [
           affected.push(r.id);
           evidence.push(`${r.label} (azure_sql): auditingEnabled=${JSON.stringify(cfg['auditingEnabled'] ?? 'not set')}`);
         }
-        if (r.resourceType === 'gcp_sql_instance' && cfg['databaseFlags']) {
-          const flags = JSON.stringify(cfg['databaseFlags']);
-          if (!flags.includes('log_checkpoints') && !flags.includes('log_connections')) {
-            affected.push(r.id);
-            evidence.push(`${r.label} (gcp_sql_instance): audit flags (log_checkpoints, log_connections) not set`);
-          }
-        }
       });
 
       return {
@@ -392,7 +351,7 @@ export const hipaaRules: ComplianceRule[] = [
         affectedResourceIds: [...new Set(affected)],
         evidence,
         recommendation: 'Enable audit logging on all data stores processing ePHI.',
-        remediation: 'Enable CloudWatch logs exports on RDS, server access logging on S3. Enable SQL auditing on Azure SQL. Configure audit flags on Cloud SQL.',
+        remediation: 'Enable CloudWatch logs exports on RDS, server access logging on S3. Enable SQL auditing on Azure SQL.',
         providers: [...providers],
       };
     },
@@ -422,18 +381,14 @@ export const hipaaRules: ComplianceRule[] = [
           affected.push(r.id);
           evidence.push(`${r.label} (aws_rds): deletionProtection=${JSON.stringify(cfg['deletionProtection'] ?? 'not set')}`);
         }
-        if (r.resourceType === 'gcp_storage_bucket' && cfg['versioning'] === false) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (gcp_storage_bucket): versioning=false`);
-        }
       });
 
       return {
         passed: affected.length === 0,
         affectedResourceIds: [...new Set(affected)],
         evidence,
-        recommendation: 'Enable versioning on S3/GCS buckets and deletion protection on databases.',
-        remediation: 'Set versioning=Enabled on S3. Set deletionProtection=true on RDS. Enable object versioning on GCS buckets.',
+        recommendation: 'Enable versioning on S3 buckets and deletion protection on databases.',
+        remediation: 'Set versioning=Enabled on S3. Set deletionProtection=true on RDS.',
         providers: [...providers],
       };
     },
@@ -463,10 +418,6 @@ export const hipaaRules: ComplianceRule[] = [
           affected.push(r.id);
           evidence.push(`${r.label} (azure_sql): sslEnforcementEnabled=false`);
         }
-        if (r.resourceType === 'gcp_sql_instance' && cfg['requireSsl'] === false) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (gcp_sql_instance): requireSsl=false`);
-        }
       });
 
       return {
@@ -474,7 +425,7 @@ export const hipaaRules: ComplianceRule[] = [
         affectedResourceIds: [...new Set(affected)],
         evidence,
         recommendation: 'Enforce SSL/TLS on all database connections.',
-        remediation: 'Set sslRequired=true on RDS. Enable sslEnforcementEnabled on Azure SQL. Set requireSsl=true on Cloud SQL.',
+        remediation: 'Set sslRequired=true on RDS. Enable sslEnforcementEnabled on Azure SQL.',
         providers: [...providers],
       };
     },
@@ -512,10 +463,6 @@ export const pciRules: ComplianceRule[] = [
           affected.push(r.id);
           evidence.push(`${r.label} (azure_nsg): security rule allows traffic from 0.0.0.0/0`);
         }
-        if (r.resourceType === 'gcp_firewall' && cfgStr.includes('0.0.0.0/0')) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (gcp_firewall): source ranges include 0.0.0.0/0`);
-        }
       });
 
       return {
@@ -548,7 +495,7 @@ export const pciRules: ComplianceRule[] = [
 
         // Check for telnet (port 23), FTP (port 21) in firewall rules
         if (
-          (r.resourceType === 'aws_sg' || r.resourceType === 'gcp_firewall' || r.resourceType === 'azure_nsg') &&
+          (r.resourceType === 'aws_sg' || r.resourceType === 'azure_nsg') &&
           (cfgStr.includes('"23"') || cfgStr.includes(':23') || cfgStr.includes('"21"') || cfgStr.includes(':21'))
         ) {
           affected.push(r.id);
@@ -586,7 +533,6 @@ export const pciRules: ComplianceRule[] = [
         const isDbType = [
           'aws_rds', 'aws_dynamodb',
           'azure_sql', 'azure_cosmos',
-          'gcp_sql_instance',
         ].includes(r.resourceType);
 
         if (isDbType && cfg['publiclyAccessible'] === true) {
@@ -634,10 +580,6 @@ export const pciRules: ComplianceRule[] = [
           affected.push(r.id);
           evidence.push(`${r.label} (azure_key_vault): enablePurgeProtection=false — admin access without purge protection`);
         }
-        if (r.resourceType === 'gcp_iam' && cfg['requireMfa'] === false) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (gcp_iam): requireMfa=false`);
-        }
       });
 
       return {
@@ -645,7 +587,7 @@ export const pciRules: ComplianceRule[] = [
         affectedResourceIds: [...new Set(affected)],
         evidence,
         recommendation: 'Enforce MFA on all IAM users and service accounts with administrative access.',
-        remediation: 'Enable AWS IAM MFA enforcement policy. Use Azure Conditional Access for MFA. Enable GCP Organization Policy requiring MFA.',
+        remediation: 'Enable AWS IAM MFA enforcement policy. Use Azure Conditional Access for MFA.',
         providers: [...providers],
       };
     },
@@ -679,13 +621,6 @@ export const pciRules: ComplianceRule[] = [
           affected.push(r.id);
           evidence.push(`${r.label} (azure_sql): auditingEnabled=${JSON.stringify(cfg['auditingEnabled'] ?? 'not set')}`);
         }
-        if (
-          (r.resourceType === 'gcp_sql_instance') &&
-          cfg['auditLogConfig'] === undefined
-        ) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (gcp_sql_instance): auditLogConfig not set`);
-        }
       });
 
       return {
@@ -693,7 +628,7 @@ export const pciRules: ComplianceRule[] = [
         affectedResourceIds: [...new Set(affected)],
         evidence,
         recommendation: 'Enable audit logging on all databases, storage, and network components in the CDE.',
-        remediation: 'Configure CloudWatch exports on RDS, server access logging on S3. Enable SQL audit on Azure. Configure audit log config on Cloud SQL.',
+        remediation: 'Configure CloudWatch exports on RDS, server access logging on S3. Enable SQL audit on Azure.',
         providers: [...providers],
       };
     },

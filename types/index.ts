@@ -1,25 +1,32 @@
 export type CloudProvider = 'aws' | 'azure' | 'gcp' | 'multi';
-export type ProviderMode = 'AWS' | 'AZURE' | 'GCP' | 'MULTI_CLOUD';
+export type ProviderMode = 'AWS' | 'AZURE' | 'MULTI_CLOUD';
+
+/**
+ * 'gcp' is retained only as a CloudProvider value so legacy persisted records
+ * (projects/nodes saved before GCP support was removed) still type-check and
+ * load instead of crashing. No current UI, RDE, engine, or API path can
+ * create a new 'gcp' node. An unrecognized/legacy ProviderMode string (e.g.
+ * a persisted 'GCP') falls through the if/else chains in
+ * providerModeToCloudProvider/cloudProviderToProviderMode below to the
+ * 'multi'/'MULTI_CLOUD' default rather than throwing.
+ */
 
 export function providerModeToCloudProvider(mode: ProviderMode): CloudProvider {
   if (mode === 'AWS') return 'aws';
   if (mode === 'AZURE') return 'azure';
-  if (mode === 'GCP') return 'gcp';
   return 'multi';
 }
 
 export function cloudProviderToProviderMode(provider: CloudProvider): ProviderMode {
   if (provider === 'aws') return 'AWS';
   if (provider === 'azure') return 'AZURE';
-  if (provider === 'gcp') return 'GCP';
   return 'MULTI_CLOUD';
 }
 
 /** Best-effort single-cloud provider for a node, falling back to its resourceType prefix when `provider` is unset. */
-export function inferNodeProvider(node: { provider?: CloudProvider; resourceType: string }): 'aws' | 'azure' | 'gcp' {
-  if (node.provider === 'aws' || node.provider === 'azure' || node.provider === 'gcp') return node.provider;
+export function inferNodeProvider(node: { provider?: CloudProvider; resourceType: string }): 'aws' | 'azure' {
+  if (node.provider === 'aws' || node.provider === 'azure') return node.provider;
   if (node.resourceType.startsWith('azure_')) return 'azure';
-  if (node.resourceType.startsWith('gcp_')) return 'gcp';
   return 'aws';
 }
 
@@ -160,17 +167,6 @@ export const REGION_LABELS: Record<string, string> = {
   'qatarcentral': 'Qatar Central',
   'brazilsouth': 'Brazil South',
   'chilecentral': 'Chile Central',
-  // GCP
-  'us-central1': 'Iowa (us-central1)',
-  'us-east1': 'South Carolina (us-east1)',
-  'us-west1': 'Oregon (us-west1)',
-  'europe-west1': 'Belgium (europe-west1)',
-  'europe-west2': 'London (europe-west2)',
-  'asia-east1': 'Taiwan (asia-east1)',
-  'asia-northeast1': 'Tokyo (asia-northeast1)',
-  'asia-south1': 'Mumbai (asia-south1)',
-  'australia-southeast1': 'Sydney (australia-southeast1)',
-  'southamerica-east1': 'São Paulo (southamerica-east1)',
 };
 
 export const AWS_REGIONS: Region[] = [
@@ -186,13 +182,6 @@ export const AZURE_REGIONS: Region[] = [
   'centralindia', 'southindia',
   'southeastasia', 'eastasia', 'japaneast', 'australiaeast',
   'uaenorth', 'southafricanorth', 'brazilsouth',
-];
-
-export const GCP_REGIONS: Region[] = [
-  'us-central1', 'us-east1', 'us-west1',
-  'europe-west1', 'europe-west2',
-  'asia-east1', 'asia-northeast1', 'asia-south1',
-  'australia-southeast1', 'southamerica-east1',
 ];
 
 export interface ResourceDefinition {
@@ -221,9 +210,9 @@ export interface ResourceDefinition {
 }
 
 /**
- * Terraform-generation hook a resource definition can carry directly
- * (currently used by GCP resources — see lib/resources/gcp.ts — instead of
- * a dedicated generator class like AWS/Azure has).
+ * Optional terraform-generation hook a resource definition can carry directly,
+ * for resources that don't need a dedicated generator class (see
+ * lib/engines/terraform/TerraformGenerator.ts for the AWS/Azure generators).
  */
 export interface ResourceTerraformHook {
   primaryResourceType?: string;

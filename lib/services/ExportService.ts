@@ -53,6 +53,9 @@ const THEME = {
 const PROVIDER_COLORS: Record<string, string> = {
   aws:   '#FF9900',
   azure: '#0078D4',
+  // 'gcp' kept only so exports of legacy architectures that still contain
+  // pre-removal GCP nodes render with a real color instead of falling
+  // through to undefined. GCP can no longer be added from the UI.
   gcp:   '#4285F4',
 };
 

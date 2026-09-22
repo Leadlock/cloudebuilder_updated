@@ -9,7 +9,6 @@
  * Generated Terraform uses variables for all sensitive values.
  */
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
-import { getResourceDefinition } from '@/lib/resources';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1084,7 +1083,6 @@ export class TerraformGenerator {
     const projectName = input.projectName ?? 'cloudcraft';
     const awsResources   = input.resources.filter((r) => r.provider === 'aws');
     const azureResources = input.resources.filter((r) => r.provider === 'azure');
-    const gcpResourceList = input.resources.filter((r) => r.provider === 'gcp');
 
     const warnings: string[] = [];
     const resourceMap: Record<string, string> = {};
@@ -1092,7 +1090,6 @@ export class TerraformGenerator {
 
     let awsBlocks:   string[] = [];
     let azureBlocks: string[] = [];
-    let gcpBlocks:   string[] = [];
 
     if (awsResources.length > 0) {
       const result = this.awsGen.generate(awsResources, input.connections, projectName, resolver);
@@ -1110,67 +1107,23 @@ export class TerraformGenerator {
       providers.push('azure');
     }
 
-    if (gcpResourceList.length > 0) {
-      const result = this._generateGcpBlocks(gcpResourceList, resolver);
-      gcpBlocks = result.blocks;
-      warnings.push(...result.warnings);
-      Object.assign(resourceMap, result.resourceMap);
-      providers.push('gcp');
+    const unsupportedProviders = new Set(
+      input.resources
+        .map((r) => r.provider)
+        .filter((p) => p !== 'aws' && p !== 'azure')
+    );
+    for (const p of unsupportedProviders) {
+      warnings.push(`Provider "${p}" is no longer supported by CloudCraft — its resources were skipped. Remove them from the architecture or re-platform to AWS/Azure.`);
     }
 
-    const files = this._buildFiles(awsBlocks, azureBlocks, gcpBlocks, providers, projectName, input);
+    const files = this._buildFiles(awsBlocks, azureBlocks, providers, projectName, input);
 
     return { files, warnings, resourceMap, providers };
-  }
-
-  /**
-   * GCP resources carry their own `terraform.generateHcl` hook on their
-   * ResourceDefinition (lib/resources/gcp.ts) instead of a dedicated
-   * generator class like AWS/Azure — this just invokes each one.
-   */
-  private _generateGcpBlocks(
-    resources: DbArchitectureResource[],
-    resolver: ReferenceResolver,
-  ): { blocks: string[]; warnings: string[]; resourceMap: Record<string, string> } {
-    const blocks: string[] = [];
-    const warnings: string[] = [];
-    const resourceMap: Record<string, string> = {};
-    const byId = new Map(resources.map((r) => [r.id, r]));
-
-    for (const r of resources) {
-      const def = getResourceDefinition(r.resourceType);
-      if (!def?.terraform?.generateHcl) {
-        warnings.push(`No Terraform generator available for GCP resource type "${r.resourceType}" (${r.label}).`);
-        continue;
-      }
-
-      let config: Record<string, unknown>;
-      try {
-        config = JSON.parse(r.configJson || '{}');
-      } catch {
-        warnings.push(`Invalid configuration JSON for "${r.label}" — skipped.`);
-        continue;
-      }
-
-      const name = resolver.tfNameOf(r.id) || tfName((config['name'] as string) || r.label);
-      const parent = r.groupId ? byId.get(r.groupId) : undefined;
-      const parentId = parent ? (resolver.tfNameOf(parent.id) || tfName(parent.label)) : undefined;
-
-      try {
-        blocks.push(def.terraform.generateHcl(config, { name, parentId }));
-        resourceMap[r.id] = `${def.terraform.primaryResourceType ?? 'google_resource'}.${name}`;
-      } catch (err) {
-        warnings.push(`Failed to generate Terraform for "${r.label}": ${(err as Error).message}`);
-      }
-    }
-
-    return { blocks, warnings, resourceMap };
   }
 
   private _buildFiles(
     awsBlocks: string[],
     azureBlocks: string[],
-    gcpBlocks: string[],
     providers: string[],
     projectName: string,
     input: TerraformGenerationInput,
@@ -1189,12 +1142,6 @@ export class TerraformGenerator {
       mainParts.push('# ─── Azure Resources ─────────────────────────────────────────────────────────');
       mainParts.push('');
       mainParts.push(...azureBlocks.map((b) => b + '\n'));
-    }
-    if (gcpBlocks.length > 0) {
-      if (mainParts.length > 0) mainParts.push('');
-      mainParts.push('# ─── GCP Resources ───────────────────────────────────────────────────────────');
-      mainParts.push('');
-      mainParts.push(...gcpBlocks.map((b) => b + '\n'));
     }
     files.push({ filename: 'main.tf', content: mainParts.join('\n'), provider: 'all' });
 
@@ -1216,12 +1163,10 @@ export class TerraformGenerator {
   private _providersFile(providers: string[]): string {
     const hasAws   = providers.includes('aws');
     const hasAzure = providers.includes('azure');
-    const hasGcp   = providers.includes('gcp');
 
     const required: string[] = [];
     if (hasAws)   required.push('    aws = {\n      source  = "hashicorp/aws"\n      version = "~> 5.0"\n    }');
     if (hasAzure) required.push('    azurerm = {\n      source  = "hashicorp/azurerm"\n      version = "~> 3.0"\n    }');
-    if (hasGcp)   required.push('    google = {\n      source  = "hashicorp/google"\n      version = "~> 5.0"\n    }');
 
     const parts: string[] = [
       `terraform {
@@ -1249,22 +1194,12 @@ ${required.join('\n')}
 `);
     }
 
-    if (hasGcp) {
-      parts.push(`provider "google" {
-  project = var.gcp_project_id
-  region  = var.gcp_region
-  # No credentials in Terraform — use GOOGLE_APPLICATION_CREDENTIALS env var or workload identity
-}
-`);
-    }
-
     return parts.join('\n');
   }
 
   private _variablesFile(providers: string[], input: TerraformGenerationInput): string {
     const hasAws   = providers.includes('aws');
     const hasAzure = providers.includes('azure');
-    const hasGcp   = providers.includes('gcp');
     const hasRds   = input.resources.some((r) => r.resourceType === 'aws_rds');
     const hasSql   = input.resources.some((r) => r.resourceType === 'azure_sql');
     const hasVm    = input.resources.some((r) => r.resourceType === 'azure_vm');
@@ -1295,19 +1230,6 @@ ${required.join('\n')}
   description = "Azure region for all resources"
   type        = string
   default     = "eastus"
-}`);
-    }
-
-    if (hasGcp) {
-      vars.push(`variable "gcp_project_id" {
-  description = "GCP project ID for all resources"
-  type        = string
-}
-
-variable "gcp_region" {
-  description = "GCP region for all resources"
-  type        = string
-  default     = "us-central1"
 }`);
     }
 
@@ -1412,10 +1334,6 @@ output "${name}_bucket_name" {
     ];
     if (providers.includes('aws'))   lines.push(`aws_region   = "us-east-1"`);
     if (providers.includes('azure')) lines.push(`azure_location = "eastus"`);
-    if (providers.includes('gcp')) {
-      lines.push(`gcp_project_id = "my-project"`);
-      lines.push(`gcp_region   = "us-central1"`);
-    }
     lines.push('');
     lines.push('# Sensitive values — set via environment variables:');
     lines.push('# TF_VAR_db_password          = "..."');

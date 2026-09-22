@@ -537,7 +537,7 @@ export default function InfraCanvas() {
   const [canRedo, setCanRedo] = useState(false);
 
   // Provider filter for multi-cloud canvas
-  const [canvasFilter, setCanvasFilter] = useState<'all' | 'aws' | 'azure' | 'gcp'>('all');
+  const [canvasFilter, setCanvasFilter] = useState<'all' | 'aws' | 'azure'>('all');
   const [canvasSearchQuery, setCanvasSearchQuery] = useState('');
 
   // Well-Architected findings overlay state
@@ -1798,7 +1798,7 @@ export default function InfraCanvas() {
         {/* Multi-cloud filter bar */}
         {activeProject.provider === 'multi' && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 bg-slate-900/90 border border-slate-700/80 rounded-xl px-1.5 py-1 shadow-2xl backdrop-blur-md">
-            {(['all', 'aws', 'azure', 'gcp'] as const).map((f) => (
+            {(['all', 'aws', 'azure'] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setCanvasFilter(f)}

@@ -88,11 +88,6 @@ const VALID_RESOURCE_TYPES = new Set<string>([
   'azure_sql','azure_storage','azure_lb','azure_app_gateway','azure_functions',
   'azure_cosmos','azure_aks','azure_cdn','azure_dns','azure_app_service',
   'azure_key_vault','azure_service_bus',
-  // GCP
-  'gcp_project','gcp_region','gcp_zone','gcp_vpc','gcp_subnet','gcp_firewall',
-  'gcp_compute_instance','gcp_mig','gcp_load_balancer','gcp_storage_bucket',
-  'gcp_sql_instance','gcp_cloud_run','gcp_cloud_function','gcp_api_gateway',
-  'gcp_cloud_cdn','gcp_cloud_dns','gcp_cloud_nat','gcp_iam',
 ]);
 
 function isValidResourceType(type: string): boolean {

@@ -30,7 +30,6 @@
     "@azure/arm-sql": "^11.0.0",
     "@azure/arm-storage": "^20.1.0",
     "@azure/identity": "^4.13.2",
-    "@google-cloud/monitoring": "^6.1.0",
     "@google/genai": "^2.23.0",
     "@octokit/rest": "^22.0.1",
     "@prisma/cli-engine": "^0.3.0",

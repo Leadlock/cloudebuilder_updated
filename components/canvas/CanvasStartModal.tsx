@@ -1,6 +1,6 @@
 'use client';
 import React, { useState } from 'react';
-import { ProviderMode, ScaleProfile, Region, AWS_REGIONS, AZURE_REGIONS, GCP_REGIONS } from '@/types';
+import { ProviderMode, ScaleProfile, Region, AWS_REGIONS, AZURE_REGIONS } from '@/types';
 import { Cloud, Server, Sparkles, Cpu, Globe, Activity, Check, ArrowRight, ShieldCheck, X } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -47,7 +47,6 @@ export default function CanvasStartModal({ isOpen, onClose, onStart }: CanvasSta
 
   const availableRegions =
     providerMode === 'AZURE' ? AZURE_REGIONS :
-    providerMode === 'GCP' ? GCP_REGIONS :
     AWS_REGIONS;
 
   const handleStart = () => {
@@ -101,7 +100,7 @@ export default function CanvasStartModal({ isOpen, onClose, onStart }: CanvasSta
             <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2.5">
               1. What cloud are you building for?
             </label>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               {/* AWS */}
               <button
                 type="button"
@@ -144,28 +143,6 @@ export default function CanvasStartModal({ isOpen, onClose, onStart }: CanvasSta
                 )}
                 <span className="text-sm font-bold text-blue-400 mb-0.5">Azure</span>
                 <span className="text-[11px] text-gray-400">Microsoft Azure</span>
-              </button>
-
-              {/* GCP */}
-              <button
-                type="button"
-                id="select-cloud-gcp"
-                onClick={() => {
-                  setProviderMode('GCP');
-                  setSelectedRegion('us-central1');
-                }}
-                className={clsx(
-                  'flex flex-col items-center justify-center p-3.5 rounded-xl border transition-all text-center relative',
-                  providerMode === 'GCP'
-                    ? 'border-emerald-500/80 bg-emerald-500/10 text-white ring-1 ring-emerald-500/50 shadow-md shadow-emerald-500/10'
-                    : 'border-gray-800 bg-gray-950/60 hover:border-gray-700 text-gray-400 hover:text-gray-200'
-                )}
-              >
-                {providerMode === 'GCP' && (
-                  <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-emerald-400"></span>
-                )}
-                <span className="text-sm font-bold text-emerald-400 mb-0.5">GCP</span>
-                <span className="text-[11px] text-gray-400">Google Cloud</span>
               </button>
 
               {/* AWS + Azure (Multi-Cloud) */}

@@ -13,9 +13,9 @@ export const dynamic = 'force-dynamic';
  * {
  *   resources: Array<{
  *     nodeId:       string;  // CloudCraft canvas node ID (used as map key in response)
- *     provider:     'aws' | 'azure' | 'gcp';
+ *     provider:     'aws' | 'azure';
  *     resourceId:   string;  // The actual cloud resource identifier (EC2 instance ID, Azure resource path, etc.)
- *     resourceType: string;  // CloudCraft RDE type e.g. aws_ec2, gcp_compute_instance
+ *     resourceType: string;  // CloudCraft RDE type e.g. aws_ec2, azure_vm
  *     region:       string;
  *   }>
  * }
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
     const results = await Promise.all(
       resources.map(async (r) => {
         const metricsReq: MetricsRequest = {
-          provider: r.provider as 'aws' | 'azure' | 'gcp',
+          provider: r.provider as 'aws' | 'azure',
           resourceId: r.resourceId,
           resourceType: r.resourceType || '',
           region: r.region,

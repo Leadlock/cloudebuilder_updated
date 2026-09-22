@@ -17,6 +17,8 @@ const CanvasNodeSchema = z.object({
   id:           z.string(),
   type:         z.string().default('cloudNode'),
   resourceType: z.string(),
+  // 'gcp' accepted for legacy draft saves only — see CanvasNodeSchema in
+  // lib/api/schemas/canvasSchema.ts for the same rationale.
   provider:     z.enum(['aws', 'azure', 'gcp']),
   label:        z.string(),
   position:     z.object({ x: z.number(), y: z.number() }),
@@ -48,7 +50,7 @@ const CanvasEdgeSchema = z.object({
 const SaveDraftSchema = z.object({
   nodes:        z.array(CanvasNodeSchema),
   edges:        z.array(CanvasEdgeSchema),
-  providerMode: z.enum(['AWS', 'AZURE', 'GCP', 'MULTI_CLOUD']).optional(),
+  providerMode: z.enum(['AWS', 'AZURE', 'MULTI_CLOUD']).optional(),
   scaleProfile: z.record(z.string(), z.unknown()).optional(),
   revision:     z.number().optional(),
 });

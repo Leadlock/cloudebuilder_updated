@@ -9,7 +9,7 @@
 export type PricingModel = 'on-demand' | 'consumption' | 'tier' | 'reservation' | 'free';
 
 export interface NormalizedPrice {
-  provider: 'aws' | 'azure' | 'gcp';
+  provider: 'aws' | 'azure';
   service: string;
   resourceType: string;
   region: string;
@@ -27,7 +27,7 @@ export interface NormalizedPrice {
 }
 
 export interface PriceQuery {
-  provider: 'aws' | 'azure' | 'gcp';
+  provider: 'aws' | 'azure';
   service?: string;
   resourceType: string;
   region: string;
@@ -36,6 +36,6 @@ export interface PriceQuery {
 
 export interface ICloudPricingProvider {
   readonly name: string;
-  readonly provider: 'aws' | 'azure' | 'gcp';
+  readonly provider: 'aws' | 'azure';
   getPrice(query: PriceQuery): Promise<NormalizedPrice | null>;
 }

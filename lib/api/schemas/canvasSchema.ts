@@ -11,6 +11,10 @@ export const CanvasNodeSchema = z.object({
   id:           z.string(),
   type:         z.string().default('cloudNode'),
   resourceType: z.string(),
+  // 'gcp' is accepted here only so saves of pre-existing architectures that
+  // still contain legacy GCP nodes (created before GCP support was removed)
+  // don't 400 on an unrelated edit. No current UI/RDE path can create a new
+  // 'gcp' node — see types/index.ts CloudProvider.
   provider:     z.enum(['aws', 'azure', 'gcp']),
   label:        z.string(),
   position:     z.object({ x: z.number(), y: z.number() }),

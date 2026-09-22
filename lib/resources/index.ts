@@ -1,9 +1,8 @@
 import { awsResources } from './aws';
 import { azureResources } from './azure';
-import { gcpResources } from './gcp';
 import { ResourceDefinition, CloudProvider } from '@/types';
 
-export const allResources: ResourceDefinition[] = [...awsResources, ...azureResources, ...gcpResources];
+export const allResources: ResourceDefinition[] = [...awsResources, ...azureResources];
 
 export function getResourcesByProvider(provider: CloudProvider): ResourceDefinition[] {
   if (provider === 'multi') {
@@ -16,4 +15,4 @@ export function getResourceDefinition(type: string): ResourceDefinition | undefi
   return allResources.find((r) => r.type === type);
 }
 
-export { awsResources, azureResources, gcpResources };
+export { awsResources, azureResources };

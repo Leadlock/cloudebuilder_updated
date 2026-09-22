@@ -59,7 +59,7 @@ describe('Template library validation', () => {
       expect(t.id).toBeTruthy();
       expect(t.name).toBeTruthy();
       expect(t.description).toBeTruthy();
-      expect(['aws', 'azure', 'multi', 'gcp']).toContain(t.provider);
+      expect(['aws', 'azure', 'multi']).toContain(t.provider);
       expect(t.category).toBeTruthy();
       expect(['simple', 'moderate', 'complex']).toContain(t.complexity);
       expect(typeof t.estimatedCost).toBe('number');

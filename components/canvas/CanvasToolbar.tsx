@@ -242,20 +242,6 @@ export default function CanvasToolbar({
             </button>
             <button
               type="button"
-              id="toolbar-cloud-gcp"
-              onClick={() => onSelectProviderMode('GCP')}
-              className={clsx(
-                'px-2 py-1 rounded transition-colors',
-                providerMode === 'GCP'
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                  : 'text-slate-400 hover:text-slate-200'
-              )}
-              title="GCP-only mode"
-            >
-              GCP
-            </button>
-            <button
-              type="button"
               id="toolbar-cloud-multicloud"
               onClick={() => onSelectProviderMode('MULTI_CLOUD')}
               className={clsx(
