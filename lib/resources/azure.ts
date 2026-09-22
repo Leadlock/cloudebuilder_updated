@@ -194,7 +194,11 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#DBEAFE',
     borderColor: '#2563EB',
     monthlyBaseCost: 0.018,
-    defaultConfig: { sku: 'Standard_LRS', kind: 'StorageV2', httpsOnly: true, allowBlobPublicAccess: false, minimumTlsVersion: 'TLS1_2', name: 'mystorageacct' },
+    defaultConfig: {
+      sku: 'Standard_LRS', kind: 'StorageV2', httpsOnly: true, allowBlobPublicAccess: false, minimumTlsVersion: 'TLS1_2',
+      blobVersioningEnabled: false, blobSoftDeleteRetentionDays: 0, networkDefaultAction: 'Allow',
+      name: 'mystorageacct', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'mystorageacct', required: true },
       {
@@ -214,16 +218,30 @@ export const azureResources: ResourceDefinition[] = [
           { label: 'FileStorage', value: 'FileStorage' },
         ],
       },
-      { key: 'httpsOnly', label: 'HTTPS Only', type: 'boolean', defaultValue: true },
-      { key: 'allowBlobPublicAccess', label: 'Allow Blob Public Access', type: 'boolean', defaultValue: false },
+      { key: 'httpsOnly', label: 'HTTPS Only', type: 'boolean', defaultValue: true, section: 'Security' },
+      { key: 'allowBlobPublicAccess', label: 'Allow Blob Public Access', type: 'boolean', defaultValue: false, section: 'Security' },
       {
-        key: 'minimumTlsVersion', label: 'Minimum TLS Version', type: 'select', defaultValue: 'TLS1_2',
+        key: 'minimumTlsVersion', label: 'Minimum TLS Version', type: 'select', defaultValue: 'TLS1_2', section: 'Security', advanced: true,
         options: [
           { label: 'TLS 1.0', value: 'TLS1_0' },
           { label: 'TLS 1.1', value: 'TLS1_1' },
           { label: 'TLS 1.2', value: 'TLS1_2' },
         ],
       },
+      {
+        key: 'networkDefaultAction', label: 'Network Default Action', type: 'select', defaultValue: 'Allow', section: 'Security',
+        options: [
+          { label: 'Allow (all networks)', value: 'Allow' },
+          { label: 'Deny (firewall/VNet rules required)', value: 'Deny' },
+        ],
+      },
+      { key: 'blobVersioningEnabled', label: 'Blob Versioning', type: 'boolean', defaultValue: false, section: 'Backup & Recovery' },
+      {
+        key: 'blobSoftDeleteRetentionDays', label: 'Blob Soft Delete Retention (days)', type: 'number', defaultValue: 0, min: 0, max: 365,
+        section: 'Backup & Recovery', advanced: true,
+        description: '0 disables soft delete for blobs.',
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [
       {
@@ -249,6 +267,14 @@ export const azureResources: ResourceDefinition[] = [
         message: 'Storage account minimum TLS version is below 1.2',
         recommendation: 'Set minimum TLS version to 1.2 or higher',
         fixAction: (config) => ({ ...config, minimumTlsVersion: 'TLS1_2' }),
+      },
+      {
+        id: 'storage-network-open',
+        severity: 'medium',
+        check: (config) => config.networkDefaultAction === 'Allow' ? 'Storage account network access is open to all networks' : null,
+        message: 'Storage account firewall default action allows traffic from all networks',
+        recommendation: 'Set the network default action to Deny and allow only specific VNets/IP ranges',
+        fixAction: (config) => ({ ...config, networkDefaultAction: 'Deny' }),
       },
     ],
   },

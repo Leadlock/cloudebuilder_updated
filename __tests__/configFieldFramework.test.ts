@@ -231,6 +231,20 @@ describe('aws_alb — deepened config schema', () => {
   });
 });
 
+describe('azure_storage — deepened config schema', () => {
+  const def = getResourceDefinition('azure_storage')!;
+
+  test('has a security rule for open network default action', () => {
+    expect(def.securityRules!.some((r) => r.id === 'storage-network-open')).toBe(true);
+  });
+
+  test('blobSoftDeleteRetentionDays defaults to 0 (disabled) and is bounded', () => {
+    const field = def.configSchema.find((f) => f.key === 'blobSoftDeleteRetentionDays')!;
+    expect(field.defaultValue).toBe(0);
+    expect(field.max).toBe(365);
+  });
+});
+
 describe('azure_sql — deepened config schema', () => {
   const def = getResourceDefinition('azure_sql')!;
 

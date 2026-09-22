@@ -988,6 +988,49 @@ describe('TerraformGenerator — Azure', () => {
     expect(main.content).toContain('enable_https_traffic_only');
   });
 
+  describe('Storage account config depth round-trip', () => {
+    test('account_kind reflects the configured kind (previously always defaulted, ignoring the field)', () => {
+      const st = makeResource({ id: 'st-1', resourceType: 'azure_storage', provider: 'azure', configJson: JSON.stringify({ name: 'blobstore', kind: 'BlobStorage' }) });
+      const result = gen.generate(azureInput([st]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('account_kind             = "BlobStorage"');
+    });
+
+    test('allowBlobPublicAccess=false actually sets allow_nested_items_to_be_public (previously never read by Terraform)', () => {
+      const st = makeResource({ id: 'st-1', resourceType: 'azure_storage', provider: 'azure', configJson: JSON.stringify({ name: 'lockeddown', allowBlobPublicAccess: false }) });
+      const result = gen.generate(azureInput([st]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('allow_nested_items_to_be_public = false');
+    });
+
+    test('minimumTlsVersion is honored instead of hardcoded to TLS1_2', () => {
+      const st = makeResource({ id: 'st-1', resourceType: 'azure_storage', provider: 'azure', configJson: JSON.stringify({ name: 'legacycompat', minimumTlsVersion: 'TLS1_0' }) });
+      const result = gen.generate(azureInput([st]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('min_tls_version          = "TLS1_0"');
+    });
+
+    test('blob versioning and soft delete generate a blob_properties block', () => {
+      const st = makeResource({ id: 'st-1', resourceType: 'azure_storage', provider: 'azure', configJson: JSON.stringify({ name: 'versioned', blobVersioningEnabled: true, blobSoftDeleteRetentionDays: 14 }) });
+      const result = gen.generate(azureInput([st]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('versioning_enabled = true');
+      expect(main.content).toContain('days = 14');
+    });
+
+    test('networkDefaultAction=Deny generates a network_rules block; Allow (default) omits it', () => {
+      const denied = makeResource({ id: 'st-1', resourceType: 'azure_storage', provider: 'azure', configJson: JSON.stringify({ name: 'restricted', networkDefaultAction: 'Deny' }) });
+      const deniedResult = gen.generate(azureInput([denied]));
+      const deniedMain = deniedResult.files.find((f) => f.filename === 'main.tf')!;
+      expect(deniedMain.content).toContain('network_rules {');
+
+      const open = makeResource({ id: 'st-2', resourceType: 'azure_storage', provider: 'azure', configJson: JSON.stringify({ name: 'open' }) });
+      const openResult = gen.generate(azureInput([open]));
+      const openMain = openResult.files.find((f) => f.filename === 'main.tf')!;
+      expect(openMain.content).not.toContain('network_rules {');
+    });
+  });
+
   describe('VM config depth round-trip', () => {
     function vmWithRgAndSubnet(vmConfig: Record<string, unknown>) {
       const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });

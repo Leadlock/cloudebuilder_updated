@@ -1361,19 +1361,39 @@ data "azurerm_network_security_group" "${name}" {
     const sku = (cfg['sku'] as string) ?? 'Standard_LRS';
     const tier = sku.startsWith('Premium') ? 'Premium' : 'Standard';
     const replication = sku.replace('Standard_', '').replace('Premium_', '') || 'LRS';
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
 
-    return `resource "azurerm_storage_account" "${name}" {
-  name                     = "${storageName}"
-  resource_group_name      = ${rgName}
-  location                 = ${rgLoc}
-  account_tier             = "${tier}"
-  account_replication_type = "${replication}"
-  enable_https_traffic_only = ${cfg['httpsOnly'] !== false}
-  min_tls_version          = "TLS1_2"
-  tags = {
-    ManagedBy = "CloudCraft"
-  }
-}`;
+    const lines: string[] = [
+      `resource "azurerm_storage_account" "${name}" {`,
+      `  name                     = "${storageName}"`,
+      `  resource_group_name      = ${rgName}`,
+      `  location                 = ${rgLoc}`,
+      `  account_kind             = "${cfg['kind'] ?? 'StorageV2'}"`,
+      `  account_tier             = "${tier}"`,
+      `  account_replication_type = "${replication}"`,
+      `  enable_https_traffic_only = ${cfg['httpsOnly'] !== false}`,
+      `  min_tls_version          = "${cfg['minimumTlsVersion'] ?? 'TLS1_2'}"`,
+      `  allow_nested_items_to_be_public = ${cfg['allowBlobPublicAccess'] === true}`,
+    ];
+
+    const blobVersioning = cfg['blobVersioningEnabled'] === true;
+    const softDeleteDays = Number(cfg['blobSoftDeleteRetentionDays'] ?? 0);
+    if (blobVersioning || softDeleteDays > 0) {
+      lines.push(`  blob_properties {`);
+      if (blobVersioning) lines.push(`    versioning_enabled = true`);
+      if (softDeleteDays > 0) {
+        lines.push(`    delete_retention_policy {`, `      days = ${softDeleteDays}`, `    }`);
+      }
+      lines.push(`  }`);
+    }
+
+    if (cfg['networkDefaultAction'] === 'Deny') {
+      lines.push(`  network_rules {`, `    default_action = "Deny"`, `  }`);
+    }
+
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    return lines.join('\n');
   }
 
   private _sql(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
