@@ -622,6 +622,106 @@ describe('TerraformGenerator — AWS', () => {
     expect(main.content).toContain('aws_s3_bucket_public_access_block');
   });
 
+  describe('S3 config depth round-trip', () => {
+    test('encryption=false skips the SSE resource entirely (no silent override)', () => {
+      const s3 = makeResource({ id: 's3-1', resourceType: 'aws_s3', provider: 'aws', configJson: JSON.stringify({ name: 'unencrypted_bucket', encryption: false }) });
+      const result = gen.generate(awsInput([s3]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).not.toContain('aws_s3_bucket_server_side_encryption_configuration');
+    });
+
+    test('SSE-KMS with a key ID flows into the encryption block', () => {
+      const s3 = makeResource({
+        id: 's3-1', resourceType: 'aws_s3', provider: 'aws',
+        configJson: JSON.stringify({ name: 'kms_bucket', encryption: true, encryptionType: 'aws:kms', kmsKeyId: 'arn:aws:kms:us-east-1:123456789012:key/abc' }),
+      });
+      const result = gen.generate(awsInput([s3]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('sse_algorithm     = "aws:kms"');
+      expect(main.content).toContain('kms_master_key_id = "arn:aws:kms:us-east-1:123456789012:key/abc"');
+    });
+
+    test('blockPublicAcls/blockPublicPolicy are honored only when publicAccess is intentionally enabled', () => {
+      const locked = makeResource({ id: 's3-1', resourceType: 'aws_s3', provider: 'aws', configJson: JSON.stringify({ name: 'locked', publicAccess: false, blockPublicAcls: false, blockPublicPolicy: false }) });
+      const lockedResult = gen.generate(awsInput([locked]));
+      const lockedMain = lockedResult.files.find((f) => f.filename === 'main.tf')!;
+      expect(lockedMain.content).toContain('block_public_acls       = true');
+
+      const openIntentional = makeResource({ id: 's3-2', resourceType: 'aws_s3', provider: 'aws', configJson: JSON.stringify({ name: 'open', publicAccess: true, blockPublicAcls: false, blockPublicPolicy: false }) });
+      const openResult = gen.generate(awsInput([openIntentional]));
+      const openMain = openResult.files.find((f) => f.filename === 'main.tf')!;
+      expect(openMain.content).toContain('block_public_acls       = false');
+    });
+
+    test('lifecycle transition and expiration rules generate a lifecycle_configuration resource', () => {
+      const s3 = makeResource({
+        id: 's3-1', resourceType: 'aws_s3', provider: 'aws',
+        configJson: JSON.stringify({ name: 'archived', lifecycleTransitionDays: 30, lifecycleTransitionStorageClass: 'GLACIER', lifecycleExpirationDays: 365 }),
+      });
+      const result = gen.generate(awsInput([s3]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_s3_bucket_lifecycle_configuration"');
+      expect(main.content).toContain('days          = 30');
+      expect(main.content).toContain('storage_class = "GLACIER"');
+      expect(main.content).toContain('days = 365');
+    });
+
+    test('no lifecycle rules configured emits no lifecycle_configuration resource', () => {
+      const s3 = makeResource({ id: 's3-1', resourceType: 'aws_s3', provider: 'aws', configJson: JSON.stringify({ name: 'plain' }) });
+      const result = gen.generate(awsInput([s3]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).not.toContain('aws_s3_bucket_lifecycle_configuration');
+    });
+
+    test('custom tags merge into the aws_s3_bucket tags block', () => {
+      const s3 = makeResource({ id: 's3-1', resourceType: 'aws_s3', provider: 'aws', configJson: JSON.stringify({ name: 'tagged', tags: { Team: 'platform' } }) });
+      const result = gen.generate(awsInput([s3]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('Team = "platform"');
+    });
+  });
+
+  describe('EC2 config depth round-trip', () => {
+    test('root_block_device reflects storage type, size, and encryption', () => {
+      const ec2 = makeResource({
+        id: 'ec2-1', resourceType: 'aws_ec2', provider: 'aws',
+        configJson: JSON.stringify({ name: 'app_server', storageGb: 100, storageType: 'io2', storageIops: 5000, encrypted: true }),
+      });
+      const result = gen.generate(awsInput([ec2]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('volume_size           = 100');
+      expect(main.content).toContain('volume_type           = "io2"');
+      expect(main.content).toContain('iops                  = 5000');
+      expect(main.content).toContain('encrypted             = true');
+    });
+
+    test('gp3 root volume omits iops', () => {
+      const ec2 = makeResource({ id: 'ec2-1', resourceType: 'aws_ec2', provider: 'aws', configJson: JSON.stringify({ name: 'app_server' }) });
+      const result = gen.generate(awsInput([ec2]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).not.toMatch(/root_block_device[\s\S]*?iops/);
+    });
+
+    test('IAM instance profile and user data flow into the instance block', () => {
+      const ec2 = makeResource({
+        id: 'ec2-1', resourceType: 'aws_ec2', provider: 'aws',
+        configJson: JSON.stringify({ name: 'worker', iamInstanceProfile: 'worker-profile', userData: 'echo hello' }),
+      });
+      const result = gen.generate(awsInput([ec2]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('iam_instance_profile        = "worker-profile"');
+      expect(main.content).toContain('echo hello');
+    });
+
+    test('termination protection and shutdown behavior are always emitted', () => {
+      const ec2 = makeResource({ id: 'ec2-1', resourceType: 'aws_ec2', provider: 'aws', configJson: JSON.stringify({ name: 'critical', terminationProtection: true, instanceInitiatedShutdownBehavior: 'terminate' }) });
+      const result = gen.generate(awsInput([ec2]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('disable_api_termination     = true');
+      expect(main.content).toContain('instance_initiated_shutdown_behavior = "terminate"');
+    });
+  });
+
   test('RDS uses variables for credentials (no hardcoded passwords)', () => {
     const rds = makeResource({ id: 'rds-1', resourceType: 'aws_rds', provider: 'aws', configJson: JSON.stringify({ name: 'mydb', encrypted: true }) });
     const result = gen.generate(awsInput([rds]));

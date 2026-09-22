@@ -117,3 +117,52 @@ describe('aws_rds — deepened config schema', () => {
     expect(field.type).toBe('keyvalue');
   });
 });
+
+describe('aws_ec2 — deepened config schema', () => {
+  const def = getResourceDefinition('aws_ec2')!;
+
+  test('storageIops is only visible for io1/io2 root volumes', () => {
+    const field = def.configSchema.find((f) => f.key === 'storageIops')!;
+    expect(field.visibleWhen!({ storageType: 'io1' })).toBe(true);
+    expect(field.visibleWhen!({ storageType: 'gp3' })).toBe(false);
+  });
+
+  test('core security controls (encryption, public IP) stay visible in Basic mode', () => {
+    const basicKeys = def.configSchema.filter((f) => !f.advanced).map((f) => f.key);
+    expect(basicKeys).toEqual(expect.arrayContaining(['encrypted', 'associatePublicIpAddress', 'keyName']));
+  });
+
+  test('userData and IAM instance profile are advanced', () => {
+    const advancedKeys = def.configSchema.filter((f) => f.advanced).map((f) => f.key);
+    expect(advancedKeys).toEqual(expect.arrayContaining(['userData', 'iamInstanceProfile', 'terminationProtection']));
+  });
+});
+
+describe('aws_s3 — deepened config schema', () => {
+  const def = getResourceDefinition('aws_s3')!;
+
+  test('kmsKeyId is only visible for SSE-KMS with encryption enabled', () => {
+    const field = def.configSchema.find((f) => f.key === 'kmsKeyId')!;
+    expect(field.visibleWhen!({ encryption: true, encryptionType: 'aws:kms' })).toBe(true);
+    expect(field.visibleWhen!({ encryption: true, encryptionType: 'AES256' })).toBe(false);
+    expect(field.visibleWhen!({ encryption: false, encryptionType: 'aws:kms' })).toBe(false);
+  });
+
+  test('encryptionType is only visible when encryption is enabled', () => {
+    const field = def.configSchema.find((f) => f.key === 'encryptionType')!;
+    expect(field.visibleWhen!({ encryption: true })).toBe(true);
+    expect(field.visibleWhen!({ encryption: false })).toBe(false);
+  });
+
+  test('lifecycleTransitionStorageClass is only visible once a transition window is set', () => {
+    const field = def.configSchema.find((f) => f.key === 'lifecycleTransitionStorageClass')!;
+    expect(field.visibleWhen!({ lifecycleTransitionDays: 30 })).toBe(true);
+    expect(field.visibleWhen!({ lifecycleTransitionDays: 0 })).toBe(false);
+    expect(field.visibleWhen!({})).toBe(false);
+  });
+
+  test('cost-estimation fields (estimatedStorageGb, estimatedRequestsPerMonth) are exposed to the user', () => {
+    const keys = def.configSchema.map((f) => f.key);
+    expect(keys).toEqual(expect.arrayContaining(['estimatedStorageGb', 'estimatedRequestsPerMonth']));
+  });
+});

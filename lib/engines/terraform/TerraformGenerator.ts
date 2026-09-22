@@ -354,17 +354,47 @@ class AwsTerraformGenerator {
   }
 
   private _ec2(name: string, cfg: Record<string, unknown>, subnetRef: string | null, sgRef: string | null): string {
+    const storageType = (cfg['storageType'] as string) || 'gp3';
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+
     const lines: string[] = [
       `resource "aws_instance" "${name}" {`,
-      `  ami           = "${cfg['ami'] ?? 'ami-0c55b159cbfafe1f0'}"`,
-      `  instance_type = "${cfg['instanceType'] ?? 't3.micro'}"`,
+      `  ami                         = "${cfg['ami'] ?? 'ami-0c55b159cbfafe1f0'}"`,
+      `  instance_type               = "${cfg['instanceType'] ?? 't3.micro'}"`,
     ];
-    if (cfg['keyName']) lines.push(`  key_name      = "${cfg['keyName']}"`);
-    if (subnetRef)      lines.push(`  subnet_id     = ${subnetRef}`);
-    if (sgRef)          lines.push(`  vpc_security_group_ids = ${sgRef}`);
+    if (cfg['keyName']) lines.push(`  key_name                    = "${cfg['keyName']}"`);
+    if (subnetRef)      lines.push(`  subnet_id                   = ${subnetRef}`);
+    if (sgRef)          lines.push(`  vpc_security_group_ids      = ${sgRef}`);
+    lines.push(`  associate_public_ip_address = ${cfg['associatePublicIpAddress'] === true}`);
+    lines.push(`  monitoring                  = ${cfg['detailedMonitoring'] === true}`);
+    lines.push(`  ebs_optimized               = ${cfg['ebsOptimized'] !== false}`);
+    lines.push(`  disable_api_termination     = ${cfg['terminationProtection'] === true}`);
+    lines.push(`  instance_initiated_shutdown_behavior = "${cfg['instanceInitiatedShutdownBehavior'] ?? 'stop'}"`);
+    if (cfg['tenancy'] && cfg['tenancy'] !== 'default') {
+      lines.push(`  tenancy                     = "${cfg['tenancy']}"`);
+    }
+    if (cfg['iamInstanceProfile']) {
+      lines.push(`  iam_instance_profile        = "${cfg['iamInstanceProfile']}"`);
+    }
+    if (cfg['userData']) {
+      lines.push(`  user_data                   = base64encode(<<-EOF\n    ${cfg['userData']}\n  EOF\n  )`);
+    }
+    lines.push(`  root_block_device {`);
+    lines.push(`    volume_size           = ${cfg['storageGb'] ?? 30}`);
+    lines.push(`    volume_type           = "${storageType}"`);
+    if (storageType === 'io1' || storageType === 'io2') {
+      lines.push(`    iops                  = ${cfg['storageIops'] ?? 3000}`);
+    }
+    lines.push(`    encrypted             = ${cfg['encrypted'] !== false}`);
+    lines.push(`    delete_on_termination = ${cfg['deleteOnTermination'] !== false}`);
+    lines.push(`  }`);
     lines.push(`  tags = {`);
     lines.push(`    Name      = "${name}"`);
     lines.push(`    ManagedBy = "CloudCraft"`);
+    for (const [k, v] of Object.entries(tags)) {
+      if (!k) continue;
+      lines.push(`    ${k} = "${v}"`);
+    }
     lines.push(`  }`);
     lines.push(`}`);
     return lines.join('\n');
@@ -504,15 +534,24 @@ class AwsTerraformGenerator {
 
   private _s3(name: string, cfg: Record<string, unknown>): string {
     const bucketName = (cfg['bucketName'] as string) ?? name;
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const blockAcls = cfg['publicAccess'] === true ? cfg['blockPublicAcls'] === true : true;
+    const blockPolicy = cfg['publicAccess'] === true ? cfg['blockPublicPolicy'] === true : true;
+
     const parts: string[] = [
       `resource "aws_s3_bucket" "${name}" {`,
       `  bucket = "${bucketName}"`,
       `  tags = {`,
       `    Name      = "${name}"`,
       `    ManagedBy = "CloudCraft"`,
-      `  }`,
-      `}`,
-      ``,
+    ];
+    for (const [k, v] of Object.entries(tags)) {
+      if (!k) continue;
+      parts.push(`    ${k} = "${v}"`);
+    }
+    parts.push(`  }`, `}`, ``);
+
+    parts.push(
       `resource "aws_s3_bucket_versioning" "${name}_versioning" {`,
       `  bucket = aws_s3_bucket.${name}.id`,
       `  versioning_configuration {`,
@@ -520,23 +559,58 @@ class AwsTerraformGenerator {
       `  }`,
       `}`,
       ``,
-      `resource "aws_s3_bucket_server_side_encryption_configuration" "${name}_sse" {`,
-      `  bucket = aws_s3_bucket.${name}.id`,
-      `  rule {`,
-      `    apply_server_side_encryption_by_default {`,
-      `      sse_algorithm = "AES256"`,
-      `    }`,
-      `  }`,
-      `}`,
-      ``,
+    );
+
+    if (cfg['encryption'] !== false) {
+      const sseAlgorithm = (cfg['encryptionType'] as string) || 'AES256';
+      parts.push(
+        `resource "aws_s3_bucket_server_side_encryption_configuration" "${name}_sse" {`,
+        `  bucket = aws_s3_bucket.${name}.id`,
+        `  rule {`,
+        `    apply_server_side_encryption_by_default {`,
+        `      sse_algorithm     = "${sseAlgorithm}"`,
+      );
+      if (sseAlgorithm === 'aws:kms' && cfg['kmsKeyId']) {
+        parts.push(`      kms_master_key_id = "${cfg['kmsKeyId']}"`);
+      }
+      parts.push(`    }`, `  }`, `}`, ``);
+    }
+
+    parts.push(
       `resource "aws_s3_bucket_public_access_block" "${name}_pab" {`,
       `  bucket                  = aws_s3_bucket.${name}.id`,
-      `  block_public_acls       = ${cfg['publicAccess'] !== true}`,
-      `  block_public_policy     = ${cfg['publicAccess'] !== true}`,
-      `  ignore_public_acls      = ${cfg['publicAccess'] !== true}`,
+      `  block_public_acls       = ${blockAcls}`,
+      `  block_public_policy     = ${blockPolicy}`,
+      `  ignore_public_acls      = ${blockAcls}`,
       `  restrict_public_buckets = ${cfg['publicAccess'] !== true}`,
       `}`,
-    ];
+    );
+
+    const transitionDays = Number(cfg['lifecycleTransitionDays'] ?? 0);
+    const expirationDays = Number(cfg['lifecycleExpirationDays'] ?? 0);
+    if (transitionDays > 0 || expirationDays > 0) {
+      parts.push(``, `resource "aws_s3_bucket_lifecycle_configuration" "${name}_lifecycle" {`, `  bucket = aws_s3_bucket.${name}.id`, `  rule {`, `    id     = "${name}-lifecycle"`, `    status = "Enabled"`);
+      if (transitionDays > 0) {
+        parts.push(`    transition {`, `      days          = ${transitionDays}`, `      storage_class = "${cfg['lifecycleTransitionStorageClass'] ?? 'STANDARD_IA'}"`, `    }`);
+      }
+      if (expirationDays > 0) {
+        parts.push(`    expiration {`, `      days = ${expirationDays}`, `    }`);
+      }
+      parts.push(`  }`, `}`);
+    }
+
+    if (cfg['transferAcceleration'] === true) {
+      parts.push(``, `resource "aws_s3_bucket_accelerate_configuration" "${name}_accel" {`, `  bucket = aws_s3_bucket.${name}.id`, `  status = "Enabled"`, `}`);
+    }
+
+    if (cfg['requesterPays'] === true) {
+      parts.push(``, `resource "aws_s3_bucket_request_payment_configuration" "${name}_rp" {`, `  bucket = aws_s3_bucket.${name}.id`, `  payer  = "Requester"`, `}`);
+    }
+
+    if (cfg['objectOwnership']) {
+      parts.push(``, `resource "aws_s3_bucket_ownership_controls" "${name}_ownership" {`, `  bucket = aws_s3_bucket.${name}.id`, `  rule {`, `    object_ownership = "${cfg['objectOwnership']}"`, `  }`, `}`);
+    }
+
     return parts.join('\n');
   }
 

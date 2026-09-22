@@ -128,7 +128,25 @@ export class AwsPricingProvider implements PricingProvider {
     const hourly = baseHourly * mult;
     const monthly = toMonthly(hourly);
     const storageGb = (config['storageGb'] as number) ?? 20;
-    const storageMonthlyCost = storageGb * 0.10; // gp3 ~$0.10/GB/mo
+    const storageType = (config['storageType'] as string) || 'gp3';
+
+    // us-east-1 EBS list prices per GB-month.
+    const ebsRatePerGb: Record<string, number> = { gp3: 0.08, gp2: 0.10, io1: 0.125, io2: 0.125 };
+    const ebsRate = ebsRatePerGb[storageType] ?? ebsRatePerGb['gp3']!;
+    let storageMonthlyCost = storageGb * ebsRate;
+    const breakdown: { label: string; monthlyUsd: number }[] = [
+      { label: `EC2 ${instanceType} (on-demand, Linux)`, monthlyUsd: monthly },
+    ];
+
+    if (storageType === 'io1' || storageType === 'io2') {
+      const iops = Number(config['storageIops'] ?? 3000);
+      const iopsMonthly = iops * 0.065;
+      breakdown.push({ label: `EBS ${storageType} storage (${storageGb}GB)`, monthlyUsd: storageMonthlyCost });
+      breakdown.push({ label: `Provisioned IOPS (${iops})`, monthlyUsd: iopsMonthly });
+      storageMonthlyCost += iopsMonthly;
+    } else {
+      breakdown.push({ label: `EBS ${storageType} storage (${storageGb}GB)`, monthlyUsd: storageMonthlyCost });
+    }
 
     return {
       resourceId: resource.id,
@@ -138,13 +156,10 @@ export class AwsPricingProvider implements PricingProvider {
       region,
       hourlyUsd: hourly,
       monthlyUsd: monthly + storageMonthlyCost,
-      breakdown: [
-        { label: `EC2 ${instanceType} (on-demand, Linux)`, monthlyUsd: monthly },
-        { label: `EBS gp3 storage (${storageGb}GB)`, monthlyUsd: storageMonthlyCost },
-      ],
+      breakdown,
       assumptions: [
         'On-demand pricing, Linux OS',
-        `${storageGb}GB EBS gp3 root volume assumed`,
+        `${storageGb}GB EBS ${storageType} root volume assumed`,
         'No data transfer charges included',
         `Region: ${region}`,
       ],

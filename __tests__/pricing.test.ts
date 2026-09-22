@@ -352,4 +352,32 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
     expect(withReplicas.items[0].monthlyUsd).toBeGreaterThan(base.items[0].monthlyUsd);
     expect(withReplicas.items[0].breakdown.some((b) => b.label.includes('read replica'))).toBe(true);
   });
+
+  test('EC2 io2 provisioned IOPS costs more than gp3 baseline storage', () => {
+    const gp3 = makeResource({
+      resourceType: 'aws_ec2', provider: 'aws',
+      configJson: JSON.stringify({ instanceType: 't3.small', storageGb: 100, storageType: 'gp3' }),
+    });
+    const io2 = makeResource({
+      resourceType: 'aws_ec2', provider: 'aws',
+      configJson: JSON.stringify({ instanceType: 't3.small', storageGb: 100, storageType: 'io2', storageIops: 8000 }),
+    });
+    const gp3Result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [gp3] }, 'TEST');
+    const io2Result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [io2] }, 'TEST');
+    expect(io2Result.items[0].monthlyUsd).toBeGreaterThan(gp3Result.items[0].monthlyUsd);
+  });
+
+  test('EC2 gp3 storage is cheaper per-GB than gp2 (matches AWS list price ordering)', () => {
+    const gp2 = makeResource({
+      resourceType: 'aws_ec2', provider: 'aws',
+      configJson: JSON.stringify({ instanceType: 't3.small', storageGb: 200, storageType: 'gp2' }),
+    });
+    const gp3 = makeResource({
+      resourceType: 'aws_ec2', provider: 'aws',
+      configJson: JSON.stringify({ instanceType: 't3.small', storageGb: 200, storageType: 'gp3' }),
+    });
+    const gp2Result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [gp2] }, 'TEST');
+    const gp3Result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [gp3] }, 'TEST');
+    expect(gp3Result.items[0].monthlyUsd).toBeLessThan(gp2Result.items[0].monthlyUsd);
+  });
 });
