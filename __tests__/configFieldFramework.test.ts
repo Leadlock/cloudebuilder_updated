@@ -166,3 +166,20 @@ describe('aws_s3 — deepened config schema', () => {
     expect(keys).toEqual(expect.arrayContaining(['estimatedStorageGb', 'estimatedRequestsPerMonth']));
   });
 });
+
+describe('aws_sg — deepened config schema', () => {
+  const def = getResourceDefinition('aws_sg')!;
+
+  test('egressCidr is only visible when outbound traffic is restricted', () => {
+    const field = def.configSchema.find((f) => f.key === 'egressCidr')!;
+    expect(field.visibleWhen!({ allowAllOutbound: false })).toBe(true);
+    expect(field.visibleWhen!({ allowAllOutbound: true })).toBe(false);
+    expect(field.visibleWhen!({})).toBe(false);
+  });
+
+  test('allowRdp exists in the schema and is a Basic (non-advanced) toggle', () => {
+    const field = def.configSchema.find((f) => f.key === 'allowRdp')!;
+    expect(field).toBeDefined();
+    expect(field.advanced).toBeFalsy();
+  });
+});

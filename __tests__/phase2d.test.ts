@@ -722,6 +722,43 @@ describe('TerraformGenerator — AWS', () => {
     });
   });
 
+  describe('Security Group config depth round-trip', () => {
+    function sgWithVpc(sgConfig: Record<string, unknown>) {
+      const vpc = makeResource({ id: 'vpc-1', resourceType: 'aws_vpc', provider: 'aws', configJson: JSON.stringify({ name: 'main_vpc' }) });
+      const sg = makeResource({ id: 'sg-1', resourceType: 'aws_sg', provider: 'aws', configJson: JSON.stringify(sgConfig), groupId: 'vpc-1' });
+      const conn = makeConnection('vpc-1', 'sg-1');
+      return gen.generate(awsInput([vpc, sg], [conn]));
+    }
+
+    test('allowRdp actually generates an RDP ingress rule (previously silently dropped)', () => {
+      const result = sgWithVpc({ name: 'rdp_sg', allowRdp: true, allowHttp: false, allowHttps: false });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('from_port   = 3389');
+      expect(main.content).toContain('description = "RDP - RESTRICT THIS IN PRODUCTION"');
+    });
+
+    test('sourceCidr is applied to generated ingress rules instead of a hardcoded 0.0.0.0/0', () => {
+      const result = sgWithVpc({ name: 'restricted_sg', allowSsh: true, sourceCidr: '203.0.113.0/24' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      const ingressBlock = main.content.match(/ingress \{[\s\S]*?\}/)![0];
+      expect(ingressBlock).toContain('cidr_blocks = ["203.0.113.0/24"]');
+      expect(ingressBlock).not.toContain('0.0.0.0/0');
+    });
+
+    test('allowAllOutbound=false restricts egress to the configured CIDR', () => {
+      const result = sgWithVpc({ name: 'locked_egress_sg', allowAllOutbound: false, egressCidr: '10.0.0.0/8' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('cidr_blocks = ["10.0.0.0/8"]');
+      expect(main.content).toContain('description = "Restricted outbound"');
+    });
+
+    test('custom description flows into the security group resource', () => {
+      const result = sgWithVpc({ name: 'documented_sg', description: 'Allows web tier ingress only' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('description = "Allows web tier ingress only"');
+    });
+  });
+
   test('RDS uses variables for credentials (no hardcoded passwords)', () => {
     const rds = makeResource({ id: 'rds-1', resourceType: 'aws_rds', provider: 'aws', configJson: JSON.stringify({ name: 'mydb', encrypted: true }) });
     const result = gen.generate(awsInput([rds]));

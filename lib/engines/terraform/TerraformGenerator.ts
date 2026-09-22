@@ -663,6 +663,8 @@ resource "aws_nat_gateway" "${name}" {
   }
 
   private _sg(name: string, cfg: Record<string, unknown>, vpcRef: string): string {
+    const sourceCidr = (cfg['sourceCidr'] as string) || '0.0.0.0/0';
+    const isPublicSource = sourceCidr === '0.0.0.0/0';
     const rules: string[] = [];
     if (cfg['allowHttp'] === true) {
       rules.push(`
@@ -670,7 +672,7 @@ resource "aws_nat_gateway" "${name}" {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["${sourceCidr}"]
     description = "HTTP"
   }`);
     }
@@ -680,7 +682,7 @@ resource "aws_nat_gateway" "${name}" {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["${sourceCidr}"]
     description = "HTTPS"
   }`);
     }
@@ -690,26 +692,55 @@ resource "aws_nat_gateway" "${name}" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # WARNING: Restrict to known IPs in production
-    description = "SSH - RESTRICT THIS IN PRODUCTION"
+    cidr_blocks = ["${sourceCidr}"]${isPublicSource ? ' # WARNING: Restrict to known IPs in production' : ''}
+    description = "SSH${isPublicSource ? ' - RESTRICT THIS IN PRODUCTION' : ''}"
   }`);
     }
-    return `resource "aws_security_group" "${name}" {
-  name        = "${name}"
-  description = "Managed by CloudCraft"
-  vpc_id      = ${vpcRef}
-${rules.join('\n')}
+    if (cfg['allowRdp'] === true) {
+      rules.push(`
+  ingress {
+    from_port   = 3389
+    to_port     = 3389
+    protocol    = "tcp"
+    cidr_blocks = ["${sourceCidr}"]${isPublicSource ? ' # WARNING: Restrict to known IPs in production' : ''}
+    description = "RDP${isPublicSource ? ' - RESTRICT THIS IN PRODUCTION' : ''}"
+  }`);
+    }
+
+    const allowAllOutbound = cfg['allowAllOutbound'] !== false;
+    const egressCidr = (cfg['egressCidr'] as string) || '0.0.0.0/0';
+    const egressBlock = allowAllOutbound
+      ? `
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
     description = "All outbound"
-  }
+  }`
+      : `
+  egress {
+    from_port   = 0
+    to_port     = 65535
+    protocol    = "-1"
+    cidr_blocks = ["${egressCidr}"]
+    description = "Restricted outbound"
+  }`;
+
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    return `resource "aws_security_group" "${name}" {
+  name        = "${name}"
+  description = "${(cfg['description'] as string) || 'Managed by CloudCraft'}"
+  vpc_id      = ${vpcRef}
+${rules.join('\n')}
+${egressBlock}
 
   tags = {
     Name      = "${name}"
     ManagedBy = "CloudCraft"
+${tagLines.join('\n')}
   }
 }`;
   }

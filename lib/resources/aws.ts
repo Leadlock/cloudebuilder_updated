@@ -822,14 +822,28 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#FEE2E2',
     borderColor: '#DC2626',
     monthlyBaseCost: 0,
-    defaultConfig: { allowSsh: false, allowRdp: false, allowHttp: true, allowHttps: true, sourceCidr: '0.0.0.0/0', name: 'my-sg' },
+    defaultConfig: {
+      allowSsh: false, allowRdp: false, allowHttp: true, allowHttps: true, sourceCidr: '0.0.0.0/0',
+      allowAllOutbound: true, egressCidr: '0.0.0.0/0', description: '', name: 'my-sg', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-sg', required: true },
-      { key: 'allowSsh', label: 'Allow SSH (port 22)', type: 'boolean', defaultValue: false },
-      { key: 'allowRdp', label: 'Allow RDP (port 3389)', type: 'boolean', defaultValue: false },
-      { key: 'allowHttp', label: 'Allow HTTP (port 80)', type: 'boolean', defaultValue: true },
-      { key: 'allowHttps', label: 'Allow HTTPS (port 443)', type: 'boolean', defaultValue: true },
-      { key: 'sourceCidr', label: 'Inbound Source CIDR', type: 'cidr', defaultValue: '0.0.0.0/0' },
+      { key: 'description', label: 'Description', type: 'text', defaultValue: '', placeholder: 'Managed by CloudCraft' },
+      { key: 'allowHttp', label: 'Allow HTTP (port 80)', type: 'boolean', defaultValue: true, section: 'Inbound Rules' },
+      { key: 'allowHttps', label: 'Allow HTTPS (port 443)', type: 'boolean', defaultValue: true, section: 'Inbound Rules' },
+      { key: 'allowSsh', label: 'Allow SSH (port 22)', type: 'boolean', defaultValue: false, section: 'Inbound Rules' },
+      { key: 'allowRdp', label: 'Allow RDP (port 3389)', type: 'boolean', defaultValue: false, section: 'Inbound Rules' },
+      {
+        key: 'sourceCidr', label: 'Inbound Source CIDR', type: 'cidr', defaultValue: '0.0.0.0/0', section: 'Inbound Rules',
+        description: 'Applied to every enabled inbound rule above (HTTP/HTTPS/SSH/RDP). For per-rule sources, use separate Security Groups.',
+      },
+      { key: 'allowAllOutbound', label: 'Allow All Outbound Traffic', type: 'boolean', defaultValue: true, section: 'Outbound Rules' },
+      {
+        key: 'egressCidr', label: 'Outbound Destination CIDR', type: 'cidr', defaultValue: '0.0.0.0/0', section: 'Outbound Rules', advanced: true,
+        visibleWhen: (c) => c['allowAllOutbound'] === false,
+        description: 'Only used when "Allow All Outbound Traffic" is disabled — restricts egress to this CIDR on all ports.',
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [
       {
