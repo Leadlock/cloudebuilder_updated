@@ -226,6 +226,8 @@ class AwsTerraformGenerator {
             }
             blocks.push(this._rds(name, cfg, subnetRefs.length > 0 ? `aws_db_subnet_group.${name}_subnet_group.name` : null, sgRef));
             resourceMap[r.id] = `aws_db_instance.${name}`;
+            const replicaBlock = this._rdsReplicas(name, cfg);
+            if (replicaBlock) blocks.push(replicaBlock);
           }
           break;
         }
@@ -380,30 +382,124 @@ class AwsTerraformGenerator {
   }
 
   private _rds(name: string, cfg: Record<string, unknown>, dbSubnetGroupRef: string | null, sgRef: string | null): string {
+    const storageType = (cfg['storageType'] as string) || 'gp3';
+    const monitoringInterval = Number(cfg['monitoringInterval'] ?? 0);
+    const cloudwatchLogExports = Array.isArray(cfg['enableCloudwatchLogsExports']) ? cfg['enableCloudwatchLogsExports'] as string[] : [];
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+
     const lines: string[] = [
       `resource "aws_db_instance" "${name}" {`,
-      `  identifier              = "${name}"`,
-      `  engine                  = "${cfg['engine'] ?? 'mysql'}"`,
-      `  engine_version          = "${cfg['engineVersion'] ?? '8.0'}"`,
-      `  instance_class          = "${cfg['instanceClass'] ?? 'db.t3.micro'}"`,
-      `  allocated_storage       = ${cfg['allocatedStorage'] ?? 20}`,
-      `  storage_type            = "gp3"`,
-      `  storage_encrypted       = ${cfg['encrypted'] !== false}`,
-      `  multi_az                = ${cfg['multiAz'] === true}`,
-      `  publicly_accessible     = ${cfg['publiclyAccessible'] === true}`,
-      `  skip_final_snapshot     = true`,
-      `  db_name                 = var.db_name`,
-      `  username                = var.db_username`,
-      `  password                = var.db_password`,
+      `  identifier                     = "${name}"`,
+      `  engine                         = "${cfg['engine'] ?? 'mysql'}"`,
+      `  engine_version                 = "${cfg['engineVersion'] ?? '8.0'}"`,
+      `  instance_class                 = "${cfg['instanceClass'] ?? 'db.t3.micro'}"`,
+      `  allocated_storage              = ${cfg['allocatedStorage'] ?? 20}`,
+      `  storage_type                   = "${storageType}"`,
     ];
-    if (dbSubnetGroupRef) lines.push(`  db_subnet_group_name    = ${dbSubnetGroupRef}`);
-    if (sgRef) lines.push(`  vpc_security_group_ids  = ${sgRef}`);
+    if (storageType === 'io1' || storageType === 'io2') {
+      lines.push(`  iops                           = ${cfg['iops'] ?? 3000}`);
+    }
+    if (storageType === 'gp3' && cfg['storageThroughput'] !== undefined) {
+      lines.push(`  storage_throughput             = ${cfg['storageThroughput']}`);
+    }
+    const maxAllocated = Number(cfg['maxAllocatedStorage'] ?? 0);
+    if (maxAllocated > 0) {
+      lines.push(`  max_allocated_storage          = ${maxAllocated}`);
+    }
+    lines.push(`  storage_encrypted              = ${cfg['encrypted'] !== false}`);
+    if (cfg['encrypted'] !== false && cfg['kmsKeyId']) {
+      lines.push(`  kms_key_id                     = "${cfg['kmsKeyId']}"`);
+    }
+    lines.push(`  multi_az                       = ${cfg['multiAz'] === true}`);
+    lines.push(`  publicly_accessible            = ${cfg['publiclyAccessible'] === true}`);
+    lines.push(`  port                            = ${cfg['port'] ?? 5432}`);
+    lines.push(`  iam_database_authentication_enabled = ${cfg['iamDatabaseAuthenticationEnabled'] === true}`);
+    lines.push(`  skip_final_snapshot            = true`);
+    lines.push(`  db_name                        = var.db_name`);
+    lines.push(`  username                       = "${cfg['masterUsername'] ?? 'admin'}"`);
+    lines.push(`  password                       = var.db_password`);
+    lines.push(`  backup_retention_period        = ${cfg['backupRetentionPeriod'] ?? 7}`);
+    if (cfg['preferredBackupWindow']) {
+      lines.push(`  backup_window                  = "${cfg['preferredBackupWindow']}"`);
+    }
+    if (cfg['preferredMaintenanceWindow']) {
+      lines.push(`  maintenance_window             = "${cfg['preferredMaintenanceWindow']}"`);
+    }
+    lines.push(`  copy_tags_to_snapshot          = ${cfg['copyTagsToSnapshot'] !== false}`);
+    lines.push(`  deletion_protection            = ${cfg['deletionProtection'] === true}`);
+    lines.push(`  auto_minor_version_upgrade     = ${cfg['autoMinorVersionUpgrade'] !== false}`);
+    if (cfg['parameterGroupName']) {
+      lines.push(`  parameter_group_name           = "${cfg['parameterGroupName']}"`);
+    }
+    if (cfg['enablePerformanceInsights'] === true) {
+      lines.push(`  performance_insights_enabled   = true`);
+      lines.push(`  performance_insights_retention_period = ${Number(cfg['performanceInsightsRetentionPeriod'] ?? 7)}`);
+    }
+    if (monitoringInterval > 0) {
+      lines.push(`  monitoring_interval            = ${monitoringInterval}`);
+      lines.push(`  monitoring_role_arn            = aws_iam_role.${name}_monitoring.arn`);
+    }
+    if (cloudwatchLogExports.length > 0) {
+      lines.push(`  enabled_cloudwatch_logs_exports = [${cloudwatchLogExports.map((e) => `"${e}"`).join(', ')}]`);
+    }
+    if (dbSubnetGroupRef) lines.push(`  db_subnet_group_name           = ${dbSubnetGroupRef}`);
+    if (sgRef) lines.push(`  vpc_security_group_ids         = ${sgRef}`);
     lines.push(`  tags = {`);
     lines.push(`    Name      = "${name}"`);
     lines.push(`    ManagedBy = "CloudCraft"`);
+    for (const [k, v] of Object.entries(tags)) {
+      if (!k) continue;
+      lines.push(`    ${k} = "${v}"`);
+    }
     lines.push(`  }`);
     lines.push(`}`);
+
+    if (monitoringInterval > 0) {
+      lines.push('');
+      lines.push(`resource "aws_iam_role" "${name}_monitoring" {`);
+      lines.push(`  name = "${name}-rds-monitoring"`);
+      lines.push(`  assume_role_policy = jsonencode({`);
+      lines.push(`    Version = "2012-10-17"`);
+      lines.push(`    Statement = [{`);
+      lines.push(`      Action    = "sts:AssumeRole"`);
+      lines.push(`      Effect    = "Allow"`);
+      lines.push(`      Principal = { Service = "monitoring.rds.amazonaws.com" }`);
+      lines.push(`    }]`);
+      lines.push(`  })`);
+      lines.push(`}`);
+      lines.push('');
+      lines.push(`resource "aws_iam_role_policy_attachment" "${name}_monitoring_attach" {`);
+      lines.push(`  role       = aws_iam_role.${name}_monitoring.name`);
+      lines.push(`  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"`);
+      lines.push(`}`);
+    }
+
     return lines.join('\n');
+  }
+
+  /** Emits one aws_db_instance per configured read replica, each replicating from the primary via replicate_source_db. */
+  private _rdsReplicas(name: string, cfg: Record<string, unknown>): string | null {
+    const count = Math.max(0, Math.floor(Number(cfg['readReplicas'] ?? 0)));
+    if (count === 0) return null;
+
+    const blocks: string[] = [];
+    for (let i = 1; i <= count; i++) {
+      blocks.push(
+        `resource "aws_db_instance" "${name}_replica_${i}" {\n` +
+        `  identifier             = "${name}-replica-${i}"\n` +
+        `  replicate_source_db    = aws_db_instance.${name}.identifier\n` +
+        `  instance_class         = "${cfg['instanceClass'] ?? 'db.t3.micro'}"\n` +
+        `  storage_encrypted      = ${cfg['encrypted'] !== false}\n` +
+        `  publicly_accessible    = false\n` +
+        `  skip_final_snapshot    = true\n` +
+        `  tags = {\n` +
+        `    Name      = "${name}-replica-${i}"\n` +
+        `    ManagedBy = "CloudCraft"\n` +
+        `  }\n` +
+        `}`
+      );
+    }
+    return blocks.join('\n\n');
   }
 
   private _s3(name: string, cfg: Record<string, unknown>): string {

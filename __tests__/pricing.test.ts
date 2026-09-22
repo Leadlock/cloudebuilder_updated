@@ -323,4 +323,33 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
     expect(result.items.length).toBe(1);
     expect(result.items[0].monthlyUsd).toBeGreaterThan(0);
   });
+
+  test('RDS io2 provisioned IOPS costs more than gp3 baseline storage', () => {
+    const gp3 = makeResource({
+      resourceType: 'aws_rds', provider: 'aws',
+      configJson: JSON.stringify({ instanceClass: 'db.t3.small', multiAz: false, allocatedStorage: 100, storageType: 'gp3' }),
+    });
+    const io2 = makeResource({
+      resourceType: 'aws_rds', provider: 'aws',
+      configJson: JSON.stringify({ instanceClass: 'db.t3.small', multiAz: false, allocatedStorage: 100, storageType: 'io2', iops: 10000 }),
+    });
+    const gp3Result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [gp3] }, 'TEST');
+    const io2Result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [io2] }, 'TEST');
+    expect(io2Result.items[0].monthlyUsd).toBeGreaterThan(gp3Result.items[0].monthlyUsd);
+  });
+
+  test('RDS read replicas increase monthly cost proportionally', () => {
+    const noReplicas = makeResource({
+      resourceType: 'aws_rds', provider: 'aws',
+      configJson: JSON.stringify({ instanceClass: 'db.t3.small', multiAz: false, readReplicas: 0 }),
+    });
+    const twoReplicas = makeResource({
+      resourceType: 'aws_rds', provider: 'aws',
+      configJson: JSON.stringify({ instanceClass: 'db.t3.small', multiAz: false, readReplicas: 2 }),
+    });
+    const base = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [noReplicas] }, 'TEST');
+    const withReplicas = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [twoReplicas] }, 'TEST');
+    expect(withReplicas.items[0].monthlyUsd).toBeGreaterThan(base.items[0].monthlyUsd);
+    expect(withReplicas.items[0].breakdown.some((b) => b.label.includes('read replica'))).toBe(true);
+  });
 });

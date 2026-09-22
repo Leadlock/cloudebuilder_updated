@@ -652,6 +652,85 @@ describe('TerraformGenerator — AWS', () => {
     const result = gen.generate(awsInput([r]));
     expect(result.warnings.some((w) => w.includes('aws_xyzunknown'))).toBe(true);
   });
+
+  test('Legacy GCP resources generate an explicit warning instead of silently vanishing', () => {
+    const legacyGcp = makeResource({ id: 'gcp-1', resourceType: 'gcp_compute_instance', provider: 'gcp', configJson: '{}' });
+    const result = gen.generate(awsInput([legacyGcp]));
+    expect(result.warnings.some((w) => w.toLowerCase().includes('gcp') && w.toLowerCase().includes('no longer supported'))).toBe(true);
+    expect(result.providers).not.toContain('gcp');
+  });
+
+  describe('RDS config depth round-trip', () => {
+    test('storage type, IOPS, and KMS key flow into aws_db_instance', () => {
+      const rds = makeResource({
+        id: 'rds-1', resourceType: 'aws_rds', provider: 'aws',
+        configJson: JSON.stringify({
+          name: 'orders_db', storageType: 'io2', iops: 8000,
+          encrypted: true, kmsKeyId: 'arn:aws:kms:us-east-1:123456789012:key/abc',
+          masterUsername: 'orders_admin', port: 5432,
+        }),
+      });
+      const result = gen.generate(awsInput([rds]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('storage_type                   = "io2"');
+      expect(main.content).toContain('iops                           = 8000');
+      expect(main.content).toContain('kms_key_id                     = "arn:aws:kms:us-east-1:123456789012:key/abc"');
+      expect(main.content).toContain('username                       = "orders_admin"');
+      expect(main.content).toContain('port                            = 5432');
+    });
+
+    test('enhanced monitoring generates an IAM role for the monitoring interval', () => {
+      const rds = makeResource({
+        id: 'rds-1', resourceType: 'aws_rds', provider: 'aws',
+        configJson: JSON.stringify({ name: 'monitored_db', monitoringInterval: 15 }),
+      });
+      const result = gen.generate(awsInput([rds]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('monitoring_interval            = 15');
+      expect(main.content).toContain('resource "aws_iam_role" "monitored_db_monitoring"');
+      expect(main.content).toContain('AmazonRDSEnhancedMonitoringRole');
+    });
+
+    test('read replicas generate one aws_db_instance per replica with replicate_source_db', () => {
+      const rds = makeResource({
+        id: 'rds-1', resourceType: 'aws_rds', provider: 'aws',
+        configJson: JSON.stringify({ name: 'primary_db', readReplicas: 2 }),
+      });
+      const result = gen.generate(awsInput([rds]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_db_instance" "primary_db_replica_1"');
+      expect(main.content).toContain('resource "aws_db_instance" "primary_db_replica_2"');
+      expect(main.content).toContain('replicate_source_db    = aws_db_instance.primary_db.identifier');
+    });
+
+    test('zero read replicas emits no replica blocks', () => {
+      const rds = makeResource({ id: 'rds-1', resourceType: 'aws_rds', provider: 'aws', configJson: JSON.stringify({ name: 'solo_db' }) });
+      const result = gen.generate(awsInput([rds]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).not.toContain('_replica_');
+    });
+
+    test('CloudWatch log exports render as a Terraform list', () => {
+      const rds = makeResource({
+        id: 'rds-1', resourceType: 'aws_rds', provider: 'aws',
+        configJson: JSON.stringify({ name: 'audited_db', enableCloudwatchLogsExports: ['error', 'general'] }),
+      });
+      const result = gen.generate(awsInput([rds]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('enabled_cloudwatch_logs_exports = ["error", "general"]');
+    });
+
+    test('custom tags merge into the aws_db_instance tags block', () => {
+      const rds = makeResource({
+        id: 'rds-1', resourceType: 'aws_rds', provider: 'aws',
+        configJson: JSON.stringify({ name: 'tagged_db', tags: { CostCenter: 'eng-42', Env: 'prod' } }),
+      });
+      const result = gen.generate(awsInput([rds]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('CostCenter = "eng-42"');
+      expect(main.content).toContain('Env = "prod"');
+    });
+  });
 });
 
 describe('TerraformGenerator — Azure', () => {

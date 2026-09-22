@@ -222,12 +222,39 @@ export interface ResourceTerraformHook {
 export interface ConfigField {
   key: string;
   label: string;
-  type: 'text' | 'number' | 'select' | 'boolean' | 'cidr';
-  defaultValue: string | number | boolean;
+  type: 'text' | 'number' | 'select' | 'boolean' | 'cidr' | 'multiselect' | 'tags' | 'keyvalue';
+  defaultValue: string | number | boolean | string[] | Record<string, string>;
   options?: { label: string; value: string }[];
   placeholder?: string;
   required?: boolean;
   validation?: (value: unknown) => string | null;
+  /** Numeric bound for type: 'number'. Enforced by validation, not just UI clamping. */
+  min?: number;
+  max?: number;
+  /** One-line explanation shown as a tooltip next to the label — for non-obvious settings only. */
+  description?: string;
+  /**
+   * Group this field renders under in the configuration UI (e.g. 'Networking',
+   * 'Storage', 'Backup & Recovery'). Fields without a section fall into 'General'.
+   * See CONFIG_SECTION_ORDER in components/canvas/PropertiesPanel.tsx for the
+   * canonical section ordering.
+   */
+  section?: string;
+  /**
+   * True for settings that matter to a working engineer but would overwhelm a
+   * first pass (e.g. parameter groups, monitoring intervals). Hidden behind
+   * the panel's Basic/Advanced toggle; never used for settings that affect
+   * security or core architecture — those stay visible in Basic mode.
+   */
+  advanced?: boolean;
+  /**
+   * Field only renders when this returns true for the resource's current
+   * config. Re-evaluated on every config change. Use for provider-real
+   * dependent-field semantics (e.g. KMS key ID only when encryption is on,
+   * IOPS only for io1/io2/gp3 storage) — never to hide a field whose value
+   * would silently persist and diverge from what's shown.
+   */
+  visibleWhen?: (config: Record<string, unknown>) => boolean;
 }
 
 export interface SecurityRule {

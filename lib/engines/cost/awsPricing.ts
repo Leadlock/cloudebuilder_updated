@@ -163,10 +163,49 @@ export class AwsPricingProvider implements PricingProvider {
     const engine = (config['engine'] as string) ?? 'mysql';
     const multiAz = config['multiAz'] === true;
     const storageGb = (config['allocatedStorage'] as number) ?? 20;
+    const storageType = (config['storageType'] as string) || 'gp2';
+    const azMult = multiAz ? 2 : 1;
     const baseHourly = RDS_HOURLY_USD[instanceClass] ?? RDS_HOURLY_USD['db.t3.micro']!;
-    const hourly = baseHourly * mult * (multiAz ? 2 : 1);
+    const hourly = baseHourly * mult * azMult;
     const monthly = toMonthly(hourly);
-    const storageMonthly = storageGb * 0.115 * (multiAz ? 2 : 1); // gp2 RDS storage
+
+    // us-east-1 RDS storage list prices per GB-month, applied per AZ copy.
+    const storageRatePerGb: Record<string, number> = { gp2: 0.115, gp3: 0.08, io1: 0.125, io2: 0.125, standard: 0.10 };
+    const storageRate = storageRatePerGb[storageType] ?? storageRatePerGb['gp2']!;
+    let storageMonthly = storageGb * storageRate * azMult;
+    const breakdown: { label: string; monthlyUsd: number }[] = [
+      { label: `RDS ${instanceClass} ${engine}${multiAz ? ' (Multi-AZ)' : ''}`, monthlyUsd: monthly },
+    ];
+
+    if (storageType === 'io1' || storageType === 'io2') {
+      const iops = Number(config['iops'] ?? 3000);
+      const iopsMonthly = iops * 0.10 * azMult;
+      breakdown.push({ label: `Storage ${storageType} (${storageGb}GB${multiAz ? ' x2 Multi-AZ' : ''})`, monthlyUsd: storageMonthly });
+      breakdown.push({ label: `Provisioned IOPS (${iops}${multiAz ? ' x2 Multi-AZ' : ''})`, monthlyUsd: iopsMonthly });
+      storageMonthly += iopsMonthly;
+    } else if (storageType === 'gp3') {
+      const throughput = Number(config['storageThroughput'] ?? 125);
+      const extraThroughputMonthly = Math.max(0, throughput - 125) * 0.04 * azMult;
+      breakdown.push({ label: `Storage gp3 (${storageGb}GB${multiAz ? ' x2 Multi-AZ' : ''})`, monthlyUsd: storageMonthly });
+      if (extraThroughputMonthly > 0) {
+        breakdown.push({ label: `gp3 throughput above 125MB/s baseline${multiAz ? ' x2 Multi-AZ' : ''}`, monthlyUsd: extraThroughputMonthly });
+        storageMonthly += extraThroughputMonthly;
+      }
+    } else {
+      breakdown.push({ label: `Storage ${storageType} (${storageGb}GB${multiAz ? ' x2 Multi-AZ' : ''})`, monthlyUsd: storageMonthly });
+    }
+
+    // Read replicas are billed as independent single-AZ instances with their own storage.
+    const readReplicas = Math.max(0, Number(config['readReplicas'] ?? 0));
+    let replicaHourly = 0;
+    let replicaMonthly = 0;
+    if (readReplicas > 0) {
+      replicaHourly = baseHourly * mult * readReplicas;
+      const replicaInstanceMonthly = toMonthly(replicaHourly);
+      const replicaStorageMonthly = storageGb * storageRate * readReplicas;
+      replicaMonthly = replicaInstanceMonthly + replicaStorageMonthly;
+      breakdown.push({ label: `${readReplicas} read replica(s) — ${instanceClass} + ${storageGb}GB ${storageType} each`, monthlyUsd: replicaMonthly });
+    }
 
     return {
       resourceId: resource.id,
@@ -174,16 +213,13 @@ export class AwsPricingProvider implements PricingProvider {
       resourceType: resource.resourceType,
       provider: 'aws',
       region,
-      hourlyUsd: hourly,
-      monthlyUsd: monthly + storageMonthly,
-      breakdown: [
-        { label: `RDS ${instanceClass} ${engine}${multiAz ? ' (Multi-AZ)' : ''}`, monthlyUsd: monthly },
-        { label: `Storage gp2 (${storageGb}GB${multiAz ? ' x2 Multi-AZ' : ''})`, monthlyUsd: storageMonthly },
-      ],
+      hourlyUsd: hourly + replicaHourly,
+      monthlyUsd: monthly + storageMonthly + replicaMonthly,
+      breakdown,
       assumptions: [
         `Engine: ${engine}, instance class: ${instanceClass}`,
         multiAz ? 'Multi-AZ: doubles instance cost and storage' : 'Single-AZ deployment',
-        `${storageGb}GB gp2 storage assumed`,
+        `${storageGb}GB ${storageType} storage assumed`,
         'Backup storage not included',
         `Region: ${region}`,
       ],

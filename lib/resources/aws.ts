@@ -223,7 +223,15 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#FCE7F3',
     borderColor: '#DB2777',
     monthlyBaseCost: 48.6,
-    defaultConfig: { engine: 'postgres', instanceClass: 'db.t3.medium', multiAz: true, encrypted: true, allocatedStorage: 50, publiclyAccessible: false, backupRetentionPeriod: 7, deletionProtection: true, name: 'my-rds' },
+    defaultConfig: {
+      engine: 'postgres', engineVersion: '16.4', instanceClass: 'db.t3.medium',
+      multiAz: true, readReplicas: 0, encrypted: true, allocatedStorage: 50, storageType: 'gp3',
+      maxAllocatedStorage: 0, publiclyAccessible: false, backupRetentionPeriod: 7,
+      deletionProtection: true, name: 'my-rds', masterUsername: 'admin', port: 5432,
+      iamDatabaseAuthenticationEnabled: false, autoMinorVersionUpgrade: true,
+      copyTagsToSnapshot: true, enablePerformanceInsights: false, monitoringInterval: 0,
+      enableCloudwatchLogsExports: [], tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-rds', required: true },
       {
@@ -237,7 +245,12 @@ export const awsResources: ResourceDefinition[] = [
         ],
       },
       {
-        key: 'instanceClass', label: 'Instance Class', type: 'select', defaultValue: 'db.t3.medium',
+        key: 'engineVersion', label: 'Engine Version', type: 'text', defaultValue: '16.4',
+        placeholder: 'e.g. 16.4, 8.0.39, 10.11.8',
+        description: 'Exact engine version string, matching the selected Database Engine (e.g. 16.4 for PostgreSQL, 8.0.39 for MySQL).',
+      },
+      {
+        key: 'instanceClass', label: 'Instance Class', type: 'select', defaultValue: 'db.t3.medium', section: 'Compute / Capacity',
         // Includes the t4g/r6g Graviton tiers the Adaptive Scale Engine
         // assigns across every scale tier (see AdaptiveScaleEngine.ts) — see
         // the instanceType comment above for why this list must stay a
@@ -255,12 +268,115 @@ export const awsResources: ResourceDefinition[] = [
           { label: 'db.r6g.4xlarge (16 vCPU, 128GB Graviton)', value: 'db.r6g.4xlarge' },
         ],
       },
-      { key: 'allocatedStorage', label: 'Allocated Storage (GB)', type: 'number', defaultValue: 50 },
-      { key: 'multiAz', label: 'Multi-AZ Deployment', type: 'boolean', defaultValue: true },
-      { key: 'encrypted', label: 'Enable Encryption', type: 'boolean', defaultValue: true },
-      { key: 'publiclyAccessible', label: 'Publicly Accessible', type: 'boolean', defaultValue: false },
-      { key: 'backupRetentionPeriod', label: 'Backup Retention (days)', type: 'number', defaultValue: 7 },
-      { key: 'deletionProtection', label: 'Deletion Protection', type: 'boolean', defaultValue: true },
+      { key: 'allocatedStorage', label: 'Allocated Storage (GB)', type: 'number', defaultValue: 50, min: 20, max: 65536, section: 'Storage' },
+      {
+        key: 'storageType', label: 'Storage Type', type: 'select', defaultValue: 'gp3', section: 'Storage',
+        options: [
+          { label: 'General Purpose SSD (gp3)', value: 'gp3' },
+          { label: 'General Purpose SSD (gp2)', value: 'gp2' },
+          { label: 'Provisioned IOPS SSD (io1)', value: 'io1' },
+          { label: 'Provisioned IOPS SSD (io2)', value: 'io2' },
+          { label: 'Magnetic (deprecated)', value: 'standard' },
+        ],
+      },
+      {
+        key: 'iops', label: 'Provisioned IOPS', type: 'number', defaultValue: 3000, min: 1000, max: 256000,
+        section: 'Storage', advanced: true,
+        visibleWhen: (c) => c['storageType'] === 'io1' || c['storageType'] === 'io2',
+        description: 'Required for io1/io2 storage. Must not exceed 50x the allocated storage in GB.',
+      },
+      {
+        key: 'storageThroughput', label: 'Storage Throughput (MB/s)', type: 'number', defaultValue: 125, min: 125, max: 4000,
+        section: 'Storage', advanced: true,
+        visibleWhen: (c) => c['storageType'] === 'gp3',
+        description: 'gp3 baseline throughput is 125 MB/s; raise for I/O-heavy workloads.',
+      },
+      {
+        key: 'maxAllocatedStorage', label: 'Storage Autoscaling Limit (GB)', type: 'number', defaultValue: 0, min: 0,
+        section: 'Storage', advanced: true,
+        description: '0 disables storage autoscaling. Otherwise the upper bound RDS may grow allocatedStorage to automatically.',
+      },
+      { key: 'multiAz', label: 'Multi-AZ Deployment', type: 'boolean', defaultValue: true, section: 'Availability & Scaling' },
+      {
+        key: 'readReplicas', label: 'Read Replicas', type: 'number', defaultValue: 0, min: 0, max: 15,
+        section: 'Availability & Scaling',
+        description: 'Cross-AZ read replicas for read scaling. Each replica is billed as its own instance and generates a separate aws_db_instance in Terraform.',
+      },
+      { key: 'encrypted', label: 'Enable Encryption', type: 'boolean', defaultValue: true, section: 'Security' },
+      {
+        key: 'kmsKeyId', label: 'KMS Key ID', type: 'text', defaultValue: '', section: 'Security', advanced: true,
+        visibleWhen: (c) => c['encrypted'] === true,
+        placeholder: 'arn:aws:kms:... (blank = AWS-managed default key)',
+        description: 'Customer-managed KMS key for storage encryption. Leave blank to use the AWS-managed aws/rds key.',
+      },
+      { key: 'publiclyAccessible', label: 'Publicly Accessible', type: 'boolean', defaultValue: false, section: 'Security' },
+      {
+        key: 'iamDatabaseAuthenticationEnabled', label: 'IAM Database Authentication', type: 'boolean', defaultValue: false,
+        section: 'Identity & Access', advanced: true,
+        description: 'Allows IAM users/roles to authenticate instead of native database passwords. Supported on MySQL and PostgreSQL engines.',
+      },
+      { key: 'masterUsername', label: 'Master Username', type: 'text', defaultValue: 'admin', section: 'Identity & Access', required: true },
+      {
+        key: 'port', label: 'Database Port', type: 'number', defaultValue: 5432, min: 1150, max: 65535, section: 'Identity & Access',
+        description: 'Default is 5432 for PostgreSQL, 3306 for MySQL/MariaDB/Aurora MySQL.',
+      },
+      { key: 'backupRetentionPeriod', label: 'Backup Retention (days)', type: 'number', defaultValue: 7, min: 0, max: 35, section: 'Backup & Recovery' },
+      {
+        key: 'preferredBackupWindow', label: 'Preferred Backup Window (UTC)', type: 'text', defaultValue: '03:00-04:00',
+        section: 'Backup & Recovery', advanced: true, placeholder: 'hh24:mi-hh24:mi',
+      },
+      { key: 'copyTagsToSnapshot', label: 'Copy Tags to Snapshots', type: 'boolean', defaultValue: true, section: 'Backup & Recovery', advanced: true },
+      { key: 'deletionProtection', label: 'Deletion Protection', type: 'boolean', defaultValue: true, section: 'Backup & Recovery' },
+      {
+        key: 'enablePerformanceInsights', label: 'Enable Performance Insights', type: 'boolean', defaultValue: false,
+        section: 'Monitoring', advanced: true,
+      },
+      {
+        key: 'performanceInsightsRetentionPeriod', label: 'Performance Insights Retention (days)', type: 'select', defaultValue: '7',
+        section: 'Monitoring', advanced: true,
+        visibleWhen: (c) => c['enablePerformanceInsights'] === true,
+        options: [
+          { label: '7 days (free tier)', value: '7' },
+          { label: '31 days', value: '31' },
+          { label: '93 days', value: '93' },
+          { label: '731 days (2 years)', value: '731' },
+        ],
+      },
+      {
+        key: 'monitoringInterval', label: 'Enhanced Monitoring Interval (sec)', type: 'select', defaultValue: '0',
+        section: 'Monitoring', advanced: true,
+        options: [
+          { label: 'Disabled', value: '0' },
+          { label: '1 second', value: '1' },
+          { label: '5 seconds', value: '5' },
+          { label: '10 seconds', value: '10' },
+          { label: '15 seconds', value: '15' },
+          { label: '30 seconds', value: '30' },
+          { label: '60 seconds', value: '60' },
+        ],
+      },
+      {
+        key: 'enableCloudwatchLogsExports', label: 'CloudWatch Log Exports', type: 'multiselect', defaultValue: [],
+        section: 'Monitoring', advanced: true,
+        options: [
+          { label: 'General', value: 'general' },
+          { label: 'Error', value: 'error' },
+          { label: 'Slow Query', value: 'slowquery' },
+          { label: 'Audit', value: 'audit' },
+          { label: 'PostgreSQL', value: 'postgresql' },
+          { label: 'Upgrade', value: 'upgrade' },
+        ],
+      },
+      { key: 'autoMinorVersionUpgrade', label: 'Auto Minor Version Upgrade', type: 'boolean', defaultValue: true, section: 'Advanced', advanced: true },
+      {
+        key: 'preferredMaintenanceWindow', label: 'Preferred Maintenance Window (UTC)', type: 'text', defaultValue: 'sun:05:00-sun:06:00',
+        section: 'Advanced', advanced: true, placeholder: 'ddd:hh24:mi-ddd:hh24:mi',
+      },
+      {
+        key: 'parameterGroupName', label: 'DB Parameter Group', type: 'text', defaultValue: '',
+        section: 'Advanced', advanced: true, placeholder: 'blank = engine default',
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [
       {

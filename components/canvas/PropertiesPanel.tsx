@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { CanvasNode } from '@/types';
+import { CanvasNode, ConfigField } from '@/types';
 import { getResourceDefinition } from '@/lib/resources';
 import { CloudServiceIcon } from '@/components/icons/cloud/CloudServiceIcon';
 import { X, Settings, Network, Info, CheckCircle2, AlertTriangle, Layers, ShieldCheck, ShieldAlert, ExternalLink } from 'lucide-react';
@@ -15,9 +15,236 @@ interface PropertiesPanelProps {
   onUpdate: (nodeId: string, config: Record<string, unknown>, label: string) => void;
 }
 
+/**
+ * Canonical section ordering for grouped config UI. A field's `section`
+ * (see ConfigField in types/index.ts) should be one of these; sections not
+ * listed here render after these, in first-seen order. Fields with no
+ * `section` fall into 'General'.
+ */
+const CONFIG_SECTION_ORDER = [
+  'General',
+  'Networking',
+  'Compute / Capacity',
+  'Storage',
+  'Availability & Scaling',
+  'Security',
+  'Identity & Access',
+  'Backup & Recovery',
+  'Monitoring',
+  'Advanced',
+  'Tags',
+];
+
+function groupFieldsBySection(fields: ConfigField[]): { section: string; fields: ConfigField[] }[] {
+  const order = [...CONFIG_SECTION_ORDER];
+  const bySection = new Map<string, ConfigField[]>();
+  for (const field of fields) {
+    const section = field.section || 'General';
+    if (!order.includes(section)) order.push(section);
+    if (!bySection.has(section)) bySection.set(section, []);
+    bySection.get(section)!.push(field);
+  }
+  return order
+    .filter((section) => bySection.has(section))
+    .map((section) => ({ section, fields: bySection.get(section)! }));
+}
+
+function ConfigFieldInput({
+  field,
+  config,
+  onChange,
+}: {
+  field: ConfigField;
+  config: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+}) {
+  const value = config[field.key] ?? field.defaultValue;
+
+  if (field.type === 'boolean') {
+    return (
+      <label className="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800 cursor-pointer hover:border-slate-700 transition-colors">
+        <span className="text-slate-300 text-xs">{value ? 'Enabled' : 'Disabled'}</span>
+        <div className="relative">
+          <input
+            type="checkbox"
+            checked={Boolean(value)}
+            onChange={(e) => onChange(field.key, e.target.checked)}
+            className="sr-only"
+          />
+          <div className={clsx('w-9 h-5 rounded-full transition-colors', value ? 'bg-cyan-600' : 'bg-slate-700')} />
+          <div
+            className={clsx(
+              'absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform',
+              value ? 'translate-x-4' : 'translate-x-0.5'
+            )}
+          />
+        </div>
+      </label>
+    );
+  }
+
+  if (field.type === 'select') {
+    return (
+      <select
+        value={String(value)}
+        onChange={(e) => onChange(field.key, e.target.value)}
+        className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all"
+      >
+        {field.options?.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  if (field.type === 'multiselect') {
+    const selected = new Set(Array.isArray(value) ? (value as string[]) : []);
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {field.options?.map((opt) => {
+          const isSelected = selected.has(opt.value);
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => {
+                const next = new Set(selected);
+                if (isSelected) next.delete(opt.value); else next.add(opt.value);
+                onChange(field.key, [...next]);
+              }}
+              className={clsx(
+                'px-2 py-1 rounded-md text-[11px] font-medium border transition-colors',
+                isSelected
+                  ? 'bg-cyan-500/20 border-cyan-500/60 text-cyan-300'
+                  : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
+              )}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (field.type === 'tags') {
+    const tags = Array.isArray(value) ? (value as string[]) : [];
+    return (
+      <div className="space-y-1.5">
+        <div className="flex flex-wrap gap-1.5">
+          {tags.map((tag, i) => (
+            <span key={`${tag}-${i}`} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-[11px] text-slate-200">
+              {tag}
+              <button type="button" onClick={() => onChange(field.key, tags.filter((_, idx) => idx !== i))} className="text-slate-500 hover:text-rose-400">
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </span>
+          ))}
+        </div>
+        <input
+          type="text"
+          placeholder={field.placeholder || 'Type and press Enter'}
+          onKeyDown={(e) => {
+            const target = e.target as HTMLInputElement;
+            if ((e.key === 'Enter' || e.key === ',') && target.value.trim()) {
+              e.preventDefault();
+              const next = target.value.trim();
+              if (!tags.includes(next)) onChange(field.key, [...tags, next]);
+              target.value = '';
+            }
+          }}
+          className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all placeholder-slate-600"
+        />
+      </div>
+    );
+  }
+
+  if (field.type === 'keyvalue') {
+    const map = (value && typeof value === 'object' && !Array.isArray(value)) ? (value as Record<string, string>) : {};
+    const rows = Object.entries(map);
+    const setRows = (next: [string, string][]) => onChange(field.key, Object.fromEntries(next));
+    return (
+      <div className="space-y-1.5">
+        {rows.map(([k, v], i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <input
+              type="text"
+              value={k}
+              placeholder="key"
+              onChange={(e) => {
+                const next = [...rows];
+                next[i] = [e.target.value, v];
+                setRows(next);
+              }}
+              className="w-1/2 bg-slate-950 border border-slate-700/80 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:border-cyan-500 font-mono"
+            />
+            <input
+              type="text"
+              value={v}
+              placeholder="value"
+              onChange={(e) => {
+                const next = [...rows];
+                next[i] = [k, e.target.value];
+                setRows(next);
+              }}
+              className="w-1/2 bg-slate-950 border border-slate-700/80 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:border-cyan-500 font-mono"
+            />
+            <button type="button" onClick={() => setRows(rows.filter((_, idx) => idx !== i))} className="text-slate-500 hover:text-rose-400 shrink-0">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => setRows([...rows, ['', '']])}
+          className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium"
+        >
+          + Add entry
+        </button>
+      </div>
+    );
+  }
+
+  if (field.type === 'number') {
+    return (
+      <input
+        type="number"
+        value={Number(value)}
+        min={field.min}
+        max={field.max}
+        onChange={(e) => {
+          const raw = Number(e.target.value);
+          const clamped = field.min !== undefined && raw < field.min ? field.min
+            : field.max !== undefined && raw > field.max ? field.max
+            : raw;
+          onChange(field.key, clamped);
+        }}
+        className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all font-mono"
+      />
+    );
+  }
+
+  // 'text' and 'cidr' both render as a plain text input; 'cidr' gets a monospace hint via placeholder.
+  return (
+    <input
+      type="text"
+      value={String(value)}
+      onChange={(e) => onChange(field.key, e.target.value)}
+      placeholder={field.placeholder}
+      className={clsx(
+        'w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all placeholder-slate-600',
+        field.type === 'cidr' && 'font-mono'
+      )}
+    />
+  );
+}
+
 export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesPanelProps) {
   const activeProject = useActiveProject();
   const [activeTab, setActiveTab] = useState<'config' | 'placement' | 'info' | 'waf'>('config');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [wafFindings, setWafFindings] = useState<WaFinding[]>([]);
   const [loadingWaf, setLoadingWaf] = useState(false);
 
@@ -185,80 +412,68 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
           </div>
         )}
 
-        {activeTab === 'config' && (
-          <div className="space-y-3.5">
-            {def.configSchema.map((field) => (
-              <div key={field.key} className="space-y-1.5">
-                <label className="text-slate-300 text-xs font-medium flex items-center justify-between">
-                  <span>
-                    {field.label}
-                    {field.required && <span className="text-rose-400 ml-1">*</span>}
-                  </span>
-                  {field.placeholder && (
-                    <span className="text-[10px] text-slate-500 font-mono font-normal">
-                      {field.placeholder}
-                    </span>
-                  )}
-                </label>
-
-                {field.type === 'boolean' ? (
-                  <label className="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800 cursor-pointer hover:border-slate-700 transition-colors">
-                    <span className="text-slate-300 text-xs">
-                      {node.config[field.key] ? 'Enabled' : 'Disabled'}
-                    </span>
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(node.config[field.key] ?? field.defaultValue)}
-                        onChange={(e) => handleChange(field.key, e.target.checked)}
-                        className="sr-only"
-                      />
-                      <div
-                        className={clsx(
-                          'w-9 h-5 rounded-full transition-colors',
-                          node.config[field.key] ? 'bg-cyan-600' : 'bg-slate-700'
-                        )}
-                      />
-                      <div
-                        className={clsx(
-                          'absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform',
-                          node.config[field.key] ? 'translate-x-4' : 'translate-x-0.5'
-                        )}
-                      />
+        {activeTab === 'config' && (() => {
+          const visibleFields = def.configSchema.filter((f) => !f.visibleWhen || f.visibleWhen(node.config));
+          const hiddenAdvancedCount = visibleFields.filter((f) => f.advanced && !showAdvanced).length;
+          const sections = groupFieldsBySection(visibleFields);
+          return (
+            <div className="space-y-5">
+              {sections.map(({ section, fields }) => {
+                const shown = fields.filter((f) => showAdvanced || !f.advanced);
+                if (shown.length === 0) return null;
+                return (
+                  <div key={section} className="space-y-3">
+                    <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-800 pb-1.5">
+                      {section}
+                    </h3>
+                    <div className="space-y-3.5">
+                      {shown.map((field) => (
+                        <div key={field.key} className="space-y-1.5">
+                          <label className="text-slate-300 text-xs font-medium flex items-center justify-between">
+                            <span className="flex items-center gap-1">
+                              {field.label}
+                              {field.required && <span className="text-rose-400">*</span>}
+                              {field.description && (
+                                <span title={field.description} className="text-slate-600 hover:text-slate-400 cursor-help">
+                                  <Info className="w-3 h-3" />
+                                </span>
+                              )}
+                            </span>
+                            {field.placeholder && field.type !== 'tags' && (
+                              <span className="text-[10px] text-slate-500 font-mono font-normal">
+                                {field.placeholder}
+                              </span>
+                            )}
+                          </label>
+                          <ConfigFieldInput field={field} config={node.config} onChange={handleChange} />
+                        </div>
+                      ))}
                     </div>
-                  </label>
-                ) : field.type === 'select' ? (
-                  <select
-                    value={String(node.config[field.key] ?? field.defaultValue)}
-                    onChange={(e) => handleChange(field.key, e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all"
-                  >
-                    {field.options?.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : field.type === 'number' ? (
-                  <input
-                    type="number"
-                    value={Number(node.config[field.key] ?? field.defaultValue)}
-                    onChange={(e) => handleChange(field.key, Number(e.target.value))}
-                    className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all font-mono"
-                  />
-                ) : (
-                  <input
-                    type="text"
-                    value={String(node.config[field.key] ?? field.defaultValue)}
-                    onChange={(e) => handleChange(field.key, e.target.value)}
-                    placeholder={field.placeholder}
-                    className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all placeholder-slate-600"
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+                  </div>
+                );
+              })}
+
+              {hiddenAdvancedCount > 0 && !showAdvanced && (
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(true)}
+                  className="w-full text-center text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 py-2 rounded-lg border border-dashed border-slate-700 hover:border-cyan-500/50 transition-colors"
+                >
+                  Show {hiddenAdvancedCount} advanced setting{hiddenAdvancedCount === 1 ? '' : 's'}
+                </button>
+              )}
+              {showAdvanced && def.configSchema.some((f) => f.advanced) && (
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(false)}
+                  className="w-full text-center text-[11px] font-semibold text-slate-500 hover:text-slate-300 py-2 rounded-lg border border-dashed border-slate-800 transition-colors"
+                >
+                  Hide advanced settings
+                </button>
+              )}
+            </div>
+          );
+        })()}
 
         {activeTab === 'placement' && (
           <div className="space-y-3">
