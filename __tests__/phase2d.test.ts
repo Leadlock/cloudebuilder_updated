@@ -868,6 +868,86 @@ describe('TerraformGenerator — AWS', () => {
       expect(main.content).toContain('Env = "prod"');
     });
   });
+
+  describe('Lambda Terraform generation (previously completely unsupported)', () => {
+    test('generates a function resource with its own IAM execution role', () => {
+      const fn = makeResource({ id: 'fn-1', resourceType: 'aws_lambda', provider: 'aws', configJson: JSON.stringify({ name: 'process_orders', runtime: 'python3.13', memorySize: 1024, timeout: 30 }) });
+      const result = gen.generate(awsInput([fn]));
+      expect(result.warnings.some((w) => w.includes('aws_lambda') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_lambda_function" "process_orders"');
+      expect(main.content).toContain('runtime       = "python3.13"');
+      expect(main.content).toContain('memory_size   = 1024');
+      expect(main.content).toContain('timeout       = 30');
+      expect(main.content).toContain('resource "aws_iam_role" "process_orders_exec_role"');
+      expect(main.content).toContain('AWSLambdaBasicExecutionRole');
+    });
+
+    test('VPC-attached function (connected to a subnet) gets a vpc_config block and the VPC access policy', () => {
+      const subnet = makeResource({ id: 'sub-1', resourceType: 'aws_subnet', provider: 'aws', configJson: JSON.stringify({ name: 'private_subnet' }) });
+      const fn = makeResource({ id: 'fn-1', resourceType: 'aws_lambda', provider: 'aws', configJson: JSON.stringify({ name: 'vpc_fn' }), groupId: 'sub-1' });
+      const conn = makeConnection('sub-1', 'fn-1');
+      const result = gen.generate(awsInput([subnet, fn], [conn]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('vpc_config {');
+      expect(main.content).toContain('AWSLambdaVPCAccessExecutionRole');
+    });
+
+    test('environment variables flow into the environment block', () => {
+      const fn = makeResource({ id: 'fn-1', resourceType: 'aws_lambda', provider: 'aws', configJson: JSON.stringify({ name: 'configured_fn', environmentVariables: { STAGE: 'prod', LOG_LEVEL: 'info' } }) });
+      const result = gen.generate(awsInput([fn]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('STAGE = "prod"');
+      expect(main.content).toContain('LOG_LEVEL = "info"');
+    });
+
+    test('provisioned concurrency publishes a version and generates a provisioned-concurrency config', () => {
+      const fn = makeResource({ id: 'fn-1', resourceType: 'aws_lambda', provider: 'aws', configJson: JSON.stringify({ name: 'warm_fn', provisionedConcurrency: 5 }) });
+      const result = gen.generate(awsInput([fn]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('publish = true');
+      expect(main.content).toContain('resource "aws_lambda_provisioned_concurrency_config"');
+      expect(main.content).toContain('provisioned_concurrent_executions = 5');
+    });
+  });
+
+  describe('ALB target group and listener (previously never generated)', () => {
+    function albWithVpc(albConfig: Record<string, unknown>) {
+      const vpc = makeResource({ id: 'vpc-1', resourceType: 'aws_vpc', provider: 'aws', configJson: JSON.stringify({ name: 'main_vpc' }) });
+      const subnetA = makeResource({ id: 'sub-a', resourceType: 'aws_subnet', provider: 'aws', configJson: JSON.stringify({ name: 'subnet_a' }), groupId: 'vpc-1' });
+      const subnetB = makeResource({ id: 'sub-b', resourceType: 'aws_subnet', provider: 'aws', configJson: JSON.stringify({ name: 'subnet_b' }), groupId: 'vpc-1' });
+      const alb = makeResource({ id: 'alb-1', resourceType: 'aws_alb', provider: 'aws', configJson: JSON.stringify(albConfig) });
+      const conns = [makeConnection('vpc-1', 'sub-a'), makeConnection('vpc-1', 'sub-b'), makeConnection('sub-a', 'alb-1'), makeConnection('sub-b', 'alb-1')];
+      return gen.generate(awsInput([vpc, subnetA, subnetB, alb], conns));
+    }
+
+    test('generates a target group and listener forwarding to it', () => {
+      const result = albWithVpc({ name: 'web_alb', targetPort: 8080, targetProtocol: 'HTTP', listenerProtocol: 'HTTP', listenerPort: 80 });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_lb_target_group" "web_alb_tg"');
+      expect(main.content).toContain('port        = 8080');
+      expect(main.content).toContain('resource "aws_lb_listener" "web_alb_listener"');
+      expect(main.content).toContain('target_group_arn = aws_lb_target_group.web_alb_tg.arn');
+    });
+
+    test('HTTPS listener without a certificate ARN gets an explicit warning comment instead of silently applying broken', () => {
+      const result = albWithVpc({ name: 'unsecured_alb', listenerProtocol: 'HTTPS', certificateArn: '' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('WARNING: certificate_arn not set');
+    });
+
+    test('HTTPS listener with a certificate ARN configures it on the listener', () => {
+      const result = albWithVpc({ name: 'secured_alb', listenerProtocol: 'HTTPS', certificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/abc' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('certificate_arn   = "arn:aws:acm:us-east-1:123456789012:certificate/abc"');
+    });
+
+    test('deletionProtection flows into enable_deletion_protection (previously hardcoded to false)', () => {
+      const result = albWithVpc({ name: 'protected_alb', deletionProtection: true });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('enable_deletion_protection = true');
+    });
+  });
 });
 
 describe('TerraformGenerator — Azure', () => {

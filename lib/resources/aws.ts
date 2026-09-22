@@ -614,7 +614,12 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#E0E7FF',
     borderColor: '#4F46E5',
     monthlyBaseCost: 22.27,
-    defaultConfig: { lbType: 'application', scheme: 'internet-facing', name: 'my-alb' },
+    defaultConfig: {
+      lbType: 'application', scheme: 'internet-facing', idleTimeoutSeconds: 60, deletionProtection: false,
+      listenerPort: 443, listenerProtocol: 'HTTPS', certificateArn: '', sslPolicy: 'ELBSecurityPolicy-TLS13-1-2-2021-06',
+      targetPort: 80, targetProtocol: 'HTTP', healthCheckPath: '/', healthCheckIntervalSeconds: 30,
+      name: 'my-alb', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-alb', required: true },
       {
@@ -632,8 +637,68 @@ export const awsResources: ResourceDefinition[] = [
           { label: 'Internal', value: 'internal' },
         ],
       },
+      {
+        key: 'listenerPort', label: 'Listener Port', type: 'number', defaultValue: 443, min: 1, max: 65535, section: 'Networking',
+      },
+      {
+        key: 'listenerProtocol', label: 'Listener Protocol', type: 'select', defaultValue: 'HTTPS', section: 'Networking',
+        options: [
+          { label: 'HTTP', value: 'HTTP' },
+          { label: 'HTTPS', value: 'HTTPS' },
+          { label: 'TCP (NLB)', value: 'TCP' },
+          { label: 'TLS (NLB)', value: 'TLS' },
+        ],
+      },
+      {
+        key: 'certificateArn', label: 'ACM Certificate ARN', type: 'text', defaultValue: '', section: 'Networking',
+        visibleWhen: (c) => c['listenerProtocol'] === 'HTTPS' || c['listenerProtocol'] === 'TLS',
+        placeholder: 'arn:aws:acm:...',
+        required: false,
+      },
+      {
+        key: 'sslPolicy', label: 'SSL Policy', type: 'select', defaultValue: 'ELBSecurityPolicy-TLS13-1-2-2021-06',
+        section: 'Networking', advanced: true,
+        visibleWhen: (c) => c['listenerProtocol'] === 'HTTPS' || c['listenerProtocol'] === 'TLS',
+        options: [
+          { label: 'TLS 1.3 (2021-06)', value: 'ELBSecurityPolicy-TLS13-1-2-2021-06' },
+          { label: 'TLS 1.2 (2016-08)', value: 'ELBSecurityPolicy-TLS-1-2-2017-01' },
+          { label: 'FS 1.2 (2019-08)', value: 'ELBSecurityPolicy-FS-1-2-Res-2019-08' },
+        ],
+      },
+      { key: 'targetPort', label: 'Target Port', type: 'number', defaultValue: 80, min: 1, max: 65535, section: 'Networking' },
+      {
+        key: 'targetProtocol', label: 'Target Protocol', type: 'select', defaultValue: 'HTTP', section: 'Networking',
+        options: [
+          { label: 'HTTP', value: 'HTTP' },
+          { label: 'HTTPS', value: 'HTTPS' },
+        ],
+      },
+      { key: 'healthCheckPath', label: 'Health Check Path', type: 'text', defaultValue: '/', section: 'Monitoring' },
+      {
+        key: 'healthCheckIntervalSeconds', label: 'Health Check Interval (sec)', type: 'number', defaultValue: 30, min: 5, max: 300,
+        section: 'Monitoring', advanced: true,
+      },
+      { key: 'idleTimeoutSeconds', label: 'Idle Timeout (seconds)', type: 'number', defaultValue: 60, min: 1, max: 4000, section: 'Advanced', advanced: true },
+      { key: 'deletionProtection', label: 'Deletion Protection', type: 'boolean', defaultValue: false, section: 'Advanced' },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'alb-https-no-cert',
+        severity: 'high',
+        check: (config) => (config.listenerProtocol === 'HTTPS' && !config.certificateArn) ? 'HTTPS listener configured without a certificate' : null,
+        message: 'Load balancer listener is HTTPS but no ACM certificate ARN is configured',
+        recommendation: 'Provide an ACM certificate ARN, or switch the listener to HTTP only for internal/non-TLS traffic',
+      },
+      {
+        id: 'alb-deletion-protection',
+        severity: 'low',
+        check: (config) => !config.deletionProtection ? 'Load balancer deletion protection disabled' : null,
+        message: 'Load balancer does not have deletion protection enabled',
+        recommendation: 'Enable deletion protection for production load balancers to prevent accidental deletion',
+        fixAction: (config) => ({ ...config, deletionProtection: true }),
+      },
+    ],
   },
   {
     type: 'aws_auto_scaling',
@@ -666,21 +731,80 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#FEF3C7',
     borderColor: '#D97706',
     monthlyBaseCost: 0,
-    defaultConfig: { runtime: 'nodejs20.x', memorySize: 512, timeout: 15, name: 'my-lambda' },
+    defaultConfig: {
+      runtime: 'nodejs20.x', memorySize: 512, timeout: 15, handler: 'index.handler', architecture: 'x86_64',
+      ephemeralStorageMb: 512, reservedConcurrency: -1, provisionedConcurrency: 0, tracingMode: 'PassThrough',
+      environmentVariables: {}, estimatedInvocationsPerMonth: 1000000, estimatedAvgDurationMs: 100,
+      name: 'my-lambda', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Function Name', type: 'text', defaultValue: 'my-lambda', required: true },
       {
         key: 'runtime', label: 'Runtime', type: 'select', defaultValue: 'nodejs20.x',
         options: [
           { label: 'Node.js 20.x', value: 'nodejs20.x' },
+          { label: 'Node.js 22.x', value: 'nodejs22.x' },
+          { label: 'Python 3.13', value: 'python3.13' },
           { label: 'Python 3.12', value: 'python3.12' },
           { label: 'Java 21', value: 'java21' },
-          { label: 'Go 1.x', value: 'go1.x' },
+          { label: 'Go 1.x (provided.al2023)', value: 'provided.al2023' },
+          { label: '.NET 8', value: 'dotnet8' },
         ],
       },
-      { key: 'memorySize', label: 'Memory (MB)', type: 'number', defaultValue: 512 },
+      { key: 'handler', label: 'Handler', type: 'text', defaultValue: 'index.handler', placeholder: 'file.function' },
+      { key: 'memorySize', label: 'Memory (MB)', type: 'number', defaultValue: 512, min: 128, max: 10240, section: 'Compute / Capacity' },
+      {
+        key: 'architecture', label: 'Architecture', type: 'select', defaultValue: 'x86_64', section: 'Compute / Capacity',
+        options: [
+          { label: 'x86_64', value: 'x86_64' },
+          { label: 'arm64 (Graviton)', value: 'arm64' },
+        ],
+      },
+      { key: 'timeout', label: 'Timeout (seconds)', type: 'number', defaultValue: 15, min: 1, max: 900, section: 'Compute / Capacity' },
+      {
+        key: 'ephemeralStorageMb', label: 'Ephemeral Storage /tmp (MB)', type: 'number', defaultValue: 512, min: 512, max: 10240,
+        section: 'Compute / Capacity', advanced: true,
+      },
+      {
+        key: 'reservedConcurrency', label: 'Reserved Concurrency', type: 'number', defaultValue: -1, min: -1, max: 1000,
+        section: 'Availability & Scaling', advanced: true,
+        description: '-1 = unreserved (uses the shared account pool). 0 effectively disables the function.',
+      },
+      {
+        key: 'provisionedConcurrency', label: 'Provisioned Concurrency', type: 'number', defaultValue: 0, min: 0, max: 1000,
+        section: 'Availability & Scaling', advanced: true,
+        description: '0 disables provisioned concurrency. Keeps this many execution environments pre-warmed to avoid cold starts.',
+      },
+      {
+        key: 'tracingMode', label: 'AWS X-Ray Tracing', type: 'select', defaultValue: 'PassThrough', section: 'Monitoring',
+        options: [
+          { label: 'PassThrough (only if caller is sampled)', value: 'PassThrough' },
+          { label: 'Active (Lambda samples requests)', value: 'Active' },
+        ],
+      },
+      { key: 'environmentVariables', label: 'Environment Variables', type: 'keyvalue', defaultValue: {}, section: 'General' },
+      {
+        key: 'estimatedInvocationsPerMonth', label: 'Estimated Invocations/Month', type: 'number', defaultValue: 1000000, min: 0,
+        section: 'Cost Estimation',
+        description: 'Used only to estimate monthly cost — has no effect on the deployed function.',
+      },
+      {
+        key: 'estimatedAvgDurationMs', label: 'Estimated Avg Duration (ms)', type: 'number', defaultValue: 100, min: 1,
+        section: 'Cost Estimation',
+        description: 'Used only to estimate monthly cost — has no effect on the deployed function.',
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'lambda-tracing-disabled',
+        severity: 'low',
+        check: (config) => config.tracingMode !== 'Active' ? 'X-Ray active tracing not enabled' : null,
+        message: 'Lambda function does not have AWS X-Ray active tracing enabled',
+        recommendation: 'Enable Active tracing for distributed request tracing and easier debugging in production',
+        fixAction: (config) => ({ ...config, tracingMode: 'Active' }),
+      },
+    ],
   },
   {
     type: 'aws_ecs',

@@ -345,11 +345,40 @@ export class AwsPricingProvider implements PricingProvider {
 
   private _lambda(
     resource: DbArchitectureResource,
-    _config: Record<string, unknown>,
+    config: Record<string, unknown>,
     region: string,
     _mult: number,
   ): CostLineItem {
-    const monthly = 3.50;
+    // us-east-1 list price: $0.20 per 1M requests, $0.0000166667 per GB-second (x86_64).
+    const memoryMb = Number(config['memorySize'] ?? 512);
+    const invocations = Math.max(0, Number(config['estimatedInvocationsPerMonth'] ?? 1_000_000));
+    const avgDurationMs = Math.max(0, Number(config['estimatedAvgDurationMs'] ?? 100));
+    const provisionedConcurrency = Math.max(0, Number(config['provisionedConcurrency'] ?? 0));
+
+    const freeRequests = 1_000_000;
+    const freeGbSeconds = 400_000;
+    const gbSeconds = invocations * (memoryMb / 1024) * (avgDurationMs / 1000);
+
+    const billableRequests = Math.max(0, invocations - freeRequests);
+    const billableGbSeconds = Math.max(0, gbSeconds - freeGbSeconds);
+    const requestCost = (billableRequests / 1_000_000) * 0.20;
+    const computeCost = billableGbSeconds * 0.0000166667;
+
+    const breakdown: { label: string; monthlyUsd: number }[] = [
+      { label: `Requests (${invocations.toLocaleString()}/mo, 1M free)`, monthlyUsd: requestCost },
+      { label: `Compute (${memoryMb}MB x ${avgDurationMs}ms, 400K GB-s free)`, monthlyUsd: computeCost },
+    ];
+
+    let provisionedCost = 0;
+    if (provisionedConcurrency > 0) {
+      // $0.0000041667 per GB-second of provisioned concurrency, held 24/7.
+      const provisionedGbSecondsPerMonth = provisionedConcurrency * (memoryMb / 1024) * 730 * 3600;
+      provisionedCost = provisionedGbSecondsPerMonth * 0.0000041667;
+      breakdown.push({ label: `Provisioned concurrency (${provisionedConcurrency} instances, always-on)`, monthlyUsd: provisionedCost });
+    }
+
+    const monthly = requestCost + computeCost + provisionedCost;
+
     return {
       resourceId: resource.id,
       resourceLabel: resource.label,
@@ -358,11 +387,10 @@ export class AwsPricingProvider implements PricingProvider {
       region,
       hourlyUsd: monthly / 730,
       monthlyUsd: monthly,
-      breakdown: [
-        { label: 'AWS Lambda execution & compute', monthlyUsd: monthly },
-      ],
+      breakdown,
       assumptions: [
         'Includes AWS Free Tier: 1,000,000 requests and 400,000 GB-seconds/mo',
+        `${invocations.toLocaleString()} invocations/mo at ${avgDurationMs}ms average duration assumed`,
         `Region: ${region}`,
       ],
       pricingSource: 'aws-lambda-list-price',

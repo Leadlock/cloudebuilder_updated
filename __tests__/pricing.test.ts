@@ -380,4 +380,36 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
     const gp3Result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [gp3] }, 'TEST');
     expect(gp3Result.items[0].monthlyUsd).toBeLessThan(gp2Result.items[0].monthlyUsd);
   });
+
+  test('Lambda cost scales with invocations and memory (previously a flat $3.50 regardless of config)', () => {
+    const light = makeResource({
+      resourceType: 'aws_lambda', provider: 'aws',
+      configJson: JSON.stringify({ memorySize: 128, estimatedInvocationsPerMonth: 1_000_000, estimatedAvgDurationMs: 50 }),
+    });
+    const heavy = makeResource({
+      resourceType: 'aws_lambda', provider: 'aws',
+      configJson: JSON.stringify({ memorySize: 3008, estimatedInvocationsPerMonth: 50_000_000, estimatedAvgDurationMs: 800 }),
+    });
+    const lightResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [light] }, 'TEST');
+    const heavyResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [heavy] }, 'TEST');
+    expect(heavyResult.items[0].monthlyUsd).toBeGreaterThan(lightResult.items[0].monthlyUsd);
+  });
+
+  test('Lambda usage within the free tier costs $0', () => {
+    const freeTier = makeResource({
+      resourceType: 'aws_lambda', provider: 'aws',
+      configJson: JSON.stringify({ memorySize: 128, estimatedInvocationsPerMonth: 500_000, estimatedAvgDurationMs: 100 }),
+    });
+    const result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [freeTier] }, 'TEST');
+    expect(result.items[0].monthlyUsd).toBeCloseTo(0, 5);
+  });
+
+  test('Lambda provisioned concurrency adds its own always-on cost', () => {
+    const noProvisioned = makeResource({ resourceType: 'aws_lambda', provider: 'aws', configJson: JSON.stringify({ memorySize: 512, provisionedConcurrency: 0 }) });
+    const withProvisioned = makeResource({ resourceType: 'aws_lambda', provider: 'aws', configJson: JSON.stringify({ memorySize: 512, provisionedConcurrency: 10 }) });
+    const base = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [noProvisioned] }, 'TEST');
+    const withPc = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [withProvisioned] }, 'TEST');
+    expect(withPc.items[0].monthlyUsd).toBeGreaterThan(base.items[0].monthlyUsd);
+    expect(withPc.items[0].breakdown.some((b) => b.label.includes('Provisioned concurrency'))).toBe(true);
+  });
 });

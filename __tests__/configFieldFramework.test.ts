@@ -199,6 +199,38 @@ describe('azure_vm — deepened config schema', () => {
   });
 });
 
+describe('aws_lambda — deepened config schema', () => {
+  const def = getResourceDefinition('aws_lambda')!;
+
+  test('cost-estimation fields are exposed to the user', () => {
+    const keys = def.configSchema.map((f) => f.key);
+    expect(keys).toEqual(expect.arrayContaining(['estimatedInvocationsPerMonth', 'estimatedAvgDurationMs']));
+  });
+
+  test('environmentVariables uses the keyvalue type', () => {
+    const field = def.configSchema.find((f) => f.key === 'environmentVariables')!;
+    expect(field.type).toBe('keyvalue');
+  });
+
+  test('has a security rule for disabled X-Ray tracing', () => {
+    expect(def.securityRules!.some((r) => r.id === 'lambda-tracing-disabled')).toBe(true);
+  });
+});
+
+describe('aws_alb — deepened config schema', () => {
+  const def = getResourceDefinition('aws_alb')!;
+
+  test('certificateArn and sslPolicy are only visible for HTTPS/TLS listeners', () => {
+    const cert = def.configSchema.find((f) => f.key === 'certificateArn')!;
+    expect(cert.visibleWhen!({ listenerProtocol: 'HTTPS' })).toBe(true);
+    expect(cert.visibleWhen!({ listenerProtocol: 'HTTP' })).toBe(false);
+  });
+
+  test('has a security rule catching HTTPS without a certificate', () => {
+    expect(def.securityRules!.some((r) => r.id === 'alb-https-no-cert')).toBe(true);
+  });
+});
+
 describe('azure_sql — deepened config schema', () => {
   const def = getResourceDefinition('azure_sql')!;
 

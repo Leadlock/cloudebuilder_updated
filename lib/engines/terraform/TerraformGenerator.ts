@@ -241,6 +241,20 @@ class AwsTerraformGenerator {
           }
           break;
         }
+        case 'aws_lambda': {
+          const subnets = resolver.resolveParents(r.id, 'aws_subnet', connections, resources);
+          const subnetRefs = subnets.map((s) => {
+            const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
+            return `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
+          });
+          const sg = resolver.resolveParent(r.id, 'aws_sg', connections, resources);
+          const isSgImported = sg && Boolean(this._cfg(sg).imported || this._cfg(sg).importState === 'imported');
+          const sgRef = sg ? `${isSgImported ? 'data.' : ''}aws_security_group.${resolver.tfNameOf(sg.id) ?? 'main'}.id` : null;
+
+          blocks.push(this._lambda(name, cfg, subnetRefs, sgRef));
+          resourceMap[r.id] = `aws_lambda_function.${name}`;
+          break;
+        }
         case 'aws_alb': {
           const sg = resolver.resolveParent(r.id, 'aws_sg', connections, resources);
           const isSgImported = sg && Boolean(this._cfg(sg).imported || this._cfg(sg).importState === 'imported');
@@ -256,11 +270,21 @@ class AwsTerraformGenerator {
             warnings.push(`ALB "${r.label}" is connected to ${subnetRefs.length} subnet(s) — an aws_lb requires subnets in at least 2 distinct Availability Zones and will fail to apply as generated.`);
           }
 
+          let vpc = resolver.resolveParent(r.id, 'aws_vpc', connections, resources);
+          if (!vpc && subnets.length > 0) {
+            vpc = resolver.resolveParent(subnets[0]!.id, 'aws_vpc', connections, resources);
+          }
+          const isVpcImported = vpc && Boolean(this._cfg(vpc).imported || this._cfg(vpc).importState === 'imported');
+          const vpcRef = vpc ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id` : null;
+          if (!vpcRef) {
+            warnings.push(`ALB "${r.label}" has no resolvable VPC (directly or via a connected subnet) — its target group's vpc_id will fall back to a placeholder and Terraform will fail to apply.`);
+          }
+
           if (isImported) {
             blocks.push(this._dataAlb(name, cfg));
             resourceMap[r.id] = `data.aws_lb.${name}`;
           } else {
-            blocks.push(this._alb(name, cfg, sgRef, subnetRefs));
+            blocks.push(this._alb(name, cfg, vpcRef, sgRef, subnetRefs));
             resourceMap[r.id] = `aws_lb.${name}`;
           }
           break;
@@ -532,6 +556,105 @@ class AwsTerraformGenerator {
     return blocks.join('\n\n');
   }
 
+  /**
+   * Generates aws_lambda_function plus the IAM execution role it requires to
+   * apply cleanly. No deployment package exists on the canvas, so `filename`
+   * points at a placeholder the user must replace — this is called out
+   * explicitly rather than silently emitting a resource that can never
+   * actually apply.
+   */
+  private _lambda(name: string, cfg: Record<string, unknown>, subnetRefs: string[], sgRef: string | null): string {
+    const isVpcAttached = subnetRefs.length > 0;
+    const architecture = (cfg['architecture'] as string) || 'x86_64';
+    const reservedConcurrency = Number(cfg['reservedConcurrency'] ?? -1);
+    const provisionedConcurrency = Number(cfg['provisionedConcurrency'] ?? 0);
+    const envVars = (cfg['environmentVariables'] && typeof cfg['environmentVariables'] === 'object')
+      ? cfg['environmentVariables'] as Record<string, string> : {};
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+
+    const parts: string[] = [
+      `resource "aws_iam_role" "${name}_exec_role" {
+  name = "${name}-exec-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+}`,
+      `resource "aws_iam_role_policy_attachment" "${name}_basic_execution" {
+  role       = aws_iam_role.${name}_exec_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}`,
+    ];
+
+    if (isVpcAttached) {
+      parts.push(`resource "aws_iam_role_policy_attachment" "${name}_vpc_access" {
+  role       = aws_iam_role.${name}_exec_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}`);
+    }
+
+    const fnLines: string[] = [
+      `resource "aws_lambda_function" "${name}" {`,
+      `  function_name = "${name}"`,
+      `  role          = aws_iam_role.${name}_exec_role.arn`,
+      `  handler       = "${cfg['handler'] ?? 'index.handler'}"`,
+      `  runtime       = "${cfg['runtime'] ?? 'nodejs20.x'}"`,
+      `  architectures = ["${architecture}"]`,
+      `  memory_size   = ${cfg['memorySize'] ?? 512}`,
+      `  timeout       = ${cfg['timeout'] ?? 15}`,
+      `  # No deployment package exists on the canvas — replace with your build artifact`,
+      `  filename         = "placeholder.zip"`,
+      `  source_code_hash = filebase64sha256("placeholder.zip")`,
+    ];
+    if (reservedConcurrency >= 0) {
+      fnLines.push(`  reserved_concurrent_executions = ${reservedConcurrency}`);
+    }
+    if (provisionedConcurrency > 0) {
+      fnLines.push(`  publish = true`);
+    }
+    const ephemeralMb = Number(cfg['ephemeralStorageMb'] ?? 512);
+    if (ephemeralMb !== 512) {
+      fnLines.push(`  ephemeral_storage {`, `    size = ${ephemeralMb}`, `  }`);
+    }
+    if (cfg['tracingMode']) {
+      fnLines.push(`  tracing_config {`, `    mode = "${cfg['tracingMode']}"`, `  }`);
+    }
+    if (Object.keys(envVars).length > 0) {
+      fnLines.push(`  environment {`, `    variables = {`);
+      for (const [k, v] of Object.entries(envVars)) {
+        if (!k) continue;
+        fnLines.push(`      ${k} = "${v}"`);
+      }
+      fnLines.push(`    }`, `  }`);
+    }
+    if (isVpcAttached) {
+      fnLines.push(`  vpc_config {`, `    subnet_ids         = [${subnetRefs.join(', ')}]`);
+      fnLines.push(`    security_group_ids = ${sgRef ? `[${sgRef}]` : '[]'}`);
+      fnLines.push(`  }`);
+    }
+    fnLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`);
+    for (const [k, v] of Object.entries(tags)) {
+      if (!k) continue;
+      fnLines.push(`    ${k} = "${v}"`);
+    }
+    fnLines.push(`  }`, `  depends_on = [aws_iam_role_policy_attachment.${name}_basic_execution]`, `}`);
+    parts.push(fnLines.join('\n'));
+
+    if (provisionedConcurrency > 0) {
+      parts.push(`resource "aws_lambda_provisioned_concurrency_config" "${name}_provisioned" {
+  function_name                     = aws_lambda_function.${name}.function_name
+  provisioned_concurrent_executions = ${provisionedConcurrency}
+  qualifier                         = aws_lambda_function.${name}.version
+}`);
+    }
+
+    return parts.join('\n\n');
+  }
+
   private _s3(name: string, cfg: Record<string, unknown>): string {
     const bucketName = (cfg['bucketName'] as string) ?? name;
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
@@ -614,13 +737,17 @@ class AwsTerraformGenerator {
     return parts.join('\n');
   }
 
-  private _alb(name: string, cfg: Record<string, unknown>, sgRef: string | null, subnetRefs: string[] = []): string {
+  private _alb(name: string, cfg: Record<string, unknown>, vpcRef: string | null, sgRef: string | null, subnetRefs: string[] = []): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
     const lines: string[] = [
       `resource "aws_lb" "${name}" {`,
       `  name               = "${name}"`,
       `  internal           = ${cfg['scheme'] === 'internal'}`,
       `  load_balancer_type = "${cfg['lbType'] ?? 'application'}"`,
-      `  enable_deletion_protection = false`,
+      `  idle_timeout               = ${cfg['idleTimeoutSeconds'] ?? 60}`,
+      `  enable_deletion_protection = ${cfg['deletionProtection'] === true}`,
     ];
     if (sgRef) lines.push(`  security_groups    = ${sgRef}`);
     if (subnetRefs.length > 0) {
@@ -628,11 +755,58 @@ class AwsTerraformGenerator {
     } else {
       lines.push(`  subnets            = [] # WARNING: no subnets connected to this ALB on the canvas`);
     }
-    lines.push(`  tags = {`);
-    lines.push(`    Name      = "${name}"`);
-    lines.push(`    ManagedBy = "CloudCraft"`);
-    lines.push(`  }`);
-    lines.push(`}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+
+    const targetProtocol = (cfg['targetProtocol'] as string) || 'HTTP';
+    const targetPort = cfg['targetPort'] ?? 80;
+    lines.push(
+      ``,
+      `resource "aws_lb_target_group" "${name}_tg" {`,
+      `  name        = "${name}-tg"`,
+      `  port        = ${targetPort}`,
+      `  protocol    = "${targetProtocol}"`,
+      `  vpc_id      = ${vpcRef ?? `aws_vpc.main.id # WARNING: VPC not connected`}`,
+      `  target_type = "instance"`,
+      ``,
+      `  health_check {`,
+      `    path                = "${cfg['healthCheckPath'] ?? '/'}"`,
+      `    protocol            = "${targetProtocol}"`,
+      `    interval            = ${cfg['healthCheckIntervalSeconds'] ?? 30}`,
+      `    healthy_threshold   = 3`,
+      `    unhealthy_threshold = 3`,
+      `  }`,
+      `}`,
+    );
+
+    const listenerProtocol = (cfg['listenerProtocol'] as string) || 'HTTPS';
+    const isTls = listenerProtocol === 'HTTPS' || listenerProtocol === 'TLS';
+    lines.push(
+      ``,
+      `resource "aws_lb_listener" "${name}_listener" {`,
+      `  load_balancer_arn = aws_lb.${name}.arn`,
+      `  port              = ${cfg['listenerPort'] ?? 443}`,
+      `  protocol          = "${listenerProtocol}"`,
+    );
+    if (isTls) {
+      lines.push(`  ssl_policy        = "${cfg['sslPolicy'] ?? 'ELBSecurityPolicy-TLS13-1-2-2021-06'}"`);
+      if (cfg['certificateArn']) {
+        lines.push(`  certificate_arn   = "${cfg['certificateArn']}"`);
+      } else {
+        lines.push(`  # WARNING: certificate_arn not set — this listener will fail to apply. Set an ACM certificate ARN.`);
+      }
+    }
+    lines.push(
+      `  default_action {`,
+      `    type             = "forward"`,
+      `    target_group_arn = aws_lb_target_group.${name}_tg.arn`,
+      `  }`,
+      `}`,
+      ``,
+      `# Target attachment is not auto-generated — attach EC2/ASG targets to`,
+      `# aws_lb_target_group.${name}_tg via aws_lb_target_group_attachment or`,
+      `# an Auto Scaling Group's target_group_arns.`,
+    );
+
     return lines.join('\n');
   }
 
