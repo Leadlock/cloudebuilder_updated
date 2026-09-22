@@ -116,14 +116,16 @@ export class AwsPricingProvider implements PricingProvider {
       case 'aws_ecs':        return this._ecs(resource, config, region, mult);
       case 'aws_route53':    return this._route53(resource, config, region, mult);
       case 'aws_waf':        return this._waf(resource, config, region, mult);
+      case 'aws_kms':        return this._kms(resource, config, region, mult);
+      case 'aws_cloudwatch': return this._cloudwatch(resource, config, region, mult);
       case 'aws_vpc':
       case 'aws_subnet':
       case 'aws_igw':
       case 'aws_sg':
+      case 'aws_nacl':
       case 'aws_route_table':
       case 'aws_iam':
-      case 'aws_kms':
-      case 'aws_cloudwatch':
+      case 'aws_auto_scaling': // The ASG orchestration itself is free — its launched EC2 instances are costed separately as aws_ec2 resources.
       case 'aws_internet':
         return null; // No direct charges
       default:
@@ -446,8 +448,55 @@ export class AwsPricingProvider implements PricingProvider {
     mult: number,
   ): CostLineItem {
     const sizeGb = Number(config['sizeGb'] || 100);
-    const ratePerGb = 0.08 * mult;
-    const monthly = sizeGb * ratePerGb;
+    const volumeType = (config['volumeType'] as string) || 'gp3';
+    // us-east-1 EBS list prices per GB-month.
+    const ratePerGbMap: Record<string, number> = { gp3: 0.08, gp2: 0.10, io1: 0.125, io2: 0.125, st1: 0.045, sc1: 0.015 };
+    const ratePerGb = (ratePerGbMap[volumeType] ?? ratePerGbMap['gp3']!) * mult;
+    let monthly = sizeGb * ratePerGb;
+    const breakdown: { label: string; monthlyUsd: number }[] = [
+      { label: `EBS ${volumeType} volume (${sizeGb}GB)`, monthlyUsd: monthly },
+    ];
+
+    if (volumeType === 'io1' || volumeType === 'io2') {
+      const iops = Number(config['iops'] ?? 3000);
+      const iopsMonthly = iops * 0.065 * mult;
+      breakdown.push({ label: `Provisioned IOPS (${iops})`, monthlyUsd: iopsMonthly });
+      monthly += iopsMonthly;
+    } else if (volumeType === 'gp3') {
+      const throughput = Number(config['throughputMbps'] ?? 125);
+      const extraThroughputMonthly = Math.max(0, throughput - 125) * 0.04 * mult;
+      if (extraThroughputMonthly > 0) {
+        breakdown.push({ label: `Throughput above 125MB/s baseline`, monthlyUsd: extraThroughputMonthly });
+        monthly += extraThroughputMonthly;
+      }
+    }
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: monthly / 730,
+      monthlyUsd: monthly,
+      breakdown,
+      assumptions: [
+        `${volumeType} rate: $${ratePerGb.toFixed(4)}/GB-mo`,
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-ebs-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _kms(
+    resource: DbArchitectureResource,
+    _config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    // $1.00/customer-managed key/month (flat, not usage-based for standard keys).
+    const monthly = 1.0 * mult;
     return {
       resourceId: resource.id,
       resourceLabel: resource.label,
@@ -457,13 +506,47 @@ export class AwsPricingProvider implements PricingProvider {
       hourlyUsd: monthly / 730,
       monthlyUsd: monthly,
       breakdown: [
-        { label: `EBS gp3 volume (${sizeGb}GB)`, monthlyUsd: monthly },
+        { label: 'Customer-managed KMS key', monthlyUsd: monthly },
       ],
       assumptions: [
-        `gp3 rate: $${ratePerGb.toFixed(4)}/GB-mo`,
+        'API request charges not included — first 20,000 free requests/mo, then $0.03/10,000',
         `Region: ${region}`,
       ],
-      pricingSource: 'aws-ebs-list-price',
+      pricingSource: 'aws-kms-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _cloudwatch(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    // $0.10/alarm/month (standard resolution) + log storage at $0.03/GB.
+    const alarmMonthly = 0.10 * mult;
+    const estimatedLogGb = 1; // conservative baseline assumption for a single log group's steady-state storage
+    const logStorageMonthly = estimatedLogGb * 0.03 * mult;
+    const monthly = alarmMonthly + logStorageMonthly;
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: monthly / 730,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: 'Alarm (standard resolution)', monthlyUsd: alarmMonthly },
+        { label: `Log storage (~${estimatedLogGb}GB assumed)`, monthlyUsd: logStorageMonthly },
+      ],
+      assumptions: [
+        `Log retention: ${config['logRetentionDays'] ?? 30} days`,
+        'Log ingestion volume not included — $0.50/GB ingested',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-cloudwatch-list-price',
       confidence: 'estimate',
     };
   }

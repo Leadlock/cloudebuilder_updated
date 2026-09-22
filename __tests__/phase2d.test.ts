@@ -1170,6 +1170,149 @@ describe('TerraformGenerator — AWS', () => {
       expect(main.content).toContain('block {}');
     });
   });
+
+  describe('Route Table Terraform generation (previously completely unsupported)', () => {
+    function routeTableWithVpc(rtConfig: Record<string, unknown>, extra: DbArchitectureResource[] = [], extraConns: DbArchitectureConnection[] = []) {
+      const vpc = makeResource({ id: 'vpc-1', resourceType: 'aws_vpc', provider: 'aws', configJson: JSON.stringify({ name: 'main_vpc' }) });
+      const rt = makeResource({ id: 'rt-1', resourceType: 'aws_route_table', provider: 'aws', configJson: JSON.stringify(rtConfig) });
+      const conns = [makeConnection('vpc-1', 'rt-1'), ...extraConns];
+      return gen.generate(awsInput([vpc, rt, ...extra], conns));
+    }
+
+    test('internet_gateway target routes 0.0.0.0/0 to the connected IGW', () => {
+      const igw = makeResource({ id: 'igw-1', resourceType: 'aws_igw', provider: 'aws', configJson: JSON.stringify({ name: 'main_igw' }) });
+      const result = routeTableWithVpc({ name: 'public_rt', targetType: 'internet_gateway' }, [igw], [makeConnection('igw-1', 'rt-1')]);
+      expect(result.warnings.some((w) => w.includes('aws_route_table') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_route_table" "public_rt"');
+      expect(main.content).toContain('gateway_id = aws_internet_gateway.main_igw.id');
+    });
+
+    test('subnet connections generate aws_route_table_association resources', () => {
+      const subnet = makeResource({ id: 'sub-1', resourceType: 'aws_subnet', provider: 'aws', configJson: JSON.stringify({ name: 'app_subnet' }) });
+      const result = routeTableWithVpc({ name: 'assoc_rt' }, [subnet], [makeConnection('sub-1', 'rt-1')]);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_route_table_association" "assoc_rt_assoc_1"');
+    });
+
+    test('targetType=none omits the route block entirely', () => {
+      const result = routeTableWithVpc({ name: 'local_only_rt', targetType: 'none' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).not.toContain('route {');
+    });
+  });
+
+  describe('Network ACL Terraform generation (previously completely unsupported)', () => {
+    test('generates ingress/egress rules from the configured protocol and port range', () => {
+      const vpc = makeResource({ id: 'vpc-1', resourceType: 'aws_vpc', provider: 'aws', configJson: JSON.stringify({ name: 'main_vpc' }) });
+      const nacl = makeResource({ id: 'nacl-1', resourceType: 'aws_nacl', provider: 'aws', configJson: JSON.stringify({ name: 'restrictive_nacl', allowAllInbound: false, inboundProtocol: 'tcp', inboundPortFrom: 8080, inboundPortTo: 8080, inboundCidr: '10.0.0.0/8' }) });
+      const result = gen.generate(awsInput([vpc, nacl], [makeConnection('vpc-1', 'nacl-1')]));
+      expect(result.warnings.some((w) => w.includes('aws_nacl') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_network_acl" "restrictive_nacl"');
+      expect(main.content).toContain('from_port  = 8080');
+      expect(main.content).toContain('cidr_block = "10.0.0.0/8"');
+    });
+
+    test('allowAllInbound=true generates an allow-all ingress rule regardless of protocol/port fields', () => {
+      const vpc = makeResource({ id: 'vpc-1', resourceType: 'aws_vpc', provider: 'aws', configJson: JSON.stringify({ name: 'main_vpc' }) });
+      const nacl = makeResource({ id: 'nacl-1', resourceType: 'aws_nacl', provider: 'aws', configJson: JSON.stringify({ name: 'open_nacl', allowAllInbound: true }) });
+      const result = gen.generate(awsInput([vpc, nacl], [makeConnection('vpc-1', 'nacl-1')]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      const ingressBlock = main.content.match(/ingress \{[\s\S]*?\}/)![0];
+      expect(ingressBlock).toContain('cidr_block = "0.0.0.0/0"');
+      expect(ingressBlock).toContain('protocol   = "-1"');
+    });
+  });
+
+  describe('IAM Role Terraform generation (previously completely unsupported)', () => {
+    test('generates a role with the configured trusted service and one policy attachment per managed policy', () => {
+      const role = makeResource({ id: 'iam-1', resourceType: 'aws_iam', provider: 'aws', configJson: JSON.stringify({ name: 'lambda_role', trustedService: 'lambda.amazonaws.com', managedPolicyArns: ['arn:aws:iam::aws:policy/ReadOnlyAccess', 'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess'] }) });
+      const result = gen.generate(awsInput([role]));
+      expect(result.warnings.some((w) => w.includes('aws_iam') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_iam_role" "lambda_role"');
+      expect(main.content).toContain('Service = "lambda.amazonaws.com"');
+      expect(main.content).toContain('resource "aws_iam_role_policy_attachment" "lambda_role_policy_1"');
+      expect(main.content).toContain('resource "aws_iam_role_policy_attachment" "lambda_role_policy_2"');
+    });
+
+    test('no managed policies generates no policy attachment resources', () => {
+      const role = makeResource({ id: 'iam-1', resourceType: 'aws_iam', provider: 'aws', configJson: JSON.stringify({ name: 'bare_role', managedPolicyArns: [] }) });
+      const result = gen.generate(awsInput([role]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).not.toContain('aws_iam_role_policy_attachment');
+    });
+  });
+
+  describe('KMS Key Terraform generation (previously completely unsupported)', () => {
+    test('generates a key and an alias with the configured rotation/spec/deletion window', () => {
+      const key = makeResource({ id: 'kms-1', resourceType: 'aws_kms', provider: 'aws', configJson: JSON.stringify({ name: 'app_data_key', enableKeyRotation: true, keySpec: 'RSA_2048', deletionWindowDays: 14 }) });
+      const result = gen.generate(awsInput([key]));
+      expect(result.warnings.some((w) => w.includes('aws_kms') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_kms_key" "app_data_key"');
+      expect(main.content).toContain('customer_master_key_spec = "RSA_2048"');
+      expect(main.content).toContain('deletion_window_in_days  = 14');
+      expect(main.content).toContain('resource "aws_kms_alias" "app_data_key_alias"');
+      expect(main.content).toContain('name          = "alias/app_data_key"');
+    });
+  });
+
+  describe('CloudWatch Terraform generation (previously completely unsupported)', () => {
+    test('generates an alarm and a log group with the configured threshold/retention', () => {
+      const alarm = makeResource({ id: 'cw-1', resourceType: 'aws_cloudwatch', provider: 'aws', configJson: JSON.stringify({ name: 'high_cpu_alarm', threshold: 90, comparisonOperator: 'GreaterThanThreshold', logRetentionDays: 14 }) });
+      const result = gen.generate(awsInput([alarm]));
+      expect(result.warnings.some((w) => w.includes('aws_cloudwatch') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_cloudwatch_metric_alarm" "high_cpu_alarm"');
+      expect(main.content).toContain('threshold            = 90');
+      expect(main.content).toContain('resource "aws_cloudwatch_log_group" "high_cpu_alarm_logs"');
+      expect(main.content).toContain('retention_in_days = 14');
+    });
+  });
+
+  describe('EBS Volume Terraform generation (previously completely unsupported)', () => {
+    test('generates a volume with the configured type/size/AZ', () => {
+      const vol = makeResource({ id: 'ebs-1', resourceType: 'aws_ebs', provider: 'aws', configJson: JSON.stringify({ name: 'data_volume', sizeGb: 500, volumeType: 'io2', iops: 10000, availabilityZone: 'us-west-2a' }) });
+      const result = gen.generate(awsInput([vol]));
+      expect(result.warnings.some((w) => w.includes('aws_ebs') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_ebs_volume" "data_volume"');
+      expect(main.content).toContain('availability_zone = "us-west-2a"');
+      expect(main.content).toContain('size              = 500');
+      expect(main.content).toContain('iops              = 10000');
+    });
+
+    test('gp2 volume type omits iops (only io1/io2/gp3 support provisioned IOPS)', () => {
+      const vol = makeResource({ id: 'ebs-1', resourceType: 'aws_ebs', provider: 'aws', configJson: JSON.stringify({ name: 'plain_volume', volumeType: 'gp2' }) });
+      const result = gen.generate(awsInput([vol]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).not.toContain('iops');
+    });
+  });
+
+  describe('Auto Scaling Terraform generation (previously completely unsupported)', () => {
+    test('generates a launch template, ASG, and target-tracking policy', () => {
+      const subnet = makeResource({ id: 'sub-1', resourceType: 'aws_subnet', provider: 'aws', configJson: JSON.stringify({ name: 'app_subnet' }) });
+      const asg = makeResource({ id: 'asg-1', resourceType: 'aws_auto_scaling', provider: 'aws', configJson: JSON.stringify({ name: 'web_asg', instanceType: 'm5.large', minSize: 2, maxSize: 8, targetCpuUtilization: 70 }), groupId: 'sub-1' });
+      const result = gen.generate(awsInput([subnet, asg], [makeConnection('sub-1', 'asg-1')]));
+      expect(result.warnings.some((w) => w.includes('aws_auto_scaling') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_launch_template" "web_asg_lt"');
+      expect(main.content).toContain('instance_type = "m5.large"');
+      expect(main.content).toContain('resource "aws_autoscaling_group" "web_asg"');
+      expect(main.content).toContain('resource "aws_autoscaling_policy" "web_asg_target_tracking"');
+      expect(main.content).toContain('target_value = 70');
+    });
+
+    test('scalingPolicyEnabled=false omits the autoscaling policy resource', () => {
+      const asg = makeResource({ id: 'asg-1', resourceType: 'aws_auto_scaling', provider: 'aws', configJson: JSON.stringify({ name: 'static_asg', scalingPolicyEnabled: false }) });
+      const result = gen.generate(awsInput([asg]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).not.toContain('aws_autoscaling_policy');
+    });
+  });
 });
 
 describe('TerraformGenerator — Azure', () => {

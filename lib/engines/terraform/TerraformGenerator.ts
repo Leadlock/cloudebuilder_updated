@@ -404,6 +404,72 @@ class AwsTerraformGenerator {
           resourceMap[r.id] = `aws_wafv2_web_acl.${name}`;
           break;
         }
+        case 'aws_route_table': {
+          const vpc = resolver.resolveParent(r.id, 'aws_vpc', connections, resources);
+          const isVpcImported = vpc && Boolean(this._cfg(vpc).imported || this._cfg(vpc).importState === 'imported');
+          const vpcRef = vpc ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id` : 'aws_vpc.main.id # WARNING: VPC not connected';
+          const igw = resolver.resolveParent(r.id, 'aws_igw', connections, resources);
+          const nat = resolver.resolveParent(r.id, 'aws_nat', connections, resources);
+          const subnets = resolver.resolveParents(r.id, 'aws_subnet', connections, resources);
+          const subnetRefs = subnets.map((s) => {
+            const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
+            return `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
+          });
+          const igwRef = igw ? `aws_internet_gateway.${resolver.tfNameOf(igw.id) ?? 'main'}.id` : null;
+          const natRef = nat ? `aws_nat_gateway.${resolver.tfNameOf(nat.id) ?? 'main'}.id` : null;
+          blocks.push(this._routeTable(name, cfg, vpcRef, igwRef, natRef, subnetRefs));
+          resourceMap[r.id] = `aws_route_table.${name}`;
+          break;
+        }
+        case 'aws_nacl': {
+          const vpc = resolver.resolveParent(r.id, 'aws_vpc', connections, resources);
+          const isVpcImported = vpc && Boolean(this._cfg(vpc).imported || this._cfg(vpc).importState === 'imported');
+          const vpcRef = vpc ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id` : 'aws_vpc.main.id # WARNING: VPC not connected';
+          const subnets = resolver.resolveParents(r.id, 'aws_subnet', connections, resources);
+          const subnetRefs = subnets.map((s) => {
+            const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
+            return `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
+          });
+          blocks.push(this._nacl(name, cfg, vpcRef, subnetRefs));
+          resourceMap[r.id] = `aws_network_acl.${name}`;
+          break;
+        }
+        case 'aws_iam': {
+          blocks.push(this._iamRole(name, cfg));
+          resourceMap[r.id] = `aws_iam_role.${name}`;
+          break;
+        }
+        case 'aws_kms': {
+          blocks.push(this._kms(name, cfg));
+          resourceMap[r.id] = `aws_kms_key.${name}`;
+          break;
+        }
+        case 'aws_cloudwatch': {
+          blocks.push(this._cloudwatchAlarm(name, cfg));
+          resourceMap[r.id] = `aws_cloudwatch_metric_alarm.${name}`;
+          break;
+        }
+        case 'aws_ebs': {
+          blocks.push(this._ebs(name, cfg));
+          resourceMap[r.id] = `aws_ebs_volume.${name}`;
+          break;
+        }
+        case 'aws_auto_scaling': {
+          const subnets = resolver.resolveParents(r.id, 'aws_subnet', connections, resources);
+          const subnetRefs = subnets.map((s) => {
+            const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
+            return `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
+          });
+          const sg = resolver.resolveParent(r.id, 'aws_sg', connections, resources);
+          const isSgImported = sg && Boolean(this._cfg(sg).imported || this._cfg(sg).importState === 'imported');
+          const sgRef = sg ? `${isSgImported ? 'data.' : ''}aws_security_group.${resolver.tfNameOf(sg.id) ?? 'main'}.id` : null;
+          if (subnetRefs.length === 0) {
+            warnings.push(`Auto Scaling group "${r.label}" is not connected to any subnet — the generated aws_autoscaling_group will have no vpc_zone_identifier and will fail to apply.`);
+          }
+          blocks.push(this._autoScaling(name, cfg, subnetRefs, sgRef));
+          resourceMap[r.id] = `aws_autoscaling_group.${name}`;
+          break;
+        }
         default: {
           warnings.push(`Unsupported AWS resource type: ${r.resourceType} (resource: ${r.label})`);
         }
@@ -1196,6 +1262,251 @@ ${tagLines.join('\n')}
     );
 
     return lines.join('\n');
+  }
+
+  private _routeTable(name: string, cfg: Record<string, unknown>, vpcRef: string, igwRef: string | null, natRef: string | null, subnetRefs: string[]): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+    const targetType = (cfg['targetType'] as string) || 'internet_gateway';
+
+    const lines: string[] = [`resource "aws_route_table" "${name}" {`, `  vpc_id = ${vpcRef}`];
+
+    if (targetType === 'internet_gateway') {
+      lines.push(`  route {`, `    cidr_block = "${cfg['destinationCidr'] ?? '0.0.0.0/0'}"`);
+      lines.push(igwRef ? `    gateway_id = ${igwRef}` : `    gateway_id = aws_internet_gateway.main.id # WARNING: no Internet Gateway connected`);
+      lines.push(`  }`);
+    } else if (targetType === 'nat_gateway') {
+      lines.push(`  route {`, `    cidr_block = "${cfg['destinationCidr'] ?? '0.0.0.0/0'}"`);
+      lines.push(natRef ? `    nat_gateway_id = ${natRef}` : `    nat_gateway_id = aws_nat_gateway.main.id # WARNING: no NAT Gateway connected`);
+      lines.push(`  }`);
+    }
+
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+
+    const assocBlocks = subnetRefs.map((subnetRef, i) =>
+      `resource "aws_route_table_association" "${name}_assoc_${i + 1}" {\n  subnet_id      = ${subnetRef}\n  route_table_id = aws_route_table.${name}.id\n}`
+    );
+
+    return [lines.join('\n'), ...assocBlocks].join('\n\n');
+  }
+
+  private _nacl(name: string, cfg: Record<string, unknown>, vpcRef: string, subnetRefs: string[]): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const lines: string[] = [`resource "aws_network_acl" "${name}" {`, `  vpc_id     = ${vpcRef}`];
+    if (subnetRefs.length > 0) {
+      lines.push(`  subnet_ids = [${subnetRefs.join(', ')}]`);
+    }
+
+    if (cfg['allowAllInbound'] === true) {
+      lines.push(`  ingress {`, `    protocol   = "-1"`, `    rule_no    = 100`, `    action     = "allow"`, `    cidr_block = "0.0.0.0/0"`, `    from_port  = 0`, `    to_port    = 0`, `  }`);
+    } else {
+      const proto = (cfg['inboundProtocol'] as string) || 'tcp';
+      const isPortless = proto === 'all' || proto === 'icmp';
+      lines.push(
+        `  ingress {`,
+        `    protocol   = "${proto === 'all' ? '-1' : proto}"`,
+        `    rule_no    = 100`,
+        `    action     = "allow"`,
+        `    cidr_block = "${cfg['inboundCidr'] ?? '10.0.0.0/16'}"`,
+        `    from_port  = ${isPortless ? 0 : (cfg['inboundPortFrom'] ?? 443)}`,
+        `    to_port    = ${isPortless ? 0 : (cfg['inboundPortTo'] ?? 443)}`,
+        `  }`,
+      );
+    }
+
+    if (cfg['allowAllOutbound'] !== false) {
+      lines.push(`  egress {`, `    protocol   = "-1"`, `    rule_no    = 100`, `    action     = "allow"`, `    cidr_block = "0.0.0.0/0"`, `    from_port  = 0`, `    to_port    = 0`, `  }`);
+    } else {
+      const outProto = (cfg['outboundProtocol'] as string) || 'all';
+      lines.push(
+        `  egress {`,
+        `    protocol   = "${outProto === 'all' ? '-1' : outProto}"`,
+        `    rule_no    = 100`,
+        `    action     = "allow"`,
+        `    cidr_block = "${cfg['outboundCidr'] ?? '0.0.0.0/0'}"`,
+        `    from_port  = 0`,
+        `    to_port    = 0`,
+        `  }`,
+      );
+    }
+
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    return lines.join('\n');
+  }
+
+  private _iamRole(name: string, cfg: Record<string, unknown>): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+    const managedPolicyArns = Array.isArray(cfg['managedPolicyArns']) ? cfg['managedPolicyArns'] as string[] : [];
+
+    const parts: string[] = [
+      `resource "aws_iam_role" "${name}" {
+  name                 = "${name}"
+  max_session_duration = ${cfg['maxSessionDurationSeconds'] ?? 3600}
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "${cfg['trustedService'] ?? 'ec2.amazonaws.com'}" }
+    }]
+  })
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+${tagLines.join('\n')}
+  }
+}`,
+    ];
+
+    managedPolicyArns.forEach((arn, i) => {
+      parts.push(`resource "aws_iam_role_policy_attachment" "${name}_policy_${i + 1}" {
+  role       = aws_iam_role.${name}.name
+  policy_arn = "${arn}"
+}`);
+    });
+
+    return parts.join('\n\n');
+  }
+
+  private _kms(name: string, cfg: Record<string, unknown>): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const lines: string[] = [
+      `resource "aws_kms_key" "${name}" {`,
+      `  description              = "Managed by CloudCraft"`,
+      `  key_usage                = "${cfg['keyUsage'] ?? 'ENCRYPT_DECRYPT'}"`,
+      `  customer_master_key_spec = "${cfg['keySpec'] ?? 'SYMMETRIC_DEFAULT'}"`,
+      `  enable_key_rotation      = ${cfg['enableKeyRotation'] !== false}`,
+      `  multi_region             = ${cfg['multiRegion'] === true}`,
+      `  deletion_window_in_days  = ${cfg['deletionWindowDays'] ?? 30}`,
+      `  tags = {`,
+      `    Name      = "${name}"`,
+      `    ManagedBy = "CloudCraft"`,
+      ...tagLines,
+      `  }`,
+      `}`,
+      ``,
+      `resource "aws_kms_alias" "${name}_alias" {`,
+      `  name          = "alias/${name}"`,
+      `  target_key_id = aws_kms_key.${name}.key_id`,
+      `}`,
+    ];
+    return lines.join('\n');
+  }
+
+  private _cloudwatchAlarm(name: string, cfg: Record<string, unknown>): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const missingDataMap: Record<string, string> = { missing: 'missing', notBreaching: 'notBreaching', breaching: 'breaching', ignore: 'ignore' };
+    const treatMissingData = missingDataMap[(cfg['treatMissingData'] as string) ?? 'missing'] ?? 'missing';
+
+    return [
+      `resource "aws_cloudwatch_metric_alarm" "${name}" {
+  alarm_name          = "${name}"
+  comparison_operator = "${cfg['comparisonOperator'] ?? 'GreaterThanThreshold'}"
+  evaluation_periods   = ${cfg['evaluationPeriods'] ?? 2}
+  metric_name          = "${cfg['metricName'] ?? 'CPUUtilization'}"
+  namespace            = "${cfg['namespace'] ?? 'AWS/EC2'}"
+  period               = ${cfg['periodSeconds'] ?? 300}
+  statistic            = "${cfg['statistic'] ?? 'Average'}"
+  threshold            = ${cfg['threshold'] ?? 80}
+  treat_missing_data   = "${treatMissingData}"
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+${tagLines.join('\n')}
+  }
+}`,
+      `resource "aws_cloudwatch_log_group" "${name}_logs" {
+  name              = "/cloudcraft/${name}"
+  retention_in_days = ${cfg['logRetentionDays'] ?? 30}
+}`,
+    ].join('\n\n');
+  }
+
+  private _ebs(name: string, cfg: Record<string, unknown>): string {
+    const volumeType = (cfg['volumeType'] as string) || 'gp3';
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const lines: string[] = [
+      `resource "aws_ebs_volume" "${name}" {`,
+      `  availability_zone = "${cfg['availabilityZone'] ?? 'us-east-1a'}"`,
+      `  size              = ${cfg['sizeGb'] ?? 100}`,
+      `  type              = "${volumeType}"`,
+    ];
+    if (volumeType === 'io1' || volumeType === 'io2' || volumeType === 'gp3') {
+      lines.push(`  iops              = ${cfg['iops'] ?? 3000}`);
+    }
+    if (volumeType === 'gp3') {
+      lines.push(`  throughput        = ${cfg['throughputMbps'] ?? 125}`);
+    }
+    lines.push(`  encrypted         = ${cfg['encrypted'] !== false}`);
+    if (cfg['encrypted'] !== false && cfg['kmsKeyId']) {
+      lines.push(`  kms_key_id        = "${cfg['kmsKeyId']}"`);
+    }
+    if (cfg['multiAttachEnabled'] === true && (volumeType === 'io1' || volumeType === 'io2')) {
+      lines.push(`  multi_attach_enabled = true`);
+    }
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    return lines.join('\n');
+  }
+
+  private _autoScaling(name: string, cfg: Record<string, unknown>, subnetRefs: string[], sgRef: string | null): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k)
+      .map(([k, v]) => `  tag {\n    key                 = "${k}"\n    value               = "${v}"\n    propagate_at_launch = true\n  }`);
+
+    const parts: string[] = [
+      `resource "aws_launch_template" "${name}_lt" {
+  name_prefix   = "${name}-"
+  image_id      = "${cfg['amiId'] ?? 'ami-0c55b159cbfafe1f0'}"
+  instance_type = "${cfg['instanceType'] ?? 't3.medium'}"${sgRef ? `\n  vpc_security_group_ids = [${sgRef}]` : ''}
+}`,
+    ];
+
+    const asgLines: string[] = [
+      `resource "aws_autoscaling_group" "${name}" {`,
+      `  name                = "${name}"`,
+      `  min_size            = ${cfg['minSize'] ?? 2}`,
+      `  max_size            = ${cfg['maxSize'] ?? 10}`,
+      `  desired_capacity    = ${cfg['desiredCapacity'] ?? 2}`,
+      `  health_check_type          = "${cfg['healthCheckType'] ?? 'EC2'}"`,
+      `  health_check_grace_period  = ${cfg['healthCheckGracePeriodSeconds'] ?? 300}`,
+      `  default_cooldown           = ${cfg['defaultCooldownSeconds'] ?? 300}`,
+      subnetRefs.length > 0
+        ? `  vpc_zone_identifier = [${subnetRefs.join(', ')}]`
+        : `  vpc_zone_identifier = [] # WARNING: no subnets connected to this Auto Scaling group on the canvas`,
+      `  launch_template {`,
+      `    id      = aws_launch_template.${name}_lt.id`,
+      `    version = "$Latest"`,
+      `  }`,
+      ...tagLines,
+      `}`,
+    ];
+    parts.push(asgLines.join('\n'));
+
+    if (cfg['scalingPolicyEnabled'] !== false) {
+      parts.push(`resource "aws_autoscaling_policy" "${name}_target_tracking" {
+  name                   = "${name}-target-tracking-cpu"
+  autoscaling_group_name = aws_autoscaling_group.${name}.name
+  policy_type            = "TargetTrackingScaling"
+
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ASGAverageCPUUtilization"
+    }
+    target_value = ${cfg['targetCpuUtilization'] ?? 60}
+  }
+}`);
+    }
+
+    return parts.join('\n\n');
   }
 
   private _s3(name: string, cfg: Record<string, unknown>): string {

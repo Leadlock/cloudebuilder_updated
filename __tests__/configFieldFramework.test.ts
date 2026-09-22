@@ -347,6 +347,70 @@ describe('aws_waf — deepened config schema', () => {
   });
 });
 
+describe('aws_route_table — deepened config schema', () => {
+  const def = getResourceDefinition('aws_route_table')!;
+
+  test('destinationCidr is hidden when targetType is none', () => {
+    const field = def.configSchema.find((f) => f.key === 'destinationCidr')!;
+    expect(field.visibleWhen!({ targetType: 'none' })).toBe(false);
+    expect(field.visibleWhen!({ targetType: 'internet_gateway' })).toBe(true);
+  });
+});
+
+describe('aws_nacl — deepened config schema', () => {
+  const def = getResourceDefinition('aws_nacl')!;
+
+  test('inbound port fields are hidden for allow-all and for icmp/all protocols', () => {
+    const field = def.configSchema.find((f) => f.key === 'inboundPortFrom')!;
+    expect(field.visibleWhen!({ allowAllInbound: false, inboundProtocol: 'tcp' })).toBe(true);
+    expect(field.visibleWhen!({ allowAllInbound: true, inboundProtocol: 'tcp' })).toBe(false);
+    expect(field.visibleWhen!({ allowAllInbound: false, inboundProtocol: 'icmp' })).toBe(false);
+  });
+});
+
+describe('aws_iam — deepened config schema', () => {
+  const def = getResourceDefinition('aws_iam')!;
+
+  test('has a security rule flagging AdministratorAccess', () => {
+    expect(def.securityRules!.some((r) => r.id === 'iam-admin-access')).toBe(true);
+  });
+
+  test('managedPolicyArns uses the multiselect type', () => {
+    const field = def.configSchema.find((f) => f.key === 'managedPolicyArns')!;
+    expect(field.type).toBe('multiselect');
+  });
+});
+
+describe('aws_kms — deepened config schema', () => {
+  const def = getResourceDefinition('aws_kms')!;
+
+  test('has security rules for key rotation and deletion window', () => {
+    expect(def.securityRules!.some((r) => r.id === 'kms-key-rotation')).toBe(true);
+    expect(def.securityRules!.some((r) => r.id === 'kms-short-deletion-window')).toBe(true);
+  });
+});
+
+describe('aws_ebs — deepened config schema', () => {
+  const def = getResourceDefinition('aws_ebs')!;
+
+  test('iops is visible for io1/io2/gp3 but not st1/sc1', () => {
+    const field = def.configSchema.find((f) => f.key === 'iops')!;
+    expect(field.visibleWhen!({ volumeType: 'io2' })).toBe(true);
+    expect(field.visibleWhen!({ volumeType: 'gp3' })).toBe(true);
+    expect(field.visibleWhen!({ volumeType: 'st1' })).toBe(false);
+  });
+});
+
+describe('aws_auto_scaling — deepened config schema', () => {
+  const def = getResourceDefinition('aws_auto_scaling')!;
+
+  test('targetCpuUtilization is only visible when the scaling policy is enabled', () => {
+    const field = def.configSchema.find((f) => f.key === 'targetCpuUtilization')!;
+    expect(field.visibleWhen!({ scalingPolicyEnabled: true })).toBe(true);
+    expect(field.visibleWhen!({ scalingPolicyEnabled: false })).toBe(false);
+  });
+});
+
 describe('azure_app_service — newly added resource', () => {
   const def = getResourceDefinition('azure_app_service')!;
 

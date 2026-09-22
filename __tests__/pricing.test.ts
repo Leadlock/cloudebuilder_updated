@@ -536,4 +536,31 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
     const loadedResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [loaded] }, 'TEST');
     expect(loadedResult.items[0].monthlyUsd).toBeGreaterThan(minimalResult.items[0].monthlyUsd);
   });
+
+  test('KMS keys cost real money (previously marked as having no direct charges)', () => {
+    const key = makeResource({ resourceType: 'aws_kms', provider: 'aws', configJson: '{}' });
+    const result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [key] }, 'TEST');
+    expect(result.items[0].monthlyUsd).toBeGreaterThan(0);
+  });
+
+  test('CloudWatch alarms cost real money (previously marked as having no direct charges)', () => {
+    const alarm = makeResource({ resourceType: 'aws_cloudwatch', provider: 'aws', configJson: '{}' });
+    const result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [alarm] }, 'TEST');
+    expect(result.items[0].monthlyUsd).toBeGreaterThan(0);
+  });
+
+  test('Network ACLs and Auto Scaling groups have no direct charge (correctly $0, not "unsupported")', () => {
+    const nacl = makeResource({ resourceType: 'aws_nacl', provider: 'aws', configJson: '{}' });
+    const asg = makeResource({ resourceType: 'aws_auto_scaling', provider: 'aws', configJson: '{}' });
+    const result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [nacl, asg] }, 'TEST');
+    expect(result.items.length).toBe(0); // both resolve to null (no direct charge), not a line item
+  });
+
+  test('EBS io2 volumes cost more than gp3 for the same size (previously always priced as gp3)', () => {
+    const gp3 = makeResource({ resourceType: 'aws_ebs', provider: 'aws', configJson: JSON.stringify({ sizeGb: 200, volumeType: 'gp3' }) });
+    const io2 = makeResource({ resourceType: 'aws_ebs', provider: 'aws', configJson: JSON.stringify({ sizeGb: 200, volumeType: 'io2', iops: 10000 }) });
+    const gp3Result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [gp3] }, 'TEST');
+    const io2Result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [io2] }, 'TEST');
+    expect(io2Result.items[0].monthlyUsd).toBeGreaterThan(gp3Result.items[0].monthlyUsd);
+  });
 });

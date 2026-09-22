@@ -711,12 +711,38 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#FEF3C7',
     borderColor: '#D97706',
     monthlyBaseCost: 0,
-    defaultConfig: { minSize: 2, maxSize: 10, desiredCapacity: 2, name: 'my-asg' },
+    defaultConfig: {
+      minSize: 2, maxSize: 10, desiredCapacity: 2, instanceType: 't3.medium', amiId: 'ami-0c55b159cbfafe1f0',
+      healthCheckType: 'EC2', healthCheckGracePeriodSeconds: 300, defaultCooldownSeconds: 300,
+      scalingPolicyEnabled: true, targetCpuUtilization: 60, name: 'my-asg', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'ASG Name', type: 'text', defaultValue: 'my-asg', required: true },
-      { key: 'minSize', label: 'Minimum Capacity', type: 'number', defaultValue: 2 },
-      { key: 'maxSize', label: 'Maximum Capacity', type: 'number', defaultValue: 10 },
-      { key: 'desiredCapacity', label: 'Desired Capacity', type: 'number', defaultValue: 2 },
+      { key: 'instanceType', label: 'Instance Type', type: 'text', defaultValue: 't3.medium', section: 'Compute / Capacity' },
+      { key: 'amiId', label: 'AMI ID', type: 'text', defaultValue: 'ami-0c55b159cbfafe1f0', section: 'Compute / Capacity', placeholder: 'ami-xxxxxxxxx' },
+      { key: 'minSize', label: 'Minimum Capacity', type: 'number', defaultValue: 2, min: 0, max: 1000, section: 'Availability & Scaling' },
+      { key: 'maxSize', label: 'Maximum Capacity', type: 'number', defaultValue: 10, min: 1, max: 1000, section: 'Availability & Scaling' },
+      { key: 'desiredCapacity', label: 'Desired Capacity', type: 'number', defaultValue: 2, min: 0, max: 1000, section: 'Availability & Scaling' },
+      {
+        key: 'scalingPolicyEnabled', label: 'Target Tracking Scaling Policy', type: 'boolean', defaultValue: true, section: 'Availability & Scaling',
+      },
+      {
+        key: 'targetCpuUtilization', label: 'Target Average CPU Utilization (%)', type: 'number', defaultValue: 60, min: 1, max: 100,
+        section: 'Availability & Scaling', visibleWhen: (c) => c['scalingPolicyEnabled'] === true,
+      },
+      {
+        key: 'healthCheckType', label: 'Health Check Type', type: 'select', defaultValue: 'EC2', section: 'Monitoring',
+        options: [
+          { label: 'EC2 (instance status)', value: 'EC2' },
+          { label: 'ELB (load balancer health check)', value: 'ELB' },
+        ],
+      },
+      {
+        key: 'healthCheckGracePeriodSeconds', label: 'Health Check Grace Period (sec)', type: 'number', defaultValue: 300, min: 0, max: 7200,
+        section: 'Monitoring', advanced: true,
+      },
+      { key: 'defaultCooldownSeconds', label: 'Default Cooldown (sec)', type: 'number', defaultValue: 300, min: 0, max: 86400, section: 'Advanced', advanced: true },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [],
   },
@@ -1003,10 +1029,26 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#EDE9FE',
     borderColor: '#7C3AED',
     monthlyBaseCost: 0,
-    defaultConfig: { name: 'my-route-table', isMain: false },
+    defaultConfig: {
+      name: 'my-route-table', isMain: false, destinationCidr: '0.0.0.0/0', targetType: 'internet_gateway', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-route-table', required: true },
       { key: 'isMain', label: 'Main Route Table', type: 'boolean', defaultValue: false },
+      {
+        key: 'targetType', label: 'Route Target Type', type: 'select', defaultValue: 'internet_gateway', section: 'Routes',
+        options: [
+          { label: 'Internet Gateway', value: 'internet_gateway' },
+          { label: 'NAT Gateway', value: 'nat_gateway' },
+          { label: 'None (local only)', value: 'none' },
+        ],
+        description: 'The gateway/NAT this table routes to is resolved from a connected Internet Gateway or NAT Gateway on the canvas.',
+      },
+      {
+        key: 'destinationCidr', label: 'Destination CIDR', type: 'cidr', defaultValue: '0.0.0.0/0', section: 'Routes',
+        visibleWhen: (c) => c['targetType'] !== 'none',
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [],
   },
@@ -1021,12 +1063,50 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#FEE2E2',
     borderColor: '#DC2626',
     monthlyBaseCost: 0,
-    defaultConfig: { name: 'my-nacl', allowAllInbound: false, allowAllOutbound: true, inboundCidr: '10.0.0.0/16' },
+    defaultConfig: {
+      name: 'my-nacl', allowAllInbound: false, allowAllOutbound: true, inboundCidr: '10.0.0.0/16',
+      inboundProtocol: 'tcp', inboundPortFrom: 443, inboundPortTo: 443,
+      outboundCidr: '0.0.0.0/0', outboundProtocol: 'all', outboundPortFrom: 0, outboundPortTo: 0,
+      tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-nacl', required: true },
-      { key: 'allowAllInbound', label: 'Allow All Inbound Traffic', type: 'boolean', defaultValue: false },
-      { key: 'inboundCidr', label: 'Inbound Allow CIDR', type: 'cidr', defaultValue: '10.0.0.0/16' },
-      { key: 'allowAllOutbound', label: 'Allow All Outbound Traffic', type: 'boolean', defaultValue: true },
+      { key: 'allowAllInbound', label: 'Allow All Inbound Traffic', type: 'boolean', defaultValue: false, section: 'Inbound Rules' },
+      { key: 'inboundCidr', label: 'Inbound Allow CIDR', type: 'cidr', defaultValue: '10.0.0.0/16', section: 'Inbound Rules' },
+      {
+        key: 'inboundProtocol', label: 'Inbound Protocol', type: 'select', defaultValue: 'tcp', section: 'Inbound Rules',
+        visibleWhen: (c) => c['allowAllInbound'] !== true,
+        options: [
+          { label: 'TCP', value: 'tcp' },
+          { label: 'UDP', value: 'udp' },
+          { label: 'ICMP', value: 'icmp' },
+          { label: 'All', value: 'all' },
+        ],
+      },
+      {
+        key: 'inboundPortFrom', label: 'Inbound Port From', type: 'number', defaultValue: 443, min: 0, max: 65535, section: 'Inbound Rules',
+        visibleWhen: (c) => c['allowAllInbound'] !== true && c['inboundProtocol'] !== 'all' && c['inboundProtocol'] !== 'icmp',
+      },
+      {
+        key: 'inboundPortTo', label: 'Inbound Port To', type: 'number', defaultValue: 443, min: 0, max: 65535, section: 'Inbound Rules',
+        visibleWhen: (c) => c['allowAllInbound'] !== true && c['inboundProtocol'] !== 'all' && c['inboundProtocol'] !== 'icmp',
+      },
+      { key: 'allowAllOutbound', label: 'Allow All Outbound Traffic', type: 'boolean', defaultValue: true, section: 'Outbound Rules' },
+      {
+        key: 'outboundCidr', label: 'Outbound Allow CIDR', type: 'cidr', defaultValue: '0.0.0.0/0', section: 'Outbound Rules',
+        visibleWhen: (c) => c['allowAllOutbound'] !== true,
+      },
+      {
+        key: 'outboundProtocol', label: 'Outbound Protocol', type: 'select', defaultValue: 'all', section: 'Outbound Rules', advanced: true,
+        visibleWhen: (c) => c['allowAllOutbound'] !== true,
+        options: [
+          { label: 'TCP', value: 'tcp' },
+          { label: 'UDP', value: 'udp' },
+          { label: 'ICMP', value: 'icmp' },
+          { label: 'All', value: 'all' },
+        ],
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [
       {
@@ -1103,12 +1183,49 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#FEE2E2',
     borderColor: '#DC2626',
     monthlyBaseCost: 0,
-    defaultConfig: { name: 'my-ec2-role', trustedService: 'ec2.amazonaws.com' },
+    defaultConfig: {
+      name: 'my-ec2-role', trustedService: 'ec2.amazonaws.com',
+      managedPolicyArns: [], maxSessionDurationSeconds: 3600, tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Role Name', type: 'text', defaultValue: 'my-ec2-role', required: true },
-      { key: 'trustedService', label: 'Trusted Service', type: 'text', defaultValue: 'ec2.amazonaws.com' },
+      {
+        key: 'trustedService', label: 'Trusted Service', type: 'select', defaultValue: 'ec2.amazonaws.com',
+        options: [
+          { label: 'EC2', value: 'ec2.amazonaws.com' },
+          { label: 'Lambda', value: 'lambda.amazonaws.com' },
+          { label: 'ECS Tasks', value: 'ecs-tasks.amazonaws.com' },
+          { label: 'EKS', value: 'eks.amazonaws.com' },
+          { label: 'RDS', value: 'rds.amazonaws.com' },
+          { label: 'CloudWatch Events', value: 'events.amazonaws.com' },
+        ],
+      },
+      {
+        key: 'managedPolicyArns', label: 'AWS Managed Policies', type: 'multiselect', defaultValue: [], section: 'Permissions',
+        options: [
+          { label: 'ReadOnlyAccess', value: 'arn:aws:iam::aws:policy/ReadOnlyAccess' },
+          { label: 'AmazonS3ReadOnlyAccess', value: 'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess' },
+          { label: 'AmazonDynamoDBFullAccess', value: 'arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess' },
+          { label: 'SecretsManagerReadWrite', value: 'arn:aws:iam::aws:policy/SecretsManagerReadWrite' },
+          { label: 'CloudWatchLogsFullAccess', value: 'arn:aws:iam::aws:policy/CloudWatchLogsFullAccess' },
+          { label: 'AdministratorAccess', value: 'arn:aws:iam::aws:policy/AdministratorAccess' },
+        ],
+      },
+      {
+        key: 'maxSessionDurationSeconds', label: 'Max Session Duration (seconds)', type: 'number', defaultValue: 3600, min: 3600, max: 43200,
+        section: 'Advanced', advanced: true,
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'iam-admin-access',
+        severity: 'high',
+        check: (config) => (Array.isArray(config.managedPolicyArns) && config.managedPolicyArns.some((a) => String(a).includes('AdministratorAccess'))) ? 'IAM role has AdministratorAccess attached' : null,
+        message: 'IAM role has the AWS-managed AdministratorAccess policy attached',
+        recommendation: 'Attach only the specific managed/inline policies the role actually needs (least privilege)',
+      },
+    ],
   },
   {
     type: 'aws_kms',
@@ -1121,19 +1238,53 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#FEE2E2',
     borderColor: '#DC2626',
     monthlyBaseCost: 1.0,
-    defaultConfig: { name: 'my-kms-key', enableKeyRotation: true },
+    defaultConfig: {
+      name: 'my-kms-key', enableKeyRotation: true, keyUsage: 'ENCRYPT_DECRYPT', keySpec: 'SYMMETRIC_DEFAULT',
+      deletionWindowDays: 30, multiRegion: false, tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Key Alias', type: 'text', defaultValue: 'my-kms-key', required: true },
-      { key: 'enableKeyRotation', label: 'Annual Key Rotation', type: 'boolean', defaultValue: true },
+      { key: 'enableKeyRotation', label: 'Annual Key Rotation', type: 'boolean', defaultValue: true, section: 'Security' },
+      {
+        key: 'keyUsage', label: 'Key Usage', type: 'select', defaultValue: 'ENCRYPT_DECRYPT', section: 'Compute / Capacity',
+        options: [
+          { label: 'Encrypt/Decrypt', value: 'ENCRYPT_DECRYPT' },
+          { label: 'Sign/Verify', value: 'SIGN_VERIFY' },
+        ],
+      },
+      {
+        key: 'keySpec', label: 'Key Spec', type: 'select', defaultValue: 'SYMMETRIC_DEFAULT', section: 'Compute / Capacity', advanced: true,
+        options: [
+          { label: 'Symmetric (default, AES-256)', value: 'SYMMETRIC_DEFAULT' },
+          { label: 'RSA 2048', value: 'RSA_2048' },
+          { label: 'RSA 4096', value: 'RSA_4096' },
+          { label: 'ECC NIST P-256', value: 'ECC_NIST_P256' },
+        ],
+      },
+      { key: 'multiRegion', label: 'Multi-Region Key', type: 'boolean', defaultValue: false, section: 'Availability & Scaling', advanced: true },
+      {
+        key: 'deletionWindowDays', label: 'Deletion Window (days)', type: 'number', defaultValue: 30, min: 7, max: 30,
+        section: 'Backup & Recovery', advanced: true,
+        description: 'Waiting period before a scheduled key deletion actually takes effect. Longer windows give more time to cancel an accidental deletion.',
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [
       {
         id: 'kms-key-rotation',
         severity: 'medium',
-        check: (config) => !config.enableKeyRotation ? 'KMS key rotation disabled' : null,
+        check: (config) => (!config.enableKeyRotation && config.keyUsage !== 'SIGN_VERIFY') ? 'KMS key rotation disabled' : null,
         message: 'KMS key does not have automatic annual rotation enabled',
         recommendation: 'Enable key rotation to limit exposure from a compromised key',
         fixAction: (config) => ({ ...config, enableKeyRotation: true }),
+      },
+      {
+        id: 'kms-short-deletion-window',
+        severity: 'low',
+        check: (config) => (typeof config.deletionWindowDays === 'number' && config.deletionWindowDays < 14) ? 'KMS key deletion window is short' : null,
+        message: 'KMS key deletion window is set below 14 days',
+        recommendation: 'Use a longer deletion window (e.g. 30 days) to allow more time to cancel an accidental key deletion',
+        fixAction: (config) => ({ ...config, deletionWindowDays: 30 }),
       },
     ],
   },
@@ -1148,10 +1299,57 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#FDF2F8',
     borderColor: '#DB2777',
     monthlyBaseCost: 3.0,
-    defaultConfig: { name: 'my-alarm', metricName: 'CPUUtilization', threshold: 80 },
+    defaultConfig: {
+      name: 'my-alarm', metricName: 'CPUUtilization', namespace: 'AWS/EC2', threshold: 80,
+      comparisonOperator: 'GreaterThanThreshold', evaluationPeriods: 2, periodSeconds: 300, statistic: 'Average',
+      treatMissingData: 'missing', logRetentionDays: 30, tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Alarm Name', type: 'text', defaultValue: 'my-alarm', required: true },
-      { key: 'threshold', label: 'Threshold (%)', type: 'number', defaultValue: 80 },
+      { key: 'metricName', label: 'Metric Name', type: 'text', defaultValue: 'CPUUtilization', section: 'Alarm' },
+      { key: 'namespace', label: 'Namespace', type: 'text', defaultValue: 'AWS/EC2', section: 'Alarm', placeholder: 'e.g. AWS/EC2, AWS/RDS, AWS/Lambda' },
+      { key: 'threshold', label: 'Threshold', type: 'number', defaultValue: 80, section: 'Alarm' },
+      {
+        key: 'comparisonOperator', label: 'Comparison', type: 'select', defaultValue: 'GreaterThanThreshold', section: 'Alarm',
+        options: [
+          { label: 'Greater Than', value: 'GreaterThanThreshold' },
+          { label: 'Greater Than or Equal', value: 'GreaterThanOrEqualToThreshold' },
+          { label: 'Less Than', value: 'LessThanThreshold' },
+          { label: 'Less Than or Equal', value: 'LessThanOrEqualToThreshold' },
+        ],
+      },
+      { key: 'evaluationPeriods', label: 'Evaluation Periods', type: 'number', defaultValue: 2, min: 1, max: 288, section: 'Alarm', advanced: true },
+      {
+        key: 'periodSeconds', label: 'Period (seconds)', type: 'select', defaultValue: 300, section: 'Alarm', advanced: true,
+        options: [
+          { label: '10 seconds', value: '10' },
+          { label: '30 seconds', value: '30' },
+          { label: '1 minute', value: '60' },
+          { label: '5 minutes', value: '300' },
+          { label: '15 minutes', value: '900' },
+        ],
+      },
+      {
+        key: 'statistic', label: 'Statistic', type: 'select', defaultValue: 'Average', section: 'Alarm', advanced: true,
+        options: [
+          { label: 'Average', value: 'Average' },
+          { label: 'Sum', value: 'Sum' },
+          { label: 'Minimum', value: 'Minimum' },
+          { label: 'Maximum', value: 'Maximum' },
+          { label: 'SampleCount', value: 'SampleCount' },
+        ],
+      },
+      {
+        key: 'treatMissingData', label: 'Missing Data Treatment', type: 'select', defaultValue: 'missing', section: 'Advanced', advanced: true,
+        options: [
+          { label: 'Treat as missing', value: 'missing' },
+          { label: 'Treat as not breaching', value: 'notBreaching' },
+          { label: 'Treat as breaching', value: 'breaching' },
+          { label: 'Ignore (keep alarm state)', value: 'ignore' },
+        ],
+      },
+      { key: 'logRetentionDays', label: 'Log Group Retention (days)', type: 'number', defaultValue: 30, min: 1, max: 3650, section: 'Monitoring' },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [],
   },
@@ -1166,19 +1364,49 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#F0FDF4',
     borderColor: '#16A34A',
     monthlyBaseCost: 8.0,
-    defaultConfig: { sizeGb: 100, volumeType: 'gp3', encrypted: true, snapshotSchedule: 'daily', name: 'my-ebs' },
+    defaultConfig: {
+      sizeGb: 100, volumeType: 'gp3', iops: 3000, throughputMbps: 125, encrypted: true, kmsKeyId: '',
+      availabilityZone: 'us-east-1a', multiAttachEnabled: false, snapshotSchedule: 'daily', name: 'my-ebs', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-ebs', required: true },
-      { key: 'sizeGb', label: 'Size (GB)', type: 'number', defaultValue: 100 },
-      { key: 'encrypted', label: 'Encrypted', type: 'boolean', defaultValue: true },
+      { key: 'availabilityZone', label: 'Availability Zone', type: 'text', defaultValue: 'us-east-1a' },
+      { key: 'sizeGb', label: 'Size (GB)', type: 'number', defaultValue: 100, min: 1, max: 65536, section: 'Storage' },
       {
-        key: 'snapshotSchedule', label: 'Automated Snapshot Schedule', type: 'select', defaultValue: 'daily',
+        key: 'volumeType', label: 'Volume Type', type: 'select', defaultValue: 'gp3', section: 'Storage',
+        options: [
+          { label: 'General Purpose SSD (gp3)', value: 'gp3' },
+          { label: 'General Purpose SSD (gp2)', value: 'gp2' },
+          { label: 'Provisioned IOPS SSD (io1)', value: 'io1' },
+          { label: 'Provisioned IOPS SSD (io2)', value: 'io2' },
+          { label: 'Throughput Optimized HDD (st1)', value: 'st1' },
+          { label: 'Cold HDD (sc1)', value: 'sc1' },
+        ],
+      },
+      {
+        key: 'iops', label: 'Provisioned IOPS', type: 'number', defaultValue: 3000, min: 100, max: 256000, section: 'Storage', advanced: true,
+        visibleWhen: (c) => ['io1', 'io2', 'gp3'].includes(c['volumeType'] as string),
+      },
+      {
+        key: 'throughputMbps', label: 'Throughput (MB/s)', type: 'number', defaultValue: 125, min: 125, max: 4000, section: 'Storage', advanced: true,
+        visibleWhen: (c) => c['volumeType'] === 'gp3',
+      },
+      { key: 'encrypted', label: 'Encrypted', type: 'boolean', defaultValue: true, section: 'Security' },
+      {
+        key: 'kmsKeyId', label: 'KMS Key ID', type: 'text', defaultValue: '', section: 'Security', advanced: true,
+        visibleWhen: (c) => c['encrypted'] === true,
+        placeholder: 'blank = AWS-managed default key',
+      },
+      { key: 'multiAttachEnabled', label: 'Multi-Attach', type: 'boolean', defaultValue: false, section: 'Advanced', advanced: true, description: 'io1/io2 only — attach to multiple instances simultaneously.' },
+      {
+        key: 'snapshotSchedule', label: 'Automated Snapshot Schedule', type: 'select', defaultValue: 'daily', section: 'Backup & Recovery',
         options: [
           { label: 'None', value: 'none' },
           { label: 'Daily', value: 'daily' },
           { label: 'Weekly', value: 'weekly' },
         ],
       },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [
       {
