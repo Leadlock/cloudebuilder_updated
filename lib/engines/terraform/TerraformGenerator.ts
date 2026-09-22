@@ -938,9 +938,13 @@ class AzureTerraformGenerator {
             if (!subnetRef) {
               warnings.push(`Azure VM "${r.label}" is not connected to any subnet — a network interface cannot be generated and this resource's Terraform will fail to apply.`);
             }
-            blocks.push(this._nic(name, rgName, rgLoc, subnetRef));
+            const isWindows = cfg['osType'] === 'Windows';
+            if (cfg['publicIpEnabled'] === true) {
+              blocks.push(this._publicIp(name, rgName, rgLoc));
+            }
+            blocks.push(this._nic(name, rgName, rgLoc, subnetRef, cfg['publicIpEnabled'] === true));
             blocks.push(this._vm(name, cfg, rgName, rgLoc));
-            resourceMap[r.id] = `azurerm_linux_virtual_machine.${name}`;
+            resourceMap[r.id] = `${isWindows ? 'azurerm_windows_virtual_machine' : 'azurerm_linux_virtual_machine'}.${name}`;
           }
           break;
         }
@@ -1093,7 +1097,17 @@ data "azurerm_network_security_group" "${name}" {
 }`;
   }
 
-  private _nic(name: string, rgName: string, rgLoc: string, subnetRef: string | null): string {
+  private _publicIp(name: string, rgName: string, rgLoc: string): string {
+    return `resource "azurerm_public_ip" "${name}_pip" {
+  name                = "${name}-pip"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}`;
+  }
+
+  private _nic(name: string, rgName: string, rgLoc: string, subnetRef: string | null, hasPublicIp = false): string {
     return `resource "azurerm_network_interface" "${name}_nic" {
   name                = "${name}-nic"
   resource_group_name = ${rgName}
@@ -1102,42 +1116,70 @@ data "azurerm_network_security_group" "${name}" {
   ip_configuration {
     name                          = "internal"
     subnet_id                     = ${subnetRef ?? `azurerm_subnet.main.id # WARNING: subnet not connected`}
-    private_ip_address_allocation = "Dynamic"
+    private_ip_address_allocation = "Dynamic"${hasPublicIp ? `\n    public_ip_address_id          = azurerm_public_ip.${name}_pip.id` : ''}
   }
 }`;
   }
 
   private _vm(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
-    return `resource "azurerm_linux_virtual_machine" "${name}" {
-  name                = "${name}"
-  resource_group_name = ${rgName}
-  location            = ${rgLoc}
-  size                = "${cfg['size'] ?? 'Standard_B2s'}"
-  admin_username      = "${cfg['adminUsername'] ?? 'azureuser'}"
+    const isWindows = cfg['osType'] === 'Windows';
+    const resourceType = isWindows ? 'azurerm_windows_virtual_machine' : 'azurerm_linux_virtual_machine';
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
 
-  network_interface_ids = [azurerm_network_interface.${name}_nic.id]
+    const lines: string[] = [
+      `resource "${resourceType}" "${name}" {`,
+      `  name                  = "${name}"`,
+      `  resource_group_name   = ${rgName}`,
+      `  location              = ${rgLoc}`,
+      `  size                  = "${cfg['size'] ?? 'Standard_B2s'}"`,
+      `  admin_username        = "${cfg['adminUsername'] ?? 'azureuser'}"`,
+      `  network_interface_ids = [azurerm_network_interface.${name}_nic.id]`,
+      `  availability_zone     = ${cfg['availabilityZone'] ? `"${cfg['availabilityZone']}"` : 'null'}`,
+      `  encryption_at_host_enabled = ${cfg['encryptionAtHostEnabled'] === true}`,
+    ];
 
-  os_disk {
-    caching              = "ReadWrite"
-    storage_account_type = "${cfg['osDiskType'] ?? 'Premium_LRS'}"
-  }
+    if (isWindows) {
+      lines.push(`  admin_password        = var.windows_admin_password`);
+    }
 
-  source_image_reference {
-    publisher = "${cfg['imagePublisher'] ?? 'Canonical'}"
-    offer     = "${cfg['imageOffer'] ?? '0001-com-ubuntu-server-focal'}"
-    sku       = "${cfg['imageSku'] ?? '20_04-lts'}"
-    version   = "latest"
-  }
+    lines.push(
+      `  os_disk {`,
+      `    caching              = "${cfg['osDiskCaching'] ?? 'ReadWrite'}"`,
+      `    storage_account_type = "${cfg['osDiskType'] ?? 'Premium_LRS'}"`,
+    );
+    if (cfg['osDiskSizeGb']) lines.push(`    disk_size_gb         = ${cfg['osDiskSizeGb']}`);
+    lines.push(`  }`);
 
-  admin_ssh_key {
-    username   = "${cfg['adminUsername'] ?? 'azureuser'}"
-    public_key = var.admin_ssh_public_key
-  }
+    lines.push(
+      `  source_image_reference {`,
+      `    publisher = "${cfg['imagePublisher'] ?? (isWindows ? 'MicrosoftWindowsServer' : 'Canonical')}"`,
+      `    offer     = "${cfg['imageOffer'] ?? (isWindows ? 'WindowsServer' : '0001-com-ubuntu-server-focal')}"`,
+      `    sku       = "${cfg['imageSku'] ?? (isWindows ? '2022-datacenter-azure-edition' : '20_04-lts')}"`,
+      `    version   = "latest"`,
+      `  }`,
+    );
 
-  tags = {
-    ManagedBy = "CloudCraft"
-  }
-}`;
+    if (!isWindows) {
+      lines.push(
+        `  admin_ssh_key {`,
+        `    username   = "${cfg['adminUsername'] ?? 'azureuser'}"`,
+        `    public_key = var.admin_ssh_public_key`,
+        `  }`,
+      );
+    }
+
+    if (cfg['bootDiagnosticsEnabled'] !== false) {
+      lines.push(`  boot_diagnostics {`, `    storage_account_uri = null # managed storage account`, `  }`);
+    }
+
+    if (cfg['customData']) {
+      lines.push(`  custom_data = base64encode(${JSON.stringify(cfg['customData'])})`);
+    }
+
+    lines.push(`  tags = {`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+
+    return lines.join('\n');
   }
 
   private _storage(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
@@ -1161,25 +1203,49 @@ data "azurerm_network_security_group" "${name}" {
   }
 
   private _sql(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
-    return `resource "azurerm_mssql_server" "${name}_server" {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+    const tagsBlock = tagLines.length > 0 ? `\n  tags = {\n${tagLines.join('\n')}\n  }` : '';
+
+    const parts: string[] = [
+      `resource "azurerm_mssql_server" "${name}_server" {
   name                         = "${name}-server"
   resource_group_name          = ${rgName}
   location                     = ${rgLoc}
   version                      = "12.0"
   administrator_login          = var.sql_admin_login
   administrator_login_password = var.sql_admin_password
-  minimum_tls_version          = "1.2"
-  public_network_access_enabled = ${cfg['publicNetworkAccess'] === true}
-}
+  minimum_tls_version          = "${cfg['minimumTlsVersion'] ?? '1.2'}"
+  public_network_access_enabled = ${cfg['publicNetworkAccess'] === true}${tagsBlock}
+}`,
+      `resource "azurerm_mssql_database" "${name}" {
+  name                        = "${name}"
+  server_id                   = azurerm_mssql_server.${name}_server.id
+  max_size_gb                 = ${cfg['maxSizeGb'] ?? 250}
+  sku_name                    = "${cfg['tier'] ?? 'S0'}"
+  zone_redundant               = ${cfg['zoneRedundant'] === true}
+  read_scale                   = ${cfg['readScale'] === true}
+  storage_account_type         = "${cfg['requestedBackupStorageRedundancy'] ?? 'Geo'}"
+  transparent_data_encryption_enabled = ${cfg['transparentDataEncryptionEnabled'] !== false}${tagsBlock}
+}`,
+    ];
 
-resource "azurerm_mssql_database" "${name}" {
-  name         = "${name}"
-  server_id    = azurerm_mssql_server.${name}_server.id
-  max_size_gb  = ${cfg['maxSizeGb'] ?? 250}
-  sku_name     = "${cfg['tier'] ?? 'S0'}"
+    if (cfg['publicNetworkAccess'] === true && cfg['allowAzureServices'] !== false) {
+      parts.push(`resource "azurerm_mssql_firewall_rule" "${name}_allow_azure_services" {
+  name             = "AllowAllWindowsAzureIps"
+  server_id        = azurerm_mssql_server.${name}_server.id
+  start_ip_address = "0.0.0.0"
+  end_ip_address   = "0.0.0.0"
+}`);
+    }
 
-  transparent_data_encryption_enabled = true
-}`;
+    if (cfg['auditingEnabled'] === true) {
+      parts.push(`# NOTE: extended auditing policy requires a storage account or Log Analytics
+# workspace destination. Connect one on the canvas to generate
+# azurerm_mssql_server_extended_auditing_policy automatically — not yet wired.`);
+    }
+
+    return parts.join('\n\n');
   }
 
   private _cosmosDb(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
@@ -1404,6 +1470,11 @@ ${required.join('\n')}
     const hasRds   = input.resources.some((r) => r.resourceType === 'aws_rds');
     const hasSql   = input.resources.some((r) => r.resourceType === 'azure_sql');
     const hasVm    = input.resources.some((r) => r.resourceType === 'azure_vm');
+    const parseCfg = (r: DbArchitectureResource): Record<string, unknown> => {
+      try { return JSON.parse(r.configJson) as Record<string, unknown>; } catch { return {}; }
+    };
+    const hasWindowsVm = input.resources.some((r) => r.resourceType === 'azure_vm' && parseCfg(r)['osType'] === 'Windows');
+    const hasLinuxVm   = input.resources.some((r) => r.resourceType === 'azure_vm' && parseCfg(r)['osType'] !== 'Windows');
 
     const vars: string[] = [
       `variable "environment" {
@@ -1468,10 +1539,18 @@ variable "sql_admin_password" {
 }`);
     }
 
-    if (hasVm) {
+    if (hasVm && hasLinuxVm) {
       vars.push(`variable "admin_ssh_public_key" {
   description = "SSH public key for Azure VM admin access"
   type        = string
+}`);
+    }
+
+    if (hasWindowsVm) {
+      vars.push(`variable "windows_admin_password" {
+  description = "Windows VM admin password — set via TF_VAR_windows_admin_password environment variable"
+  type        = string
+  sensitive   = true
 }`);
     }
 
@@ -1540,6 +1619,7 @@ output "${name}_bucket_name" {
     lines.push('# TF_VAR_db_password          = "..."');
     lines.push('# TF_VAR_sql_admin_password   = "..."');
     lines.push('# TF_VAR_admin_ssh_public_key = "..."');
+    lines.push('# TF_VAR_windows_admin_password = "..."');
     return lines.join('\n') + '\n';
   }
 }

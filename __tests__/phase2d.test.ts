@@ -907,6 +907,88 @@ describe('TerraformGenerator — Azure', () => {
     const main = result.files.find((f) => f.filename === 'main.tf')!;
     expect(main.content).toContain('enable_https_traffic_only');
   });
+
+  describe('VM config depth round-trip', () => {
+    function vmWithRgAndSubnet(vmConfig: Record<string, unknown>) {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const subnet = makeResource({ id: 'subnet-1', resourceType: 'azure_subnet', provider: 'azure', configJson: JSON.stringify({ name: 'main_subnet' }) });
+      const vm = makeResource({ id: 'vm-1', resourceType: 'azure_vm', provider: 'azure', configJson: JSON.stringify(vmConfig), groupId: 'subnet-1' });
+      const conns = [makeConnection('rg-1', 'vm-1'), makeConnection('subnet-1', 'vm-1')];
+      return gen.generate(azureInput([rg, subnet, vm], conns));
+    }
+
+    test('osType=Windows generates azurerm_windows_virtual_machine, not Linux (previously always generated Linux)', () => {
+      const result = vmWithRgAndSubnet({ name: 'win_vm', osType: 'Windows' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_windows_virtual_machine" "win_vm"');
+      expect(main.content).not.toContain('resource "azurerm_linux_virtual_machine" "win_vm"');
+      expect(main.content).toContain('admin_password        = var.windows_admin_password');
+      expect(main.content).not.toContain('admin_ssh_key');
+    });
+
+    test('osType=Linux (default) still generates azurerm_linux_virtual_machine with an SSH key block', () => {
+      const result = vmWithRgAndSubnet({ name: 'linux_vm' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_linux_virtual_machine" "linux_vm"');
+      expect(main.content).toContain('admin_ssh_key {');
+    });
+
+    test('publicIpEnabled generates a public IP resource and attaches it to the NIC (previously silently dropped)', () => {
+      const withPip = vmWithRgAndSubnet({ name: 'public_vm', publicIpEnabled: true });
+      const withPipMain = withPip.files.find((f) => f.filename === 'main.tf')!;
+      expect(withPipMain.content).toContain('resource "azurerm_public_ip" "public_vm_pip"');
+      expect(withPipMain.content).toContain('public_ip_address_id          = azurerm_public_ip.public_vm_pip.id');
+
+      const withoutPip = vmWithRgAndSubnet({ name: 'private_vm', publicIpEnabled: false });
+      const withoutPipMain = withoutPip.files.find((f) => f.filename === 'main.tf')!;
+      expect(withoutPipMain.content).not.toContain('azurerm_public_ip');
+    });
+
+    test('Windows VM architecture generates a windows_admin_password variable, not admin_ssh_public_key', () => {
+      const result = vmWithRgAndSubnet({ name: 'win_only_vm', osType: 'Windows' });
+      const variables = result.files.find((f) => f.filename === 'variables.tf')!;
+      expect(variables.content).toContain('variable "windows_admin_password"');
+      expect(variables.content).not.toContain('variable "admin_ssh_public_key"');
+    });
+
+    test('custom tags merge into the VM tags block', () => {
+      const result = vmWithRgAndSubnet({ name: 'tagged_vm', tags: { Owner: 'platform-team' } });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('Owner = "platform-team"');
+    });
+  });
+
+  describe('SQL config depth round-trip', () => {
+    test('minimumTlsVersion and zone/read-scale settings flow into the database resource', () => {
+      const sql = makeResource({
+        id: 'sql-1', resourceType: 'azure_sql', provider: 'azure',
+        configJson: JSON.stringify({ name: 'critical_db', minimumTlsVersion: '1.2', zoneRedundant: true, readScale: true, requestedBackupStorageRedundancy: 'GeoZone' }),
+      });
+      const result = gen.generate(azureInput([sql]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('minimum_tls_version          = "1.2"');
+      expect(main.content).toContain('zone_redundant               = true');
+      expect(main.content).toContain('read_scale                   = true');
+      expect(main.content).toContain('storage_account_type         = "GeoZone"');
+    });
+
+    test('transparentDataEncryptionEnabled=false is honored (previously hardcoded to always true)', () => {
+      const sql = makeResource({ id: 'sql-1', resourceType: 'azure_sql', provider: 'azure', configJson: JSON.stringify({ name: 'legacy_db', transparentDataEncryptionEnabled: false }) });
+      const result = gen.generate(azureInput([sql]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('transparent_data_encryption_enabled = false');
+    });
+
+    test('publicNetworkAccess + allowAzureServices generates the Azure-services firewall rule', () => {
+      const withRule = gen.generate(azureInput([makeResource({ id: 'sql-1', resourceType: 'azure_sql', provider: 'azure', configJson: JSON.stringify({ name: 'public_db', publicNetworkAccess: true, allowAzureServices: true }) })]));
+      const withRuleMain = withRule.files.find((f) => f.filename === 'main.tf')!;
+      expect(withRuleMain.content).toContain('resource "azurerm_mssql_firewall_rule"');
+
+      const withoutRule = gen.generate(azureInput([makeResource({ id: 'sql-2', resourceType: 'azure_sql', provider: 'azure', configJson: JSON.stringify({ name: 'private_db', publicNetworkAccess: false }) })]));
+      const withoutRuleMain = withoutRule.files.find((f) => f.filename === 'main.tf')!;
+      expect(withoutRuleMain.content).not.toContain('azurerm_mssql_firewall_rule');
+    });
+  });
 });
 
 describe('TerraformGenerator — multi-cloud (AWS + Azure)', () => {

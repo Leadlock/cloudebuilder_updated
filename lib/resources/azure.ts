@@ -89,11 +89,23 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#FEF3C7',
     borderColor: '#D97706',
     monthlyBaseCost: 36.5,
-    defaultConfig: { size: 'Standard_B2s', osType: 'Linux', adminUsername: 'azureuser', osDiskType: 'Premium_LRS', name: 'my-vm' },
+    defaultConfig: {
+      size: 'Standard_B2s', osType: 'Linux', adminUsername: 'azureuser', osDiskType: 'Premium_LRS',
+      osDiskCaching: 'ReadWrite', osDiskSizeGb: 0, useManagedDisk: true, publicIpEnabled: false,
+      availabilityZone: '', encryptionAtHostEnabled: false, bootDiagnosticsEnabled: true, customData: '',
+      name: 'my-vm', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-vm', required: true },
       {
-        key: 'size', label: 'VM Size', type: 'select', defaultValue: 'Standard_B2s',
+        key: 'osType', label: 'OS Type', type: 'select', defaultValue: 'Linux',
+        options: [
+          { label: 'Linux (Ubuntu 22.04 LTS)', value: 'Linux' },
+          { label: 'Windows Server 2022', value: 'Windows' },
+        ],
+      },
+      {
+        key: 'size', label: 'VM Size', type: 'select', defaultValue: 'Standard_B2s', section: 'Compute / Capacity',
         // Includes the v5 SKUs the Adaptive Scale Engine assigns at
         // Enterprise/High-Scale/Hyper-Scale (see AdaptiveScaleEngine.ts) —
         // without them a <select> silently falls back to its first option
@@ -111,15 +123,46 @@ export const azureResources: ResourceDefinition[] = [
         ],
       },
       {
-        key: 'osType', label: 'OS Type', type: 'select', defaultValue: 'Linux',
+        key: 'availabilityZone', label: 'Availability Zone', type: 'select', defaultValue: '', section: 'Compute / Capacity',
         options: [
-          { label: 'Linux (Ubuntu 22.04 LTS)', value: 'Linux' },
-          { label: 'Windows Server 2022', value: 'Windows' },
+          { label: 'None', value: '' },
+          { label: 'Zone 1', value: '1' },
+          { label: 'Zone 2', value: '2' },
+          { label: 'Zone 3', value: '3' },
         ],
       },
-      { key: 'adminUsername', label: 'Admin Username', type: 'text', defaultValue: 'azureuser' },
-      { key: 'useManagedDisk', label: 'Use Managed Disk', type: 'boolean', defaultValue: true },
-      { key: 'publicIpEnabled', label: 'Assign Public IP', type: 'boolean', defaultValue: false },
+      { key: 'useManagedDisk', label: 'Use Managed Disk', type: 'boolean', defaultValue: true, section: 'Storage' },
+      {
+        key: 'osDiskType', label: 'OS Disk Type', type: 'select', defaultValue: 'Premium_LRS', section: 'Storage',
+        options: [
+          { label: 'Premium SSD (LRS)', value: 'Premium_LRS' },
+          { label: 'Standard SSD (LRS)', value: 'StandardSSD_LRS' },
+          { label: 'Standard HDD (LRS)', value: 'Standard_LRS' },
+          { label: 'Premium SSD v2 (LRS)', value: 'PremiumV2_LRS' },
+        ],
+      },
+      {
+        key: 'osDiskCaching', label: 'OS Disk Caching', type: 'select', defaultValue: 'ReadWrite', section: 'Storage', advanced: true,
+        options: [
+          { label: 'None', value: 'None' },
+          { label: 'Read Only', value: 'ReadOnly' },
+          { label: 'Read/Write', value: 'ReadWrite' },
+        ],
+      },
+      {
+        key: 'osDiskSizeGb', label: 'OS Disk Size (GB)', type: 'number', defaultValue: 0, min: 0, max: 4095, section: 'Storage', advanced: true,
+        description: '0 uses the image default size.',
+      },
+      { key: 'publicIpEnabled', label: 'Assign Public IP', type: 'boolean', defaultValue: false, section: 'Networking' },
+      { key: 'adminUsername', label: 'Admin Username', type: 'text', defaultValue: 'azureuser', section: 'Identity & Access' },
+      { key: 'bootDiagnosticsEnabled', label: 'Boot Diagnostics', type: 'boolean', defaultValue: true, section: 'Monitoring' },
+      { key: 'encryptionAtHostEnabled', label: 'Encryption at Host', type: 'boolean', defaultValue: false, section: 'Advanced', advanced: true },
+      {
+        key: 'customData', label: 'Custom Data (cloud-init)', type: 'text', defaultValue: '', section: 'Advanced', advanced: true,
+        placeholder: '#cloud-config ...',
+        description: 'Base64-encoded automatically. Runs once at first boot (Linux cloud-init or Windows unattend).',
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [
       {
@@ -129,6 +172,14 @@ export const azureResources: ResourceDefinition[] = [
         message: 'VM does not use an Azure Managed Disk',
         recommendation: 'Use Azure Managed Disks for better reliability and security',
         fixAction: (config) => ({ ...config, useManagedDisk: true }),
+      },
+      {
+        id: 'vm-public-ip',
+        severity: 'medium',
+        check: (config) => config.publicIpEnabled === true ? 'VM has a public IP assigned' : null,
+        message: 'VM is directly reachable from the public internet',
+        recommendation: 'Remove the public IP and use a load balancer, bastion host, or Azure Bastion for access instead',
+        fixAction: (config) => ({ ...config, publicIpEnabled: false }),
       },
     ],
   },
@@ -212,11 +263,16 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#FCE7F3',
     borderColor: '#DB2777',
     monthlyBaseCost: 15.0,
-    defaultConfig: { tier: 'Standard', dtu: 10, maxSizeGb: 250, publicNetworkAccess: false, threatDetectionEnabled: true, name: 'my-sql' },
+    defaultConfig: {
+      tier: 'Standard', dtu: 10, maxSizeGb: 250, publicNetworkAccess: false, threatDetectionEnabled: true,
+      minimumTlsVersion: '1.2', zoneRedundant: false, readScale: false,
+      requestedBackupStorageRedundancy: 'Geo', transparentDataEncryptionEnabled: true, auditingEnabled: false,
+      allowAzureServices: true, name: 'my-sql', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-sql', required: true },
       {
-        key: 'tier', label: 'Service Tier', type: 'select', defaultValue: 'Standard',
+        key: 'tier', label: 'Service Tier', type: 'select', defaultValue: 'Standard', section: 'Compute / Capacity',
         // GP_Gen5_*/BC_Gen5_* are real Azure SQL vCore-model sku_name
         // values, which is what this field actually feeds into Terraform
         // generation (see TerraformGenerator._sql: sku_name = cfg['tier']).
@@ -234,9 +290,39 @@ export const azureResources: ResourceDefinition[] = [
           { label: 'Business Critical Gen5 16 vCore', value: 'BC_Gen5_16' },
         ],
       },
-      { key: 'maxSizeGb', label: 'Max Size (GB)', type: 'number', defaultValue: 250 },
-      { key: 'publicNetworkAccess', label: 'Public Network Access', type: 'boolean', defaultValue: false },
-      { key: 'threatDetectionEnabled', label: 'Azure Defender for SQL', type: 'boolean', defaultValue: true },
+      { key: 'maxSizeGb', label: 'Max Size (GB)', type: 'number', defaultValue: 250, min: 1, max: 4096, section: 'Storage' },
+      {
+        key: 'requestedBackupStorageRedundancy', label: 'Backup Storage Redundancy', type: 'select', defaultValue: 'Geo', section: 'Backup & Recovery',
+        options: [
+          { label: 'Locally Redundant (LRS)', value: 'Local' },
+          { label: 'Zone Redundant (ZRS)', value: 'Zone' },
+          { label: 'Geo-Redundant (GRS)', value: 'Geo' },
+          { label: 'Geo-Zone-Redundant (GZRS)', value: 'GeoZone' },
+        ],
+      },
+      { key: 'zoneRedundant', label: 'Zone Redundant', type: 'boolean', defaultValue: false, section: 'Availability & Scaling' },
+      {
+        key: 'readScale', label: 'Read Scale-Out Replica', type: 'boolean', defaultValue: false, section: 'Availability & Scaling', advanced: true,
+        description: 'Premium/Business Critical tiers only — routes read-only connections to a secondary replica.',
+      },
+      { key: 'publicNetworkAccess', label: 'Public Network Access', type: 'boolean', defaultValue: false, section: 'Security' },
+      {
+        key: 'allowAzureServices', label: 'Allow Azure Services & Resources', type: 'boolean', defaultValue: true, section: 'Security',
+        visibleWhen: (c) => c['publicNetworkAccess'] === true,
+        description: 'Adds the 0.0.0.0-0.0.0.0 firewall rule Azure uses to permit other Azure services to reach this server.',
+      },
+      {
+        key: 'minimumTlsVersion', label: 'Minimum TLS Version', type: 'select', defaultValue: '1.2', section: 'Security', advanced: true,
+        options: [
+          { label: 'TLS 1.0', value: '1.0' },
+          { label: 'TLS 1.1', value: '1.1' },
+          { label: 'TLS 1.2', value: '1.2' },
+        ],
+      },
+      { key: 'transparentDataEncryptionEnabled', label: 'Transparent Data Encryption', type: 'boolean', defaultValue: true, section: 'Security' },
+      { key: 'threatDetectionEnabled', label: 'Azure Defender for SQL', type: 'boolean', defaultValue: true, section: 'Monitoring' },
+      { key: 'auditingEnabled', label: 'Auditing to Storage/Log Analytics', type: 'boolean', defaultValue: false, section: 'Monitoring', advanced: true },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [
       {
@@ -254,6 +340,14 @@ export const azureResources: ResourceDefinition[] = [
         message: 'Azure SQL Server is exposed to the public internet',
         recommendation: 'Disable public network access and use Private Endpoint',
         fixAction: (config) => ({ ...config, publicNetworkAccess: false }),
+      },
+      {
+        id: 'sql-tde-disabled',
+        severity: 'high',
+        check: (config) => config.transparentDataEncryptionEnabled === false ? 'Transparent Data Encryption is disabled' : null,
+        message: 'Azure SQL database does not have Transparent Data Encryption enabled',
+        recommendation: 'Enable Transparent Data Encryption to protect data at rest',
+        fixAction: (config) => ({ ...config, transparentDataEncryptionEnabled: true }),
       },
     ],
   },

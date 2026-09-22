@@ -183,3 +183,34 @@ describe('aws_sg — deepened config schema', () => {
     expect(field.advanced).toBeFalsy();
   });
 });
+
+describe('azure_vm — deepened config schema', () => {
+  const def = getResourceDefinition('azure_vm')!;
+
+  test('osType offers both Linux and Windows', () => {
+    const field = def.configSchema.find((f) => f.key === 'osType')!;
+    const values = field.options!.map((o) => o.value);
+    expect(values).toEqual(expect.arrayContaining(['Linux', 'Windows']));
+  });
+
+  test('publicIpEnabled is a Basic (non-advanced) security-relevant toggle', () => {
+    const field = def.configSchema.find((f) => f.key === 'publicIpEnabled')!;
+    expect(field.advanced).toBeFalsy();
+  });
+});
+
+describe('azure_sql — deepened config schema', () => {
+  const def = getResourceDefinition('azure_sql')!;
+
+  test('allowAzureServices is only visible when public network access is enabled', () => {
+    const field = def.configSchema.find((f) => f.key === 'allowAzureServices')!;
+    expect(field.visibleWhen!({ publicNetworkAccess: true })).toBe(true);
+    expect(field.visibleWhen!({ publicNetworkAccess: false })).toBe(false);
+  });
+
+  test('transparentDataEncryptionEnabled defaults to true and has a dedicated security rule', () => {
+    const field = def.configSchema.find((f) => f.key === 'transparentDataEncryptionEnabled')!;
+    expect(field.defaultValue).toBe(true);
+    expect(def.securityRules!.some((r) => r.id === 'sql-tde-disabled')).toBe(true);
+  });
+});
