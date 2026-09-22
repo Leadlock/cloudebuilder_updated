@@ -1116,6 +1116,60 @@ describe('TerraformGenerator — AWS', () => {
       expect(main.content).toContain('enabled_cluster_log_types = ["api", "audit", "scheduler"]');
     });
   });
+
+  describe('Route 53 Terraform generation (previously completely unsupported)', () => {
+    test('generates a hosted zone and a record with the configured type/value/ttl', () => {
+      const zone = makeResource({ id: 'r53-1', resourceType: 'aws_route53', provider: 'aws', configJson: JSON.stringify({ name: 'app_zone', domainName: 'app.example.com', recordType: 'CNAME', recordValue: 'target.example.com', ttl: 60 }) });
+      const result = gen.generate(awsInput([zone]));
+      expect(result.warnings.some((w) => w.includes('aws_route53') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_route53_zone" "app_zone"');
+      expect(main.content).toContain('resource "aws_route53_record" "app_zone"');
+      expect(main.content).toContain('type    = "CNAME"');
+      expect(main.content).toContain('ttl     = 60');
+      expect(main.content).toContain('records = ["target.example.com"]');
+    });
+
+    test('Weighted routing policy generates a weighted_routing_policy block; Simple omits it', () => {
+      const weighted = makeResource({ id: 'r53-1', resourceType: 'aws_route53', provider: 'aws', configJson: JSON.stringify({ name: 'weighted_zone', routingPolicy: 'Weighted', weight: 50 }) });
+      const weightedResult = gen.generate(awsInput([weighted]));
+      const weightedMain = weightedResult.files.find((f) => f.filename === 'main.tf')!;
+      expect(weightedMain.content).toContain('weighted_routing_policy {');
+      expect(weightedMain.content).toContain('weight = 50');
+
+      const simple = makeResource({ id: 'r53-2', resourceType: 'aws_route53', provider: 'aws', configJson: JSON.stringify({ name: 'simple_zone', routingPolicy: 'Simple' }) });
+      const simpleResult = gen.generate(awsInput([simple]));
+      const simpleMain = simpleResult.files.find((f) => f.filename === 'main.tf')!;
+      expect(simpleMain.content).not.toContain('weighted_routing_policy');
+    });
+  });
+
+  describe('WAF Terraform generation (previously completely unsupported)', () => {
+    test('generates a Web ACL with a rule per configured managed rule group', () => {
+      const acl = makeResource({ id: 'waf-1', resourceType: 'aws_waf', provider: 'aws', configJson: JSON.stringify({ name: 'api_waf', managedRuleGroups: ['AWSManagedRulesCommonRuleSet', 'AWSManagedRulesSQLiRuleSet'] }) });
+      const result = gen.generate(awsInput([acl]));
+      expect(result.warnings.some((w) => w.includes('aws_waf') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_wafv2_web_acl" "api_waf"');
+      expect(main.content).toContain('name        = "AWSManagedRulesCommonRuleSet"');
+      expect(main.content).toContain('name        = "AWSManagedRulesSQLiRuleSet"');
+    });
+
+    test('rateLimitEnabled adds a rate_based_statement rule with the configured threshold', () => {
+      const withRateLimit = makeResource({ id: 'waf-1', resourceType: 'aws_waf', provider: 'aws', configJson: JSON.stringify({ name: 'rate_limited_waf', rateLimitEnabled: true, rateLimitThreshold: 500, managedRuleGroups: [] }) });
+      const result = gen.generate(awsInput([withRateLimit]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('rate_based_statement {');
+      expect(main.content).toContain('limit              = 500');
+    });
+
+    test('defaultAction=BLOCK generates a block default_action', () => {
+      const acl = makeResource({ id: 'waf-1', resourceType: 'aws_waf', provider: 'aws', configJson: JSON.stringify({ name: 'strict_waf', defaultAction: 'BLOCK', managedRuleGroups: [] }) });
+      const result = gen.generate(awsInput([acl]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('block {}');
+    });
+  });
 });
 
 describe('TerraformGenerator — Azure', () => {
@@ -1186,6 +1240,55 @@ describe('TerraformGenerator — Azure', () => {
       const result = aksWithRg({ name: 'rbac_aks', rbacEnabled: true });
       const main = result.files.find((f) => f.filename === 'main.tf')!;
       expect(main.content).toContain('azure_active_directory_role_based_access_control {');
+    });
+  });
+
+  describe('App Service Terraform generation (newly added resource type)', () => {
+    function appServiceWithRg(appConfig: Record<string, unknown>) {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const app = makeResource({ id: 'app-1', resourceType: 'azure_app_service', provider: 'azure', configJson: JSON.stringify(appConfig) });
+      const conn = makeConnection('rg-1', 'app-1');
+      return gen.generate(azureInput([rg, app], [conn]));
+    }
+
+    test('osType=Windows generates azurerm_windows_web_app; Linux (default) generates azurerm_linux_web_app', () => {
+      const windows = appServiceWithRg({ name: 'win_app', osType: 'Windows' });
+      const windowsMain = windows.files.find((f) => f.filename === 'main.tf')!;
+      expect(windowsMain.content).toContain('resource "azurerm_windows_web_app" "win_app"');
+
+      const linux = appServiceWithRg({ name: 'linux_app' });
+      const linuxMain = linux.files.find((f) => f.filename === 'main.tf')!;
+      expect(linuxMain.content).toContain('resource "azurerm_linux_web_app" "linux_app"');
+    });
+
+    test('generates a Service Plan with the configured SKU that the app depends on', () => {
+      const result = appServiceWithRg({ name: 'my_app', skuName: 'P1v3' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_service_plan" "my_app_plan"');
+      expect(main.content).toContain('sku_name            = "P1v3"');
+      expect(main.content).toContain('service_plan_id            = azurerm_service_plan.my_app_plan.id');
+    });
+
+    test('Free (F1) tier omits always_on; paid tiers include it', () => {
+      const free = appServiceWithRg({ name: 'free_app', skuName: 'F1' });
+      const freeMain = free.files.find((f) => f.filename === 'main.tf')!;
+      expect(freeMain.content).not.toContain('always_on');
+
+      const paid = appServiceWithRg({ name: 'paid_app', skuName: 'S1', alwaysOn: true });
+      const paidMain = paid.files.find((f) => f.filename === 'main.tf')!;
+      expect(paidMain.content).toContain('always_on           = true');
+    });
+
+    test('application settings flow into app_settings', () => {
+      const result = appServiceWithRg({ name: 'configured_app', appSettings: { API_URL: 'https://api.example.com' } });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('"API_URL" = "https://api.example.com"');
+    });
+
+    test('runtime stack maps to the correct application_stack key', () => {
+      const result = appServiceWithRg({ name: 'python_app', runtime: 'python', runtimeVersion: '3.12' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('python_version = "3.12"');
     });
   });
 

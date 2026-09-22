@@ -394,6 +394,16 @@ class AwsTerraformGenerator {
           resourceMap[r.id] = `aws_eks_cluster.${name}`;
           break;
         }
+        case 'aws_route53': {
+          blocks.push(this._route53(name, cfg));
+          resourceMap[r.id] = `aws_route53_record.${name}`;
+          break;
+        }
+        case 'aws_waf': {
+          blocks.push(this._waf(name, cfg));
+          resourceMap[r.id] = `aws_wafv2_web_acl.${name}`;
+          break;
+        }
         default: {
           warnings.push(`Unsupported AWS resource type: ${r.resourceType} (resource: ${r.label})`);
         }
@@ -1063,6 +1073,131 @@ ${tagLines.join('\n')}
     return parts.join('\n\n');
   }
 
+  private _route53(name: string, cfg: Record<string, unknown>): string {
+    const isPrivate = cfg['hostedZoneType'] === 'Private';
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const zoneLines: string[] = [
+      `resource "aws_route53_zone" "${name}" {`,
+      `  name = "${cfg['domainName'] ?? 'example.com'}"`,
+    ];
+    if (cfg['comment']) zoneLines.push(`  comment = "${cfg['comment']}"`);
+    if (isPrivate) {
+      zoneLines.push(`  vpc {`, `    vpc_id = aws_vpc.main.id # WARNING: connect this hosted zone to a VPC on the canvas for a real private zone`, `  }`);
+    }
+    zoneLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+
+    const recordType = (cfg['recordType'] as string) || 'A';
+    const routingPolicy = (cfg['routingPolicy'] as string) || 'Simple';
+    const recordLines: string[] = [
+      `resource "aws_route53_record" "${name}" {`,
+      `  zone_id = aws_route53_zone.${name}.zone_id`,
+      `  name    = "${cfg['domainName'] ?? 'example.com'}"`,
+      `  type    = "${recordType}"`,
+      `  ttl     = ${cfg['ttl'] ?? 300}`,
+      `  records = ["${cfg['recordValue'] ?? ''}"]`,
+    ];
+    if (routingPolicy === 'Weighted') {
+      recordLines.push(`  weighted_routing_policy {`, `    weight = ${cfg['weight'] ?? 100}`, `  }`, `  set_identifier = "${name}"`);
+    }
+    recordLines.push(`}`);
+
+    return [zoneLines.join('\n'), recordLines.join('\n')].join('\n\n');
+  }
+
+  private _waf(name: string, cfg: Record<string, unknown>): string {
+    const scope = (cfg['scope'] as string) || 'REGIONAL';
+    const defaultAction = (cfg['defaultAction'] as string) || 'ALLOW';
+    const managedRuleGroups = Array.isArray(cfg['managedRuleGroups']) ? cfg['managedRuleGroups'] as string[] : [];
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const lines: string[] = [
+      `resource "aws_wafv2_web_acl" "${name}" {`,
+      `  name  = "${name}"`,
+      `  scope = "${scope}"`,
+      ``,
+      `  default_action {`,
+      `    ${defaultAction === 'BLOCK' ? 'block' : 'allow'} {}`,
+      `  }`,
+    ];
+
+    let priority = 1;
+    for (const ruleGroup of managedRuleGroups) {
+      lines.push(
+        ``,
+        `  rule {`,
+        `    name     = "${ruleGroup}"`,
+        `    priority = ${priority}`,
+        ``,
+        `    override_action {`,
+        `      none {}`,
+        `    }`,
+        ``,
+        `    statement {`,
+        `      managed_rule_group_statement {`,
+        `        name        = "${ruleGroup}"`,
+        `        vendor_name = "AWS"`,
+        `      }`,
+        `    }`,
+        ``,
+        `    visibility_config {`,
+        `      cloudwatch_metrics_enabled = ${cfg['cloudWatchMetricsEnabled'] !== false}`,
+        `      metric_name                = "${name}-${ruleGroup}"`,
+        `      sampled_requests_enabled   = ${cfg['sampledRequestsEnabled'] !== false}`,
+        `    }`,
+        `  }`,
+      );
+      priority++;
+    }
+
+    if (cfg['rateLimitEnabled'] === true) {
+      lines.push(
+        ``,
+        `  rule {`,
+        `    name     = "${name}-rate-limit"`,
+        `    priority = ${priority}`,
+        ``,
+        `    action {`,
+        `      block {}`,
+        `    }`,
+        ``,
+        `    statement {`,
+        `      rate_based_statement {`,
+        `        limit              = ${cfg['rateLimitThreshold'] ?? 2000}`,
+        `        aggregate_key_type = "IP"`,
+        `      }`,
+        `    }`,
+        ``,
+        `    visibility_config {`,
+        `      cloudwatch_metrics_enabled = ${cfg['cloudWatchMetricsEnabled'] !== false}`,
+        `      metric_name                = "${name}-rate-limit"`,
+        `      sampled_requests_enabled   = ${cfg['sampledRequestsEnabled'] !== false}`,
+        `    }`,
+        `  }`,
+      );
+    }
+
+    lines.push(
+      ``,
+      `  visibility_config {`,
+      `    cloudwatch_metrics_enabled = ${cfg['cloudWatchMetricsEnabled'] !== false}`,
+      `    metric_name                = "${name}"`,
+      `    sampled_requests_enabled   = ${cfg['sampledRequestsEnabled'] !== false}`,
+      `  }`,
+      ``,
+      `  tags = {`,
+      `    Name      = "${name}"`,
+      `    ManagedBy = "CloudCraft"`,
+      ...tagLines,
+      `  }`,
+      `}`,
+    );
+
+    return lines.join('\n');
+  }
+
   private _s3(name: string, cfg: Record<string, unknown>): string {
     const bucketName = (cfg['bucketName'] as string) ?? name;
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
@@ -1586,6 +1721,16 @@ class AzureTerraformGenerator {
           resourceMap[r.id] = `azurerm_kubernetes_cluster.${name}`;
           break;
         }
+        case 'azure_app_service': {
+          const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          blocks.push(this._appService(name, cfg, rgName, rgLoc));
+          resourceMap[r.id] = `${cfg['osType'] === 'Windows' ? 'azurerm_windows_web_app' : 'azurerm_linux_web_app'}.${name}`;
+          break;
+        }
         case 'azure_nsg': {
           const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
           const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
@@ -1998,6 +2143,77 @@ data "azurerm_network_security_group" "${name}" {
     }
     lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
     return lines.join('\n');
+  }
+
+  /**
+   * Generates an App Service (Web App) plus the Service Plan it requires.
+   * Windows vs Linux branches to the correct resource type and stack key —
+   * the same distinction that was silently wrong for azurerm_virtual_machine
+   * before that bug was fixed earlier in this pass.
+   */
+  private _appService(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
+    const isWindows = cfg['osType'] === 'Windows';
+    const resourceType = isWindows ? 'azurerm_windows_web_app' : 'azurerm_linux_web_app';
+    const skuName = (cfg['skuName'] as string) || 'B1';
+    const runtime = (cfg['runtime'] as string) || 'node';
+    const runtimeVersion = (cfg['runtimeVersion'] as string) || '20-lts';
+    const appSettings = (cfg['appSettings'] && typeof cfg['appSettings'] === 'object') ? cfg['appSettings'] as Record<string, string> : {};
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const runtimeKeyMap: Record<string, string> = {
+      node: 'node_version', python: 'python_version', dotnet: 'dotnet_version',
+      java: 'java_version', php: 'php_version', docker: 'docker_image_name',
+    };
+    const runtimeKey = runtimeKeyMap[runtime] ?? 'node_version';
+
+    const parts: string[] = [
+      `resource "azurerm_service_plan" "${name}_plan" {
+  name                = "${name}-plan"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+  os_type             = "${isWindows ? 'Windows' : 'Linux'}"
+  sku_name            = "${skuName}"
+}`,
+    ];
+
+    const appLines: string[] = [
+      `resource "${resourceType}" "${name}" {`,
+      `  name                       = "${name}"`,
+      `  resource_group_name        = ${rgName}`,
+      `  location                   = ${rgLoc}`,
+      `  service_plan_id            = azurerm_service_plan.${name}_plan.id`,
+      `  https_only                 = ${cfg['httpsOnly'] !== false}`,
+      `  public_network_access_enabled = ${cfg['publicNetworkAccess'] !== false}`,
+      `  client_affinity_enabled    = ${cfg['clientAffinityEnabled'] === true}`,
+    ];
+    if (cfg['healthCheckPath']) {
+      appLines.push(`  health_check_path          = "${cfg['healthCheckPath']}"`);
+    }
+    appLines.push(
+      `  site_config {`,
+      `    minimum_tls_version = "${cfg['minimumTlsVersion'] ?? '1.2'}"`,
+      `    ftps_state          = "${cfg['ftpsState'] ?? 'Disabled'}"`,
+      `    http2_enabled       = ${cfg['http2Enabled'] !== false}`,
+    );
+    if (skuName !== 'F1') {
+      appLines.push(`    always_on           = ${cfg['alwaysOn'] !== false}`);
+    }
+    appLines.push(`    application_stack {`, `      ${runtimeKey} = "${runtimeVersion}"`, `    }`, `  }`);
+
+    if (Object.keys(appSettings).length > 0) {
+      appLines.push(`  app_settings = {`);
+      for (const [k, v] of Object.entries(appSettings)) {
+        if (!k) continue;
+        appLines.push(`    "${k}" = "${v}"`);
+      }
+      appLines.push(`  }`);
+    }
+
+    appLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    parts.push(appLines.join('\n'));
+
+    return parts.join('\n\n');
   }
 
   private _nsg(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {

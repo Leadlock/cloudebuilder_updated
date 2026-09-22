@@ -318,6 +318,61 @@ describe('azure_aks — deepened config schema', () => {
   });
 });
 
+describe('aws_route53 — deepened config schema', () => {
+  const def = getResourceDefinition('aws_route53')!;
+
+  test('weight is only visible for the Weighted routing policy', () => {
+    const field = def.configSchema.find((f) => f.key === 'weight')!;
+    expect(field.visibleWhen!({ routingPolicy: 'Weighted' })).toBe(true);
+    expect(field.visibleWhen!({ routingPolicy: 'Simple' })).toBe(false);
+  });
+});
+
+describe('aws_waf — deepened config schema', () => {
+  const def = getResourceDefinition('aws_waf')!;
+
+  test('rateLimitThreshold is only visible when rate-based rule is enabled', () => {
+    const field = def.configSchema.find((f) => f.key === 'rateLimitThreshold')!;
+    expect(field.visibleWhen!({ rateLimitEnabled: true })).toBe(true);
+    expect(field.visibleWhen!({ rateLimitEnabled: false })).toBe(false);
+  });
+
+  test('managedRuleGroups uses the multiselect type', () => {
+    const field = def.configSchema.find((f) => f.key === 'managedRuleGroups')!;
+    expect(field.type).toBe('multiselect');
+  });
+
+  test('has a security rule for no managed rule groups', () => {
+    expect(def.securityRules!.some((r) => r.id === 'waf-no-managed-rules')).toBe(true);
+  });
+});
+
+describe('azure_app_service — newly added resource', () => {
+  const def = getResourceDefinition('azure_app_service')!;
+
+  test('resource definition exists in the catalog', () => {
+    expect(def).toBeDefined();
+    expect(def.provider).toBe('azure');
+  });
+
+  test('alwaysOn is only visible off the Free (F1) tier', () => {
+    const field = def.configSchema.find((f) => f.key === 'alwaysOn')!;
+    expect(field.visibleWhen!({ skuName: 'B1' })).toBe(true);
+    expect(field.visibleWhen!({ skuName: 'F1' })).toBe(false);
+  });
+
+  test('has security rules for HTTPS enforcement, FTP, and TLS version', () => {
+    expect(def.securityRules!.some((r) => r.id === 'app-service-https-only')).toBe(true);
+    expect(def.securityRules!.some((r) => r.id === 'app-service-ftp-enabled')).toBe(true);
+    expect(def.securityRules!.some((r) => r.id === 'app-service-old-tls')).toBe(true);
+  });
+
+  test('is registered in allResources exactly once', () => {
+    const matches = allResources.filter((r) => r.type === 'azure_app_service');
+    expect(matches.length).toBe(1);
+  });
+});
+
 describe('azure_functions — deepened config schema', () => {
   const def = getResourceDefinition('azure_functions')!;
 

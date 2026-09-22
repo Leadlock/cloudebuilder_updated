@@ -21,6 +21,7 @@ import { Server as NetServer, type IncomingMessage, type ServerResponse } from '
 import { Server as SocketIOServer, type Socket } from 'socket.io';
 import { AuthService } from '@/lib/api/authService';
 import type { CanvasNode } from '@/types';
+import { allResources } from '@/lib/resources';
 
 // ─── Graph state types ────────────────────────────────────────────────────────
 
@@ -78,17 +79,12 @@ export interface PresenceCursor {
 
 // ─── RDE validation ───────────────────────────────────────────────────────────
 
-const VALID_RESOURCE_TYPES = new Set<string>([
-  // AWS
-  'aws_vpc','aws_subnet','aws_igw','aws_sg','aws_route_table','aws_ec2','aws_rds',
-  'aws_s3','aws_alb','aws_nat','aws_lambda','aws_cloudfront','aws_ebs','aws_dynamodb',
-  'aws_eks','aws_iam','aws_kms','aws_internet',
-  // Azure
-  'azure_resource_group','azure_vnet','azure_subnet','azure_nsg','azure_vm',
-  'azure_sql','azure_storage','azure_lb','azure_app_gateway','azure_functions',
-  'azure_cosmos','azure_aks','azure_cdn','azure_dns','azure_app_service',
-  'azure_key_vault','azure_service_bus',
-]);
+// Derived from the live resource catalog rather than hand-maintained, so it
+// can't drift out of sync with newly added/renamed resource types the way a
+// duplicated literal list previously did (e.g. aws_ecs/aws_elasticache/aws_sqs
+// were fully supported elsewhere but missing here, silently rejecting valid
+// collaborative edits to those resources).
+const VALID_RESOURCE_TYPES = new Set<string>(allResources.map((r) => r.type));
 
 function isValidResourceType(type: string): boolean {
   return VALID_RESOURCE_TYPES.has(type);

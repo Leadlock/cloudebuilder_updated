@@ -592,7 +592,7 @@ export class RelationshipEngine {
       }
 
       // Invalid: Storage/Database initiating connection to Compute
-      if ((sType === 'azure_sql' || sType === 'azure_storage' || sType === 'azure_redis') && (tType === 'azure_vm' || tType === 'azure_vmss' || tType === 'azure_functions' || tType === 'azure_aks')) {
+      if ((sType === 'azure_sql' || sType === 'azure_storage' || sType === 'azure_redis') && (tType === 'azure_vm' || tType === 'azure_vmss' || tType === 'azure_functions' || tType === 'azure_app_service' || tType === 'azure_aks')) {
         return {
           isValid: false,
           relationshipType: 'NETWORK_FLOW',
@@ -665,7 +665,7 @@ export class RelationshipEngine {
       }
 
       // Valid: VM / VMSS -> Azure SQL
-      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_aks') && tType === 'azure_sql') {
+      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_sql') {
         return {
           isValid: true,
           relationshipType: 'CONNECTS_TO',
@@ -677,7 +677,7 @@ export class RelationshipEngine {
       }
 
       // Valid: VM / VMSS -> Azure Redis
-      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_aks') && tType === 'azure_redis') {
+      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_redis') {
         return {
           isValid: true,
           relationshipType: 'CONNECTS_TO',
@@ -689,7 +689,7 @@ export class RelationshipEngine {
       }
 
       // Valid: VM / VMSS -> Storage Account
-      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions') && tType === 'azure_storage') {
+      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service') && tType === 'azure_storage') {
         return {
           isValid: true,
           relationshipType: 'STORES_IN',
@@ -711,7 +711,7 @@ export class RelationshipEngine {
       }
 
       // Valid: Key Vault access
-      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions') && tType === 'azure_key_vault') {
+      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service') && tType === 'azure_key_vault') {
         return {
           isValid: true,
           relationshipType: 'AUTHENTICATES_WITH',

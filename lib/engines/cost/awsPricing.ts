@@ -114,6 +114,8 @@ export class AwsPricingProvider implements PricingProvider {
       case 'aws_elasticache': return this._elasticache(resource, config, region, mult);
       case 'aws_sqs':        return this._sqs(resource, config, region, mult);
       case 'aws_ecs':        return this._ecs(resource, config, region, mult);
+      case 'aws_route53':    return this._route53(resource, config, region, mult);
+      case 'aws_waf':        return this._waf(resource, config, region, mult);
       case 'aws_vpc':
       case 'aws_subnet':
       case 'aws_igw':
@@ -681,6 +683,74 @@ export class AwsPricingProvider implements PricingProvider {
         `Region: ${region}`,
       ],
       pricingSource: 'aws-eks-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _route53(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    _mult: number,
+  ): CostLineItem {
+    // $0.50/hosted-zone/month (first 25 zones) + $0.40 per million standard queries (first 1B/mo).
+    const hostedZoneMonthly = 0.50;
+    const isPrivate = config['hostedZoneType'] === 'Private';
+    const privateZoneMonthly = isPrivate ? 0.10 : 0; // Private zones bill an additional VPC association charge.
+    const monthly = hostedZoneMonthly + privateZoneMonthly;
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: monthly / 730,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: `Hosted zone (${isPrivate ? 'Private' : 'Public'})`, monthlyUsd: hostedZoneMonthly },
+        ...(isPrivate ? [{ label: 'Private zone VPC association', monthlyUsd: privateZoneMonthly }] : []),
+      ],
+      assumptions: [
+        'Query volume charges not included — first 1B standard queries/mo are $0.40/million',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-route53-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _waf(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    _mult: number,
+  ): CostLineItem {
+    // $5.00/Web ACL/month + $1.00/rule/month + $0.60 per million requests processed.
+    const webAclMonthly = 5.0;
+    const managedRuleGroups = Array.isArray(config['managedRuleGroups']) ? config['managedRuleGroups'] as string[] : [];
+    const ruleCount = managedRuleGroups.length + (config['rateLimitEnabled'] === true ? 1 : 0);
+    const rulesMonthly = ruleCount * 1.0;
+    const monthly = webAclMonthly + rulesMonthly;
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: monthly / 730,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: 'Web ACL', monthlyUsd: webAclMonthly },
+        { label: `${ruleCount} rule(s)`, monthlyUsd: rulesMonthly },
+      ],
+      assumptions: [
+        'Request-processing charges not included — $0.60 per million requests',
+        `${ruleCount} rule(s): ${managedRuleGroups.length} managed rule group(s)${config['rateLimitEnabled'] === true ? ' + 1 rate-based rule' : ''}`,
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-waf-list-price',
       confidence: 'estimate',
     };
   }

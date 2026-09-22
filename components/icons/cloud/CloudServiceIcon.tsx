@@ -39,6 +39,7 @@ import {
   AzurePublicIpIcon,
   AzureNsgIcon,
   AzureNicIcon,
+  AzureAppServiceIcon,
 } from './AzureIcons';
 
 export interface CloudServiceIconProps {
@@ -177,6 +178,9 @@ export function CloudServiceIcon({
   }
   if (type.includes('app_gateway') || type.includes('application_gateway')) {
     return <AzureAppGatewayIcon size={size} className={className} />;
+  }
+  if (type.includes('app_service')) {
+    return <AzureAppServiceIcon size={size} className={className} />;
   }
   if (type.includes('sql') || type.includes('mssql') || type.includes('database')) {
     return <AzureSqlIcon size={size} className={className} />;

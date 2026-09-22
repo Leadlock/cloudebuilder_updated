@@ -508,4 +508,32 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
     const largeResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [large] }, 'TEST');
     expect(largeResult.items[0].monthlyUsd).toBeGreaterThan(smallResult.items[0].monthlyUsd);
   });
+
+  test('App Service Free (F1) tier costs $0; paid tiers scale with SKU', () => {
+    const free = makeResource({ resourceType: 'azure_app_service', provider: 'azure', configJson: JSON.stringify({ skuName: 'F1' }) });
+    const basic = makeResource({ resourceType: 'azure_app_service', provider: 'azure', configJson: JSON.stringify({ skuName: 'B1' }) });
+    const premium = makeResource({ resourceType: 'azure_app_service', provider: 'azure', configJson: JSON.stringify({ skuName: 'P2v3' }) });
+    const freeResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [free] }, 'TEST');
+    const basicResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [basic] }, 'TEST');
+    const premiumResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [premium] }, 'TEST');
+    expect(freeResult.items[0].monthlyUsd).toBe(0);
+    expect(basicResult.items[0].monthlyUsd).toBeGreaterThan(0);
+    expect(premiumResult.items[0].monthlyUsd).toBeGreaterThan(basicResult.items[0].monthlyUsd);
+  });
+
+  test('Route 53 private hosted zones cost more than public (previously entirely unsupported)', () => {
+    const publicZone = makeResource({ resourceType: 'aws_route53', provider: 'aws', configJson: JSON.stringify({ hostedZoneType: 'Public' }) });
+    const privateZone = makeResource({ resourceType: 'aws_route53', provider: 'aws', configJson: JSON.stringify({ hostedZoneType: 'Private' }) });
+    const publicResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [publicZone] }, 'TEST');
+    const privateResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [privateZone] }, 'TEST');
+    expect(privateResult.items[0].monthlyUsd).toBeGreaterThan(publicResult.items[0].monthlyUsd);
+  });
+
+  test('WAF cost scales with rule count (previously entirely unsupported)', () => {
+    const minimal = makeResource({ resourceType: 'aws_waf', provider: 'aws', configJson: JSON.stringify({ managedRuleGroups: [] }) });
+    const loaded = makeResource({ resourceType: 'aws_waf', provider: 'aws', configJson: JSON.stringify({ managedRuleGroups: ['AWSManagedRulesCommonRuleSet', 'AWSManagedRulesSQLiRuleSet', 'AWSManagedRulesLinuxRuleSet'], rateLimitEnabled: true }) });
+    const minimalResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [minimal] }, 'TEST');
+    const loadedResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [loaded] }, 'TEST');
+    expect(loadedResult.items[0].monthlyUsd).toBeGreaterThan(minimalResult.items[0].monthlyUsd);
+  });
 });

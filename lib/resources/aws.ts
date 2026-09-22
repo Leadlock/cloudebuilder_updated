@@ -1356,10 +1356,51 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#EDE9FE',
     borderColor: '#7C3AED',
     monthlyBaseCost: 0.50,
-    defaultConfig: { name: 'my-hosted-zone', domainName: 'example.com', recordType: 'A' },
+    defaultConfig: {
+      name: 'my-hosted-zone', domainName: 'example.com', hostedZoneType: 'Public', comment: '',
+      recordType: 'A', recordValue: '', ttl: 300, routingPolicy: 'Simple', weight: 100,
+      tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-hosted-zone', required: true },
       { key: 'domainName', label: 'Domain Name', type: 'text', defaultValue: 'example.com', required: true },
+      {
+        key: 'hostedZoneType', label: 'Hosted Zone Type', type: 'select', defaultValue: 'Public', section: 'DNS',
+        options: [
+          { label: 'Public Hosted Zone', value: 'Public' },
+          { label: 'Private Hosted Zone', value: 'Private' },
+        ],
+      },
+      { key: 'comment', label: 'Comment', type: 'text', defaultValue: '', section: 'DNS', advanced: true },
+      {
+        key: 'recordType', label: 'Record Type', type: 'select', defaultValue: 'A', section: 'Record',
+        options: [
+          { label: 'A', value: 'A' },
+          { label: 'AAAA', value: 'AAAA' },
+          { label: 'CNAME', value: 'CNAME' },
+          { label: 'MX', value: 'MX' },
+          { label: 'TXT', value: 'TXT' },
+          { label: 'NS', value: 'NS' },
+        ],
+      },
+      {
+        key: 'recordValue', label: 'Record Value', type: 'text', defaultValue: '', section: 'Record', required: true,
+        placeholder: 'IP address, hostname, or target depending on record type',
+      },
+      { key: 'ttl', label: 'TTL (seconds)', type: 'number', defaultValue: 300, min: 1, max: 172800, section: 'Record' },
+      {
+        key: 'routingPolicy', label: 'Routing Policy', type: 'select', defaultValue: 'Simple', section: 'Advanced', advanced: true,
+        options: [
+          { label: 'Simple', value: 'Simple' },
+          { label: 'Weighted', value: 'Weighted' },
+        ],
+      },
+      {
+        key: 'weight', label: 'Weight', type: 'number', defaultValue: 100, min: 0, max: 255, section: 'Advanced', advanced: true,
+        visibleWhen: (c) => c['routingPolicy'] === 'Weighted',
+        description: 'Relative traffic share for this record among all weighted records sharing the same name/type.',
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [],
   },
@@ -1374,12 +1415,62 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#FEE2E2',
     borderColor: '#DC2626',
     monthlyBaseCost: 5.0,
-    defaultConfig: { name: 'my-waf-acl', scope: 'REGIONAL', defaultAction: 'ALLOW' },
+    defaultConfig: {
+      name: 'my-waf-acl', scope: 'REGIONAL', defaultAction: 'ALLOW',
+      managedRuleGroups: ['AWSManagedRulesCommonRuleSet', 'AWSManagedRulesKnownBadInputsRuleSet'],
+      rateLimitEnabled: false, rateLimitThreshold: 2000,
+      cloudWatchMetricsEnabled: true, sampledRequestsEnabled: true, tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Web ACL Name', type: 'text', defaultValue: 'my-waf-acl', required: true },
-      { key: 'scope', label: 'Scope', type: 'select', defaultValue: 'REGIONAL', options: [{ label: 'Regional (ALB/API Gateway)', value: 'REGIONAL' }, { label: 'CloudFront', value: 'CLOUDFRONT' }] },
+      {
+        key: 'scope', label: 'Scope', type: 'select', defaultValue: 'REGIONAL',
+        options: [{ label: 'Regional (ALB/API Gateway)', value: 'REGIONAL' }, { label: 'CloudFront', value: 'CLOUDFRONT' }],
+      },
+      {
+        key: 'defaultAction', label: 'Default Action', type: 'select', defaultValue: 'ALLOW', section: 'Rules',
+        options: [
+          { label: 'Allow', value: 'ALLOW' },
+          { label: 'Block', value: 'BLOCK' },
+        ],
+      },
+      {
+        key: 'managedRuleGroups', label: 'AWS Managed Rule Groups', type: 'multiselect', defaultValue: ['AWSManagedRulesCommonRuleSet', 'AWSManagedRulesKnownBadInputsRuleSet'],
+        section: 'Rules',
+        options: [
+          { label: 'Core Rule Set', value: 'AWSManagedRulesCommonRuleSet' },
+          { label: 'Known Bad Inputs', value: 'AWSManagedRulesKnownBadInputsRuleSet' },
+          { label: 'SQL Database', value: 'AWSManagedRulesSQLiRuleSet' },
+          { label: 'Linux Operating System', value: 'AWSManagedRulesLinuxRuleSet' },
+          { label: 'Amazon IP Reputation List', value: 'AWSManagedRulesAmazonIpReputationList' },
+          { label: 'Anonymous IP List', value: 'AWSManagedRulesAnonymousIpList' },
+        ],
+      },
+      { key: 'rateLimitEnabled', label: 'Rate-Based Rule', type: 'boolean', defaultValue: false, section: 'Rules' },
+      {
+        key: 'rateLimitThreshold', label: 'Rate Limit (requests / 5 min per IP)', type: 'number', defaultValue: 2000, min: 100, max: 20000000,
+        section: 'Rules', visibleWhen: (c) => c['rateLimitEnabled'] === true,
+      },
+      { key: 'cloudWatchMetricsEnabled', label: 'CloudWatch Metrics', type: 'boolean', defaultValue: true, section: 'Monitoring' },
+      { key: 'sampledRequestsEnabled', label: 'Sampled Request Logging', type: 'boolean', defaultValue: true, section: 'Monitoring' },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'waf-no-managed-rules',
+        severity: 'high',
+        check: (config) => (!Array.isArray(config.managedRuleGroups) || config.managedRuleGroups.length === 0) ? 'WAF Web ACL has no managed rule groups' : null,
+        message: 'WAF Web ACL does not have any AWS managed rule groups enabled',
+        recommendation: 'Enable at least the Core Rule Set and Known Bad Inputs managed rule groups',
+      },
+      {
+        id: 'waf-default-allow',
+        severity: 'medium',
+        check: (config) => config.defaultAction === 'ALLOW' ? 'WAF Web ACL default action is Allow' : null,
+        message: 'WAF Web ACL defaults to allowing all traffic that does not match a rule',
+        recommendation: 'Consider a default Block action with explicit Allow rules for a stricter security posture, if application traffic patterns permit',
+      },
+    ],
   },
   {
     type: 'aws_elasticache',

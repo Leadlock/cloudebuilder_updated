@@ -217,3 +217,14 @@ export function AzureNicIcon({ size = 24, className = '' }: IconProps) {
     </svg>
   );
 }
+
+// ─── Azure App Service ────────────────────────────────────────────────────────
+export function AzureAppServiceIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#0078D4" fillOpacity="0.15" />
+      <circle cx="24" cy="24" r="13" stroke="#0078D4" strokeWidth="2.5" fill="#0078D4" fillOpacity="0.15" />
+      <path d="M11 24h26M24 11c4 3.5 6 8 6 13s-2 9.5-6 13c-4-3.5-6-8-6-13s2-9.5 6-13z" stroke="#0078D4" strokeWidth="1.8" fill="none" />
+    </svg>
+  );
+}

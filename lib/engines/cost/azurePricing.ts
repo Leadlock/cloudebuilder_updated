@@ -85,6 +85,7 @@ export class AzurePricingProvider implements PricingProvider {
       case 'azure_app_gateway':     return this._appGateway(resource, config, region, mult);
       case 'azure_functions':       return this._functions(resource, config, region, mult);
       case 'azure_aks':             return this._aks(resource, config, region, mult);
+      case 'azure_app_service':     return this._appService(resource, config, region, mult);
       case 'azure_key_vault':       return this._keyVault(resource, config, region, mult);
       case 'azure_nat':             return this._nat(resource, config, region, mult);
       case 'azure_resource_group':
@@ -385,6 +386,41 @@ export class AzurePricingProvider implements PricingProvider {
         `Region: ${region}`,
       ],
       pricingSource: 'azure-aks-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _appService(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    // us-east region App Service Plan hourly list prices (Linux/Windows, per instance).
+    const skuHourlyUsd: Record<string, number> = {
+      F1: 0, B1: 0.018, B2: 0.036, S1: 0.036, P1v3: 0.146, P2v3: 0.293,
+    };
+    const skuName = (config['skuName'] as string) || 'B1';
+    const hourly = (skuHourlyUsd[skuName] ?? skuHourlyUsd['B1']!) * mult;
+    const monthly = toMonthly(hourly);
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'azure',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: `App Service Plan ${skuName}${skuName === 'F1' ? ' (Free tier)' : ''}`, monthlyUsd: monthly },
+      ],
+      assumptions: [
+        `SKU: ${skuName}`,
+        'Single instance; scale-out instances would each add this rate',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'azure-app-service-list-price',
       confidence: 'estimate',
     };
   }
