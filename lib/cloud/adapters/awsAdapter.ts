@@ -43,7 +43,14 @@ import {
   DescribeSecurityGroupsCommand,
   DescribeVolumesCommand,
   DescribeRegionsCommand,
+  DescribeNetworkAclsCommand,
+  DescribeLaunchTemplateVersionsCommand,
 } from '@aws-sdk/client-ec2';
+import {
+  AutoScalingClient,
+  DescribeAutoScalingGroupsCommand,
+  DescribePoliciesCommand,
+} from '@aws-sdk/client-auto-scaling';
 import { S3Client, ListBucketsCommand, GetBucketLocationCommand } from '@aws-sdk/client-s3';
 import { RDSClient, DescribeDBInstancesCommand } from '@aws-sdk/client-rds';
 import {
@@ -125,6 +132,10 @@ export const REQUIRED_AWS_PERMISSIONS = [
   'elasticache:DescribeCacheClusters',
   'elasticache:DescribeReplicationGroups',
   'cloudfront:ListDistributions',
+  'ec2:DescribeNetworkAcls',
+  'ec2:DescribeLaunchTemplateVersions',
+  'autoscaling:DescribeAutoScalingGroups',
+  'autoscaling:DescribePolicies',
   'sts:GetCallerIdentity',
 ];
 
@@ -316,6 +327,18 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
   private async _makeElastiCacheClient(region: string): Promise<ElastiCacheClient> {
     const creds = await this._assumeRole();
     return new ElastiCacheClient({
+      region,
+      credentials: {
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
+        sessionToken: creds.sessionToken,
+      },
+    });
+  }
+
+  private async _makeAutoScalingClient(region: string): Promise<AutoScalingClient> {
+    const creds = await this._assumeRole();
+    return new AutoScalingClient({
       region,
       credentials: {
         accessKeyId: creds.accessKeyId,
@@ -600,6 +623,11 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
 
           const elastiCacheClusters = await this._discoverElastiCacheClusters(region, accountId);
 
+          const [asgs, nacls] = await Promise.all([
+            this._discoverAutoScalingGroups(region, accountId),
+            this._discoverNetworkAcls(region, accountId),
+          ]);
+
           allResources.push(
             ...vpcs,
             ...subnets,
@@ -617,6 +645,8 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             ...ecsServices,
             ...eksClusters,
             ...elastiCacheClusters,
+            ...asgs,
+            ...nacls,
           );
 
           // Build topology relationships for this region
@@ -1816,6 +1846,166 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         }
         marker = resp.DistributionList?.IsTruncated ? resp.DistributionList?.NextMarker : undefined;
       } while (marker);
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverAutoScalingGroups(region: string, accountId: string): Promise<CloudResource[]> {
+    const asg = await this._makeAutoScalingClient(region);
+    const ec2 = await this._makeEc2Client(region);
+    const results: CloudResource[] = [];
+    try {
+      let nextToken: string | undefined;
+      do {
+        const resp = await retryWithBackoff(() =>
+          asg.send(new DescribeAutoScalingGroupsCommand({ NextToken: nextToken })),
+        );
+        for (const group of resp.AutoScalingGroups ?? []) {
+          const name = safeString(group.AutoScalingGroupName);
+          if (!name) continue;
+
+          let instanceType = 't3.medium';
+          let amiId = 'ami-0c55b159cbfafe1f0';
+          const ltSpec = group.LaunchTemplate ?? group.MixedInstancesPolicy?.LaunchTemplate?.LaunchTemplateSpecification;
+          if (ltSpec?.LaunchTemplateId || ltSpec?.LaunchTemplateName) {
+            try {
+              const ltResp = await retryWithBackoff(() =>
+                ec2.send(new DescribeLaunchTemplateVersionsCommand({
+                  LaunchTemplateId: ltSpec.LaunchTemplateId,
+                  LaunchTemplateName: ltSpec.LaunchTemplateName,
+                  Versions: [ltSpec.Version ?? '$Latest'],
+                })),
+              );
+              const data = ltResp.LaunchTemplateVersions?.[0]?.LaunchTemplateData;
+              if (data) {
+                instanceType = data.InstanceType ?? instanceType;
+                amiId = data.ImageId ?? amiId;
+              }
+            } catch {
+              // Best effort — launch config (non-template) ASGs and lookup failures keep defaults
+            }
+          }
+
+          let scalingPolicyEnabled = false;
+          let targetCpuUtilization = 60;
+          try {
+            const polResp = await retryWithBackoff(() =>
+              asg.send(new DescribePoliciesCommand({ AutoScalingGroupName: name, PolicyTypes: ['TargetTrackingScaling'] })),
+            );
+            const policy = polResp.ScalingPolicies?.[0];
+            if (policy) {
+              scalingPolicyEnabled = true;
+              const spec = policy.TargetTrackingConfiguration?.PredefinedMetricSpecification;
+              if (spec?.PredefinedMetricType === 'ASGAverageCPUUtilization' && policy.TargetTrackingConfiguration?.TargetValue) {
+                targetCpuUtilization = policy.TargetTrackingConfiguration.TargetValue;
+              }
+            }
+          } catch {
+            // Best effort
+          }
+
+          const subnetId = (group.VPCZoneIdentifier ?? '').split(',')[0]?.trim() || null;
+          const config = {
+            name,
+            instanceType,
+            amiId,
+            minSize: group.MinSize ?? 2,
+            maxSize: group.MaxSize ?? 10,
+            desiredCapacity: group.DesiredCapacity ?? 2,
+            healthCheckType: group.HealthCheckType ?? 'EC2',
+            healthCheckGracePeriodSeconds: group.HealthCheckGracePeriod ?? 300,
+            defaultCooldownSeconds: group.DefaultCooldown ?? 300,
+            scalingPolicyEnabled,
+            targetCpuUtilization,
+            subnetId,
+            targetGroupArns: group.TargetGroupARNs ?? [],
+            source: 'aws-api',
+            imported: true,
+          };
+
+          results.push({
+            id: name,
+            provider: 'aws',
+            accountId,
+            region,
+            resourceType: 'auto-scaling-group',
+            name,
+            arn: safeString(group.AutoScalingGroupARN),
+            resourceId: name,
+            tags: Object.fromEntries((group.Tags ?? []).map((t) => [t.Key ?? '', t.Value ?? '']).filter(([k]) => k)),
+            status: 'active',
+            configuration: config,
+            parentResourceId: subnetId ?? undefined,
+            metadata: { instanceIds: (group.Instances ?? []).map((i) => i.InstanceId).filter(Boolean) },
+            configurationHash: computeConfigHash(config),
+            discoveredAt: now(),
+          });
+        }
+        nextToken = resp.NextToken;
+      } while (nextToken);
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverNetworkAcls(region: string, accountId: string): Promise<CloudResource[]> {
+    const ec2 = await this._makeEc2Client(region);
+    const results: CloudResource[] = [];
+    try {
+      const resp = await retryWithBackoff(() => ec2.send(new DescribeNetworkAclsCommand({})));
+      for (const nacl of resp.NetworkAcls ?? []) {
+        const id = safeString(nacl.NetworkAclId);
+        if (!id) continue;
+        const name = nameTag(nacl.Tags) || id;
+
+        // The schema models one inbound + one outbound rule; pick the lowest-numbered
+        // custom rule (below the implicit 32767 deny-all) for each direction.
+        const entries = nacl.Entries ?? [];
+        const customEntries = entries.filter((e) => (e.RuleNumber ?? 32767) < 32767);
+        const inbound = customEntries.filter((e) => !e.Egress).sort((a, b) => (a.RuleNumber ?? 0) - (b.RuleNumber ?? 0))[0];
+        const outbound = customEntries.filter((e) => e.Egress).sort((a, b) => (a.RuleNumber ?? 0) - (b.RuleNumber ?? 0))[0];
+        const allowAllInbound = inbound?.RuleAction === 'allow' && inbound?.CidrBlock === '0.0.0.0/0' && inbound?.Protocol === '-1';
+        const allowAllOutbound = !outbound || (outbound.RuleAction === 'allow' && outbound.CidrBlock === '0.0.0.0/0' && outbound.Protocol === '-1');
+
+        const config = {
+          name,
+          allowAllInbound,
+          allowAllOutbound,
+          inboundCidr: inbound?.CidrBlock ?? '10.0.0.0/16',
+          inboundProtocol: inbound?.Protocol === '6' ? 'tcp' : inbound?.Protocol === '17' ? 'udp' : 'tcp',
+          inboundPortFrom: inbound?.PortRange?.From ?? 443,
+          inboundPortTo: inbound?.PortRange?.To ?? 443,
+          outboundCidr: outbound?.CidrBlock ?? '0.0.0.0/0',
+          outboundProtocol: outbound?.Protocol === '-1' ? 'all' : outbound?.Protocol === '6' ? 'tcp' : 'all',
+          outboundPortFrom: outbound?.PortRange?.From ?? 0,
+          outboundPortTo: outbound?.PortRange?.To ?? 0,
+          vpcId: nacl.VpcId ?? null,
+          isDefault: nacl.IsDefault ?? false,
+          source: 'aws-api',
+          imported: true,
+        };
+
+        results.push({
+          id,
+          provider: 'aws',
+          accountId,
+          region,
+          resourceType: 'network-acl',
+          name,
+          arn: `arn:aws:ec2:${region}:${accountId}:network-acl/${id}`,
+          resourceId: id,
+          tags: tagsToMap(nacl.Tags),
+          status: 'available',
+          configuration: config,
+          parentResourceId: nacl.VpcId ?? undefined,
+          metadata: {},
+          configurationHash: computeConfigHash(config),
+          discoveredAt: now(),
+        });
+      }
     } catch {
       // Best effort
     }

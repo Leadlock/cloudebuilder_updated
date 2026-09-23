@@ -175,6 +175,26 @@ jest.mock('@aws-sdk/client-ec2', () => ({
       if (name === 'DescribeInternetGatewaysCommand') {
         return Promise.resolve({ InternetGateways: [] });
       }
+      if (name === 'DescribeNetworkAclsCommand') {
+        return Promise.resolve({
+          NetworkAcls: [
+            {
+              NetworkAclId: 'acl-abc123', VpcId: 'vpc-abc123', IsDefault: false, Tags: [{ Key: 'Name', Value: 'app-nacl' }],
+              Entries: [
+                { RuleNumber: 100, Egress: false, RuleAction: 'allow', Protocol: '6', CidrBlock: '10.0.0.0/16', PortRange: { From: 443, To: 443 } },
+                { RuleNumber: 32767, Egress: false, RuleAction: 'deny', Protocol: '-1', CidrBlock: '0.0.0.0/0' },
+                { RuleNumber: 100, Egress: true, RuleAction: 'allow', Protocol: '-1', CidrBlock: '0.0.0.0/0' },
+                { RuleNumber: 32767, Egress: true, RuleAction: 'deny', Protocol: '-1', CidrBlock: '0.0.0.0/0' },
+              ],
+            },
+          ],
+        });
+      }
+      if (name === 'DescribeLaunchTemplateVersionsCommand') {
+        return Promise.resolve({
+          LaunchTemplateVersions: [{ LaunchTemplateData: { InstanceType: 'm5.large', ImageId: 'ami-0123456789abcdef0' } }],
+        });
+      }
       return Promise.resolve({});
     }),
   })),
@@ -182,6 +202,38 @@ jest.mock('@aws-sdk/client-ec2', () => ({
   DescribeSubnetsCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeSubnetsCommand' } })),
   DescribeInstancesCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeInstancesCommand' } })),
   DescribeInternetGatewaysCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeInternetGatewaysCommand' } })),
+  DescribeNetworkAclsCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeNetworkAclsCommand' } })),
+  DescribeLaunchTemplateVersionsCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeLaunchTemplateVersionsCommand' } })),
+}));
+
+jest.mock('@aws-sdk/client-auto-scaling', () => ({
+  AutoScalingClient: jest.fn().mockImplementation(() => ({
+    send: jest.fn().mockImplementation((cmd: { constructor: { name: string } }) => {
+      const name = cmd.constructor?.name ?? '';
+      if (name === 'DescribeAutoScalingGroupsCommand') {
+        return Promise.resolve({
+          AutoScalingGroups: [
+            {
+              AutoScalingGroupName: 'web-asg', AutoScalingGroupARN: 'arn:aws:autoscaling:us-east-1:123456789012:autoScalingGroup:x:autoScalingGroupName/web-asg',
+              MinSize: 2, MaxSize: 8, DesiredCapacity: 4, HealthCheckType: 'ELB', HealthCheckGracePeriod: 120, DefaultCooldown: 60,
+              VPCZoneIdentifier: 'subnet-abc,subnet-def', TargetGroupARNs: [], Instances: [{ InstanceId: 'i-abc123' }],
+              LaunchTemplate: { LaunchTemplateId: 'lt-abc', Version: '1' }, Tags: [{ Key: 'Env', Value: 'prod' }],
+            },
+          ],
+        });
+      }
+      if (name === 'DescribePoliciesCommand') {
+        return Promise.resolve({
+          ScalingPolicies: [
+            { TargetTrackingConfiguration: { TargetValue: 70, PredefinedMetricSpecification: { PredefinedMetricType: 'ASGAverageCPUUtilization' } } },
+          ],
+        });
+      }
+      return Promise.resolve({});
+    }),
+  })),
+  DescribeAutoScalingGroupsCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeAutoScalingGroupsCommand' } })),
+  DescribePoliciesCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribePoliciesCommand' } })),
 }));
 
 jest.mock('@aws-sdk/client-s3', () => ({
@@ -724,6 +776,35 @@ describe('AWS Adapter', () => {
     expect(distributions[0].configuration.webAclId).toBe('arn:aws:wafv2:us-east-1:123456789012:global/webacl/my-acl/abc');
     expect(distributions[0].configuration.geoRestrictionType).toBe('whitelist');
     expect(distributions[0].configuration.geoRestrictionCountries).toEqual(['US', 'CA']);
+    await adapter.dispose();
+  });
+
+  it('discovers Auto Scaling Groups, resolving instance type/AMI from the launch template and scaling policy target', async () => {
+    const adapter = new AwsDiscoveryAdapter(awsCreds);
+    const result = await adapter.discoverAll();
+    const asgs = result.resources.filter((r) => r.resourceType === 'auto-scaling-group');
+    expect(asgs.length).toBeGreaterThan(0);
+    expect(asgs[0].name).toBe('web-asg');
+    expect(asgs[0].configuration.instanceType).toBe('m5.large');
+    expect(asgs[0].configuration.amiId).toBe('ami-0123456789abcdef0');
+    expect(asgs[0].configuration.minSize).toBe(2);
+    expect(asgs[0].configuration.maxSize).toBe(8);
+    expect(asgs[0].configuration.scalingPolicyEnabled).toBe(true);
+    expect(asgs[0].configuration.targetCpuUtilization).toBe(70);
+    await adapter.dispose();
+  });
+
+  it('discovers Network ACLs, picking the lowest custom rule for each direction (not the implicit deny-all)', async () => {
+    const adapter = new AwsDiscoveryAdapter(awsCreds);
+    const result = await adapter.discoverAll();
+    const nacls = result.resources.filter((r) => r.resourceType === 'network-acl');
+    expect(nacls.length).toBeGreaterThan(0);
+    expect(nacls[0].name).toBe('app-nacl');
+    expect(nacls[0].configuration.allowAllInbound).toBe(false);
+    expect(nacls[0].configuration.inboundCidr).toBe('10.0.0.0/16');
+    expect(nacls[0].configuration.inboundProtocol).toBe('tcp');
+    expect(nacls[0].configuration.inboundPortFrom).toBe(443);
+    expect(nacls[0].configuration.allowAllOutbound).toBe(true);
     await adapter.dispose();
   });
 

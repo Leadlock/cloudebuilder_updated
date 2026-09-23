@@ -48,6 +48,7 @@ const RESOURCE_TYPE_MAP: Record<string, string> = {
   // AWS Security
   'security-group': 'aws_sg',
   'iam-role': 'aws_iam',
+  'network-acl': 'aws_nacl',
   // Azure networking
   vnet: 'azure_vnet',
   'load-balancer': 'azure_lb',
