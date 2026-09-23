@@ -345,6 +345,67 @@ jest.mock('@aws-sdk/client-eks', () => ({
   DescribeNodegroupCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeNodegroupCommand' } })),
 }));
 
+jest.mock('@aws-sdk/client-iam', () => ({
+  IAMClient: jest.fn().mockImplementation(() => ({
+    send: jest.fn().mockImplementation((cmd: { constructor: { name: string } }) => {
+      const name = cmd.constructor?.name ?? '';
+      if (name === 'ListRolesCommand') {
+        return Promise.resolve({
+          Roles: [
+            {
+              RoleName: 'app-lambda-role', Arn: 'arn:aws:iam::123456789012:role/app-lambda-role', Path: '/', MaxSessionDuration: 7200,
+              AssumeRolePolicyDocument: encodeURIComponent(JSON.stringify({
+                Statement: [{ Principal: { Service: 'lambda.amazonaws.com' } }],
+              })),
+            },
+            {
+              RoleName: 'AWSServiceRoleForSomething', Arn: 'arn:aws:iam::123456789012:role/aws-service-role/x/AWSServiceRoleForSomething',
+              Path: '/aws-service-role/x/',
+            },
+          ],
+        });
+      }
+      if (name === 'ListAttachedRolePoliciesCommand') {
+        return Promise.resolve({
+          AttachedPolicies: [{ PolicyName: 'AWSLambdaBasicExecutionRole', PolicyArn: 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole' }],
+        });
+      }
+      return Promise.resolve({});
+    }),
+  })),
+  ListRolesCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'ListRolesCommand' } })),
+  ListAttachedRolePoliciesCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'ListAttachedRolePoliciesCommand' } })),
+}));
+
+jest.mock('@aws-sdk/client-elasticache', () => ({
+  ElastiCacheClient: jest.fn().mockImplementation(() => ({
+    send: jest.fn().mockImplementation((cmd: { constructor: { name: string } }) => {
+      const name = cmd.constructor?.name ?? '';
+      if (name === 'DescribeCacheClustersCommand') {
+        return Promise.resolve({
+          CacheClusters: [
+            {
+              CacheClusterId: 'my-redis-cache', ARN: 'arn:aws:elasticache:us-east-1:123456789012:cluster:my-redis-cache',
+              Engine: 'redis', EngineVersion: '7.1', CacheNodeType: 'cache.r6g.large', NumCacheNodes: 2,
+              CacheClusterStatus: 'available', TransitEncryptionEnabled: true, AtRestEncryptionEnabled: true,
+              SnapshotRetentionLimit: 7, ReplicationGroupId: 'my-redis-rg',
+              CacheNodes: [{ Endpoint: { Port: 6379 } }],
+            },
+          ],
+        });
+      }
+      if (name === 'DescribeReplicationGroupsCommand') {
+        return Promise.resolve({
+          ReplicationGroups: [{ AutomaticFailover: 'enabled', MultiAZ: 'enabled' }],
+        });
+      }
+      return Promise.resolve({});
+    }),
+  })),
+  DescribeCacheClustersCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeCacheClustersCommand' } })),
+  DescribeReplicationGroupsCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeReplicationGroupsCommand' } })),
+}));
+
 // ─── Mock Azure SDK ───────────────────────────────────────────────────────────
 
 jest.mock('@azure/identity', () => ({
@@ -543,6 +604,31 @@ describe('AWS Adapter', () => {
     expect(clusters[0].configuration.capacityType).toBe('SPOT');
     expect(clusters[0].configuration.secretsEncryption).toBe(true);
     expect(clusters[0].configuration.clusterLogTypes).toEqual(['api', 'audit']);
+    await adapter.dispose();
+  });
+
+  it('discovers IAM roles, resolving trusted service from the trust policy and skipping service-linked roles', async () => {
+    const adapter = new AwsDiscoveryAdapter(awsCreds);
+    const result = await adapter.discoverAll();
+    const roles = result.resources.filter((r) => r.resourceType === 'iam-role');
+    expect(roles.length).toBe(1);
+    expect(roles[0].name).toBe('app-lambda-role');
+    expect(roles[0].configuration.trustedService).toBe('lambda.amazonaws.com');
+    expect(roles[0].configuration.maxSessionDurationSeconds).toBe(7200);
+    expect(roles[0].configuration.managedPolicyArns).toEqual(['arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole']);
+    await adapter.dispose();
+  });
+
+  it('discovers ElastiCache clusters, resolving failover/Multi-AZ from the replication group', async () => {
+    const adapter = new AwsDiscoveryAdapter(awsCreds);
+    const result = await adapter.discoverAll();
+    const caches = result.resources.filter((r) => r.resourceType === 'elasticache');
+    expect(caches.length).toBeGreaterThan(0);
+    expect(caches[0].name).toBe('my-redis-cache');
+    expect(caches[0].configuration.nodeType).toBe('cache.r6g.large');
+    expect(caches[0].configuration.numNodes).toBe(2);
+    expect(caches[0].configuration.automaticFailoverEnabled).toBe(true);
+    expect(caches[0].configuration.multiAzEnabled).toBe(true);
     await adapter.dispose();
   });
 

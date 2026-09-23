@@ -47,7 +47,7 @@ export type DiscoveredResourceType =
   // Storage
   | 's3-bucket' | 'storage-account' | 'blob-container' | 'ebs-volume'
   // Database
-  | 'rds-instance' | 'sql-database' | 'sql-server' | 'dynamodb-table'
+  | 'rds-instance' | 'sql-database' | 'sql-server' | 'dynamodb-table' | 'elasticache'
   // Load balancing
   | 'alb' | 'nlb' | 'load-balancer' | 'application-gateway' | 'target-group'
   // Identity / security

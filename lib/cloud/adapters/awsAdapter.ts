@@ -9,6 +9,8 @@
  * - Application & Network Load Balancers, Target Groups, Target Health
  * - Lambda functions, DynamoDB tables
  * - ECS services (Fargate & EC2 launch types), EKS clusters & node groups
+ * - IAM roles (user-managed only — aws-service-role/* roles are skipped),
+ *   ElastiCache clusters (Redis/Valkey, with replication group failover/Multi-AZ state)
  * - Accessible Regions
  *
  * Reconstructs full infrastructure topology and relationships:
@@ -65,6 +67,12 @@ import {
   ListNodegroupsCommand,
   DescribeNodegroupCommand,
 } from '@aws-sdk/client-eks';
+import { IAMClient, ListRolesCommand, ListAttachedRolePoliciesCommand } from '@aws-sdk/client-iam';
+import {
+  ElastiCacheClient,
+  DescribeCacheClustersCommand,
+  DescribeReplicationGroupsCommand,
+} from '@aws-sdk/client-elasticache';
 import type {
   AwsRoleCredentials,
   DiscoveredResource,
@@ -110,6 +118,10 @@ export const REQUIRED_AWS_PERMISSIONS = [
   'eks:DescribeCluster',
   'eks:ListNodegroups',
   'eks:DescribeNodegroup',
+  'iam:ListRoles',
+  'iam:ListAttachedRolePolicies',
+  'elasticache:DescribeCacheClusters',
+  'elasticache:DescribeReplicationGroups',
   'sts:GetCallerIdentity',
 ];
 
@@ -276,6 +288,31 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
   private async _makeEksClient(region: string): Promise<EKSClient> {
     const creds = await this._assumeRole();
     return new EKSClient({
+      region,
+      credentials: {
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
+        sessionToken: creds.sessionToken,
+      },
+    });
+  }
+
+  // IAM is a global service; requests still need a region to resolve an endpoint.
+  private async _makeIamClient(): Promise<IAMClient> {
+    const creds = await this._assumeRole();
+    return new IAMClient({
+      region: this._credentials.region,
+      credentials: {
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
+        sessionToken: creds.sessionToken,
+      },
+    });
+  }
+
+  private async _makeElastiCacheClient(region: string): Promise<ElastiCacheClient> {
+    const creds = await this._assumeRole();
+    return new ElastiCacheClient({
       region,
       credentials: {
         accessKeyId: creds.accessKeyId,
@@ -465,6 +502,22 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         warnings.push(`S3 discovery error: ${s3Err instanceof Error ? s3Err.message : String(s3Err)}`);
       }
 
+      // 1b. Global IAM Roles
+      try {
+        options.onProgress?.({
+          stage: 'scanning_storage',
+          message: 'Scanning IAM roles...',
+          resourcesDiscovered: allResources.length,
+          relationshipsDiscovered: allRelationships.length,
+          unsupportedCount: 0,
+          percent: 18,
+        });
+        const iamResources = await this._discoverIamRoles(accountId);
+        allResources.push(...iamResources);
+      } catch (iamErr) {
+        warnings.push(`IAM discovery error: ${iamErr instanceof Error ? iamErr.message : String(iamErr)}`);
+      }
+
       // 2. Region-scoped resources
       const stepPercent = 75 / (uniqueRegions.length || 1);
       let currentProgress = 20;
@@ -513,6 +566,8 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             this._discoverEksClusters(region, accountId),
           ]);
 
+          const elastiCacheClusters = await this._discoverElastiCacheClusters(region, accountId);
+
           allResources.push(
             ...vpcs,
             ...subnets,
@@ -529,6 +584,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             ...dynamoTables,
             ...ecsServices,
             ...eksClusters,
+            ...elastiCacheClusters,
           );
 
           // Build topology relationships for this region
@@ -547,6 +603,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             lambdas,
             ecsServices,
             eksClusters,
+            elastiCacheClusters,
           });
           allRelationships.push(...regionRelationships);
 
@@ -1514,6 +1571,158 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     return results;
   }
 
+  private async _discoverIamRoles(accountId: string): Promise<CloudResource[]> {
+    const iam = await this._makeIamClient();
+    const results: CloudResource[] = [];
+    try {
+      let marker: string | undefined;
+      do {
+        const resp = await retryWithBackoff(() => iam.send(new ListRolesCommand({ Marker: marker })));
+        for (const role of resp.Roles ?? []) {
+          const name = safeString(role.RoleName);
+          if (!name) continue;
+          // Skip AWS service-linked roles — not user-managed infrastructure.
+          if (role.Path?.startsWith('/aws-service-role/')) continue;
+
+          let trustedService = 'ec2.amazonaws.com';
+          try {
+            const policyDoc = role.AssumeRolePolicyDocument
+              ? JSON.parse(decodeURIComponent(role.AssumeRolePolicyDocument))
+              : null;
+            const principal = policyDoc?.Statement?.[0]?.Principal?.Service;
+            if (typeof principal === 'string') trustedService = principal;
+            else if (Array.isArray(principal) && principal[0]) trustedService = principal[0];
+          } catch {
+            // Best effort — keep default if the trust policy can't be parsed
+          }
+
+          let managedPolicyArns: string[] = [];
+          try {
+            const policiesResp = await retryWithBackoff(() =>
+              iam.send(new ListAttachedRolePoliciesCommand({ RoleName: name })),
+            );
+            managedPolicyArns = (policiesResp.AttachedPolicies ?? [])
+              .map((p) => p.PolicyArn)
+              .filter((arn): arn is string => Boolean(arn));
+          } catch {
+            // Best effort
+          }
+
+          const config = {
+            name,
+            trustedService,
+            managedPolicyArns,
+            maxSessionDurationSeconds: role.MaxSessionDuration ?? 3600,
+            source: 'aws-api',
+            imported: true,
+          };
+
+          results.push({
+            id: name,
+            provider: 'aws',
+            accountId,
+            region: 'global',
+            resourceType: 'iam-role',
+            name,
+            arn: safeString(role.Arn),
+            resourceId: name,
+            tags: {},
+            status: 'active',
+            configuration: config,
+            metadata: { createDate: role.CreateDate?.toISOString() ?? null },
+            configurationHash: computeConfigHash(config),
+            discoveredAt: now(),
+          });
+        }
+        marker = resp.Marker;
+      } while (marker);
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverElastiCacheClusters(region: string, accountId: string): Promise<CloudResource[]> {
+    const ec = await this._makeElastiCacheClient(region);
+    const results: CloudResource[] = [];
+    try {
+      // Replication group state (automatic failover / Multi-AZ) is looked up
+      // per group on demand, since DescribeCacheClusters doesn't return it.
+      const replicationGroupCache = new Map<string, { automaticFailover: boolean; multiAz: boolean }>();
+
+      let marker: string | undefined;
+      do {
+        const resp = await retryWithBackoff(() =>
+          ec.send(new DescribeCacheClustersCommand({ Marker: marker, ShowCacheNodeInfo: true })),
+        );
+        for (const cluster of resp.CacheClusters ?? []) {
+          const id = safeString(cluster.CacheClusterId);
+          if (!id) continue;
+
+          let automaticFailoverEnabled = false;
+          let multiAzEnabled = false;
+          const replicationGroupId = cluster.ReplicationGroupId;
+          if (replicationGroupId) {
+            if (!replicationGroupCache.has(replicationGroupId)) {
+              try {
+                const rgResp = await retryWithBackoff(() =>
+                  ec.send(new DescribeReplicationGroupsCommand({ ReplicationGroupId: replicationGroupId })),
+                );
+                const rg = rgResp.ReplicationGroups?.[0];
+                replicationGroupCache.set(replicationGroupId, {
+                  automaticFailover: rg?.AutomaticFailover === 'enabled',
+                  multiAz: rg?.MultiAZ === 'enabled',
+                });
+              } catch {
+                replicationGroupCache.set(replicationGroupId, { automaticFailover: false, multiAz: false });
+              }
+            }
+            const rgInfo = replicationGroupCache.get(replicationGroupId)!;
+            automaticFailoverEnabled = rgInfo.automaticFailover;
+            multiAzEnabled = rgInfo.multiAz;
+          }
+
+          const config = {
+            name: id,
+            engine: cluster.Engine ?? 'redis',
+            engineVersion: cluster.EngineVersion ?? '7.1',
+            nodeType: cluster.CacheNodeType ?? 'cache.t3.medium',
+            numNodes: cluster.NumCacheNodes ?? 1,
+            automaticFailoverEnabled,
+            multiAzEnabled,
+            transitEncryption: cluster.TransitEncryptionEnabled ?? false,
+            atRestEncryption: cluster.AtRestEncryptionEnabled ?? false,
+            port: cluster.CacheNodeType ? (cluster.CacheNodes?.[0]?.Endpoint?.Port ?? 6379) : 6379,
+            snapshotRetentionLimit: cluster.SnapshotRetentionLimit ?? 0,
+            source: 'aws-api',
+            imported: true,
+          };
+
+          results.push({
+            id,
+            provider: 'aws',
+            accountId,
+            region,
+            resourceType: 'elasticache',
+            name: id,
+            arn: safeString(cluster.ARN),
+            resourceId: id,
+            tags: {},
+            status: cluster.CacheClusterStatus ?? 'available',
+            configuration: config,
+            metadata: { replicationGroupId: replicationGroupId ?? null },
+            configurationHash: computeConfigHash(config),
+            discoveredAt: now(),
+          });
+        }
+        marker = resp.Marker;
+      } while (marker);
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
   // ── Relationship & Topology Reconstructor ────────────────────────────────
 
   private _reconstructAwsRelationships(catalog: {
@@ -1531,6 +1740,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     lambdas: CloudResource[];
     ecsServices: CloudResource[];
     eksClusters: CloudResource[];
+    elastiCacheClusters: CloudResource[];
   }): CloudRelationship[] {
     const rels: CloudRelationship[] = [];
     const added = new Set<string>();

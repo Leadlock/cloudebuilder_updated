@@ -38,6 +38,7 @@ const RESOURCE_TYPE_MAP: Record<string, string> = {
   // AWS database
   'rds-instance': 'aws_rds',
   'dynamodb-table': 'aws_dynamodb',
+  elasticache: 'aws_elasticache',
   // AWS load balancing
   alb: 'aws_alb',
   nlb: 'aws_alb',
