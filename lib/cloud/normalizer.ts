@@ -75,6 +75,10 @@ const RESOURCE_TYPE_MAP: Record<string, string> = {
   // Azure security & org
   'key-vault': 'azure_key_vault',
   'resource-group': 'azure_resource_group',
+  'bastion-host': 'azure_bastion',
+  'waf-policy': 'azure_waf',
+  // Azure networking (unambiguous raw types — no AWS collision)
+  'network-interface': 'azure_nic',
 };
 
 // ─── Grid layout helper ───────────────────────────────────────────────────────
@@ -127,6 +131,7 @@ export function normalizeDiscoveredInfrastructure(
       } else if (provider === 'azure') {
         if (rawType === 'subnet') resourceType = 'azure_subnet';
         else if (rawType === 'nat-gateway') resourceType = 'azure_nat';
+        else if (rawType === 'route-table') resourceType = 'azure_route_table';
         else if (rawType === 'vm') resourceType = 'azure_vm';
         else {
           const candidate = `azure_${rawType.replace(/[^a-zA-Z0-9_]/g, '_')}`;
@@ -140,6 +145,8 @@ export function normalizeDiscoveredInfrastructure(
       resourceType = 'azure_subnet';
     } else if (provider === 'azure' && rawType === 'nat-gateway') {
       resourceType = 'azure_nat';
+    } else if (provider === 'azure' && rawType === 'route-table') {
+      resourceType = 'azure_route_table';
     }
 
     const rawId = (r as DiscoveredResource).providerResourceId || (r as CloudResource).arn || (r as CloudResource).resourceId || `res-${index}`;

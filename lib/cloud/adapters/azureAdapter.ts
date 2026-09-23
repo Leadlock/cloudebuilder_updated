@@ -11,6 +11,9 @@
  * - Function Apps (Web Apps filtered to kind=functionapp; runtime/version parsed
  *   from linuxFxVersion, plan type resolved from the backing App Service Plan)
  * - Key Vaults
+ * - NAT Gateways, Route Tables (schema's single route mapped from the first
+ *   custom route), Network Interfaces, Bastion Hosts, WAF Policies (App
+ *   Gateway-scoped ApplicationGatewayWebApplicationFirewallPolicies)
  *
  * Reconstructs full infrastructure topology:
  * - Resource Group contains VNets, Storage, SQL
@@ -298,6 +301,24 @@ export class AzureDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         this._discoverKeyVaults(credential),
       ]);
       allResources.push(...aksClusters, ...functionApps, ...keyVaults);
+
+      // 4c. NAT Gateways, Route Tables, NICs, Bastion Hosts, WAF Policies
+      options.onProgress?.({
+        stage: 'scanning_networking',
+        message: 'Scanning NAT Gateways, Route Tables, NICs, Bastion & WAF Policies...',
+        resourcesDiscovered: allResources.length,
+        relationshipsDiscovered: allRelationships.length,
+        unsupportedCount: 0,
+        percent: 90,
+      });
+      const [natGateways, routeTables, nics, bastionHosts, wafPolicies] = await Promise.all([
+        this._discoverNatGateways(credential),
+        this._discoverRouteTables(credential),
+        this._discoverNetworkInterfaces(credential),
+        this._discoverBastionHosts(credential),
+        this._discoverWafPolicies(credential),
+      ]);
+      allResources.push(...natGateways, ...routeTables, ...nics, ...bastionHosts, ...wafPolicies);
 
       // 5. Build Topology Relationships
       options.onProgress?.({
@@ -936,6 +957,228 @@ export class AzureDiscoveryAdapter implements InfrastructureDiscoveryProvider {
           status: props?.provisioningState ?? 'Succeeded',
           configuration: config,
           metadata: { resourceGroup: rg },
+          configurationHash: computeConfigHash(config),
+          discoveredAt: now(),
+        });
+      }
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverNatGateways(credential: ClientSecretCredential): Promise<CloudResource[]> {
+    const client = new NetworkManagementClient(credential, this._subscriptionId);
+    const results: CloudResource[] = [];
+    try {
+      for await (const nat of client.natGateways.listAll()) {
+        const id = safeString(nat.id);
+        const loc = extractRegion(nat.location);
+        const rg = extractResourceGroup(id);
+        const subnetId = nat.subnets?.[0]?.id ?? null;
+
+        const config = {
+          name: nat.name ?? 'unnamed-nat',
+          idleTimeoutMin: nat.idleTimeoutInMinutes ?? 4,
+          sku: nat.sku?.name ?? 'Standard',
+          availabilityZone: nat.zones?.[0] ?? '',
+          source: 'azure-arm',
+          imported: true,
+        };
+
+        results.push({
+          id,
+          provider: 'azure',
+          subscriptionId: this._subscriptionId,
+          region: loc,
+          resourceType: 'nat-gateway',
+          name: nat.name ?? 'unnamed-nat',
+          arn: id,
+          resourceId: id,
+          tags: nat.tags ?? {},
+          status: nat.provisioningState ?? 'Succeeded',
+          configuration: config,
+          parentResourceId: subnetId ?? undefined,
+          metadata: { resourceGroup: rg },
+          configurationHash: computeConfigHash(config),
+          discoveredAt: now(),
+        });
+      }
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverRouteTables(credential: ClientSecretCredential): Promise<CloudResource[]> {
+    const client = new NetworkManagementClient(credential, this._subscriptionId);
+    const results: CloudResource[] = [];
+    try {
+      for await (const rt of client.routeTables.listAll()) {
+        const id = safeString(rt.id);
+        const loc = extractRegion(rt.location);
+        const rg = extractResourceGroup(id);
+        // The schema models a single route; pick the first non-system route.
+        const route = (rt.routes ?? [])[0];
+
+        const config = {
+          name: rt.name ?? 'unnamed-route-table',
+          disableBgpRoutePropagation: rt.disableBgpRoutePropagation ?? false,
+          destinationCidr: route?.addressPrefix ?? '0.0.0.0/0',
+          nextHopType: route?.nextHopType ?? 'Internet',
+          nextHopIpAddress: route?.nextHopIpAddress ?? '',
+          source: 'azure-arm',
+          imported: true,
+        };
+
+        results.push({
+          id,
+          provider: 'azure',
+          subscriptionId: this._subscriptionId,
+          region: loc,
+          resourceType: 'route-table',
+          name: rt.name ?? 'unnamed-route-table',
+          arn: id,
+          resourceId: id,
+          tags: rt.tags ?? {},
+          status: rt.provisioningState ?? 'Succeeded',
+          configuration: config,
+          metadata: { resourceGroup: rg },
+          configurationHash: computeConfigHash(config),
+          discoveredAt: now(),
+        });
+      }
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverNetworkInterfaces(credential: ClientSecretCredential): Promise<CloudResource[]> {
+    const client = new NetworkManagementClient(credential, this._subscriptionId);
+    const results: CloudResource[] = [];
+    try {
+      for await (const nic of client.networkInterfaces.listAll()) {
+        const id = safeString(nic.id);
+        const loc = extractRegion(nic.location);
+        const rg = extractResourceGroup(id);
+        const ipConfig = nic.ipConfigurations?.[0];
+        const subnetId = ipConfig?.subnet?.id ?? null;
+
+        const config = {
+          name: nic.name ?? 'unnamed-nic',
+          privateIpAllocationMethod: ipConfig?.privateIPAllocationMethod ?? 'Dynamic',
+          enableAcceleratedNetworking: nic.enableAcceleratedNetworking ?? false,
+          enableIpForwarding: nic.enableIPForwarding ?? false,
+          subnetId,
+          networkSecurityGroupId: nic.networkSecurityGroup?.id ?? null,
+          source: 'azure-arm',
+          imported: true,
+        };
+
+        results.push({
+          id,
+          provider: 'azure',
+          subscriptionId: this._subscriptionId,
+          region: loc,
+          resourceType: 'network-interface',
+          name: nic.name ?? 'unnamed-nic',
+          arn: id,
+          resourceId: id,
+          tags: nic.tags ?? {},
+          status: nic.provisioningState ?? 'Succeeded',
+          configuration: config,
+          parentResourceId: subnetId ?? undefined,
+          metadata: { resourceGroup: rg, attachedVirtualMachineId: nic.virtualMachine?.id ?? null },
+          configurationHash: computeConfigHash(config),
+          discoveredAt: now(),
+        });
+      }
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverBastionHosts(credential: ClientSecretCredential): Promise<CloudResource[]> {
+    const client = new NetworkManagementClient(credential, this._subscriptionId);
+    const results: CloudResource[] = [];
+    try {
+      for await (const bastion of client.bastionHosts.list()) {
+        const id = safeString(bastion.id);
+        const loc = extractRegion(bastion.location);
+        const rg = extractResourceGroup(id);
+
+        const config = {
+          name: bastion.name ?? 'unnamed-bastion',
+          sku: bastion.sku?.name ?? 'Standard',
+          scaleUnits: bastion.scaleUnits ?? 2,
+          copyPasteEnabled: !(bastion.disableCopyPaste ?? false),
+          fileCopyEnabled: bastion.enableFileCopy ?? false,
+          ipConnectEnabled: bastion.enableIpConnect ?? false,
+          shareableLinkEnabled: bastion.enableShareableLink ?? false,
+          tunnelingEnabled: bastion.enableTunneling ?? false,
+          source: 'azure-arm',
+          imported: true,
+        };
+
+        results.push({
+          id,
+          provider: 'azure',
+          subscriptionId: this._subscriptionId,
+          region: loc,
+          resourceType: 'bastion-host',
+          name: bastion.name ?? 'unnamed-bastion',
+          arn: id,
+          resourceId: id,
+          tags: bastion.tags ?? {},
+          status: bastion.provisioningState ?? 'Succeeded',
+          configuration: config,
+          metadata: { resourceGroup: rg, dnsName: bastion.dnsName ?? null },
+          configurationHash: computeConfigHash(config),
+          discoveredAt: now(),
+        });
+      }
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverWafPolicies(credential: ClientSecretCredential): Promise<CloudResource[]> {
+    const client = new NetworkManagementClient(credential, this._subscriptionId);
+    const results: CloudResource[] = [];
+    try {
+      for await (const policy of client.webApplicationFirewallPolicies.listAll()) {
+        const id = safeString(policy.id);
+        const loc = extractRegion(policy.location);
+        const rg = extractResourceGroup(id);
+        const ruleSet = policy.managedRules?.managedRuleSets?.[0];
+
+        const config = {
+          name: policy.name ?? 'unnamed-waf-policy',
+          mode: policy.policySettings?.mode ?? 'Prevention',
+          managedRuleSetVersion: ruleSet?.ruleSetVersion ?? '3.2',
+          requestBodyCheck: policy.policySettings?.requestBodyCheck ?? true,
+          fileUploadLimitMb: policy.policySettings?.fileUploadLimitInMb ?? 100,
+          maxRequestBodySizeKb: policy.policySettings?.maxRequestBodySizeInKb ?? 128,
+          source: 'azure-arm',
+          imported: true,
+        };
+
+        results.push({
+          id,
+          provider: 'azure',
+          subscriptionId: this._subscriptionId,
+          region: loc,
+          resourceType: 'waf-policy',
+          name: policy.name ?? 'unnamed-waf-policy',
+          arn: id,
+          resourceId: id,
+          tags: policy.tags ?? {},
+          status: policy.provisioningState ?? 'Succeeded',
+          configuration: config,
+          metadata: { resourceGroup: rg, resourceState: policy.resourceState ?? null },
           configurationHash: computeConfigHash(config),
           discoveredAt: now(),
         });

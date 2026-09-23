@@ -638,10 +638,54 @@ jest.mock('@azure/arm-resources', () => ({
   })),
 }));
 
+const mockNatGatewayList = [
+  {
+    id: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Network/natGateways/my-nat',
+    name: 'my-nat', location: 'eastus', provisioningState: 'Succeeded', tags: {},
+    idleTimeoutInMinutes: 10, sku: { name: 'Standard' }, zones: ['1'],
+    subnets: [{ id: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Network/virtualNetworks/my-vnet/subnets/default' }],
+  },
+];
+const mockRouteTableList = [
+  {
+    id: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Network/routeTables/my-rt',
+    name: 'my-rt', location: 'eastus', provisioningState: 'Succeeded', tags: {}, disableBgpRoutePropagation: true,
+    routes: [{ addressPrefix: '10.1.0.0/16', nextHopType: 'VirtualAppliance', nextHopIpAddress: '10.0.0.4' }],
+  },
+];
+const mockNicList = [
+  {
+    id: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Network/networkInterfaces/my-nic',
+    name: 'my-nic', location: 'eastus', provisioningState: 'Succeeded', tags: {},
+    enableAcceleratedNetworking: true, enableIPForwarding: false,
+    ipConfigurations: [{ privateIPAllocationMethod: 'Static', subnet: { id: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Network/virtualNetworks/my-vnet/subnets/default' } }],
+  },
+];
+const mockBastionList = [
+  {
+    id: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Network/bastionHosts/my-bastion',
+    name: 'my-bastion', location: 'eastus', provisioningState: 'Succeeded', tags: {},
+    sku: { name: 'Standard' }, scaleUnits: 4, disableCopyPaste: false, enableFileCopy: true, enableIpConnect: true,
+  },
+];
+const mockWafPolicyList = [
+  {
+    id: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/my-waf',
+    name: 'my-waf', location: 'eastus', provisioningState: 'Succeeded', tags: {},
+    policySettings: { mode: 'Prevention', requestBodyCheck: true, maxRequestBodySizeInKb: 256, fileUploadLimitInMb: 200 },
+    managedRules: { managedRuleSets: [{ ruleSetType: 'OWASP', ruleSetVersion: '3.2' }] },
+  },
+];
+
 jest.mock('@azure/arm-network', () => ({
   NetworkManagementClient: jest.fn().mockImplementation(() => ({
     virtualNetworks: { listAll: () => makeAsyncIterator(mockVnetList) },
     loadBalancers: { listAll: () => makeAsyncIterator([]) },
+    natGateways: { listAll: () => makeAsyncIterator(mockNatGatewayList) },
+    routeTables: { listAll: () => makeAsyncIterator(mockRouteTableList) },
+    networkInterfaces: { listAll: () => makeAsyncIterator(mockNicList) },
+    bastionHosts: { list: () => makeAsyncIterator(mockBastionList) },
+    webApplicationFirewallPolicies: { listAll: () => makeAsyncIterator(mockWafPolicyList) },
   })),
 }));
 
@@ -1094,6 +1138,62 @@ describe('Azure Adapter', () => {
     expect(vaults[0].configuration.softDeleteRetentionDays).toBe(30);
     expect(vaults[0].configuration.publicNetworkAccessEnabled).toBe(false);
     expect(vaults[0].configuration.networkAclsDefaultAction).toBe('Deny');
+    await adapter.dispose();
+  });
+
+  it('discovers NAT Gateways', async () => {
+    const adapter = new AzureDiscoveryAdapter(azureCreds);
+    const result = await adapter.discoverAll();
+    const nats = result.resources.filter((r) => r.resourceType === 'nat-gateway');
+    expect(nats.length).toBeGreaterThan(0);
+    expect(nats[0].name).toBe('my-nat');
+    expect(nats[0].configuration.idleTimeoutMin).toBe(10);
+    await adapter.dispose();
+  });
+
+  it('discovers Route Tables, mapping the first custom route', async () => {
+    const adapter = new AzureDiscoveryAdapter(azureCreds);
+    const result = await adapter.discoverAll();
+    const routeTables = result.resources.filter((r) => r.resourceType === 'route-table');
+    expect(routeTables.length).toBeGreaterThan(0);
+    expect(routeTables[0].name).toBe('my-rt');
+    expect(routeTables[0].configuration.destinationCidr).toBe('10.1.0.0/16');
+    expect(routeTables[0].configuration.nextHopType).toBe('VirtualAppliance');
+    expect(routeTables[0].configuration.disableBgpRoutePropagation).toBe(true);
+    await adapter.dispose();
+  });
+
+  it('discovers Network Interfaces', async () => {
+    const adapter = new AzureDiscoveryAdapter(azureCreds);
+    const result = await adapter.discoverAll();
+    const nics = result.resources.filter((r) => r.resourceType === 'network-interface');
+    expect(nics.length).toBeGreaterThan(0);
+    expect(nics[0].name).toBe('my-nic');
+    expect(nics[0].configuration.enableAcceleratedNetworking).toBe(true);
+    expect(nics[0].configuration.privateIpAllocationMethod).toBe('Static');
+    await adapter.dispose();
+  });
+
+  it('discovers Bastion Hosts', async () => {
+    const adapter = new AzureDiscoveryAdapter(azureCreds);
+    const result = await adapter.discoverAll();
+    const hosts = result.resources.filter((r) => r.resourceType === 'bastion-host');
+    expect(hosts.length).toBeGreaterThan(0);
+    expect(hosts[0].name).toBe('my-bastion');
+    expect(hosts[0].configuration.scaleUnits).toBe(4);
+    expect(hosts[0].configuration.fileCopyEnabled).toBe(true);
+    await adapter.dispose();
+  });
+
+  it('discovers WAF policies with managed rule set version resolved', async () => {
+    const adapter = new AzureDiscoveryAdapter(azureCreds);
+    const result = await adapter.discoverAll();
+    const policies = result.resources.filter((r) => r.resourceType === 'waf-policy');
+    expect(policies.length).toBeGreaterThan(0);
+    expect(policies[0].name).toBe('my-waf');
+    expect(policies[0].configuration.mode).toBe('Prevention');
+    expect(policies[0].configuration.managedRuleSetVersion).toBe('3.2');
+    expect(policies[0].configuration.maxRequestBodySizeKb).toBe(256);
     await adapter.dispose();
   });
 });
