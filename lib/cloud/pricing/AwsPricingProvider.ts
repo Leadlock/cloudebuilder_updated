@@ -3,8 +3,7 @@
  *
  * Integrates with AWS's official Price List Query API
  * (https://docs.aws.amazon.com/awspricelist/latest/) via @aws-sdk/client-pricing
- * for EC2, RDS, S3, EBS and ALB — the resource types whose static tables below
- * had the most per-SKU/config variance and the most drift risk.
+ * for EC2, RDS, S3, EBS, ALB, NAT Gateway, and EKS.
  *
  * Unlike Azure's Retail Prices API, AWS's Price List Query API requires a
  * signed AWS request. This isn't tied to any user's connected cloud account
@@ -19,11 +18,6 @@
  * didn't get from AWS.
  *
  * NOT live (deliberately, not an oversight — see each method for why):
- * - NAT Gateway / EKS: the exact `group` meter attribute AWS uses to
- *   disambiguate the hourly-vs-per-GB (NAT) or per-cluster (EKS) price
- *   dimensions isn't stable/documented enough to filter on with confidence;
- *   a wrong match would silently return the wrong meter's price, which is
- *   worse than an honest static estimate.
  * - Lambda / CloudFront / DynamoDB: these are usage-tiered (free tier +
  *   per-request/per-GB/per-RU bands), not a single on-demand SKU rate — a
  *   single GetProducts lookup can't represent that. The usage-aware scaling
@@ -202,16 +196,17 @@ interface AwsPriceListItem {
 }
 
 /**
- * Runs a GetProducts query and returns the first On-Demand USD price found.
- * Returns null on any failure (no client configured, network error, timeout,
- * no matching product) — callers must fall back to the static tables.
+ * Runs a GetProducts query and returns every On-Demand (price, unit) pair
+ * found across all matching products/dimensions. Returns [] on any failure
+ * (no client configured, network error, timeout, no matching product) —
+ * callers must fall back to the static tables.
  */
-async function queryOnDemandPrice(
+async function queryOnDemandPrices(
   serviceCode: string,
   filters: Array<{ field: string; value: string }>,
-): Promise<{ price: number; unit: string } | null> {
+): Promise<Array<{ price: number; unit: string }>> {
   const client = getPricingClient();
-  if (!client) return null;
+  if (!client) return [];
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -219,33 +214,44 @@ async function queryOnDemandPrice(
     const cmd = new GetProductsCommand({
       ServiceCode: serviceCode,
       Filters: filters.map((f) => ({ Type: 'TERM_MATCH', Field: f.field, Value: f.value })),
-      MaxResults: 5,
+      MaxResults: 10,
     });
     const res = await client.send(cmd, { abortSignal: controller.signal });
     clearTimeout(timeoutId);
 
+    const results: Array<{ price: number; unit: string }> = [];
     for (const raw of res.PriceList ?? []) {
       const item: AwsPriceListItem = typeof raw === 'string' ? JSON.parse(raw) : (raw as unknown as AwsPriceListItem);
       const onDemand = item.terms?.OnDemand;
       if (!onDemand) continue;
-      const termKey = Object.keys(onDemand)[0];
-      if (!termKey) continue;
-      const dims = onDemand[termKey]!.priceDimensions;
-      const dimKey = Object.keys(dims)[0];
-      if (!dimKey) continue;
-      const dim = dims[dimKey]!;
-      const usd = dim.pricePerUnit?.USD;
-      if (!usd) continue;
-      const price = parseFloat(usd);
-      if (!Number.isFinite(price) || price < 0) continue;
-      return { price, unit: dim.unit };
+      for (const term of Object.values(onDemand)) {
+        for (const dim of Object.values(term.priceDimensions)) {
+          const usd = dim.pricePerUnit?.USD;
+          if (!usd) continue;
+          const price = parseFloat(usd);
+          if (!Number.isFinite(price) || price < 0) continue;
+          results.push({ price, unit: dim.unit });
+        }
+      }
     }
-    return null;
+    return results;
   } catch (err) {
     clearTimeout(timeoutId);
     console.warn(`[AwsPricingProvider] Live pricing lookup failed for ${serviceCode}:`, err instanceof Error ? err.message : err);
-    return null;
+    return [];
   }
+}
+
+/**
+ * Runs a GetProducts query and returns the first On-Demand USD price found.
+ * Returns null on any failure — callers must fall back to the static tables.
+ */
+async function queryOnDemandPrice(
+  serviceCode: string,
+  filters: Array<{ field: string; value: string }>,
+): Promise<{ price: number; unit: string } | null> {
+  const results = await queryOnDemandPrices(serviceCode, filters);
+  return results[0] ?? null;
 }
 
 export class AwsPricingProvider implements ICloudPricingProvider {
@@ -482,12 +488,26 @@ export class AwsPricingProvider implements ICloudPricingProvider {
     };
   }
 
-  private _getNatPrice(_config: Record<string, unknown>, region: string, factor: number): NormalizedPrice {
-    // Not live — see file header. Static reference rate only.
-    const hourly = 0.045 * factor;
+  private async _getNatPrice(_config: Record<string, unknown>, region: string, factor: number): Promise<NormalizedPrice> {
+    // NAT Gateway has two On-Demand meters under the same productFamily
+    // ("NAT Gateway"): an hourly charge and a per-GB data processing charge.
+    // Rather than guessing AWS's internal `group` attribute value for each,
+    // disambiguate by `unit` — "Hrs" vs "GB" — which is a stable, documented
+    // part of the API response regardless of exact meter naming.
+    const results = await queryOnDemandPrices('AmazonVPC', [
+      { field: 'location', value: getRegionLocation(region) },
+      { field: 'productFamily', value: 'NAT Gateway' },
+    ]);
+    const liveHourly = results.find((r) => r.unit === 'Hrs');
+    const liveData = results.find((r) => r.unit.includes('GB'));
+    const live = Boolean(liveHourly);
+
+    const hourly = liveHourly ? liveHourly.price : 0.045 * factor;
+    const source = live ? 'aws-price-list-api' : 'aws-static-rate-table';
     const fixedMonthly = hourly * 730;
-    // Assume 100GB/mo data processing ($0.045/GB)
-    const dataMonthly = 100 * 0.045 * factor;
+    const dataRate = liveData ? liveData.price : 0.045 * factor;
+    // Assume 100GB/mo data processing
+    const dataMonthly = 100 * dataRate;
     const monthlyPrice = fixedMonthly + dataMonthly;
 
     return {
@@ -502,12 +522,14 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: 'AWS NAT Gateway (hourly + data processing)',
-      source: 'aws-static-rate-table',
+      source,
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
-        `Fixed hourly rate: $${hourly.toFixed(4)}/hr ($${fixedMonthly.toFixed(2)}/mo)`,
-        `Estimated 100GB/mo data processing charge: $${dataMonthly.toFixed(2)}/mo`,
+        live
+          ? `Live hourly rate from AWS Price List API: $${hourly.toFixed(4)}/hr ($${fixedMonthly.toFixed(2)}/mo)`
+          : `Fixed hourly rate: $${hourly.toFixed(4)}/hr ($${fixedMonthly.toFixed(2)}/mo)`,
+        `Estimated 100GB/mo data processing charge at $${dataRate.toFixed(4)}/GB: $${dataMonthly.toFixed(2)}/mo`,
         `Region: ${region}`,
       ],
     };
@@ -632,9 +654,19 @@ export class AwsPricingProvider implements ICloudPricingProvider {
     };
   }
 
-  private _getEksPrice(_config: Record<string, unknown>, region: string, _factor: number): NormalizedPrice {
-    // Not live — see file header. Static reference rate only.
-    const hourly = 0.10;
+  private async _getEksPrice(_config: Record<string, unknown>, region: string, _factor: number): Promise<NormalizedPrice> {
+    // EKS control plane pricing's productFamily is "Kubernetes" — a single
+    // hourly meter, disambiguated the same way as NAT Gateway (by `unit`,
+    // not by guessing AWS's internal group attribute).
+    const results = await queryOnDemandPrices('AmazonEKS', [
+      { field: 'location', value: getRegionLocation(region) },
+      { field: 'productFamily', value: 'Kubernetes' },
+    ]);
+    const liveHourly = results.find((r) => r.unit === 'Hrs');
+    const live = Boolean(liveHourly);
+    const hourly = liveHourly ? liveHourly.price : 0.10;
+    const source = live ? 'aws-price-list-api' : 'aws-static-rate-table';
+
     return {
       provider: 'aws',
       service: 'AmazonEKS',
@@ -647,11 +679,13 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       monthlyPrice: hourly * 730,
       currency: 'USD',
       description: 'Amazon EKS Control Plane Cluster Management',
-      source: 'aws-static-rate-table',
+      source,
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
-        'EKS Cluster control plane fee: $0.10/hr ($73.00/month)',
+        live
+          ? `Live control plane fee from AWS Price List API: $${hourly.toFixed(4)}/hr ($${(hourly * 730).toFixed(2)}/month)`
+          : `EKS Cluster control plane fee: $${hourly.toFixed(2)}/hr ($${(hourly * 730).toFixed(2)}/month)`,
         'Worker nodes (EC2 or Fargate) billed separately',
         `Region: ${region}`,
       ],

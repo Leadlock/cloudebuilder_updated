@@ -202,18 +202,70 @@ describe('AwsPricingProvider — live AWS Price List Query API', () => {
     expect(price!.source).toBe('aws-static-rate-table');
   });
 
-  test('resource types with no live wiring (Lambda, CloudFront, DynamoDB, NAT, EKS) always report the static source', async () => {
+  test('resource types with no live wiring (Lambda, CloudFront, DynamoDB) always report the static source', async () => {
     process.env['AWS_PRICING_ACCESS_KEY_ID'] = 'AKIATEST';
     process.env['AWS_PRICING_SECRET_ACCESS_KEY'] = 'secrettest';
     mockSend.mockResolvedValue({ PriceList: [priceListItem('9.9900000000')] });
 
     const { AwsPricingProvider } = await import('@/lib/cloud/pricing/AwsPricingProvider');
     const provider = new AwsPricingProvider();
-    for (const resourceType of ['aws_lambda', 'aws_cloudfront', 'aws_dynamodb', 'aws_nat', 'aws_eks']) {
+    for (const resourceType of ['aws_lambda', 'aws_cloudfront', 'aws_dynamodb']) {
       const price = await provider.getPrice({ provider: 'aws', resourceType, region: 'us-east-1', configuration: {} });
       expect(price).not.toBeNull();
       expect(price!.source).toBe('aws-static-rate-table');
     }
     expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  test('NAT Gateway: disambiguates the hourly vs per-GB meter by unit, not by guessing the group attribute', async () => {
+    process.env['AWS_PRICING_ACCESS_KEY_ID'] = 'AKIATEST';
+    process.env['AWS_PRICING_SECRET_ACCESS_KEY'] = 'secrettest';
+    mockSend.mockResolvedValue({
+      PriceList: [
+        priceListItem('0.0450000000', 'Hrs'),
+        priceListItem('0.0450000000', 'GB'),
+      ],
+    });
+
+    const { AwsPricingProvider } = await import('@/lib/cloud/pricing/AwsPricingProvider');
+    const provider = new AwsPricingProvider();
+    const price = await provider.getPrice({ provider: 'aws', resourceType: 'aws_nat', region: 'us-east-1', configuration: {} });
+    expect(price).not.toBeNull();
+    expect(price!.source).toBe('aws-price-list-api');
+    expect(price!.unitPrice).toBeCloseTo(0.045, 4);
+  });
+
+  test('NAT Gateway falls back to static when no Hrs-unit meter is found among the results', async () => {
+    process.env['AWS_PRICING_ACCESS_KEY_ID'] = 'AKIATEST';
+    process.env['AWS_PRICING_SECRET_ACCESS_KEY'] = 'secrettest';
+    mockSend.mockResolvedValue({ PriceList: [priceListItem('0.0450000000', 'GB')] });
+
+    const { AwsPricingProvider } = await import('@/lib/cloud/pricing/AwsPricingProvider');
+    const provider = new AwsPricingProvider();
+    const price = await provider.getPrice({ provider: 'aws', resourceType: 'aws_nat', region: 'us-east-1', configuration: {} });
+    expect(price).not.toBeNull();
+    expect(price!.source).toBe('aws-static-rate-table');
+  });
+
+  test('EKS: uses the live control plane hourly rate when available', async () => {
+    process.env['AWS_PRICING_ACCESS_KEY_ID'] = 'AKIATEST';
+    process.env['AWS_PRICING_SECRET_ACCESS_KEY'] = 'secrettest';
+    mockSend.mockResolvedValue({ PriceList: [priceListItem('0.1000000000', 'Hrs')] });
+
+    const { GetProductsCommand } = await import('@aws-sdk/client-pricing');
+    const { AwsPricingProvider } = await import('@/lib/cloud/pricing/AwsPricingProvider');
+    const provider = new AwsPricingProvider();
+    const price = await provider.getPrice({ provider: 'aws', resourceType: 'aws_eks', region: 'us-east-1', configuration: {} });
+    expect(price).not.toBeNull();
+    expect(price!.source).toBe('aws-price-list-api');
+    expect(price!.unitPrice).toBeCloseTo(0.10, 4);
+
+    const call = (GetProductsCommand as unknown as jest.Mock).mock.calls[0]![0] as {
+      ServiceCode: string;
+      Filters: Array<{ Field: string; Value: string }>;
+    };
+    expect(call.ServiceCode).toBe('AmazonEKS');
+    const byField = Object.fromEntries(call.Filters.map((f) => [f.Field, f.Value]));
+    expect(byField['productFamily']).toBe('Kubernetes');
   });
 });
