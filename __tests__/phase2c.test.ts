@@ -460,6 +460,63 @@ jest.mock('@azure/arm-sql', () => ({
   })),
 }));
 
+const mockAksClusterList = [
+  {
+    id: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.ContainerService/managedClusters/prod-aks',
+    name: 'prod-aks', location: 'eastus', provisioningState: 'Succeeded', dnsPrefix: 'prod-aks-dns', kubernetesVersion: '1.31',
+    agentPoolProfiles: [{ vmSize: 'Standard_D4s_v3', count: 5, enableAutoScaling: true, minCount: 3, maxCount: 8 }],
+    sku: { tier: 'Standard' }, apiServerAccessProfile: { enablePrivateCluster: true },
+    networkProfile: { networkPlugin: 'azure' }, enableRbac: true, tags: { Env: 'prod' },
+  },
+];
+
+jest.mock('@azure/arm-containerservice', () => ({
+  ContainerServiceClient: jest.fn().mockImplementation(() => ({
+    managedClusters: { list: () => makeAsyncIterator(mockAksClusterList) },
+  })),
+}));
+
+const mockFunctionAppList = [
+  {
+    id: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Web/sites/my-func',
+    name: 'my-func', location: 'eastus', kind: 'functionapp,linux', state: 'Running', reserved: true,
+    httpsOnly: true, publicNetworkAccess: 'Enabled', tags: {},
+    serverFarmId: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Web/serverfarms/my-plan',
+  },
+];
+
+jest.mock('@azure/arm-appservice', () => ({
+  WebSiteManagementClient: jest.fn().mockImplementation(() => ({
+    webApps: {
+      list: () => makeAsyncIterator(mockFunctionAppList),
+      get: jest.fn().mockResolvedValue({
+        siteConfig: { linuxFxVersion: 'NODE|20-lts', minTlsVersion: '1.2', alwaysOn: true },
+      }),
+    },
+    appServicePlans: {
+      get: jest.fn().mockResolvedValue({ sku: { name: 'EP1' } }),
+    },
+  })),
+}));
+
+const mockKeyVaultList = [
+  {
+    id: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.KeyVault/vaults/my-vault',
+    name: 'my-vault', location: 'eastus', tags: {},
+    properties: {
+      sku: { name: 'premium' }, enableRbacAuthorization: true, enablePurgeProtection: true,
+      softDeleteRetentionInDays: 30, publicNetworkAccess: 'Disabled', networkAcls: { defaultAction: 'Deny' },
+      enabledForDiskEncryption: true, provisioningState: 'Succeeded',
+    },
+  },
+];
+
+jest.mock('@azure/arm-keyvault', () => ({
+  KeyVaultManagementClient: jest.fn().mockImplementation(() => ({
+    vaults: { listBySubscription: () => makeAsyncIterator(mockKeyVaultList) },
+  })),
+}));
+
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
 import { AwsDiscoveryAdapter } from '@/lib/cloud/adapters/awsAdapter';
@@ -684,6 +741,47 @@ describe('Azure Adapter', () => {
     const json = JSON.stringify(result);
     expect(json).not.toContain('supersecret');
     expect(json).not.toContain('clientSecret');
+    await adapter.dispose();
+  });
+
+  it('discovers AKS clusters with node pool size/count/autoscale config', async () => {
+    const adapter = new AzureDiscoveryAdapter(azureCreds);
+    const result = await adapter.discoverAll();
+    const clusters = result.resources.filter((r) => r.resourceType === 'aks');
+    expect(clusters.length).toBeGreaterThan(0);
+    expect(clusters[0].name).toBe('prod-aks');
+    expect(clusters[0].configuration.nodeVmSize).toBe('Standard_D4s_v3');
+    expect(clusters[0].configuration.nodeCount).toBe(5);
+    expect(clusters[0].configuration.enableAutoScaling).toBe(true);
+    expect(clusters[0].configuration.privateClusterEnabled).toBe(true);
+    await adapter.dispose();
+  });
+
+  it('discovers Function Apps, resolving runtime from linuxFxVersion and plan type from the App Service Plan', async () => {
+    const adapter = new AzureDiscoveryAdapter(azureCreds);
+    const result = await adapter.discoverAll();
+    const funcs = result.resources.filter((r) => r.resourceType === 'functions');
+    expect(funcs.length).toBeGreaterThan(0);
+    expect(funcs[0].name).toBe('my-func');
+    expect(funcs[0].configuration.runtime).toBe('node');
+    expect(funcs[0].configuration.runtimeVersion).toBe('20-lts');
+    expect(funcs[0].configuration.osType).toBe('Linux');
+    expect(funcs[0].configuration.planType).toBe('EP1');
+    expect(funcs[0].configuration.alwaysOn).toBe(true);
+    await adapter.dispose();
+  });
+
+  it('discovers Key Vaults with security-relevant properties intact', async () => {
+    const adapter = new AzureDiscoveryAdapter(azureCreds);
+    const result = await adapter.discoverAll();
+    const vaults = result.resources.filter((r) => r.resourceType === 'key-vault');
+    expect(vaults.length).toBeGreaterThan(0);
+    expect(vaults[0].name).toBe('my-vault');
+    expect(vaults[0].configuration.sku).toBe('premium');
+    expect(vaults[0].configuration.enableRbacAuthorization).toBe(true);
+    expect(vaults[0].configuration.softDeleteRetentionDays).toBe(30);
+    expect(vaults[0].configuration.publicNetworkAccessEnabled).toBe(false);
+    expect(vaults[0].configuration.networkAclsDefaultAction).toBe('Deny');
     await adapter.dispose();
   });
 });

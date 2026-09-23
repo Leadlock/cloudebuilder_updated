@@ -7,6 +7,10 @@
  * - Virtual Machines
  * - Storage Accounts
  * - SQL Servers & Databases
+ * - AKS Clusters (with the first node pool's size/count/autoscale config)
+ * - Function Apps (Web Apps filtered to kind=functionapp; runtime/version parsed
+ *   from linuxFxVersion, plan type resolved from the backing App Service Plan)
+ * - Key Vaults
  *
  * Reconstructs full infrastructure topology:
  * - Resource Group contains VNets, Storage, SQL
@@ -26,6 +30,9 @@ import { ComputeManagementClient } from '@azure/arm-compute';
 import { StorageManagementClient } from '@azure/arm-storage';
 import { SqlManagementClient } from '@azure/arm-sql';
 import { ResourceManagementClient } from '@azure/arm-resources';
+import { ContainerServiceClient } from '@azure/arm-containerservice';
+import { WebSiteManagementClient } from '@azure/arm-appservice';
+import { KeyVaultManagementClient } from '@azure/arm-keyvault';
 import type {
   AzureSpCredentials,
   DiscoveredResource,
@@ -56,6 +63,10 @@ export const REQUIRED_AZURE_PERMISSIONS = [
   'Microsoft.Sql/servers/read',
   'Microsoft.Sql/servers/databases/read',
   'Microsoft.Resources/subscriptions/resourceGroups/read',
+  'Microsoft.ContainerService/managedClusters/read',
+  'Microsoft.Web/sites/read',
+  'Microsoft.Web/serverfarms/read',
+  'Microsoft.KeyVault/vaults/read',
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -271,6 +282,22 @@ export class AzureDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         this._discoverSqlResources(credential),
       ]);
       allResources.push(...storage, ...sql);
+
+      // 4b. AKS, Functions, Key Vault
+      options.onProgress?.({
+        stage: 'scanning_compute',
+        message: 'Scanning AKS clusters, Function Apps & Key Vaults...',
+        resourcesDiscovered: allResources.length,
+        relationshipsDiscovered: allRelationships.length,
+        unsupportedCount: 0,
+        percent: 88,
+      });
+      const [aksClusters, functionApps, keyVaults] = await Promise.all([
+        this._discoverAksClusters(credential),
+        this._discoverFunctionApps(credential),
+        this._discoverKeyVaults(credential),
+      ]);
+      allResources.push(...aksClusters, ...functionApps, ...keyVaults);
 
       // 5. Build Topology Relationships
       options.onProgress?.({
@@ -743,6 +770,179 @@ export class AzureDiscoveryAdapter implements InfrastructureDiscoveryProvider {
       }
     }
 
+    return results;
+  }
+
+  private async _discoverAksClusters(credential: ClientSecretCredential): Promise<CloudResource[]> {
+    const client = new ContainerServiceClient(credential, this._subscriptionId);
+    const results: CloudResource[] = [];
+    try {
+      for await (const cluster of client.managedClusters.list()) {
+        const id = safeString(cluster.id);
+        const loc = extractRegion(cluster.location);
+        const rg = extractResourceGroup(id);
+        const pool = cluster.agentPoolProfiles?.[0];
+
+        const config = {
+          name: cluster.name ?? 'unnamed-aks',
+          dnsPrefix: cluster.dnsPrefix ?? '',
+          kubernetesVersion: cluster.kubernetesVersion ?? '',
+          nodeVmSize: pool?.vmSize ?? 'Standard_D2s_v3',
+          nodeCount: pool?.count ?? 3,
+          enableAutoScaling: pool?.enableAutoScaling ?? false,
+          minNodeCount: pool?.minCount ?? 1,
+          maxNodeCount: pool?.maxCount ?? 5,
+          skuTier: cluster.sku?.tier ?? 'Free',
+          privateClusterEnabled: cluster.apiServerAccessProfile?.enablePrivateCluster ?? false,
+          networkPlugin: cluster.networkProfile?.networkPlugin ?? 'azure',
+          rbacEnabled: cluster.enableRbac ?? true,
+          source: 'azure-arm',
+          imported: true,
+        };
+
+        results.push({
+          id,
+          provider: 'azure',
+          subscriptionId: this._subscriptionId,
+          region: loc,
+          resourceType: 'aks',
+          name: cluster.name ?? 'unnamed-aks',
+          arn: id,
+          resourceId: id,
+          tags: cluster.tags ?? {},
+          status: cluster.provisioningState ?? 'Succeeded',
+          configuration: config,
+          metadata: { resourceGroup: rg },
+          configurationHash: computeConfigHash(config),
+          discoveredAt: now(),
+        });
+      }
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverFunctionApps(credential: ClientSecretCredential): Promise<CloudResource[]> {
+    const client = new WebSiteManagementClient(credential, this._subscriptionId);
+    const results: CloudResource[] = [];
+    try {
+      for await (const site of client.webApps.list()) {
+        // webApps.list() returns every Web App kind; only keep Function Apps.
+        if (!site.kind?.toLowerCase().includes('functionapp')) continue;
+        const id = safeString(site.id);
+        const loc = extractRegion(site.location);
+        const rg = extractResourceGroup(id);
+        const name = site.name ?? 'unnamed-func';
+
+        let siteConfig: Awaited<ReturnType<typeof client.webApps.get>>['siteConfig'] | undefined;
+        try {
+          const full = await retryWithBackoff(() => client.webApps.get(rg, name));
+          siteConfig = full.siteConfig;
+        } catch {
+          // Best effort — fall back to defaults below
+        }
+
+        let planType = 'Y1';
+        const serverFarmId = site.serverFarmId;
+        if (serverFarmId) {
+          const planMatch = serverFarmId.match(/\/serverfarms\/([^/]+)/i);
+          if (planMatch?.[1]) {
+            try {
+              const plan = await retryWithBackoff(() => client.appServicePlans.get(rg, planMatch[1]!));
+              planType = plan.sku?.name ?? planType;
+            } catch {
+              // Best effort
+            }
+          }
+        }
+
+        const isLinux = site.reserved === true;
+        const linuxFxVersion = siteConfig?.linuxFxVersion ?? '';
+        const [runtimeRaw, runtimeVersion] = linuxFxVersion ? linuxFxVersion.split('|') : ['NODE', '20'];
+        const runtime = (runtimeRaw ?? 'NODE').toLowerCase();
+
+        const config = {
+          name,
+          runtime,
+          runtimeVersion: runtimeVersion ?? '20',
+          osType: isLinux ? 'Linux' : 'Windows',
+          planType,
+          httpsOnly: site.httpsOnly ?? true,
+          alwaysOn: siteConfig?.alwaysOn ?? false,
+          minimumTlsVersion: siteConfig?.minTlsVersion ?? '1.2',
+          publicNetworkAccess: site.publicNetworkAccess !== 'Disabled',
+          appSettings: {},
+          source: 'azure-arm',
+          imported: true,
+        };
+
+        results.push({
+          id,
+          provider: 'azure',
+          subscriptionId: this._subscriptionId,
+          region: loc,
+          resourceType: 'functions',
+          name,
+          arn: id,
+          resourceId: id,
+          tags: site.tags ?? {},
+          status: site.state ?? 'Running',
+          configuration: config,
+          metadata: { resourceGroup: rg },
+          configurationHash: computeConfigHash(config),
+          discoveredAt: now(),
+        });
+      }
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverKeyVaults(credential: ClientSecretCredential): Promise<CloudResource[]> {
+    const client = new KeyVaultManagementClient(credential, this._subscriptionId);
+    const results: CloudResource[] = [];
+    try {
+      for await (const vault of client.vaults.listBySubscription()) {
+        const id = safeString(vault.id);
+        const loc = extractRegion(vault.location);
+        const rg = extractResourceGroup(id);
+        const props = vault.properties;
+
+        const config = {
+          name: vault.name ?? 'unnamed-vault',
+          sku: props?.sku?.name ?? 'standard',
+          enableRbacAuthorization: props?.enableRbacAuthorization ?? true,
+          purgeProtectionEnabled: props?.enablePurgeProtection ?? false,
+          softDeleteRetentionDays: props?.softDeleteRetentionInDays ?? 90,
+          publicNetworkAccessEnabled: props?.publicNetworkAccess !== 'Disabled',
+          networkAclsDefaultAction: props?.networkAcls?.defaultAction ?? 'Allow',
+          enabledForDiskEncryption: props?.enabledForDiskEncryption ?? false,
+          source: 'azure-arm',
+          imported: true,
+        };
+
+        results.push({
+          id,
+          provider: 'azure',
+          subscriptionId: this._subscriptionId,
+          region: loc,
+          resourceType: 'key-vault',
+          name: vault.name ?? 'unnamed-vault',
+          arn: id,
+          resourceId: id,
+          tags: vault.tags ?? {},
+          status: props?.provisioningState ?? 'Succeeded',
+          configuration: config,
+          metadata: { resourceGroup: rg },
+          configurationHash: computeConfigHash(config),
+          discoveredAt: now(),
+        });
+      }
+    } catch {
+      // Best effort
+    }
     return results;
   }
 
