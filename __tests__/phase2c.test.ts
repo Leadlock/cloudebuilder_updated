@@ -226,6 +226,47 @@ jest.mock('@aws-sdk/client-elastic-load-balancing-v2', () => ({
   DescribeTargetGroupsCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeTargetGroupsCommand' } })),
 }));
 
+jest.mock('@aws-sdk/client-lambda', () => ({
+  LambdaClient: jest.fn().mockImplementation(() => ({
+    send: jest.fn().mockResolvedValue({
+      Functions: [
+        {
+          FunctionName: 'process-orders', FunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:process-orders',
+          Runtime: 'nodejs20.x', MemorySize: 1024, Timeout: 30, Handler: 'index.handler', Architectures: ['arm64'],
+          State: 'Active', Environment: { Variables: { STAGE: 'prod' } },
+          VpcConfig: { VpcId: 'vpc-abc123', SubnetIds: ['subnet-abc'], SecurityGroupIds: ['sg-abc123'] },
+        },
+      ],
+    }),
+  })),
+  ListFunctionsCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'ListFunctionsCommand' } })),
+}));
+
+jest.mock('@aws-sdk/client-dynamodb', () => ({
+  DynamoDBClient: jest.fn().mockImplementation(() => ({
+    send: jest.fn().mockImplementation((cmd: { constructor: { name: string } }) => {
+      const name = cmd.constructor?.name ?? '';
+      if (name === 'ListTablesCommand') {
+        return Promise.resolve({ TableNames: ['orders'] });
+      }
+      if (name === 'DescribeTableCommand') {
+        return Promise.resolve({
+          Table: {
+            TableName: 'orders', TableArn: 'arn:aws:dynamodb:us-east-1:123456789012:table/orders', TableStatus: 'ACTIVE',
+            KeySchema: [{ AttributeName: 'orderId', KeyType: 'HASH' }],
+            AttributeDefinitions: [{ AttributeName: 'orderId', AttributeType: 'S' }],
+            BillingModeSummary: { BillingMode: 'PAY_PER_REQUEST' },
+            ItemCount: 42,
+          },
+        });
+      }
+      return Promise.resolve({});
+    }),
+  })),
+  ListTablesCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'ListTablesCommand' } })),
+  DescribeTableCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeTableCommand' } })),
+}));
+
 // ─── Mock Azure SDK ───────────────────────────────────────────────────────────
 
 jest.mock('@azure/identity', () => ({
@@ -370,6 +411,31 @@ describe('AWS Adapter', () => {
     const result = await adapter.discoverAll();
     const lbs = result.resources.filter((r) => r.resourceType === 'alb' || r.resourceType === 'nlb');
     expect(lbs.length).toBeGreaterThan(0);
+    await adapter.dispose();
+  });
+
+  it('discovers Lambda functions with VPC config and environment variables', async () => {
+    const adapter = new AwsDiscoveryAdapter(awsCreds);
+    const result = await adapter.discoverAll();
+    const fns = result.resources.filter((r) => r.resourceType === 'lambda');
+    expect(fns.length).toBeGreaterThan(0);
+    expect(fns[0].name).toBe('process-orders');
+    expect(fns[0].configuration.memorySize).toBe(1024);
+    expect(fns[0].configuration.runtime).toBe('nodejs20.x');
+    expect((fns[0].configuration.environmentVariables as Record<string, string>).STAGE).toBe('prod');
+    expect(fns[0].configuration.vpcId).toBe('vpc-abc123');
+    await adapter.dispose();
+  });
+
+  it('discovers DynamoDB tables with key schema resolved from AttributeDefinitions', async () => {
+    const adapter = new AwsDiscoveryAdapter(awsCreds);
+    const result = await adapter.discoverAll();
+    const tables = result.resources.filter((r) => r.resourceType === 'dynamodb-table');
+    expect(tables.length).toBeGreaterThan(0);
+    expect(tables[0].name).toBe('orders');
+    expect(tables[0].configuration.partitionKeyName).toBe('orderId');
+    expect(tables[0].configuration.partitionKeyType).toBe('S');
+    expect(tables[0].configuration.billingMode).toBe('PAY_PER_REQUEST');
     await adapter.dispose();
   });
 

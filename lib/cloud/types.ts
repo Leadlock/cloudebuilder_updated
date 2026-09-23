@@ -43,7 +43,7 @@ export type DiscoveredResourceType =
   // Networking
   | 'vpc' | 'vnet' | 'subnet' | 'internet-gateway' | 'nat-gateway' | 'route-table' | 'peering'
   // Compute
-  | 'ec2-instance' | 'virtual-machine' | 'auto-scaling-group' | 'aks' | 'functions'
+  | 'ec2-instance' | 'virtual-machine' | 'auto-scaling-group' | 'aks' | 'functions' | 'lambda' | 'ecs' | 'eks'
   // Storage
   | 's3-bucket' | 'storage-account' | 'blob-container' | 'ebs-volume'
   // Database

@@ -7,17 +7,19 @@
  * - EC2 instances, EBS volumes
  * - S3 buckets, RDS instances
  * - Application & Network Load Balancers, Target Groups, Target Health
+ * - Lambda functions, DynamoDB tables
  * - Accessible Regions
  *
  * Reconstructs full infrastructure topology and relationships:
  * - VPC contains Subnets
- * - Subnet contains EC2, RDS, ALB
+ * - Subnet contains EC2, RDS, ALB, VPC-attached Lambda functions
  * - Internet Gateway -> VPC
  * - NAT Gateway -> Subnet
  * - Route Table -> Subnet
  * - ALB -> Target Group -> EC2
- * - Security Group -> EC2 / RDS / ALB
+ * - Security Group -> EC2 / RDS / ALB / Lambda
  * - EC2 -> EBS Volume
+ * - DynamoDB tables are discovered as regional resources (not VPC-attached)
  *
  * Security contract:
  * - Credentials are accepted at construction time and used strictly inside this file.
@@ -46,6 +48,8 @@ import {
   DescribeTargetGroupsCommand,
   DescribeTargetHealthCommand,
 } from '@aws-sdk/client-elastic-load-balancing-v2';
+import { LambdaClient, ListFunctionsCommand } from '@aws-sdk/client-lambda';
+import { DynamoDBClient, ListTablesCommand, DescribeTableCommand } from '@aws-sdk/client-dynamodb';
 import type {
   AwsRoleCredentials,
   DiscoveredResource,
@@ -80,6 +84,9 @@ export const REQUIRED_AWS_PERMISSIONS = [
   'elasticloadbalancing:DescribeLoadBalancers',
   'elasticloadbalancing:DescribeTargetGroups',
   'elasticloadbalancing:DescribeTargetHealth',
+  'lambda:ListFunctions',
+  'dynamodb:ListTables',
+  'dynamodb:DescribeTable',
   'sts:GetCallerIdentity',
 ];
 
@@ -198,6 +205,30 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
   private async _makeElbClient(region: string): Promise<ElasticLoadBalancingV2Client> {
     const creds = await this._assumeRole();
     return new ElasticLoadBalancingV2Client({
+      region,
+      credentials: {
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
+        sessionToken: creds.sessionToken,
+      },
+    });
+  }
+
+  private async _makeLambdaClient(region: string): Promise<LambdaClient> {
+    const creds = await this._assumeRole();
+    return new LambdaClient({
+      region,
+      credentials: {
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
+        sessionToken: creds.sessionToken,
+      },
+    });
+  }
+
+  private async _makeDynamoDbClient(region: string): Promise<DynamoDBClient> {
+    const creds = await this._assumeRole();
+    return new DynamoDBClient({
       region,
       credentials: {
         accessKeyId: creds.accessKeyId,
@@ -425,6 +456,11 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             this._discoverTargetGroups(region, accountId),
           ]);
 
+          const [lambdas, dynamoTables] = await Promise.all([
+            this._discoverLambdaFunctions(region, accountId),
+            this._discoverDynamoDbTables(region, accountId),
+          ]);
+
           allResources.push(
             ...vpcs,
             ...subnets,
@@ -437,6 +473,8 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             ...rdsList,
             ...lbs,
             ...tgs,
+            ...lambdas,
+            ...dynamoTables,
           );
 
           // Build topology relationships for this region
@@ -452,6 +490,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             rdsList,
             lbs,
             tgs,
+            lambdas,
           });
           allRelationships.push(...regionRelationships);
 
@@ -1094,6 +1133,131 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     return results;
   }
 
+  private async _discoverLambdaFunctions(region: string, accountId: string): Promise<CloudResource[]> {
+    const lambda = await this._makeLambdaClient(region);
+    const results: CloudResource[] = [];
+    try {
+      let marker: string | undefined;
+      do {
+        const resp = await retryWithBackoff(() =>
+          lambda.send(new ListFunctionsCommand({ Marker: marker })),
+        );
+        for (const fn of resp.Functions ?? []) {
+          const name = safeString(fn.FunctionName);
+          if (!name) continue;
+          const vpcConfig = fn.VpcConfig;
+          const subnetId = vpcConfig?.SubnetIds?.[0] ?? null;
+          const config = {
+            name,
+            runtime: fn.Runtime ?? 'nodejs20.x',
+            memorySize: fn.MemorySize ?? 512,
+            timeout: fn.Timeout ?? 15,
+            handler: fn.Handler ?? 'index.handler',
+            architecture: (fn.Architectures ?? ['x86_64'])[0] ?? 'x86_64',
+            environmentVariables: fn.Environment?.Variables ?? {},
+            subnetId,
+            vpcId: vpcConfig?.VpcId ?? null,
+            securityGroupIds: vpcConfig?.SecurityGroupIds ?? [],
+            source: 'aws-api',
+            imported: true,
+          };
+          results.push({
+            id: name,
+            provider: 'aws',
+            accountId,
+            region,
+            resourceType: 'lambda',
+            name,
+            arn: safeString(fn.FunctionArn),
+            resourceId: name,
+            tags: {},
+            status: fn.State ?? 'Active',
+            configuration: config,
+            parentResourceId: subnetId || vpcConfig?.VpcId || undefined,
+            metadata: { lastModified: fn.LastModified ?? null },
+            configurationHash: computeConfigHash(config),
+            discoveredAt: now(),
+          });
+        }
+        marker = resp.NextMarker;
+      } while (marker);
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverDynamoDbTables(region: string, accountId: string): Promise<CloudResource[]> {
+    const ddb = await this._makeDynamoDbClient(region);
+    const results: CloudResource[] = [];
+    try {
+      const tableNames: string[] = [];
+      let lastEvaluatedTableName: string | undefined;
+      do {
+        const resp = await retryWithBackoff(() =>
+          ddb.send(new ListTablesCommand({ ExclusiveStartTableName: lastEvaluatedTableName })),
+        );
+        tableNames.push(...(resp.TableNames ?? []));
+        lastEvaluatedTableName = resp.LastEvaluatedTableName;
+      } while (lastEvaluatedTableName);
+
+      for (const tableName of tableNames) {
+        try {
+          const desc = await retryWithBackoff(() =>
+            ddb.send(new DescribeTableCommand({ TableName: tableName })),
+          );
+          const table = desc.Table;
+          if (!table) continue;
+
+          const keySchema = table.KeySchema ?? [];
+          const partitionKeyName = keySchema.find((k) => k.KeyType === 'HASH')?.AttributeName ?? 'id';
+          const sortKeyName = keySchema.find((k) => k.KeyType === 'RANGE')?.AttributeName ?? '';
+          const attrType = (attrName: string): string =>
+            table.AttributeDefinitions?.find((a) => a.AttributeName === attrName)?.AttributeType ?? 'S';
+
+          const config = {
+            name: tableName,
+            tableName,
+            billingMode: table.BillingModeSummary?.BillingMode ?? 'PAY_PER_REQUEST',
+            readCapacity: table.ProvisionedThroughput?.ReadCapacityUnits ?? 5,
+            writeCapacity: table.ProvisionedThroughput?.WriteCapacityUnits ?? 5,
+            partitionKeyName,
+            partitionKeyType: attrType(partitionKeyName),
+            sortKeyName,
+            sortKeyType: sortKeyName ? attrType(sortKeyName) : 'S',
+            streamEnabled: table.StreamSpecification?.StreamEnabled ?? false,
+            streamViewType: table.StreamSpecification?.StreamViewType ?? 'NEW_AND_OLD_IMAGES',
+            tableClass: table.TableClassSummary?.TableClass ?? 'STANDARD',
+            source: 'aws-api',
+            imported: true,
+          };
+
+          results.push({
+            id: tableName,
+            provider: 'aws',
+            accountId,
+            region,
+            resourceType: 'dynamodb-table',
+            name: tableName,
+            arn: safeString(table.TableArn),
+            resourceId: tableName,
+            tags: {},
+            status: table.TableStatus ?? 'ACTIVE',
+            configuration: config,
+            metadata: { itemCount: table.ItemCount ?? 0 },
+            configurationHash: computeConfigHash(config),
+            discoveredAt: now(),
+          });
+        } catch {
+          // Skip tables we can't describe (e.g. missing dynamodb:DescribeTable)
+        }
+      }
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
   // ── Relationship & Topology Reconstructor ────────────────────────────────
 
   private _reconstructAwsRelationships(catalog: {
@@ -1108,6 +1272,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     rdsList: CloudResource[];
     lbs: CloudResource[];
     tgs: CloudResource[];
+    lambdas: CloudResource[];
   }): CloudRelationship[] {
     const rels: CloudRelationship[] = [];
     const added = new Set<string>();
@@ -1164,6 +1329,17 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
       }
     }
 
+    // 4b. Lambda in Subnet / VPC (VPC-attached functions only)
+    for (const fn of catalog.lambdas) {
+      const subnetId = fn.configuration.subnetId as string;
+      const vpcId = fn.configuration.vpcId as string;
+      if (subnetId) {
+        addRel(subnetId, fn.id, 'containment', 'Function in Subnet');
+      } else if (vpcId) {
+        addRel(vpcId, fn.id, 'containment', 'Function in VPC');
+      }
+    }
+
     // 5. Internet Gateway to VPC
     for (const igw of catalog.igws) {
       const vpcId = (igw.configuration.attachedVpcId as string) || (igw.configuration.vpcId as string);
@@ -1211,6 +1387,12 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         const sgIds = (rds.configuration.securityGroupIds as string[]) ?? [];
         if (sgIds.includes(sg.id) || sgIds.includes(sg.resourceId)) {
           addRel(sg.id, rds.id, 'security', 'Protects');
+        }
+      }
+      for (const fn of catalog.lambdas) {
+        const sgIds = (fn.configuration.securityGroupIds as string[]) ?? [];
+        if (sgIds.includes(sg.id) || sgIds.includes(sg.resourceId)) {
+          addRel(sg.id, fn.id, 'security', 'Protects');
         }
       }
     }
