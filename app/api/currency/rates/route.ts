@@ -7,14 +7,23 @@
  *   to: Optional target currency. If omitted, returns rates for all supported currencies.
  */
 import { NextRequest } from 'next/server';
-import { ok, badRequest, internalError } from '@/lib/api/response';
+import { ok, badRequest, internalError, tooManyRequests } from '@/lib/api/response';
 import { currencyExchangeRateService } from '@/lib/currency/CurrencyExchangeRateService';
 import { SUPPORTED_CURRENCIES, SUPPORTED_CURRENCY_CODES, BASE_CURRENCY } from '@/lib/currency/types';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   try {
+    // This route is unauthenticated (exchange rates aren't user-scoped data),
+    // so there's no userId to key the limiter on — fall back to the
+    // proxy-reported client IP, same best-effort-only caveat documented on
+    // checkRateLimit itself (an IP behind a shared NAT/proxy shares a budget).
+    const clientKey = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'anonymous';
+    const rl = checkRateLimit(`${clientKey}:currency-rates`, RATE_LIMITS.ANALYSIS.limit, RATE_LIMITS.ANALYSIS.windowMs);
+    if (!rl.allowed) return tooManyRequests(rl.retryAfterSeconds);
+
     const { searchParams } = new URL(req.url);
     const from = (searchParams.get('from') || searchParams.get('base') || BASE_CURRENCY).toUpperCase();
     const to = searchParams.get('to')?.toUpperCase();

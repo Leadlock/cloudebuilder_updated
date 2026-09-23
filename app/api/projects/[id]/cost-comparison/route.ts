@@ -1,12 +1,13 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { ok, created, notFound, forbidden, unauthorized, internalError, badRequest, parseBody } from '@/lib/api/response';
+import { ok, created, notFound, forbidden, unauthorized, internalError, badRequest, parseBody, tooManyRequests } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId, resolveArchitecture } from '@/lib/api/phase2d';
 import { costEstimator } from '@/lib/engines/cost/CostEstimator';
 import { CloudCostComparisonService } from '@/lib/engines/comparison/CloudCostComparisonService';
 import { db } from '@/src/prisma/db';
 import { randomUUID } from 'crypto';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,11 @@ export async function POST(
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
+
+    // This route runs TWO full cost estimations per call (current + translated
+    // provider) — twice the cost of /cost-estimates, which already rate-limits.
+    const rl = checkRateLimit(`${identity.userId}:cost-comparison`, RATE_LIMITS.ANALYSIS.limit, RATE_LIMITS.ANALYSIS.windowMs);
+    if (!rl.allowed) return tooManyRequests(rl.retryAfterSeconds);
 
     const { id: projectId } = await params;
 
