@@ -584,4 +584,53 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
     const largeResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [large] }, 'TEST');
     expect(largeResult.items[0].monthlyUsd).toBeGreaterThan(smallResult.items[0].monthlyUsd);
   });
+
+  test('Azure Bastion Standard costs more than Basic and scales with scale units (previously entirely unsupported)', () => {
+    const basic = makeResource({ resourceType: 'azure_bastion', provider: 'azure', configJson: JSON.stringify({ sku: 'Basic' }) });
+    const standard = makeResource({ resourceType: 'azure_bastion', provider: 'azure', configJson: JSON.stringify({ sku: 'Standard', scaleUnits: 8 }) });
+    const basicResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [basic] }, 'TEST');
+    const standardResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [standard] }, 'TEST');
+    expect(standardResult.items[0].monthlyUsd).toBeGreaterThan(basicResult.items[0].monthlyUsd);
+  });
+
+  test('Front Door Premium costs more than Standard (previously entirely unsupported)', () => {
+    const standard = makeResource({ resourceType: 'azure_front_door', provider: 'azure', configJson: JSON.stringify({ sku: 'Standard_AzureFrontDoor' }) });
+    const premium = makeResource({ resourceType: 'azure_front_door', provider: 'azure', configJson: JSON.stringify({ sku: 'Premium_AzureFrontDoor' }) });
+    const standardResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [standard] }, 'TEST');
+    const premiumResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [premium] }, 'TEST');
+    expect(premiumResult.items[0].monthlyUsd).toBeGreaterThan(standardResult.items[0].monthlyUsd);
+  });
+
+  test('Azure WAF policy has a real cost (previously entirely unsupported)', () => {
+    const waf = makeResource({ resourceType: 'azure_waf', provider: 'azure', configJson: '{}' });
+    const result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [waf] }, 'TEST');
+    expect(result.items[0].monthlyUsd).toBeGreaterThan(0);
+  });
+
+  test('VMSS cost scales with SKU and instance count (previously entirely unsupported)', () => {
+    const small = makeResource({ resourceType: 'azure_vmss', provider: 'azure', configJson: JSON.stringify({ sku: 'Standard_B2s', capacity: 1 }) });
+    const large = makeResource({ resourceType: 'azure_vmss', provider: 'azure', configJson: JSON.stringify({ sku: 'Standard_D8s_v5', capacity: 10 }) });
+    const smallResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [small] }, 'TEST');
+    const largeResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [large] }, 'TEST');
+    expect(largeResult.items[0].monthlyUsd).toBeGreaterThan(smallResult.items[0].monthlyUsd);
+  });
+
+  test('Cosmos DB Provisioned throughput scales with max RU/s; both modes have real cost (previously entirely unsupported)', () => {
+    const serverless = makeResource({ resourceType: 'azure_cosmos_db', provider: 'azure', configJson: JSON.stringify({ throughputMode: 'Serverless' }) });
+    const provisionedLow = makeResource({ resourceType: 'azure_cosmos_db', provider: 'azure', configJson: JSON.stringify({ throughputMode: 'Provisioned', maxThroughputRu: 1000 }) });
+    const provisionedHigh = makeResource({ resourceType: 'azure_cosmos_db', provider: 'azure', configJson: JSON.stringify({ throughputMode: 'Provisioned', maxThroughputRu: 100000 }) });
+    const serverlessResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [serverless] }, 'TEST');
+    const lowResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [provisionedLow] }, 'TEST');
+    const highResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [provisionedHigh] }, 'TEST');
+    expect(serverlessResult.items[0].monthlyUsd).toBeGreaterThan(0);
+    expect(highResult.items[0].monthlyUsd).toBeGreaterThan(lowResult.items[0].monthlyUsd);
+  });
+
+  test('App Gateway cost scales with capacity units (previously ignored config entirely)', () => {
+    const small = makeResource({ resourceType: 'azure_app_gateway', provider: 'azure', configJson: JSON.stringify({ autoscaleEnabled: false, capacity: 1 }) });
+    const large = makeResource({ resourceType: 'azure_app_gateway', provider: 'azure', configJson: JSON.stringify({ autoscaleEnabled: false, capacity: 20 }) });
+    const smallResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [small] }, 'TEST');
+    const largeResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [large] }, 'TEST');
+    expect(largeResult.items[0].monthlyUsd).toBeGreaterThan(smallResult.items[0].monthlyUsd);
+  });
 });

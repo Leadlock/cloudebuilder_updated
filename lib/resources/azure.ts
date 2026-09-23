@@ -388,9 +388,19 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#FCE7F3',
     borderColor: '#DB2777',
     monthlyBaseCost: 24.0,
-    defaultConfig: { name: 'my-cosmos', defaultConsistency: 'Session', enableAutomaticFailover: true, publicNetworkAccess: false },
+    defaultConfig: {
+      name: 'my-cosmos', kind: 'GlobalDocumentDB', defaultConsistency: 'Session', enableAutomaticFailover: true, publicNetworkAccess: false,
+      throughputMode: 'Serverless', maxThroughputRu: 4000, backupType: 'Periodic', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Account Name', type: 'text', defaultValue: 'my-cosmos', required: true },
+      {
+        key: 'kind', label: 'API', type: 'select', defaultValue: 'GlobalDocumentDB', section: 'Compute / Capacity',
+        options: [
+          { label: 'Core (SQL)', value: 'GlobalDocumentDB' },
+          { label: 'MongoDB', value: 'MongoDB' },
+        ],
+      },
       {
         key: 'defaultConsistency', label: 'Default Consistency Level', type: 'select', defaultValue: 'Session',
         options: [
@@ -401,8 +411,27 @@ export const azureResources: ResourceDefinition[] = [
           { label: 'Eventual', value: 'Eventual' },
         ],
       },
-      { key: 'enableAutomaticFailover', label: 'Automatic Failover', type: 'boolean', defaultValue: true },
-      { key: 'publicNetworkAccess', label: 'Public Network Access', type: 'boolean', defaultValue: false },
+      {
+        key: 'throughputMode', label: 'Throughput Mode', type: 'select', defaultValue: 'Serverless', section: 'Compute / Capacity',
+        options: [
+          { label: 'Serverless (pay per request)', value: 'Serverless' },
+          { label: 'Provisioned', value: 'Provisioned' },
+        ],
+      },
+      {
+        key: 'maxThroughputRu', label: 'Max Throughput (RU/s, autoscale)', type: 'number', defaultValue: 4000, min: 1000, max: 1000000,
+        section: 'Compute / Capacity', visibleWhen: (c) => c['throughputMode'] === 'Provisioned',
+      },
+      { key: 'enableAutomaticFailover', label: 'Automatic Failover', type: 'boolean', defaultValue: true, section: 'Availability & Scaling' },
+      { key: 'publicNetworkAccess', label: 'Public Network Access', type: 'boolean', defaultValue: false, section: 'Security' },
+      {
+        key: 'backupType', label: 'Backup Type', type: 'select', defaultValue: 'Periodic', section: 'Backup & Recovery', advanced: true,
+        options: [
+          { label: 'Periodic', value: 'Periodic' },
+          { label: 'Continuous (point-in-time restore)', value: 'Continuous' },
+        ],
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [
       {
@@ -464,11 +493,55 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#E0E7FF',
     borderColor: '#4F46E5',
     monthlyBaseCost: 35.0,
-    defaultConfig: { sku: 'Standard_v2', capacity: 2, name: 'my-app-gateway' },
+    defaultConfig: {
+      sku: 'Standard_v2', capacity: 2, name: 'my-app-gateway', backendPort: 80,
+      autoscaleEnabled: true, minCapacity: 2, maxCapacity: 10,
+      wafEnabled: false, wafMode: 'Prevention', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-app-gateway', required: true },
+      {
+        key: 'sku', label: 'SKU', type: 'select', defaultValue: 'Standard_v2', section: 'Compute / Capacity',
+        options: [
+          { label: 'Standard v2', value: 'Standard_v2' },
+          { label: 'WAF v2', value: 'WAF_v2' },
+        ],
+      },
+      { key: 'backendPort', label: 'Backend Port', type: 'number', defaultValue: 80, min: 1, max: 65535, section: 'Networking' },
+      { key: 'autoscaleEnabled', label: 'Autoscale', type: 'boolean', defaultValue: true, section: 'Availability & Scaling' },
+      {
+        key: 'minCapacity', label: 'Autoscale Min Instances', type: 'number', defaultValue: 2, min: 0, max: 125,
+        section: 'Availability & Scaling', visibleWhen: (c) => c['autoscaleEnabled'] === true,
+      },
+      {
+        key: 'maxCapacity', label: 'Autoscale Max Instances', type: 'number', defaultValue: 10, min: 2, max: 125,
+        section: 'Availability & Scaling', visibleWhen: (c) => c['autoscaleEnabled'] === true,
+      },
+      { key: 'capacity', label: 'Fixed Instance Count', type: 'number', defaultValue: 2, min: 1, max: 125, section: 'Availability & Scaling', visibleWhen: (c) => c['autoscaleEnabled'] !== true },
+      {
+        key: 'wafEnabled', label: 'Enable WAF', type: 'boolean', defaultValue: false, section: 'Security',
+        visibleWhen: (c) => c['sku'] === 'WAF_v2',
+      },
+      {
+        key: 'wafMode', label: 'WAF Mode', type: 'select', defaultValue: 'Prevention', section: 'Security',
+        visibleWhen: (c) => c['sku'] === 'WAF_v2' && c['wafEnabled'] === true,
+        options: [
+          { label: 'Prevention', value: 'Prevention' },
+          { label: 'Detection', value: 'Detection' },
+        ],
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'app-gateway-no-waf',
+        severity: 'medium',
+        check: (config) => (config.sku === 'WAF_v2' && config.wafEnabled === false) ? 'WAF_v2 gateway has WAF disabled' : null,
+        message: 'Application Gateway uses the WAF_v2 SKU but WAF is not enabled',
+        recommendation: 'Enable WAF on a WAF_v2 gateway, or switch to Standard_v2 if WAF protection is not needed',
+        fixAction: (config) => ({ ...config, wafEnabled: true }),
+      },
+    ],
   },
   {
     type: 'azure_nat',
@@ -481,10 +554,21 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#FFEDD5',
     borderColor: '#EA580C',
     monthlyBaseCost: 32.85,
-    defaultConfig: { idleTimeoutMin: 4, name: 'my-nat' },
+    defaultConfig: { idleTimeoutMin: 4, name: 'my-nat', sku: 'Standard', availabilityZone: '', tags: {} },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-nat', required: true },
-      { key: 'idleTimeoutMin', label: 'Idle Timeout (minutes)', type: 'number', defaultValue: 4 },
+      { key: 'idleTimeoutMin', label: 'Idle Timeout (minutes)', type: 'number', defaultValue: 4, min: 4, max: 120, section: 'Networking' },
+      { key: 'sku', label: 'SKU', type: 'select', defaultValue: 'Standard', section: 'Compute / Capacity', options: [{ label: 'Standard', value: 'Standard' }] },
+      {
+        key: 'availabilityZone', label: 'Availability Zone', type: 'select', defaultValue: '', section: 'Availability & Scaling',
+        options: [
+          { label: 'None', value: '' },
+          { label: 'Zone 1', value: '1' },
+          { label: 'Zone 2', value: '2' },
+          { label: 'Zone 3', value: '3' },
+        ],
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [],
   },
@@ -572,7 +656,11 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#FEE2E2',
     borderColor: '#DC2626',
     monthlyBaseCost: 140.0,
-    defaultConfig: { sku: 'Standard', name: 'my-bastion' },
+    defaultConfig: {
+      sku: 'Standard', name: 'my-bastion', scaleUnits: 2,
+      copyPasteEnabled: true, fileCopyEnabled: false, ipConnectEnabled: false,
+      shareableLinkEnabled: false, tunnelingEnabled: false, tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-bastion', required: true },
       {
@@ -582,8 +670,38 @@ export const azureResources: ResourceDefinition[] = [
           { label: 'Standard', value: 'Standard' },
         ],
       },
+      {
+        key: 'scaleUnits', label: 'Scale Units', type: 'number', defaultValue: 2, min: 2, max: 50, section: 'Compute / Capacity',
+        visibleWhen: (c) => c['sku'] === 'Standard',
+      },
+      { key: 'copyPasteEnabled', label: 'Copy/Paste', type: 'boolean', defaultValue: true, section: 'Advanced', advanced: true },
+      {
+        key: 'fileCopyEnabled', label: 'File Copy', type: 'boolean', defaultValue: false, section: 'Advanced', advanced: true,
+        visibleWhen: (c) => c['sku'] === 'Standard',
+      },
+      {
+        key: 'ipConnectEnabled', label: 'IP-Based Connection', type: 'boolean', defaultValue: false, section: 'Advanced', advanced: true,
+        visibleWhen: (c) => c['sku'] === 'Standard',
+      },
+      {
+        key: 'shareableLinkEnabled', label: 'Shareable Link', type: 'boolean', defaultValue: false, section: 'Advanced', advanced: true,
+        visibleWhen: (c) => c['sku'] === 'Standard',
+      },
+      {
+        key: 'tunnelingEnabled', label: 'Native Client Tunneling', type: 'boolean', defaultValue: false, section: 'Advanced', advanced: true,
+        visibleWhen: (c) => c['sku'] === 'Standard',
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'bastion-shareable-link',
+        severity: 'medium',
+        check: (config) => config.shareableLinkEnabled === true ? 'Bastion shareable link is enabled' : null,
+        message: 'Azure Bastion shareable link allows session access via a link without direct Azure portal access',
+        recommendation: 'Disable shareable links unless required; prefer standard portal-based connections with Azure AD auth',
+      },
+    ],
   },
   {
     type: 'azure_key_vault',
@@ -1053,11 +1171,42 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#E0F2FE',
     borderColor: '#0284C7',
     monthlyBaseCost: 35.0,
-    defaultConfig: { name: 'my-frontdoor', sku: 'Standard_AzureFrontDoor' },
+    defaultConfig: {
+      name: 'my-frontdoor', sku: 'Standard_AzureFrontDoor', originHostName: 'origin.example.com',
+      httpsOnly: true, cachingEnabled: true, queryStringCachingBehavior: 'IgnoreQueryString', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Front Door Name', type: 'text', defaultValue: 'my-frontdoor', required: true },
+      {
+        key: 'sku', label: 'SKU', type: 'select', defaultValue: 'Standard_AzureFrontDoor', section: 'Compute / Capacity',
+        options: [
+          { label: 'Standard', value: 'Standard_AzureFrontDoor' },
+          { label: 'Premium (adds managed WAF/Private Link)', value: 'Premium_AzureFrontDoor' },
+        ],
+      },
+      { key: 'originHostName', label: 'Origin Hostname', type: 'text', defaultValue: 'origin.example.com', section: 'Networking', required: true },
+      { key: 'httpsOnly', label: 'HTTPS Only', type: 'boolean', defaultValue: true, section: 'Security' },
+      { key: 'cachingEnabled', label: 'Caching', type: 'boolean', defaultValue: true, section: 'Advanced' },
+      {
+        key: 'queryStringCachingBehavior', label: 'Query String Caching', type: 'select', defaultValue: 'IgnoreQueryString', section: 'Advanced', advanced: true,
+        visibleWhen: (c) => c['cachingEnabled'] === true,
+        options: [
+          { label: 'Ignore Query String', value: 'IgnoreQueryString' },
+          { label: 'Use Query String', value: 'UseQueryString' },
+        ],
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'frontdoor-https-only',
+        severity: 'high',
+        check: (config) => config.httpsOnly === false ? 'Front Door allows non-HTTPS traffic' : null,
+        message: 'Front Door route does not enforce HTTPS-only redirect',
+        recommendation: 'Enable HTTPS Only to redirect all HTTP traffic to HTTPS',
+        fixAction: (config) => ({ ...config, httpsOnly: true }),
+      },
+    ],
   },
   {
     type: 'azure_waf',
@@ -1070,11 +1219,41 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#FEE2E2',
     borderColor: '#DC2626',
     monthlyBaseCost: 10.0,
-    defaultConfig: { name: 'my-azure-waf', mode: 'Prevention' },
+    defaultConfig: {
+      name: 'my-azure-waf', mode: 'Prevention', managedRuleSetVersion: '3.2',
+      requestBodyCheck: true, fileUploadLimitMb: 100, maxRequestBodySizeKb: 128, tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Policy Name', type: 'text', defaultValue: 'my-azure-waf', required: true },
+      {
+        key: 'mode', label: 'Mode', type: 'select', defaultValue: 'Prevention', section: 'Rules',
+        options: [
+          { label: 'Prevention (block matching requests)', value: 'Prevention' },
+          { label: 'Detection (log only)', value: 'Detection' },
+        ],
+      },
+      {
+        key: 'managedRuleSetVersion', label: 'OWASP Managed Rule Set Version', type: 'select', defaultValue: '3.2', section: 'Rules',
+        options: [
+          { label: 'OWASP 3.2', value: '3.2' },
+          { label: 'OWASP 3.1', value: '3.1' },
+          { label: 'OWASP 3.0', value: '3.0' },
+        ],
+      },
+      { key: 'requestBodyCheck', label: 'Request Body Inspection', type: 'boolean', defaultValue: true, section: 'Advanced' },
+      { key: 'fileUploadLimitMb', label: 'File Upload Limit (MB)', type: 'number', defaultValue: 100, min: 1, max: 4000, section: 'Advanced', advanced: true },
+      { key: 'maxRequestBodySizeKb', label: 'Max Request Body Size (KB)', type: 'number', defaultValue: 128, min: 8, max: 2000, section: 'Advanced', advanced: true },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'azure-waf-detection-only',
+        severity: 'medium',
+        check: (config) => config.mode === 'Detection' ? 'Azure WAF policy is in Detection mode' : null,
+        message: 'WAF policy is set to Detection mode and will not block malicious requests',
+        recommendation: 'Switch to Prevention mode once rule tuning is complete to actually block matching traffic',
+      },
+    ],
   },
   {
     type: 'azure_redis',
@@ -1151,11 +1330,22 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#FEF3C7',
     borderColor: '#D97706',
     monthlyBaseCost: 73.0,
-    defaultConfig: { name: 'my-vmss', sku: 'Standard_B2s', capacity: 2, osType: 'Linux', osDiskEncryption: true },
+    defaultConfig: {
+      name: 'my-vmss', sku: 'Standard_B2s', capacity: 2, osType: 'Linux', osDiskEncryption: true,
+      adminUsername: 'azureuser', autoscaleEnabled: true, minCapacity: 2, maxCapacity: 10,
+      overprovision: true, upgradeMode: 'Manual', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Scale Set Name', type: 'text', defaultValue: 'my-vmss', required: true },
       {
-        key: 'sku', label: 'VM Size', type: 'select', defaultValue: 'Standard_B2s',
+        key: 'osType', label: 'OS Type', type: 'select', defaultValue: 'Linux',
+        options: [
+          { label: 'Linux (Ubuntu 22.04 LTS)', value: 'Linux' },
+          { label: 'Windows Server 2022', value: 'Windows' },
+        ],
+      },
+      {
+        key: 'sku', label: 'VM Size', type: 'select', defaultValue: 'Standard_B2s', section: 'Compute / Capacity',
         // Same superset requirement as azure_vm's "size" field — the
         // Adaptive Scale Engine writes vmss.sku from the same value space.
         options: [
@@ -1167,15 +1357,28 @@ export const azureResources: ResourceDefinition[] = [
           { label: 'Standard_E8s_v5 (8 vCPU, 64GB)', value: 'Standard_E8s_v5' },
         ],
       },
-      { key: 'capacity', label: 'Instance Count', type: 'number', defaultValue: 2 },
+      { key: 'capacity', label: 'Instance Count', type: 'number', defaultValue: 2, min: 0, max: 1000, section: 'Compute / Capacity' },
+      { key: 'adminUsername', label: 'Admin Username', type: 'text', defaultValue: 'azureuser', section: 'Identity & Access' },
+      { key: 'autoscaleEnabled', label: 'Autoscale', type: 'boolean', defaultValue: true, section: 'Availability & Scaling' },
       {
-        key: 'osType', label: 'OS Type', type: 'select', defaultValue: 'Linux',
+        key: 'minCapacity', label: 'Autoscale Min Instances', type: 'number', defaultValue: 2, min: 0, max: 1000,
+        section: 'Availability & Scaling', visibleWhen: (c) => c['autoscaleEnabled'] === true,
+      },
+      {
+        key: 'maxCapacity', label: 'Autoscale Max Instances', type: 'number', defaultValue: 10, min: 1, max: 1000,
+        section: 'Availability & Scaling', visibleWhen: (c) => c['autoscaleEnabled'] === true,
+      },
+      {
+        key: 'upgradeMode', label: 'Upgrade Mode', type: 'select', defaultValue: 'Manual', section: 'Advanced', advanced: true,
         options: [
-          { label: 'Linux (Ubuntu 22.04 LTS)', value: 'Linux' },
-          { label: 'Windows Server 2022', value: 'Windows' },
+          { label: 'Manual', value: 'Manual' },
+          { label: 'Automatic', value: 'Automatic' },
+          { label: 'Rolling', value: 'Rolling' },
         ],
       },
-      { key: 'osDiskEncryption', label: 'OS Disk Encryption', type: 'boolean', defaultValue: true },
+      { key: 'overprovision', label: 'Overprovision', type: 'boolean', defaultValue: true, section: 'Advanced', advanced: true },
+      { key: 'osDiskEncryption', label: 'OS Disk Encryption', type: 'boolean', defaultValue: true, section: 'Security' },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [
       {

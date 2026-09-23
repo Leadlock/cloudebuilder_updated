@@ -89,6 +89,11 @@ export class AzurePricingProvider implements PricingProvider {
       case 'azure_key_vault':       return this._keyVault(resource, config, region, mult);
       case 'azure_nat':             return this._nat(resource, config, region, mult);
       case 'azure_redis':           return this._redis(resource, config, region, mult);
+      case 'azure_bastion':         return this._bastion(resource, config, region, mult);
+      case 'azure_front_door':      return this._frontDoor(resource, config, region, mult);
+      case 'azure_waf':             return this._azureWaf(resource, config, region, mult);
+      case 'azure_vmss':            return this._vmss(resource, config, region, mult);
+      case 'azure_cosmos_db':       return this._cosmosDb(resource, config, region, mult);
       case 'azure_public_ip':       return this._publicIp(resource, config, region, mult);
       case 'azure_resource_group':
       case 'azure_vnet':
@@ -252,11 +257,16 @@ export class AzurePricingProvider implements PricingProvider {
 
   private _appGateway(
     resource: DbArchitectureResource,
-    _config: Record<string, unknown>,
+    config: Record<string, unknown>,
     region: string,
     mult: number,
   ): CostLineItem {
-    const hourly = 0.246 * mult;
+    const sku = (config['sku'] as string) || 'Standard_v2';
+    const baseHourly = (sku === 'WAF_v2' ? 0.443 : 0.246) * mult;
+    const capacity = Math.max(1, Number(config['autoscaleEnabled'] !== false ? config['minCapacity'] ?? 2 : config['capacity'] ?? 2));
+    // Fixed gateway charge plus a per-capacity-unit charge (~$0.008/hr/unit for v2 SKUs).
+    const capacityHourly = capacity * 0.008 * mult;
+    const hourly = baseHourly + capacityHourly;
     const monthly = toMonthly(hourly);
     return {
       resourceId: resource.id,
@@ -267,10 +277,11 @@ export class AzurePricingProvider implements PricingProvider {
       hourlyUsd: hourly,
       monthlyUsd: monthly,
       breakdown: [
-        { label: 'Application Gateway Standard_v2 fixed hourly', monthlyUsd: monthly },
+        { label: `Application Gateway ${sku} fixed hourly`, monthlyUsd: toMonthly(baseHourly) },
+        { label: `${capacity} capacity unit(s)`, monthlyUsd: toMonthly(capacityHourly) },
       ],
       assumptions: [
-        'Standard_v2 fixed gateway capacity',
+        `SKU: ${sku}, ${capacity} capacity unit(s)`,
         `Region: ${region}`,
       ],
       pricingSource: 'azure-app-gateway-list-price',
@@ -461,6 +472,187 @@ export class AzurePricingProvider implements PricingProvider {
         `Region: ${region}`,
       ],
       pricingSource: 'azure-redis-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _bastion(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const sku = (config['sku'] as string) || 'Standard';
+    const scaleUnits = sku === 'Standard' ? Math.max(2, Number(config['scaleUnits'] ?? 2)) : 1;
+    // Basic: ~$0.19/hr flat. Standard: ~$0.29/hr base for 2 scale units, +$0.145/hr per additional unit.
+    const hourly = (sku === 'Basic' ? 0.19 : 0.29 + Math.max(0, scaleUnits - 2) * 0.145) * mult;
+    const monthly = toMonthly(hourly);
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'azure',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: `Azure Bastion ${sku}${sku === 'Standard' ? ` (${scaleUnits} scale units)` : ''}`, monthlyUsd: monthly },
+      ],
+      assumptions: [
+        `SKU: ${sku}`,
+        'Outbound data processing charges not included',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'azure-bastion-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _frontDoor(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const sku = (config['sku'] as string) || 'Standard_AzureFrontDoor';
+    // Standard: ~$35/mo base + usage. Premium: ~$330/mo base (includes managed WAF/Private Link).
+    const monthly = (sku === 'Premium_AzureFrontDoor' ? 330 : 35) * mult;
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'azure',
+      region,
+      hourlyUsd: monthly / 730,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: `Front Door ${sku === 'Premium_AzureFrontDoor' ? 'Premium' : 'Standard'} base fee`, monthlyUsd: monthly },
+      ],
+      assumptions: [
+        'Data transfer and request-volume charges not included',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'azure-frontdoor-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _azureWaf(
+    resource: DbArchitectureResource,
+    _config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    // Azure WAF policy: ~$5/policy/month base (billed via the associated Application Gateway/Front Door).
+    const monthly = 5.0 * mult;
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'azure',
+      region,
+      hourlyUsd: monthly / 730,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: 'WAF policy', monthlyUsd: monthly },
+      ],
+      assumptions: [
+        'Request-processing charges billed through the associated Application Gateway/Front Door, not included here',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'azure-waf-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _vmss(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const sku = (config['sku'] as string) ?? 'Standard_B2s';
+    const capacity = Math.max(0, Number(config['capacity'] ?? 2));
+    const baseHourly = VM_HOURLY_USD[sku] ?? VM_HOURLY_USD['Standard_B2s']!;
+    const hourly = baseHourly * mult * capacity;
+    const monthly = toMonthly(hourly);
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'azure',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: `VMSS ${sku} x${capacity} instance(s)`, monthlyUsd: monthly },
+      ],
+      assumptions: [
+        `${capacity} instance(s) at ${sku}`,
+        'OS disk cost not included',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'azure-vmss-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _cosmosDb(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const throughputMode = (config['throughputMode'] as string) || 'Serverless';
+
+    if (throughputMode === 'Provisioned') {
+      // Autoscale provisioned throughput: ~$0.008/RU per hour for the max RU/s tier.
+      const maxRu = Math.max(1000, Number(config['maxThroughputRu'] ?? 4000));
+      const hourly = (maxRu / 100) * 0.008 * mult;
+      const monthly = toMonthly(hourly);
+      return {
+        resourceId: resource.id,
+        resourceLabel: resource.label,
+        resourceType: resource.resourceType,
+        provider: 'azure',
+        region,
+        hourlyUsd: hourly,
+        monthlyUsd: monthly,
+        breakdown: [
+          { label: `Provisioned autoscale throughput (${maxRu} RU/s max)`, monthlyUsd: monthly },
+        ],
+        assumptions: [
+          'Storage charges not included — $0.25/GB-mo',
+          `Region: ${region}`,
+        ],
+        pricingSource: 'azure-cosmosdb-list-price',
+        confidence: 'estimate',
+      };
+    }
+
+    // Serverless: ~$0.30 per million RUs consumed. Flat baseline assumption for a light workload.
+    const monthly = 24.0 * mult;
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'azure',
+      region,
+      hourlyUsd: monthly / 730,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: 'Serverless throughput (baseline usage assumed)', monthlyUsd: monthly },
+      ],
+      assumptions: [
+        'Serverless: actual cost scales with RUs consumed ($0.30/million RUs) — a light baseline workload is assumed',
+        'Storage charges not included — $0.25/GB-mo',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'azure-cosmosdb-list-price',
       confidence: 'estimate',
     };
   }

@@ -2118,6 +2118,86 @@ class AzureTerraformGenerator {
           resourceMap[r.id] = `azurerm_route_table.${name}`;
           break;
         }
+        case 'azure_bastion': {
+          const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources);
+          const subnetRef = subnet ? `azurerm_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id` : null;
+          if (!subnetRef) {
+            warnings.push(`Azure Bastion "${r.label}" is not connected to a subnet — it must be deployed into a subnet named "AzureBastionSubnet" and will fail to apply as generated.`);
+          }
+          blocks.push(this._bastion(name, cfg, rgName, rgLoc, subnetRef));
+          resourceMap[r.id] = `azurerm_bastion_host.${name}`;
+          break;
+        }
+        case 'azure_front_door': {
+          const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          blocks.push(this._frontDoor(name, cfg, rgName));
+          resourceMap[r.id] = `azurerm_cdn_frontdoor_profile.${name}`;
+          break;
+        }
+        case 'azure_waf': {
+          const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          blocks.push(this._azureWaf(name, cfg, rgName, rgLoc));
+          resourceMap[r.id] = `azurerm_web_application_firewall_policy.${name}`;
+          break;
+        }
+        case 'azure_vmss': {
+          const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources);
+          const subnetRef = subnet ? `azurerm_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id` : null;
+          if (!subnetRef) {
+            warnings.push(`VM Scale Set "${r.label}" is not connected to a subnet — the generated scale set will fail to apply.`);
+          }
+          blocks.push(this._vmss(name, cfg, rgName, rgLoc, subnetRef));
+          resourceMap[r.id] = `${cfg['osType'] === 'Windows' ? 'azurerm_windows_virtual_machine_scale_set' : 'azurerm_linux_virtual_machine_scale_set'}.${name}`;
+          break;
+        }
+        case 'azure_app_gateway': {
+          const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources);
+          const subnetRef = subnet ? `azurerm_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id` : null;
+          const pip = resolver.resolveParent(r.id, 'azure_public_ip', connections, resources);
+          const pipRef = pip ? `azurerm_public_ip.${resolver.tfNameOf(pip.id) ?? 'main'}.id` : null;
+          if (!subnetRef || !pipRef) {
+            warnings.push(`Application Gateway "${r.label}" needs both a connected subnet and a connected Public IP — the generated resource will fail to apply without both.`);
+          }
+          blocks.push(this._appGateway(name, cfg, rgName, rgLoc, subnetRef, pipRef));
+          resourceMap[r.id] = `azurerm_application_gateway.${name}`;
+          break;
+        }
+        case 'azure_nat': {
+          const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          const pip = resolver.resolveParent(r.id, 'azure_public_ip', connections, resources);
+          const pipRef = pip ? `azurerm_public_ip.${resolver.tfNameOf(pip.id) ?? 'main'}.id` : null;
+          const subnets = resolver.resolveParents(r.id, 'azure_subnet', connections, resources);
+          const subnetRefs = subnets.map((s) => `azurerm_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`);
+          blocks.push(this._natAzure(name, cfg, rgName, rgLoc, pipRef, subnetRefs));
+          resourceMap[r.id] = `azurerm_nat_gateway.${name}`;
+          break;
+        }
         case 'azure_nsg': {
           const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
           const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
@@ -2403,23 +2483,39 @@ data "azurerm_network_security_group" "${name}" {
   }
 
   private _cosmosDb(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
-    return `resource "azurerm_cosmosdb_account" "${name}" {
-  name                          = "${name}"
-  resource_group_name           = ${rgName}
-  location                      = ${rgLoc}
-  offer_type                    = "Standard"
-  kind                          = "GlobalDocumentDB"
-  public_network_access_enabled = ${cfg['publicNetworkAccess'] === true}
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
 
-  consistency_policy {
-    consistency_level = "${cfg['defaultConsistency'] ?? 'Session'}"
-  }
+    const lines: string[] = [
+      `resource "azurerm_cosmosdb_account" "${name}" {`,
+      `  name                          = "${name}"`,
+      `  resource_group_name           = ${rgName}`,
+      `  location                      = ${rgLoc}`,
+      `  offer_type                    = "Standard"`,
+      `  kind                          = "${cfg['kind'] ?? 'GlobalDocumentDB'}"`,
+      `  public_network_access_enabled = ${cfg['publicNetworkAccess'] === true}`,
+      `  enable_automatic_failover      = ${cfg['enableAutomaticFailover'] !== false}`,
+      ``,
+      `  consistency_policy {`,
+      `    consistency_level = "${cfg['defaultConsistency'] ?? 'Session'}"`,
+      `  }`,
+      ``,
+      `  geo_location {`,
+      `    location          = ${rgLoc}`,
+      `    failover_priority = 0`,
+      `  }`,
+      ``,
+      `  backup {`,
+      `    type = "${cfg['backupType'] ?? 'Periodic'}"`,
+      `  }`,
+    ];
 
-  geo_location {
-    location          = ${rgLoc}
-    failover_priority = 0
-  }
-}`;
+    if (cfg['throughputMode'] === 'Serverless') {
+      lines.push(``, `  capabilities {`, `    name = "EnableServerless"`, `  }`);
+    }
+
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    return lines.join('\n');
   }
 
   /**
@@ -2765,6 +2861,301 @@ ${tagLines.join('\n')}
     return lines.join('\n');
   }
 
+  private _bastion(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string, subnetRef: string | null): string {
+    const isStandard = cfg['sku'] !== 'Basic';
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const lines: string[] = [
+      `resource "azurerm_public_ip" "${name}_pip" {
+  name                = "${name}-pip"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}`,
+      `resource "azurerm_bastion_host" "${name}" {
+  name                = "${name}"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+  sku                 = "${cfg['sku'] ?? 'Standard'}"`,
+    ];
+    if (isStandard) {
+      lines.push(
+        `  scale_units              = ${cfg['scaleUnits'] ?? 2}`,
+        `  copy_paste_enabled       = ${cfg['copyPasteEnabled'] !== false}`,
+        `  file_copy_enabled        = ${cfg['fileCopyEnabled'] === true}`,
+        `  ip_connect_enabled       = ${cfg['ipConnectEnabled'] === true}`,
+        `  shareable_link_enabled   = ${cfg['shareableLinkEnabled'] === true}`,
+        `  tunneling_enabled        = ${cfg['tunnelingEnabled'] === true}`,
+      );
+    }
+    lines.push(
+      `  ip_configuration {`,
+      `    name                 = "${name}-ipconfig"`,
+      `    subnet_id            = ${subnetRef ?? 'azurerm_subnet.main.id # WARNING: subnet not connected — must be named AzureBastionSubnet'}`,
+      `    public_ip_address_id = azurerm_public_ip.${name}_pip.id`,
+      `  }`,
+      `  tags = {`,
+      `    Name      = "${name}"`,
+      `    ManagedBy = "CloudCraft"`,
+      ...tagLines,
+      `  }`,
+      `}`,
+    );
+    return lines.join('\n');
+  }
+
+  private _frontDoor(name: string, cfg: Record<string, unknown>, rgName: string): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    return [
+      `resource "azurerm_cdn_frontdoor_profile" "${name}" {
+  name                = "${name}"
+  resource_group_name = ${rgName}
+  sku_name            = "${cfg['sku'] ?? 'Standard_AzureFrontDoor'}"
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+${tagLines.join('\n')}
+  }
+}`,
+      `resource "azurerm_cdn_frontdoor_endpoint" "${name}_endpoint" {
+  name                     = "${name}-endpoint"
+  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.${name}.id
+}`,
+      `resource "azurerm_cdn_frontdoor_origin_group" "${name}_origin_group" {
+  name                     = "${name}-origin-group"
+  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.${name}.id
+
+  load_balancing {}
+}`,
+      `resource "azurerm_cdn_frontdoor_origin" "${name}_origin" {
+  name                          = "${name}-origin"
+  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.${name}_origin_group.id
+  host_name                     = "${cfg['originHostName'] ?? 'origin.example.com'}"
+  origin_host_header            = "${cfg['originHostName'] ?? 'origin.example.com'}"
+  certificate_name_check_enabled = ${cfg['httpsOnly'] !== false}
+}`,
+      `resource "azurerm_cdn_frontdoor_route" "${name}_route" {
+  name                          = "${name}-route"
+  cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.${name}_endpoint.id
+  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.${name}_origin_group.id
+  cdn_frontdoor_origin_ids      = [azurerm_cdn_frontdoor_origin.${name}_origin.id]
+  supported_protocols           = ${cfg['httpsOnly'] !== false ? '["Https"]' : '["Http", "Https"]'}
+  https_redirect_enabled        = ${cfg['httpsOnly'] !== false}
+  cache {
+    query_string_caching_behavior = "${cfg['queryStringCachingBehavior'] ?? 'IgnoreQueryString'}"
+  }
+}`,
+    ].join('\n\n');
+  }
+
+  private _azureWaf(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    return `resource "azurerm_web_application_firewall_policy" "${name}" {
+  name                = "${name}"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+
+  policy_settings {
+    enabled                     = true
+    mode                        = "${cfg['mode'] ?? 'Prevention'}"
+    request_body_check          = ${cfg['requestBodyCheck'] !== false}
+    file_upload_limit_in_mb     = ${cfg['fileUploadLimitMb'] ?? 100}
+    max_request_body_size_in_kb = ${cfg['maxRequestBodySizeKb'] ?? 128}
+  }
+
+  managed_rules {
+    managed_rule_set {
+      type    = "OWASP"
+      version = "${cfg['managedRuleSetVersion'] ?? '3.2'}"
+    }
+  }
+
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+${tagLines.join('\n')}
+  }
+}`;
+  }
+
+  private _vmss(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string, subnetRef: string | null): string {
+    const isWindows = cfg['osType'] === 'Windows';
+    const resourceType = isWindows ? 'azurerm_windows_virtual_machine_scale_set' : 'azurerm_linux_virtual_machine_scale_set';
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const lines: string[] = [
+      `resource "${resourceType}" "${name}" {`,
+      `  name                = "${name}"`,
+      `  resource_group_name = ${rgName}`,
+      `  location            = ${rgLoc}`,
+      `  sku                 = "${cfg['sku'] ?? 'Standard_B2s'}"`,
+      `  instances           = ${cfg['capacity'] ?? 2}`,
+      `  admin_username      = "${cfg['adminUsername'] ?? 'azureuser'}"`,
+      `  overprovision       = ${cfg['overprovision'] !== false}`,
+      `  upgrade_mode        = "${cfg['upgradeMode'] ?? 'Manual'}"`,
+    ];
+    if (!isWindows) {
+      lines.push(`  admin_ssh_key {`, `    username   = "${cfg['adminUsername'] ?? 'azureuser'}"`, `    public_key = var.admin_ssh_public_key`, `  }`);
+    } else {
+      lines.push(`  admin_password       = var.windows_admin_password`);
+    }
+    lines.push(
+      `  source_image_reference {`,
+      `    publisher = "${isWindows ? 'MicrosoftWindowsServer' : 'Canonical'}"`,
+      `    offer     = "${isWindows ? 'WindowsServer' : '0001-com-ubuntu-server-focal'}"`,
+      `    sku       = "${isWindows ? '2022-datacenter-azure-edition' : '20_04-lts'}"`,
+      `    version   = "latest"`,
+      `  }`,
+      `  os_disk {`,
+      `    storage_account_type = "${cfg['osDiskEncryption'] !== false ? 'Premium_LRS' : 'Standard_LRS'}"`,
+      `    caching              = "ReadWrite"`,
+      `  }`,
+      `  network_interface {`,
+      `    name    = "${name}-nic"`,
+      `    primary = true`,
+      `    ip_configuration {`,
+      `      name      = "internal"`,
+      `      primary   = true`,
+      `      subnet_id = ${subnetRef ?? 'azurerm_subnet.main.id # WARNING: subnet not connected'}`,
+      `    }`,
+      `  }`,
+      `  tags = {`,
+      `    Name      = "${name}"`,
+      `    ManagedBy = "CloudCraft"`,
+      ...tagLines,
+      `  }`,
+      `}`,
+    );
+
+    const parts = [lines.join('\n')];
+    if (cfg['autoscaleEnabled'] !== false) {
+      parts.push(`resource "azurerm_monitor_autoscale_setting" "${name}_autoscale" {
+  name                = "${name}-autoscale"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+  target_resource_id  = ${resourceType}.${name}.id
+
+  profile {
+    name = "default"
+    capacity {
+      default = ${cfg['capacity'] ?? 2}
+      minimum = ${cfg['minCapacity'] ?? 2}
+      maximum = ${cfg['maxCapacity'] ?? 10}
+    }
+  }
+}`);
+    }
+
+    return parts.join('\n\n');
+  }
+
+  private _appGateway(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string, subnetRef: string | null, pipRef: string | null): string {
+    const isAutoscale = cfg['autoscaleEnabled'] !== false;
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const lines: string[] = [
+      `resource "azurerm_application_gateway" "${name}" {`,
+      `  name                = "${name}"`,
+      `  resource_group_name = ${rgName}`,
+      `  location            = ${rgLoc}`,
+      `  sku {`,
+      `    name = "${cfg['sku'] ?? 'Standard_v2'}"`,
+      `    tier = "${cfg['sku'] ?? 'Standard_v2'}"`,
+    ];
+    if (!isAutoscale) {
+      lines.push(`    capacity = ${cfg['capacity'] ?? 2}`);
+    }
+    lines.push(`  }`);
+    if (isAutoscale) {
+      lines.push(`  autoscale_configuration {`, `    min_capacity = ${cfg['minCapacity'] ?? 2}`, `    max_capacity = ${cfg['maxCapacity'] ?? 10}`, `  }`);
+    }
+    lines.push(
+      `  gateway_ip_configuration {`,
+      `    name      = "${name}-gwipconfig"`,
+      `    subnet_id = ${subnetRef ?? 'azurerm_subnet.main.id # WARNING: subnet not connected'}`,
+      `  }`,
+      `  frontend_port {`,
+      `    name = "${name}-feport"`,
+      `    port = 443`,
+      `  }`,
+      `  frontend_ip_configuration {`,
+      `    name                 = "${name}-feip"`,
+      `    public_ip_address_id = ${pipRef ?? 'azurerm_public_ip.main.id # WARNING: Public IP not connected'}`,
+      `  }`,
+      `  backend_address_pool {`,
+      `    name = "${name}-backend"`,
+      `  }`,
+      `  backend_http_settings {`,
+      `    name                  = "${name}-http-settings"`,
+      `    cookie_based_affinity = "Disabled"`,
+      `    port                  = ${cfg['backendPort'] ?? 80}`,
+      `    protocol              = "Http"`,
+      `    request_timeout       = 20`,
+      `  }`,
+      `  http_listener {`,
+      `    name                           = "${name}-listener"`,
+      `    frontend_ip_configuration_name = "${name}-feip"`,
+      `    frontend_port_name             = "${name}-feport"`,
+      `    protocol                       = "Https"`,
+      `  }`,
+      `  request_routing_rule {`,
+      `    name                       = "${name}-rule"`,
+      `    rule_type                  = "Basic"`,
+      `    priority                   = 100`,
+      `    http_listener_name         = "${name}-listener"`,
+      `    backend_address_pool_name  = "${name}-backend"`,
+      `    backend_http_settings_name = "${name}-http-settings"`,
+      `  }`,
+    );
+    if (cfg['sku'] === 'WAF_v2' && cfg['wafEnabled'] === true) {
+      lines.push(`  waf_configuration {`, `    enabled          = true`, `    firewall_mode    = "${cfg['wafMode'] ?? 'Prevention'}"`, `    rule_set_type    = "OWASP"`, `    rule_set_version = "3.2"`, `  }`);
+    }
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    return lines.join('\n');
+  }
+
+  private _natAzure(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string, pipRef: string | null, subnetRefs: string[]): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const lines: string[] = [
+      `resource "azurerm_nat_gateway" "${name}" {`,
+      `  name                    = "${name}"`,
+      `  resource_group_name     = ${rgName}`,
+      `  location                = ${rgLoc}`,
+      `  sku_name                = "${cfg['sku'] ?? 'Standard'}"`,
+      `  idle_timeout_in_minutes = ${cfg['idleTimeoutMin'] ?? 4}`,
+    ];
+    if (cfg['availabilityZone']) {
+      lines.push(`  zones                   = ["${cfg['availabilityZone']}"]`);
+    }
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+
+    const parts = [lines.join('\n')];
+    if (pipRef) {
+      parts.push(`resource "azurerm_nat_gateway_public_ip_association" "${name}_pip_assoc" {
+  nat_gateway_id       = azurerm_nat_gateway.${name}.id
+  public_ip_address_id = ${pipRef}
+}`);
+    }
+    subnetRefs.forEach((subnetRef, i) => {
+      parts.push(`resource "azurerm_subnet_nat_gateway_association" "${name}_subnet_assoc_${i + 1}" {
+  subnet_id      = ${subnetRef}
+  nat_gateway_id = azurerm_nat_gateway.${name}.id
+}`);
+    });
+
+    return parts.join('\n\n');
+  }
+
   private _nsg(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
     const rules: string[] = [];
     if (cfg['allowSsh'] === true) {
@@ -2966,12 +3357,13 @@ ${required.join('\n')}
     const hasAzure = providers.includes('azure');
     const hasRds   = input.resources.some((r) => r.resourceType === 'aws_rds');
     const hasSql   = input.resources.some((r) => r.resourceType === 'azure_sql');
-    const hasVm    = input.resources.some((r) => r.resourceType === 'azure_vm');
+    const isVmLike = (r: DbArchitectureResource) => r.resourceType === 'azure_vm' || r.resourceType === 'azure_vmss';
+    const hasVm    = input.resources.some(isVmLike);
     const parseCfg = (r: DbArchitectureResource): Record<string, unknown> => {
       try { return JSON.parse(r.configJson) as Record<string, unknown>; } catch { return {}; }
     };
-    const hasWindowsVm = input.resources.some((r) => r.resourceType === 'azure_vm' && parseCfg(r)['osType'] === 'Windows');
-    const hasLinuxVm   = input.resources.some((r) => r.resourceType === 'azure_vm' && parseCfg(r)['osType'] !== 'Windows');
+    const hasWindowsVm = input.resources.some((r) => isVmLike(r) && parseCfg(r)['osType'] === 'Windows');
+    const hasLinuxVm   = input.resources.some((r) => isVmLike(r) && parseCfg(r)['osType'] !== 'Windows');
 
     const vars: string[] = [
       `variable "environment" {

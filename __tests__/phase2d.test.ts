@@ -1563,6 +1563,167 @@ describe('TerraformGenerator — Azure', () => {
     });
   });
 
+  describe('Bastion Terraform generation (previously completely unsupported)', () => {
+    test('generates a Bastion host with its own Public IP, gated by the connected subnet', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const subnet = makeResource({ id: 'sub-1', resourceType: 'azure_subnet', provider: 'azure', configJson: JSON.stringify({ name: 'AzureBastionSubnet' }) });
+      const bastion = makeResource({ id: 'bas-1', resourceType: 'azure_bastion', provider: 'azure', configJson: JSON.stringify({ name: 'my_bastion', scaleUnits: 4 }) });
+      const result = gen.generate(azureInput([rg, subnet, bastion], [makeConnection('rg-1', 'bas-1'), makeConnection('sub-1', 'bas-1')]));
+      expect(result.warnings.some((w) => w.includes('azure_bastion') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_public_ip" "my_bastion_pip"');
+      expect(main.content).toContain('resource "azurerm_bastion_host" "my_bastion"');
+      expect(main.content).toContain('scale_units              = 4');
+      expect(main.content).toContain('subnet_id            = azurerm_subnet.azurebastionsubnet.id');
+    });
+
+    test('Basic SKU omits Standard-only fields', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const bastion = makeResource({ id: 'bas-1', resourceType: 'azure_bastion', provider: 'azure', configJson: JSON.stringify({ name: 'basic_bastion', sku: 'Basic' }) });
+      const result = gen.generate(azureInput([rg, bastion], [makeConnection('rg-1', 'bas-1')]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).not.toContain('scale_units');
+    });
+  });
+
+  describe('Front Door Terraform generation (previously completely unsupported)', () => {
+    test('generates the profile, endpoint, origin group, origin, and route chain', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const afd = makeResource({ id: 'afd-1', resourceType: 'azure_front_door', provider: 'azure', configJson: JSON.stringify({ name: 'global_frontdoor', originHostName: 'backend.example.com' }) });
+      const result = gen.generate(azureInput([rg, afd], [makeConnection('rg-1', 'afd-1')]));
+      expect(result.warnings.some((w) => w.includes('azure_front_door') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_cdn_frontdoor_profile" "global_frontdoor"');
+      expect(main.content).toContain('resource "azurerm_cdn_frontdoor_endpoint" "global_frontdoor_endpoint"');
+      expect(main.content).toContain('resource "azurerm_cdn_frontdoor_origin_group" "global_frontdoor_origin_group"');
+      expect(main.content).toContain('host_name                     = "backend.example.com"');
+      expect(main.content).toContain('resource "azurerm_cdn_frontdoor_route" "global_frontdoor_route"');
+    });
+
+    test('httpsOnly=false allows HTTP and disables the redirect', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const afd = makeResource({ id: 'afd-1', resourceType: 'azure_front_door', provider: 'azure', configJson: JSON.stringify({ name: 'insecure_frontdoor', httpsOnly: false }) });
+      const result = gen.generate(azureInput([rg, afd], [makeConnection('rg-1', 'afd-1')]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('supported_protocols           = ["Http", "Https"]');
+      expect(main.content).toContain('https_redirect_enabled        = false');
+    });
+  });
+
+  describe('Azure WAF Policy Terraform generation (previously completely unsupported)', () => {
+    test('generates a policy with the configured mode and OWASP rule set version', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const waf = makeResource({ id: 'waf-1', resourceType: 'azure_waf', provider: 'azure', configJson: JSON.stringify({ name: 'api_waf_policy', mode: 'Detection', managedRuleSetVersion: '3.1' }) });
+      const result = gen.generate(azureInput([rg, waf], [makeConnection('rg-1', 'waf-1')]));
+      expect(result.warnings.some((w) => w.includes('azure_waf') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_web_application_firewall_policy" "api_waf_policy"');
+      expect(main.content).toContain('mode                        = "Detection"');
+      expect(main.content).toContain('version = "3.1"');
+    });
+  });
+
+  describe('VMSS Terraform generation (previously completely unsupported)', () => {
+    function vmssWithRgAndSubnet(vmssConfig: Record<string, unknown>) {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const subnet = makeResource({ id: 'sub-1', resourceType: 'azure_subnet', provider: 'azure', configJson: JSON.stringify({ name: 'app_subnet' }) });
+      const vmss = makeResource({ id: 'vmss-1', resourceType: 'azure_vmss', provider: 'azure', configJson: JSON.stringify(vmssConfig) });
+      const conns = [makeConnection('rg-1', 'vmss-1'), makeConnection('sub-1', 'vmss-1')];
+      return gen.generate(azureInput([rg, subnet, vmss], conns));
+    }
+
+    test('osType=Windows generates azurerm_windows_virtual_machine_scale_set; Linux generates the Linux variant', () => {
+      const windows = vmssWithRgAndSubnet({ name: 'win_vmss', osType: 'Windows' });
+      const windowsMain = windows.files.find((f) => f.filename === 'main.tf')!;
+      expect(windowsMain.content).toContain('resource "azurerm_windows_virtual_machine_scale_set" "win_vmss"');
+      expect(windowsMain.content).toContain('admin_password       = var.windows_admin_password');
+
+      const linux = vmssWithRgAndSubnet({ name: 'linux_vmss' });
+      const linuxMain = linux.files.find((f) => f.filename === 'main.tf')!;
+      expect(linuxMain.content).toContain('resource "azurerm_linux_virtual_machine_scale_set" "linux_vmss"');
+      expect(linuxMain.content).toContain('admin_ssh_key {');
+    });
+
+    test('autoscaleEnabled generates an azurerm_monitor_autoscale_setting with the configured min/max', () => {
+      const result = vmssWithRgAndSubnet({ name: 'scaled_vmss', autoscaleEnabled: true, minCapacity: 3, maxCapacity: 15 });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_monitor_autoscale_setting" "scaled_vmss_autoscale"');
+      expect(main.content).toContain('minimum = 3');
+      expect(main.content).toContain('maximum = 15');
+    });
+
+    test('autoscaleEnabled=false omits the autoscale setting resource', () => {
+      const result = vmssWithRgAndSubnet({ name: 'fixed_vmss', autoscaleEnabled: false });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).not.toContain('azurerm_monitor_autoscale_setting');
+    });
+  });
+
+  describe('Cosmos DB config depth round-trip (kind was previously always hardcoded)', () => {
+    test('kind reflects the configured API instead of always defaulting to GlobalDocumentDB', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const cosmos = makeResource({ id: 'cosmos-1', resourceType: 'azure_cosmos_db', provider: 'azure', configJson: JSON.stringify({ name: 'mongo_account', kind: 'MongoDB' }) });
+      const result = gen.generate(azureInput([rg, cosmos], [makeConnection('rg-1', 'cosmos-1')]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('kind                          = "MongoDB"');
+    });
+
+    test('Serverless throughput mode generates an EnableServerless capability', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const cosmos = makeResource({ id: 'cosmos-1', resourceType: 'azure_cosmos_db', provider: 'azure', configJson: JSON.stringify({ name: 'serverless_account', throughputMode: 'Serverless' }) });
+      const result = gen.generate(azureInput([rg, cosmos], [makeConnection('rg-1', 'cosmos-1')]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('capabilities {');
+      expect(main.content).toContain('name = "EnableServerless"');
+    });
+  });
+
+  describe('App Gateway config depth round-trip', () => {
+    test('WAF_v2 SKU with WAF enabled generates a waf_configuration block', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const subnet = makeResource({ id: 'sub-1', resourceType: 'azure_subnet', provider: 'azure', configJson: JSON.stringify({ name: 'gw_subnet' }) });
+      const pip = makeResource({ id: 'pip-1', resourceType: 'azure_public_ip', provider: 'azure', configJson: JSON.stringify({ name: 'gw_pip' }) });
+      const agw = makeResource({ id: 'agw-1', resourceType: 'azure_app_gateway', provider: 'azure', configJson: JSON.stringify({ name: 'waf_gateway', sku: 'WAF_v2', wafEnabled: true, wafMode: 'Detection' }) });
+      const conns = [makeConnection('rg-1', 'agw-1'), makeConnection('sub-1', 'agw-1'), makeConnection('pip-1', 'agw-1')];
+      const result = gen.generate(azureInput([rg, subnet, pip, agw], conns));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('waf_configuration {');
+      expect(main.content).toContain('firewall_mode    = "Detection"');
+    });
+
+    test('autoscaleEnabled generates an autoscale_configuration block instead of a fixed capacity', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const agw = makeResource({ id: 'agw-1', resourceType: 'azure_app_gateway', provider: 'azure', configJson: JSON.stringify({ name: 'auto_gateway', autoscaleEnabled: true, minCapacity: 2, maxCapacity: 20 }) });
+      const result = gen.generate(azureInput([rg, agw], [makeConnection('rg-1', 'agw-1')]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('autoscale_configuration {');
+      expect(main.content).toContain('max_capacity = 20');
+    });
+  });
+
+  describe('NAT Gateway (Azure) Terraform generation (previously completely unsupported)', () => {
+    test('generates the gateway plus a Public IP association when connected', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const pip = makeResource({ id: 'pip-1', resourceType: 'azure_public_ip', provider: 'azure', configJson: JSON.stringify({ name: 'nat_pip' }) });
+      const nat = makeResource({ id: 'nat-1', resourceType: 'azure_nat', provider: 'azure', configJson: JSON.stringify({ name: 'egress_nat', idleTimeoutMin: 10 }) });
+      const result = gen.generate(azureInput([rg, pip, nat], [makeConnection('rg-1', 'nat-1'), makeConnection('pip-1', 'nat-1')]));
+      expect(result.warnings.some((w) => w.includes('azure_nat') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_nat_gateway" "egress_nat"');
+      expect(main.content).toContain('idle_timeout_in_minutes = 10');
+      expect(main.content).toContain('resource "azurerm_nat_gateway_public_ip_association" "egress_nat_pip_assoc"');
+    });
+
+    test('subnet connections generate azurerm_subnet_nat_gateway_association resources', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const subnet = makeResource({ id: 'sub-1', resourceType: 'azure_subnet', provider: 'azure', configJson: JSON.stringify({ name: 'private_subnet' }) });
+      const nat = makeResource({ id: 'nat-1', resourceType: 'azure_nat', provider: 'azure', configJson: JSON.stringify({ name: 'subnet_nat' }) });
+      const result = gen.generate(azureInput([rg, subnet, nat], [makeConnection('rg-1', 'nat-1'), makeConnection('sub-1', 'nat-1')]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_subnet_nat_gateway_association" "subnet_nat_subnet_assoc_1"');
+    });
+  });
+
   describe('Function App Terraform generation (previously completely unsupported)', () => {
     function functionsWithRg(fnConfig: Record<string, unknown>) {
       const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });

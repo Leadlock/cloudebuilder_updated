@@ -473,6 +473,80 @@ describe('azure_route_table (Azure) — deepened config schema', () => {
   });
 });
 
+describe('azure_bastion — deepened config schema', () => {
+  const def = getResourceDefinition('azure_bastion')!;
+
+  test('Standard-only fields are hidden for the Basic SKU', () => {
+    const field = def.configSchema.find((f) => f.key === 'scaleUnits')!;
+    expect(field.visibleWhen!({ sku: 'Standard' })).toBe(true);
+    expect(field.visibleWhen!({ sku: 'Basic' })).toBe(false);
+  });
+
+  test('has a security rule for the shareable link', () => {
+    expect(def.securityRules!.some((r) => r.id === 'bastion-shareable-link')).toBe(true);
+  });
+});
+
+describe('azure_front_door — deepened config schema', () => {
+  const def = getResourceDefinition('azure_front_door')!;
+
+  test('has a security rule for HTTPS enforcement', () => {
+    expect(def.securityRules!.some((r) => r.id === 'frontdoor-https-only')).toBe(true);
+  });
+});
+
+describe('azure_waf (Azure WAF policy) — deepened config schema', () => {
+  const def = getResourceDefinition('azure_waf')!;
+
+  test('has a security rule for Detection-only mode', () => {
+    expect(def.securityRules!.some((r) => r.id === 'azure-waf-detection-only')).toBe(true);
+  });
+});
+
+describe('azure_vmss — deepened config schema', () => {
+  const def = getResourceDefinition('azure_vmss')!;
+
+  test('minCapacity/maxCapacity are only visible when autoscale is enabled', () => {
+    const field = def.configSchema.find((f) => f.key === 'minCapacity')!;
+    expect(field.visibleWhen!({ autoscaleEnabled: true })).toBe(true);
+    expect(field.visibleWhen!({ autoscaleEnabled: false })).toBe(false);
+  });
+});
+
+describe('azure_cosmos_db — deepened config schema', () => {
+  const def = getResourceDefinition('azure_cosmos_db')!;
+
+  test('maxThroughputRu is only visible for Provisioned throughput mode', () => {
+    const field = def.configSchema.find((f) => f.key === 'maxThroughputRu')!;
+    expect(field.visibleWhen!({ throughputMode: 'Provisioned' })).toBe(true);
+    expect(field.visibleWhen!({ throughputMode: 'Serverless' })).toBe(false);
+  });
+});
+
+describe('azure_app_gateway — deepened config schema', () => {
+  const def = getResourceDefinition('azure_app_gateway')!;
+
+  test('wafEnabled is only visible for the WAF_v2 SKU', () => {
+    const field = def.configSchema.find((f) => f.key === 'wafEnabled')!;
+    expect(field.visibleWhen!({ sku: 'WAF_v2' })).toBe(true);
+    expect(field.visibleWhen!({ sku: 'Standard_v2' })).toBe(false);
+  });
+
+  test('has a security rule for WAF_v2 without WAF enabled', () => {
+    expect(def.securityRules!.some((r) => r.id === 'app-gateway-no-waf')).toBe(true);
+  });
+});
+
+describe('azure_nat (Azure) — deepened config schema', () => {
+  const def = getResourceDefinition('azure_nat')!;
+
+  test('grew beyond the original 2 fields', () => {
+    expect(def.configSchema.length).toBeGreaterThan(2);
+    const keys = def.configSchema.map((f) => f.key);
+    expect(keys).toEqual(expect.arrayContaining(['sku', 'availabilityZone', 'tags']));
+  });
+});
+
 describe('azure_app_service — newly added resource', () => {
   const def = getResourceDefinition('azure_app_service')!;
 
