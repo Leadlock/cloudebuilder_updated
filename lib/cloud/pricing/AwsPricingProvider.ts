@@ -1,32 +1,40 @@
 /**
- * CloudCraft — AWS Static Rate Table Pricing Provider
+ * CloudCraft — AWS Pricing Provider
  *
- * IMPORTANT (honesty note): unlike AzurePricingProvider, this provider does
- * NOT make a live HTTP call to any AWS pricing endpoint. It computes prices
- * from hardcoded on-demand rate constants below, manually transcribed from
- * AWS's public pricing pages at the time this file was written — they are
- * NOT fetched at request time and WILL drift from AWS's actual current
- * pricing. The AWS Price List Bulk API
- * (https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/index.json) is a
- * real, public, unauthenticated endpoint that could replace this with true
- * live pricing, but that integration is not implemented — do not present
- * this provider's output as "live" pricing.
+ * Integrates with AWS's official Price List Query API
+ * (https://docs.aws.amazon.com/awspricelist/latest/) via @aws-sdk/client-pricing
+ * for EC2, RDS, S3, EBS and ALB — the resource types whose static tables below
+ * had the most per-SKU/config variance and the most drift risk.
  *
- * Implements configuration-aware pricing for all AWS resources supported by CloudCraft:
- * - EC2: Instance family/size, OS, regional variance, attached EBS gp3/io2 volumes
- * - RDS: Engine (MySQL, PostgreSQL, Aurora), DB instance class, Multi-AZ deployment, allocated storage
- * - S3: Standard storage rates by region, request tiers
- * - ALB: Base hourly + Load Balancer Capacity Units (LCU)
- * - NAT Gateway: Fixed hourly charge + data processing per GB
- * - Lambda: Execution requests + duration (GB-seconds) with free tier allowances
- * - CloudFront: Edge bandwidth and request rates
- * - EBS: Standalone gp3/gp2 volumes
- * - DynamoDB: Capacity units & storage
- * - EKS: Control plane cluster management fee ($0.10/hr)
+ * Unlike Azure's Retail Prices API, AWS's Price List Query API requires a
+ * signed AWS request. This isn't tied to any user's connected cloud account
+ * (design-time cost estimation happens with no cloud account in scope at
+ * all), so it authenticates with a dedicated, least-privilege service
+ * credential read from AWS_PRICING_ACCESS_KEY_ID / AWS_PRICING_SECRET_ACCESS_KEY.
+ * That IAM identity needs only `pricing:GetProducts` (the Price List Query
+ * API is a metadata service — it doesn't need permission on any actual
+ * resource). If those env vars are unset, or a query fails or times out,
+ * every method below falls back to the static rate tables — this provider
+ * never throws out to the caller and never fabricates a "live" price it
+ * didn't get from AWS.
+ *
+ * NOT live (deliberately, not an oversight — see each method for why):
+ * - NAT Gateway / EKS: the exact `group` meter attribute AWS uses to
+ *   disambiguate the hourly-vs-per-GB (NAT) or per-cluster (EKS) price
+ *   dimensions isn't stable/documented enough to filter on with confidence;
+ *   a wrong match would silently return the wrong meter's price, which is
+ *   worse than an honest static estimate.
+ * - Lambda / CloudFront / DynamoDB: these are usage-tiered (free tier +
+ *   per-request/per-GB/per-RU bands), not a single on-demand SKU rate — a
+ *   single GetProducts lookup can't represent that. The usage-aware scaling
+ *   logic for these lives in lib/engines/cost/awsPricing.ts (the design-time
+ *   estimator's fallback provider), which this provider intentionally does
+ *   not duplicate.
  */
+import { PricingClient, GetProductsCommand } from '@aws-sdk/client-pricing';
 import type { ICloudPricingProvider, NormalizedPrice, PriceQuery } from './types';
 
-// ─── AWS Regional Pricing Multipliers (static, manually transcribed) ─────────────
+// ─── AWS Regional Pricing Multipliers (static fallback only) ─────────────
 // Sourced from AWS Price List API comparisons to us-east-1
 const AWS_REGION_RATE_FACTOR: Record<string, number> = {
   'us-east-1':      1.00,
@@ -61,7 +69,52 @@ const AWS_REGION_RATE_FACTOR: Record<string, number> = {
   'af-south-1':     1.18,
 };
 
-// ─── AWS On-Demand Linux Base Hourly, static table (us-east-1) ───────────────────
+// ─── AWS Price List API "location" attribute names ───────────────────────
+// The Price List Query API filters on the human-readable region name, not
+// the region code — this is AWS's own attribute value, not ours.
+const AWS_REGION_LOCATION: Record<string, string> = {
+  'us-east-1':      'US East (N. Virginia)',
+  'us-east-2':      'US East (Ohio)',
+  'us-west-1':      'US West (N. California)',
+  'us-west-2':      'US West (Oregon)',
+  'ca-central-1':   'Canada (Central)',
+  'eu-west-1':      'EU (Ireland)',
+  'eu-west-2':      'EU (London)',
+  'eu-west-3':      'EU (Paris)',
+  'eu-central-1':   'EU (Frankfurt)',
+  'eu-central-2':   'EU (Zurich)',
+  'eu-north-1':     'EU (Stockholm)',
+  'eu-south-1':     'EU (Milan)',
+  'eu-south-2':     'EU (Spain)',
+  'ap-south-1':     'Asia Pacific (Mumbai)',
+  'ap-south-2':     'Asia Pacific (Hyderabad)',
+  'ap-southeast-1': 'Asia Pacific (Singapore)',
+  'ap-southeast-2': 'Asia Pacific (Sydney)',
+  'ap-southeast-3': 'Asia Pacific (Jakarta)',
+  'ap-southeast-4': 'Asia Pacific (Melbourne)',
+  'ap-northeast-1': 'Asia Pacific (Tokyo)',
+  'ap-northeast-2': 'Asia Pacific (Seoul)',
+  'ap-northeast-3': 'Asia Pacific (Osaka)',
+  'ap-east-1':      'Asia Pacific (Hong Kong)',
+  'sa-east-1':      'South America (Sao Paulo)',
+  'me-south-1':     'Middle East (Bahrain)',
+  'me-central-1':   'Middle East (UAE)',
+  'il-central-1':   'Israel (Tel Aviv)',
+  'af-south-1':     'Africa (Cape Town)',
+};
+
+const DB_ENGINE_MAP: Record<string, string> = {
+  mysql: 'MySQL',
+  postgres: 'PostgreSQL',
+  postgresql: 'PostgreSQL',
+  'aurora-mysql': 'Aurora MySQL',
+  'aurora-postgresql': 'Aurora PostgreSQL',
+  mariadb: 'MariaDB',
+  oracle: 'Oracle',
+  sqlserver: 'SQL Server',
+};
+
+// ─── AWS On-Demand Linux Base Hourly, static fallback (us-east-1) ────────
 const EC2_BASE_HOURLY: Record<string, number> = {
   // T3 (burstable)
   't3.nano':     0.0052,
@@ -95,7 +148,7 @@ const EC2_BASE_HOURLY: Record<string, number> = {
   'r5.4xlarge':  1.008,
 };
 
-// ─── AWS RDS Single-AZ Base Hourly, static table (us-east-1) ─────────────────────
+// ─── AWS RDS Single-AZ Base Hourly, static fallback (us-east-1) ──────────
 const RDS_BASE_HOURLY: Record<string, number> = {
   'db.t3.micro':    0.017,
   'db.t3.small':    0.034,
@@ -117,8 +170,86 @@ function getRegionFactor(region: string): number {
   return AWS_REGION_RATE_FACTOR[region.toLowerCase()] ?? 1.10;
 }
 
+function getRegionLocation(region: string): string {
+  return AWS_REGION_LOCATION[region.toLowerCase()] ?? AWS_REGION_LOCATION['us-east-1']!;
+}
+
+// ─── AWS Price List Query API client (lazy, credential-gated) ────────────
+// The Pricing API is only served from us-east-1 and ap-south-1 regardless
+// of which region a price is being looked up for.
+let pricingClient: PricingClient | null | undefined; // undefined = not yet resolved
+
+function getPricingClient(): PricingClient | null {
+  if (pricingClient !== undefined) return pricingClient;
+  const accessKeyId = process.env['AWS_PRICING_ACCESS_KEY_ID'];
+  const secretAccessKey = process.env['AWS_PRICING_SECRET_ACCESS_KEY'];
+  if (!accessKeyId || !secretAccessKey) {
+    pricingClient = null;
+    return null;
+  }
+  pricingClient = new PricingClient({ region: 'us-east-1', credentials: { accessKeyId, secretAccessKey } });
+  return pricingClient;
+}
+
+interface AwsPriceDimension {
+  unit: string;
+  pricePerUnit: { USD?: string };
+  description: string;
+}
+interface AwsPriceListItem {
+  product: { productFamily: string; attributes: Record<string, string> };
+  terms: { OnDemand?: Record<string, { priceDimensions: Record<string, AwsPriceDimension> }> };
+}
+
+/**
+ * Runs a GetProducts query and returns the first On-Demand USD price found.
+ * Returns null on any failure (no client configured, network error, timeout,
+ * no matching product) — callers must fall back to the static tables.
+ */
+async function queryOnDemandPrice(
+  serviceCode: string,
+  filters: Array<{ field: string; value: string }>,
+): Promise<{ price: number; unit: string } | null> {
+  const client = getPricingClient();
+  if (!client) return null;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 6000);
+  try {
+    const cmd = new GetProductsCommand({
+      ServiceCode: serviceCode,
+      Filters: filters.map((f) => ({ Type: 'TERM_MATCH', Field: f.field, Value: f.value })),
+      MaxResults: 5,
+    });
+    const res = await client.send(cmd, { abortSignal: controller.signal });
+    clearTimeout(timeoutId);
+
+    for (const raw of res.PriceList ?? []) {
+      const item: AwsPriceListItem = typeof raw === 'string' ? JSON.parse(raw) : (raw as unknown as AwsPriceListItem);
+      const onDemand = item.terms?.OnDemand;
+      if (!onDemand) continue;
+      const termKey = Object.keys(onDemand)[0];
+      if (!termKey) continue;
+      const dims = onDemand[termKey]!.priceDimensions;
+      const dimKey = Object.keys(dims)[0];
+      if (!dimKey) continue;
+      const dim = dims[dimKey]!;
+      const usd = dim.pricePerUnit?.USD;
+      if (!usd) continue;
+      const price = parseFloat(usd);
+      if (!Number.isFinite(price) || price < 0) continue;
+      return { price, unit: dim.unit };
+    }
+    return null;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    console.warn(`[AwsPricingProvider] Live pricing lookup failed for ${serviceCode}:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
 export class AwsPricingProvider implements ICloudPricingProvider {
-  readonly name = 'aws-static-rate-table';
+  readonly name = 'aws-price-list-api';
   readonly provider = 'aws' as const;
 
   async getPrice(query: PriceQuery): Promise<NormalizedPrice | null> {
@@ -177,14 +308,23 @@ export class AwsPricingProvider implements ICloudPricingProvider {
     }
   }
 
-  private _getEc2Price(config: Record<string, unknown>, region: string, factor: number): NormalizedPrice {
+  private async _getEc2Price(config: Record<string, unknown>, region: string, factor: number): Promise<NormalizedPrice> {
     const instanceType = (config['instanceType'] as string) || 't3.micro';
-    const baseHourly = EC2_BASE_HOURLY[instanceType] ?? (EC2_BASE_HOURLY['t3.medium']!);
-    const hourly = baseHourly * factor;
+
+    const live = await queryOnDemandPrice('AmazonEC2', [
+      { field: 'instanceType', value: instanceType },
+      { field: 'location', value: getRegionLocation(region) },
+      { field: 'operatingSystem', value: 'Linux' },
+      { field: 'tenancy', value: 'Shared' },
+      { field: 'preInstalledSw', value: 'NA' },
+      { field: 'capacitystatus', value: 'Used' },
+    ]);
+    const hourly = live ? live.price : (EC2_BASE_HOURLY[instanceType] ?? EC2_BASE_HOURLY['t3.medium']!) * factor;
+    const source = live ? 'aws-price-list-api' : 'aws-static-rate-table';
     const computeMonthly = hourly * 730;
 
     const storageGb = Number(config['storageGb'] || 20);
-    // gp3 rate ~$0.08/GB-mo in us-east-1, adjusted regionally
+    // gp3 rate ~$0.08/GB-mo in us-east-1, adjusted regionally (not live-queried)
     const storageMonthly = storageGb * 0.08 * factor;
     const monthlyPrice = computeMonthly + storageMonthly;
 
@@ -200,11 +340,13 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: `AWS EC2 ${instanceType} (Linux, on-demand) + ${storageGb}GB gp3 EBS`,
-      source: 'aws-static-rate-table',
+      source,
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
-        `Static reference on-demand rate for ${instanceType}: $${hourly.toFixed(4)}/hr`,
+        live
+          ? `Live on-demand rate from AWS Price List API: $${hourly.toFixed(4)}/hr`
+          : `Static reference on-demand rate for ${instanceType}: $${hourly.toFixed(4)}/hr`,
         `Assumes 730 hours/month operation: $${computeMonthly.toFixed(2)}/mo`,
         `${storageGb}GB EBS gp3 root storage: $${storageMonthly.toFixed(2)}/mo`,
         `Region: ${region} (Rate factor: ${factor.toFixed(2)}x)`,
@@ -212,19 +354,24 @@ export class AwsPricingProvider implements ICloudPricingProvider {
     };
   }
 
-  private _getRdsPrice(config: Record<string, unknown>, region: string, factor: number): NormalizedPrice {
+  private async _getRdsPrice(config: Record<string, unknown>, region: string, factor: number): Promise<NormalizedPrice> {
     const instanceClass = (config['instanceClass'] as string) || 'db.t3.micro';
     const engine = (config['engine'] as string) || 'mysql';
     const multiAz = config['multiAz'] === true;
     const storageGb = Number(config['allocatedStorage'] || 20);
 
-    const baseHourly = RDS_BASE_HOURLY[instanceClass] ?? (RDS_BASE_HOURLY['db.t3.micro']!);
-    const azMultiplier = multiAz ? 2 : 1;
-    const hourly = baseHourly * factor * azMultiplier;
+    const live = await queryOnDemandPrice('AmazonRDS', [
+      { field: 'instanceType', value: instanceClass },
+      { field: 'location', value: getRegionLocation(region) },
+      { field: 'databaseEngine', value: DB_ENGINE_MAP[engine.toLowerCase()] ?? 'MySQL' },
+      { field: 'deploymentOption', value: multiAz ? 'Multi-AZ' : 'Single-AZ' },
+    ]);
+    const hourly = live ? live.price : (RDS_BASE_HOURLY[instanceClass] ?? RDS_BASE_HOURLY['db.t3.micro']!) * factor * (multiAz ? 2 : 1);
+    const source = live ? 'aws-price-list-api' : 'aws-static-rate-table';
     const computeMonthly = hourly * 730;
 
-    // gp2/gp3 database storage ~$0.115/GB-mo
-    const storageMonthly = storageGb * 0.115 * factor * azMultiplier;
+    // gp2/gp3 database storage ~$0.115/GB-mo (not live-queried)
+    const storageMonthly = storageGb * 0.115 * factor * (multiAz ? 2 : 1);
     const monthlyPrice = computeMonthly + storageMonthly;
 
     return {
@@ -239,26 +386,34 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: `AWS RDS ${instanceClass} ${engine}${multiAz ? ' (Multi-AZ)' : ''}`,
-      source: 'aws-static-rate-table',
+      source,
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
         `Engine: ${engine}, instance: ${instanceClass}`,
         multiAz ? 'Multi-AZ enabled: 2x compute and storage redundancy' : 'Single-AZ deployment',
-        `Compute: $${hourly.toFixed(4)}/hr ($${computeMonthly.toFixed(2)}/mo)`,
+        live
+          ? `Live on-demand rate from AWS Price List API: $${hourly.toFixed(4)}/hr ($${computeMonthly.toFixed(2)}/mo)`
+          : `Compute: $${hourly.toFixed(4)}/hr ($${computeMonthly.toFixed(2)}/mo)`,
         `Storage (${storageGb}GB): $${storageMonthly.toFixed(2)}/mo`,
         `Region: ${region}`,
       ],
     };
   }
 
-  private _getS3Price(config: Record<string, unknown>, region: string, factor: number): NormalizedPrice {
+  private async _getS3Price(config: Record<string, unknown>, region: string, factor: number): Promise<NormalizedPrice> {
     const storageGb = Number(config['estimatedStorageGb'] || 50);
     const requestsPerMonth = Number(config['estimatedRequestsPerMonth'] || 100_000);
 
-    const baseStorageRate = 0.023; // $0.023/GB-mo for first 50TB
-    const storageCost = storageGb * baseStorageRate * factor;
-    // S3 PUT/POST/LIST: ~$0.005 per 1,000 requests
+    const live = await queryOnDemandPrice('AmazonS3', [
+      { field: 'location', value: getRegionLocation(region) },
+      { field: 'storageClass', value: 'General Purpose' },
+      { field: 'volumeType', value: 'Standard' },
+    ]);
+    const baseStorageRate = live ? live.price : 0.023 * factor;
+    const source = live ? 'aws-price-list-api' : 'aws-static-rate-table';
+    const storageCost = storageGb * baseStorageRate;
+    // S3 PUT/POST/LIST: ~$0.005 per 1,000 requests (not live-queried)
     const requestCost = (requestsPerMonth / 1000) * 0.005;
     const monthlyPrice = storageCost + requestCost;
 
@@ -270,15 +425,17 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       sku: 'S3 Standard',
       pricingModel: 'consumption',
       unit: '1 GB/Month',
-      unitPrice: baseStorageRate * factor,
+      unitPrice: baseStorageRate,
       monthlyPrice,
       currency: 'USD',
       description: `AWS S3 Standard Storage (${storageGb}GB)`,
-      source: 'aws-static-rate-table',
+      source,
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
-        `S3 Standard storage: $${(baseStorageRate * factor).toFixed(4)}/GB-mo ($${storageCost.toFixed(2)}/mo)`,
+        live
+          ? `Live S3 Standard storage rate from AWS Price List API: $${baseStorageRate.toFixed(4)}/GB-mo ($${storageCost.toFixed(2)}/mo)`
+          : `S3 Standard storage: $${baseStorageRate.toFixed(4)}/GB-mo ($${storageCost.toFixed(2)}/mo)`,
         `Request tier (${requestsPerMonth.toLocaleString()} PUT/POST/LIST): $${requestCost.toFixed(2)}/mo`,
         'Data egress bandwidth charges calculated separately based on traffic',
         `Region: ${region}`,
@@ -286,11 +443,17 @@ export class AwsPricingProvider implements ICloudPricingProvider {
     };
   }
 
-  private _getAlbPrice(config: Record<string, unknown>, region: string, factor: number): NormalizedPrice {
+  private async _getAlbPrice(config: Record<string, unknown>, region: string, factor: number): Promise<NormalizedPrice> {
     const lbType = (config['lbType'] as string) || 'application';
-    const baseHourly = 0.0225 * factor; // ALB base rate
+
+    const live = await queryOnDemandPrice('AWSELB', [
+      { field: 'location', value: getRegionLocation(region) },
+      { field: 'productFamily', value: lbType === 'network' ? 'Load Balancer-Network' : 'Load Balancer-Application' },
+    ]);
+    const baseHourly = live ? live.price : 0.0225 * factor;
+    const source = live ? 'aws-price-list-api' : 'aws-static-rate-table';
     const computeMonthly = baseHourly * 730;
-    // Minimum 1 LCU ($0.008/hr)
+    // Minimum 1 LCU (not live-queried — LCU pricing is usage-metered, not a flat SKU)
     const lcuMonthly = 0.008 * 730 * factor;
     const monthlyPrice = computeMonthly + lcuMonthly;
 
@@ -306,11 +469,13 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: `AWS ${lbType === 'network' ? 'Network' : 'Application'} Load Balancer`,
-      source: 'aws-static-rate-table',
+      source,
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
-        `Base hourly charge: $${baseHourly.toFixed(4)}/hr ($${computeMonthly.toFixed(2)}/mo)`,
+        live
+          ? `Live base hourly charge from AWS Price List API: $${baseHourly.toFixed(4)}/hr ($${computeMonthly.toFixed(2)}/mo)`
+          : `Base hourly charge: $${baseHourly.toFixed(4)}/hr ($${computeMonthly.toFixed(2)}/mo)`,
         `Includes 1 baseline Load Balancer Capacity Unit (LCU): $${lcuMonthly.toFixed(2)}/mo`,
         `Region: ${region}`,
       ],
@@ -318,6 +483,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
   }
 
   private _getNatPrice(_config: Record<string, unknown>, region: string, factor: number): NormalizedPrice {
+    // Not live — see file header. Static reference rate only.
     const hourly = 0.045 * factor;
     const fixedMonthly = hourly * 730;
     // Assume 100GB/mo data processing ($0.045/GB)
@@ -348,6 +514,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
   }
 
   private _getLambdaPrice(_config: Record<string, unknown>, region: string, _factor: number): NormalizedPrice {
+    // Not live — see file header. Static reference rate only.
     // AWS Lambda provides 1M requests & 400,000 GB-seconds per month free
     const monthlyPrice = 3.50; // Typical small production workload beyond free tier
     return {
@@ -374,6 +541,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
   }
 
   private _getCloudFrontPrice(_config: Record<string, unknown>, region: string, _factor: number): NormalizedPrice {
+    // Not live — see file header. Static reference rate only.
     // 1TB free tier out per month, then ~$0.085/GB
     const monthlyPrice = 12.0; // Typical distribution with moderate bandwidth
     return {
@@ -400,10 +568,17 @@ export class AwsPricingProvider implements ICloudPricingProvider {
     };
   }
 
-  private _getEbsPrice(config: Record<string, unknown>, region: string, factor: number): NormalizedPrice {
+  private async _getEbsPrice(config: Record<string, unknown>, region: string, factor: number): Promise<NormalizedPrice> {
     const sizeGb = Number(config['sizeGb'] || 100);
     const volumeType = (config['type'] as string) || 'gp3';
-    const ratePerGb = (volumeType === 'io2' ? 0.125 : 0.08) * factor;
+
+    const live = await queryOnDemandPrice('AmazonEC2', [
+      { field: 'location', value: getRegionLocation(region) },
+      { field: 'productFamily', value: 'Storage' },
+      { field: 'volumeApiName', value: volumeType },
+    ]);
+    const ratePerGb = live ? live.price : (volumeType === 'io2' ? 0.125 : 0.08) * factor;
+    const source = live ? 'aws-price-list-api' : 'aws-static-rate-table';
     const monthlyPrice = sizeGb * ratePerGb;
 
     return {
@@ -418,11 +593,13 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: `EBS ${volumeType.toUpperCase()} Volume (${sizeGb}GB)`,
-      source: 'aws-static-rate-table',
+      source,
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
-        `Rate: $${ratePerGb.toFixed(4)}/GB-mo for ${volumeType}`,
+        live
+          ? `Live rate from AWS Price List API: $${ratePerGb.toFixed(4)}/GB-mo for ${volumeType}`
+          : `Rate: $${ratePerGb.toFixed(4)}/GB-mo for ${volumeType}`,
         `Volume size: ${sizeGb}GB`,
         `Region: ${region}`,
       ],
@@ -430,6 +607,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
   }
 
   private _getDynamoDbPrice(_config: Record<string, unknown>, region: string, _factor: number): NormalizedPrice {
+    // Not live — see file header. Static reference rate only.
     const monthlyPrice = 5.0;
     return {
       provider: 'aws',
@@ -455,6 +633,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
   }
 
   private _getEksPrice(_config: Record<string, unknown>, region: string, _factor: number): NormalizedPrice {
+    // Not live — see file header. Static reference rate only.
     const hourly = 0.10;
     return {
       provider: 'aws',
