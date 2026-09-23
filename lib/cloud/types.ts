@@ -50,6 +50,8 @@ export type DiscoveredResourceType =
   | 'rds-instance' | 'sql-database' | 'sql-server' | 'dynamodb-table' | 'elasticache'
   // Load balancing
   | 'alb' | 'nlb' | 'load-balancer' | 'application-gateway' | 'target-group'
+  // CDN
+  | 'cloudfront'
   // Identity / security
   | 'iam-role' | 'security-group' | 'network-security-group' | 'key-vault'
   // Other

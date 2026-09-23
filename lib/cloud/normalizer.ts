@@ -43,6 +43,8 @@ const RESOURCE_TYPE_MAP: Record<string, string> = {
   alb: 'aws_alb',
   nlb: 'aws_alb',
   'target-group': 'aws_alb',
+  // AWS CDN
+  cloudfront: 'aws_cloudfront',
   // AWS Security
   'security-group': 'aws_sg',
   'iam-role': 'aws_iam',

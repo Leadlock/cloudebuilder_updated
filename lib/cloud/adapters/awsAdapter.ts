@@ -11,6 +11,7 @@
  * - ECS services (Fargate & EC2 launch types), EKS clusters & node groups
  * - IAM roles (user-managed only — aws-service-role/* roles are skipped),
  *   ElastiCache clusters (Redis/Valkey, with replication group failover/Multi-AZ state)
+ * - CloudFront distributions (global, discovered once — not per-region)
  * - Accessible Regions
  *
  * Reconstructs full infrastructure topology and relationships:
@@ -73,6 +74,7 @@ import {
   DescribeCacheClustersCommand,
   DescribeReplicationGroupsCommand,
 } from '@aws-sdk/client-elasticache';
+import { CloudFrontClient, ListDistributionsCommand } from '@aws-sdk/client-cloudfront';
 import type {
   AwsRoleCredentials,
   DiscoveredResource,
@@ -122,6 +124,7 @@ export const REQUIRED_AWS_PERMISSIONS = [
   'iam:ListAttachedRolePolicies',
   'elasticache:DescribeCacheClusters',
   'elasticache:DescribeReplicationGroups',
+  'cloudfront:ListDistributions',
   'sts:GetCallerIdentity',
 ];
 
@@ -314,6 +317,19 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     const creds = await this._assumeRole();
     return new ElastiCacheClient({
       region,
+      credentials: {
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
+        sessionToken: creds.sessionToken,
+      },
+    });
+  }
+
+  // CloudFront is a global service; its control-plane API is only served from us-east-1.
+  private async _makeCloudFrontClient(): Promise<CloudFrontClient> {
+    const creds = await this._assumeRole();
+    return new CloudFrontClient({
+      region: 'us-east-1',
       credentials: {
         accessKeyId: creds.accessKeyId,
         secretAccessKey: creds.secretAccessKey,
@@ -516,6 +532,22 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         allResources.push(...iamResources);
       } catch (iamErr) {
         warnings.push(`IAM discovery error: ${iamErr instanceof Error ? iamErr.message : String(iamErr)}`);
+      }
+
+      // 1c. Global CloudFront Distributions
+      try {
+        options.onProgress?.({
+          stage: 'scanning_storage',
+          message: 'Scanning CloudFront distributions...',
+          resourcesDiscovered: allResources.length,
+          relationshipsDiscovered: allRelationships.length,
+          unsupportedCount: 0,
+          percent: 19,
+        });
+        const cloudFrontResources = await this._discoverCloudFrontDistributions(accountId);
+        allResources.push(...cloudFrontResources);
+      } catch (cfErr) {
+        warnings.push(`CloudFront discovery error: ${cfErr instanceof Error ? cfErr.message : String(cfErr)}`);
       }
 
       // 2. Region-scoped resources
@@ -1716,6 +1748,73 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
           });
         }
         marker = resp.Marker;
+      } while (marker);
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverCloudFrontDistributions(accountId: string): Promise<CloudResource[]> {
+    const cf = await this._makeCloudFrontClient();
+    const results: CloudResource[] = [];
+    try {
+      let marker: string | undefined;
+      do {
+        const resp = await retryWithBackoff(() =>
+          cf.send(new ListDistributionsCommand({ Marker: marker })),
+        );
+        for (const dist of resp.DistributionList?.Items ?? []) {
+          const id = safeString(dist.Id);
+          if (!id) continue;
+
+          const cert = dist.ViewerCertificate;
+          const useCustomCertificate = Boolean(cert?.ACMCertificateArn);
+          const geoRestriction = dist.Restrictions?.GeoRestriction;
+          const cacheBehavior = dist.DefaultCacheBehavior;
+
+          const config = {
+            name: dist.Comment || id,
+            priceClass: dist.PriceClass ?? 'PriceClass_100',
+            // ListDistributions' summary shape doesn't include DefaultRootObject
+            // (only GetDistribution's full DistributionConfig does) — defaulted honestly.
+            defaultRootObject: 'index.html',
+            enabled: dist.Enabled ?? true,
+            viewerProtocolPolicy: cacheBehavior?.ViewerProtocolPolicy ?? 'redirect-to-https',
+            minTtl: Number(cacheBehavior?.MinTTL ?? 0),
+            defaultTtl: Number(cacheBehavior?.DefaultTTL ?? 3600),
+            maxTtl: Number(cacheBehavior?.MaxTTL ?? 86400),
+            compressionEnabled: cacheBehavior?.Compress ?? true,
+            httpVersion: (dist.HttpVersion ?? 'http2').toLowerCase(),
+            ipv6Enabled: dist.IsIPV6Enabled ?? true,
+            geoRestrictionType: geoRestriction?.RestrictionType ?? 'none',
+            geoRestrictionCountries: geoRestriction?.Items ?? [],
+            useCustomCertificate,
+            customCertificateArn: cert?.ACMCertificateArn ?? '',
+            minimumProtocolVersion: cert?.MinimumProtocolVersion ?? 'TLSv1.2_2021',
+            webAclId: dist.WebACLId ?? '',
+            source: 'aws-api',
+            imported: true,
+          };
+
+          results.push({
+            id,
+            provider: 'aws',
+            accountId,
+            region: 'global',
+            resourceType: 'cloudfront',
+            name: dist.Comment || id,
+            arn: safeString(dist.ARN),
+            resourceId: id,
+            tags: {},
+            status: dist.Status ?? 'Deployed',
+            configuration: config,
+            metadata: { domainName: dist.DomainName ?? null },
+            configurationHash: computeConfigHash(config),
+            discoveredAt: now(),
+          });
+        }
+        marker = resp.DistributionList?.IsTruncated ? resp.DistributionList?.NextMarker : undefined;
       } while (marker);
     } catch {
       // Best effort

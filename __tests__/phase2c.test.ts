@@ -406,6 +406,28 @@ jest.mock('@aws-sdk/client-elasticache', () => ({
   DescribeReplicationGroupsCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeReplicationGroupsCommand' } })),
 }));
 
+jest.mock('@aws-sdk/client-cloudfront', () => ({
+  CloudFrontClient: jest.fn().mockImplementation(() => ({
+    send: jest.fn().mockResolvedValue({
+      DistributionList: {
+        IsTruncated: false,
+        Items: [
+          {
+            Id: 'E1ABCDEF23456', ARN: 'arn:aws:cloudfront::123456789012:distribution/E1ABCDEF23456',
+            Comment: 'my-cdn', Status: 'Deployed', DomainName: 'd111111abcdef8.cloudfront.net',
+            Enabled: true, PriceClass: 'PriceClass_All', HttpVersion: 'HTTP2', IsIPV6Enabled: true,
+            ViewerCertificate: { ACMCertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/abc', MinimumProtocolVersion: 'TLSv1.2_2021' },
+            WebACLId: 'arn:aws:wafv2:us-east-1:123456789012:global/webacl/my-acl/abc',
+            Restrictions: { GeoRestriction: { RestrictionType: 'whitelist', Items: ['US', 'CA'] } },
+            DefaultCacheBehavior: { ViewerProtocolPolicy: 'https-only', Compress: true, MinTTL: 0, DefaultTTL: 3600, MaxTTL: 86400 },
+          },
+        ],
+      },
+    }),
+  })),
+  ListDistributionsCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'ListDistributionsCommand' } })),
+}));
+
 // ─── Mock Azure SDK ───────────────────────────────────────────────────────────
 
 jest.mock('@azure/identity', () => ({
@@ -686,6 +708,22 @@ describe('AWS Adapter', () => {
     expect(caches[0].configuration.numNodes).toBe(2);
     expect(caches[0].configuration.automaticFailoverEnabled).toBe(true);
     expect(caches[0].configuration.multiAzEnabled).toBe(true);
+    await adapter.dispose();
+  });
+
+  it('discovers CloudFront distributions with certificate, WAF, and geo-restriction config resolved', async () => {
+    const adapter = new AwsDiscoveryAdapter(awsCreds);
+    const result = await adapter.discoverAll();
+    const distributions = result.resources.filter((r) => r.resourceType === 'cloudfront');
+    expect(distributions.length).toBe(1);
+    expect(distributions[0].name).toBe('my-cdn');
+    expect(distributions[0].configuration.priceClass).toBe('PriceClass_All');
+    expect(distributions[0].configuration.viewerProtocolPolicy).toBe('https-only');
+    expect(distributions[0].configuration.useCustomCertificate).toBe(true);
+    expect(distributions[0].configuration.customCertificateArn).toBe('arn:aws:acm:us-east-1:123456789012:certificate/abc');
+    expect(distributions[0].configuration.webAclId).toBe('arn:aws:wafv2:us-east-1:123456789012:global/webacl/my-acl/abc');
+    expect(distributions[0].configuration.geoRestrictionType).toBe('whitelist');
+    expect(distributions[0].configuration.geoRestrictionCountries).toEqual(['US', 'CA']);
     await adapter.dispose();
   });
 
