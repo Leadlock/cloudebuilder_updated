@@ -11,6 +11,7 @@ import {
 import clsx from 'clsx';
 import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedService';
 import type { WaAssessment } from '@/lib/engines/wellArchitected/types';
+import TerraformExecutionPanel from './TerraformExecutionPanel';
 
 const AWS_STEPS: Omit<DeploymentStep, 'status' | 'output'>[] = [
   { id: 'validate',  label: 'Validate Architecture',  description: 'Check resource configuration and connectivity requirements', provider: 'aws' },
@@ -421,6 +422,8 @@ export default function DeployPanel() {
             <p className="text-yellow-700 text-xs mt-1">Add resources to the visual canvas before deploying</p>
           </div>
         )}
+
+        <TerraformExecutionPanel />
       </div>
     </div>
   );
