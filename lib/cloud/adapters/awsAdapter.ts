@@ -12,6 +12,11 @@
  * - IAM roles (user-managed only — aws-service-role/* roles are skipped),
  *   ElastiCache clusters (Redis/Valkey, with replication group failover/Multi-AZ state)
  * - CloudFront distributions (global, discovered once — not per-region)
+ * - Auto Scaling Groups (launch template resolved), Network ACLs (schema's
+ *   single inbound/outbound rule mapped from the lowest-numbered custom rule)
+ * - SQS queues, customer-managed KMS keys (AWS-managed keys excluded)
+ * - Route 53 hosted zones (global), CloudWatch alarms, WAF Web ACLs
+ *   (both REGIONAL per-region and the global CLOUDFRONT scope)
  * - Accessible Regions
  *
  * Reconstructs full infrastructure topology and relationships:
@@ -90,6 +95,9 @@ import {
   GetKeyRotationStatusCommand,
   ListAliasesCommand,
 } from '@aws-sdk/client-kms';
+import { Route53Client, ListHostedZonesCommand, ListResourceRecordSetsCommand } from '@aws-sdk/client-route-53';
+import { CloudWatchClient, DescribeAlarmsCommand } from '@aws-sdk/client-cloudwatch';
+import { WAFV2Client, ListWebACLsCommand, GetWebACLCommand } from '@aws-sdk/client-wafv2';
 import type {
   AwsRoleCredentials,
   DiscoveredResource,
@@ -150,6 +158,11 @@ export const REQUIRED_AWS_PERMISSIONS = [
   'kms:DescribeKey',
   'kms:GetKeyRotationStatus',
   'kms:ListAliases',
+  'route53:ListHostedZones',
+  'route53:ListResourceRecordSets',
+  'cloudwatch:DescribeAlarms',
+  'wafv2:ListWebACLs',
+  'wafv2:GetWebACL',
   'sts:GetCallerIdentity',
 ];
 
@@ -399,6 +412,43 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     });
   }
 
+  // Route 53 is a global service; its control-plane API is only served from us-east-1.
+  private async _makeRoute53Client(): Promise<Route53Client> {
+    const creds = await this._assumeRole();
+    return new Route53Client({
+      region: 'us-east-1',
+      credentials: {
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
+        sessionToken: creds.sessionToken,
+      },
+    });
+  }
+
+  private async _makeCloudWatchClient(region: string): Promise<CloudWatchClient> {
+    const creds = await this._assumeRole();
+    return new CloudWatchClient({
+      region,
+      credentials: {
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
+        sessionToken: creds.sessionToken,
+      },
+    });
+  }
+
+  private async _makeWafClient(region: string): Promise<WAFV2Client> {
+    const creds = await this._assumeRole();
+    return new WAFV2Client({
+      region,
+      credentials: {
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
+        sessionToken: creds.sessionToken,
+      },
+    });
+  }
+
   // ── Account validation ───────────────────────────────────────────────────
 
   async validateAccount(): Promise<AccountValidationResult> {
@@ -611,6 +661,22 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         warnings.push(`CloudFront discovery error: ${cfErr instanceof Error ? cfErr.message : String(cfErr)}`);
       }
 
+      // 1d. Global Route 53 Hosted Zones
+      try {
+        const route53Resources = await this._discoverRoute53Zones(accountId);
+        allResources.push(...route53Resources);
+      } catch (r53Err) {
+        warnings.push(`Route 53 discovery error: ${r53Err instanceof Error ? r53Err.message : String(r53Err)}`);
+      }
+
+      // 1e. Global (CLOUDFRONT-scope) WAF Web ACLs
+      try {
+        const globalWafResources = await this._discoverWafWebAcls('CLOUDFRONT', 'us-east-1', accountId);
+        allResources.push(...globalWafResources);
+      } catch (wafErr) {
+        warnings.push(`WAF (CloudFront scope) discovery error: ${wafErr instanceof Error ? wafErr.message : String(wafErr)}`);
+      }
+
       // 2. Region-scoped resources
       const stepPercent = 75 / (uniqueRegions.length || 1);
       let currentProgress = 20;
@@ -671,6 +737,11 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             this._discoverKmsKeys(region, accountId),
           ]);
 
+          const [alarms, regionalWaf] = await Promise.all([
+            this._discoverCloudWatchAlarms(region, accountId),
+            this._discoverWafWebAcls('REGIONAL', region, accountId),
+          ]);
+
           allResources.push(
             ...vpcs,
             ...subnets,
@@ -692,6 +763,8 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             ...nacls,
             ...queues,
             ...kmsKeys,
+            ...alarms,
+            ...regionalWaf,
           );
 
           // Build topology relationships for this region
@@ -2215,6 +2288,198 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
       } while (marker);
     } catch {
       // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverRoute53Zones(accountId: string): Promise<CloudResource[]> {
+    const r53 = await this._makeRoute53Client();
+    const results: CloudResource[] = [];
+    try {
+      let marker: string | undefined;
+      do {
+        const resp = await retryWithBackoff(() =>
+          r53.send(new ListHostedZonesCommand({ Marker: marker })),
+        );
+        for (const zone of resp.HostedZones ?? []) {
+          const zoneId = (zone.Id ?? '').replace('/hostedzone/', '');
+          if (!zoneId) continue;
+          const domainName = (zone.Name ?? '').replace(/\.$/, '');
+
+          // The schema models one hosted zone + one DNS record; pick the first
+          // record that isn't the zone's own implicit NS/SOA apex records.
+          let recordType = 'A';
+          let recordValue = '';
+          let ttl = 300;
+          try {
+            const recResp = await retryWithBackoff(() =>
+              r53.send(new ListResourceRecordSetsCommand({ HostedZoneId: zoneId, MaxItems: 10 })),
+            );
+            const record = (recResp.ResourceRecordSets ?? []).find(
+              (r) => r.Type !== 'NS' && r.Type !== 'SOA' && r.Name !== zone.Name,
+            ) ?? (recResp.ResourceRecordSets ?? []).find((r) => r.Type !== 'NS' && r.Type !== 'SOA');
+            if (record) {
+              recordType = record.Type ?? recordType;
+              recordValue = record.ResourceRecords?.[0]?.Value ?? record.AliasTarget?.DNSName ?? '';
+              ttl = record.TTL ?? ttl;
+            }
+          } catch {
+            // Best effort
+          }
+
+          const config = {
+            name: domainName || zoneId,
+            domainName,
+            hostedZoneType: zone.Config?.PrivateZone ? 'Private' : 'Public',
+            comment: zone.Config?.Comment ?? '',
+            recordType,
+            recordValue,
+            ttl,
+            routingPolicy: 'Simple',
+            weight: 100,
+            source: 'aws-api',
+            imported: true,
+          };
+
+          results.push({
+            id: zoneId,
+            provider: 'aws',
+            accountId,
+            region: 'global',
+            resourceType: 'hosted-zone',
+            name: domainName || zoneId,
+            arn: `arn:aws:route53:::hostedzone/${zoneId}`,
+            resourceId: zoneId,
+            tags: {},
+            status: 'active',
+            configuration: config,
+            metadata: { recordCount: zone.ResourceRecordSetCount ?? 0 },
+            configurationHash: computeConfigHash(config),
+            discoveredAt: now(),
+          });
+        }
+        marker = resp.IsTruncated ? resp.NextMarker : undefined;
+      } while (marker);
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverCloudWatchAlarms(region: string, accountId: string): Promise<CloudResource[]> {
+    const cw = await this._makeCloudWatchClient(region);
+    const results: CloudResource[] = [];
+    try {
+      let nextToken: string | undefined;
+      do {
+        const resp = await retryWithBackoff(() =>
+          cw.send(new DescribeAlarmsCommand({ NextToken: nextToken })),
+        );
+        for (const alarm of resp.MetricAlarms ?? []) {
+          const name = safeString(alarm.AlarmName);
+          if (!name) continue;
+
+          const config = {
+            name,
+            metricName: alarm.MetricName ?? 'CPUUtilization',
+            namespace: alarm.Namespace ?? 'AWS/EC2',
+            threshold: alarm.Threshold ?? 80,
+            comparisonOperator: alarm.ComparisonOperator ?? 'GreaterThanThreshold',
+            evaluationPeriods: alarm.EvaluationPeriods ?? 2,
+            periodSeconds: alarm.Period ?? 300,
+            statistic: alarm.Statistic ?? alarm.ExtendedStatistic ?? 'Average',
+            treatMissingData: (alarm.TreatMissingData ?? 'missing').toLowerCase(),
+            source: 'aws-api',
+            imported: true,
+          };
+
+          results.push({
+            id: name,
+            provider: 'aws',
+            accountId,
+            region,
+            resourceType: 'cloudwatch-alarm',
+            name,
+            arn: safeString(alarm.AlarmArn),
+            resourceId: name,
+            tags: {},
+            status: alarm.StateValue ?? 'INSUFFICIENT_DATA',
+            configuration: config,
+            metadata: { alarmActions: alarm.AlarmActions ?? [] },
+            configurationHash: computeConfigHash(config),
+            discoveredAt: now(),
+          });
+        }
+        nextToken = resp.NextToken;
+      } while (nextToken);
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverWafWebAcls(scope: 'REGIONAL' | 'CLOUDFRONT', region: string, accountId: string): Promise<CloudResource[]> {
+    const waf = await this._makeWafClient(region);
+    const results: CloudResource[] = [];
+    try {
+      let nextMarker: string | undefined;
+      do {
+        const listResp = await retryWithBackoff(() =>
+          waf.send(new ListWebACLsCommand({ Scope: scope, NextMarker: nextMarker })),
+        );
+        for (const summary of listResp.WebACLs ?? []) {
+          const name = safeString(summary.Name);
+          if (!name || !summary.Id) continue;
+
+          try {
+            const getResp = await retryWithBackoff(() =>
+              waf.send(new GetWebACLCommand({ Scope: scope, Name: name, Id: summary.Id })),
+            );
+            const acl = getResp.WebACL;
+            if (!acl) continue;
+
+            const managedRuleGroups = (acl.Rules ?? [])
+              .map((r) => r.Statement?.ManagedRuleGroupStatement?.Name)
+              .filter((n): n is string => Boolean(n));
+            const rateLimitRule = (acl.Rules ?? []).find((r) => r.Statement?.RateBasedStatement);
+
+            const config = {
+              name,
+              scope,
+              defaultAction: acl.DefaultAction?.Block ? 'BLOCK' : 'ALLOW',
+              managedRuleGroups,
+              rateLimitEnabled: Boolean(rateLimitRule),
+              rateLimitThreshold: rateLimitRule?.Statement?.RateBasedStatement?.Limit ?? 2000,
+              cloudWatchMetricsEnabled: acl.VisibilityConfig?.CloudWatchMetricsEnabled ?? true,
+              sampledRequestsEnabled: acl.VisibilityConfig?.SampledRequestsEnabled ?? true,
+              source: 'aws-api',
+              imported: true,
+            };
+
+            results.push({
+              id: summary.Id,
+              provider: 'aws',
+              accountId,
+              region: scope === 'CLOUDFRONT' ? 'global' : region,
+              resourceType: 'waf-web-acl',
+              name,
+              arn: safeString(summary.ARN),
+              resourceId: summary.Id,
+              tags: {},
+              status: 'active',
+              configuration: config,
+              metadata: { scope },
+              configurationHash: computeConfigHash(config),
+              discoveredAt: now(),
+            });
+          } catch {
+            // Best effort per ACL
+          }
+        }
+        nextMarker = listResp.NextMarker;
+      } while (nextMarker);
+    } catch {
+      // Best effort — WAFv2 isn't available in every region
     }
     return results;
   }

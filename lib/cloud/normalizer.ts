@@ -45,6 +45,10 @@ const RESOURCE_TYPE_MAP: Record<string, string> = {
   'target-group': 'aws_alb',
   // AWS CDN
   cloudfront: 'aws_cloudfront',
+  // AWS DNS / monitoring / firewall
+  'hosted-zone': 'aws_route53',
+  'cloudwatch-alarm': 'aws_cloudwatch',
+  'waf-web-acl': 'aws_waf',
   // AWS Security
   'security-group': 'aws_sg',
   'iam-role': 'aws_iam',

@@ -294,6 +294,77 @@ jest.mock('@aws-sdk/client-kms', () => ({
   ListAliasesCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'ListAliasesCommand' } })),
 }));
 
+jest.mock('@aws-sdk/client-route-53', () => ({
+  Route53Client: jest.fn().mockImplementation(() => ({
+    send: jest.fn().mockImplementation((cmd: { constructor: { name: string } }) => {
+      const name = cmd.constructor?.name ?? '';
+      if (name === 'ListHostedZonesCommand') {
+        return Promise.resolve({
+          HostedZones: [
+            { Id: '/hostedzone/Z1ABC123', Name: 'example.com.', Config: { PrivateZone: false, Comment: 'primary domain' }, ResourceRecordSetCount: 4 },
+          ],
+        });
+      }
+      if (name === 'ListResourceRecordSetsCommand') {
+        return Promise.resolve({
+          ResourceRecordSets: [
+            { Name: 'example.com.', Type: 'NS', TTL: 172800, ResourceRecords: [{ Value: 'ns-1.awsdns.com.' }] },
+            { Name: 'example.com.', Type: 'SOA', TTL: 900, ResourceRecords: [{ Value: 'ns-1.awsdns.com.' }] },
+            { Name: 'www.example.com.', Type: 'A', TTL: 60, ResourceRecords: [{ Value: '203.0.113.10' }] },
+          ],
+        });
+      }
+      return Promise.resolve({});
+    }),
+  })),
+  ListHostedZonesCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'ListHostedZonesCommand' } })),
+  ListResourceRecordSetsCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'ListResourceRecordSetsCommand' } })),
+}));
+
+jest.mock('@aws-sdk/client-cloudwatch', () => ({
+  CloudWatchClient: jest.fn().mockImplementation(() => ({
+    send: jest.fn().mockResolvedValue({
+      MetricAlarms: [
+        {
+          AlarmName: 'high-cpu', AlarmArn: 'arn:aws:cloudwatch:us-east-1:123456789012:alarm:high-cpu',
+          MetricName: 'CPUUtilization', Namespace: 'AWS/EC2', Threshold: 85, ComparisonOperator: 'GreaterThanThreshold',
+          EvaluationPeriods: 3, Period: 60, Statistic: 'Average', TreatMissingData: 'notBreaching', StateValue: 'OK',
+          AlarmActions: ['arn:aws:sns:us-east-1:123456789012:alerts'],
+        },
+      ],
+    }),
+  })),
+  DescribeAlarmsCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeAlarmsCommand' } })),
+}));
+
+jest.mock('@aws-sdk/client-wafv2', () => ({
+  WAFV2Client: jest.fn().mockImplementation(() => ({
+    send: jest.fn().mockImplementation((cmd: { constructor: { name: string }; Scope?: string }) => {
+      const name = cmd.constructor?.name ?? '';
+      if (name === 'ListWebACLsCommand') {
+        return Promise.resolve({
+          WebACLs: [{ Name: 'app-waf', Id: 'acl-abc123', ARN: `arn:aws:wafv2:us-east-1:123456789012:${cmd.Scope === 'CLOUDFRONT' ? 'global' : 'regional'}/webacl/app-waf/abc` }],
+        });
+      }
+      if (name === 'GetWebACLCommand') {
+        return Promise.resolve({
+          WebACL: {
+            DefaultAction: { Allow: {} },
+            Rules: [
+              { Statement: { ManagedRuleGroupStatement: { Name: 'AWSManagedRulesCommonRuleSet' } } },
+              { Statement: { RateBasedStatement: { Limit: 5000 } } },
+            ],
+            VisibilityConfig: { CloudWatchMetricsEnabled: true, SampledRequestsEnabled: true },
+          },
+        });
+      }
+      return Promise.resolve({});
+    }),
+  })),
+  ListWebACLsCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'ListWebACLsCommand' } })),
+  GetWebACLCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'GetWebACLCommand' } })),
+}));
+
 jest.mock('@aws-sdk/client-s3', () => ({
   S3Client: jest.fn().mockImplementation(() => ({
     send: jest.fn().mockImplementation((cmd: { constructor: { name: string } }) => {
@@ -888,6 +959,45 @@ describe('AWS Adapter', () => {
     expect(keys[0].name).toBe('app-secrets');
     expect(keys[0].configuration.enableKeyRotation).toBe(true);
     expect(keys[0].configuration.keyUsage).toBe('ENCRYPT_DECRYPT');
+    await adapter.dispose();
+  });
+
+  it('discovers Route 53 hosted zones, mapping the first non-NS/SOA record and skipping the apex NS/SOA set', async () => {
+    const adapter = new AwsDiscoveryAdapter(awsCreds);
+    const result = await adapter.discoverAll();
+    const zones = result.resources.filter((r) => r.resourceType === 'hosted-zone');
+    expect(zones.length).toBe(1);
+    expect(zones[0].name).toBe('example.com');
+    expect(zones[0].configuration.hostedZoneType).toBe('Public');
+    expect(zones[0].configuration.recordType).toBe('A');
+    expect(zones[0].configuration.recordValue).toBe('203.0.113.10');
+    await adapter.dispose();
+  });
+
+  it('discovers CloudWatch alarms with their full comparison/evaluation config', async () => {
+    const adapter = new AwsDiscoveryAdapter(awsCreds);
+    const result = await adapter.discoverAll();
+    const alarms = result.resources.filter((r) => r.resourceType === 'cloudwatch-alarm');
+    expect(alarms.length).toBeGreaterThan(0);
+    expect(alarms[0].name).toBe('high-cpu');
+    expect(alarms[0].configuration.threshold).toBe(85);
+    expect(alarms[0].configuration.evaluationPeriods).toBe(3);
+    expect(alarms[0].configuration.periodSeconds).toBe(60);
+    expect(alarms[0].status).toBe('OK');
+    await adapter.dispose();
+  });
+
+  it('discovers WAF Web ACLs in both REGIONAL and CLOUDFRONT scope, resolving managed rule groups and rate limiting', async () => {
+    const adapter = new AwsDiscoveryAdapter(awsCreds);
+    const result = await adapter.discoverAll();
+    const acls = result.resources.filter((r) => r.resourceType === 'waf-web-acl');
+    expect(acls.length).toBeGreaterThanOrEqual(2); // one REGIONAL + one CLOUDFRONT scope
+    expect(acls.some((a) => a.configuration.scope === 'REGIONAL')).toBe(true);
+    expect(acls.some((a) => a.configuration.scope === 'CLOUDFRONT')).toBe(true);
+    expect(acls[0].configuration.defaultAction).toBe('ALLOW');
+    expect(acls[0].configuration.managedRuleGroups).toContain('AWSManagedRulesCommonRuleSet');
+    expect(acls[0].configuration.rateLimitEnabled).toBe(true);
+    expect(acls[0].configuration.rateLimitThreshold).toBe(5000);
     await adapter.dispose();
   });
 
