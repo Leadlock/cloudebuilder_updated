@@ -53,7 +53,9 @@ export type DiscoveredResourceType =
   // CDN
   | 'cloudfront'
   // Identity / security
-  | 'iam-role' | 'security-group' | 'network-security-group' | 'key-vault' | 'network-acl'
+  | 'iam-role' | 'security-group' | 'network-security-group' | 'key-vault' | 'network-acl' | 'kms-key'
+  // Messaging
+  | 'sqs-queue'
   // Other
   | 'resource-group' | 'public-ip' | 'network-interface' | 'unknown';
 

@@ -82,6 +82,14 @@ import {
   DescribeReplicationGroupsCommand,
 } from '@aws-sdk/client-elasticache';
 import { CloudFrontClient, ListDistributionsCommand } from '@aws-sdk/client-cloudfront';
+import { SQSClient, ListQueuesCommand, GetQueueAttributesCommand } from '@aws-sdk/client-sqs';
+import {
+  KMSClient,
+  ListKeysCommand,
+  DescribeKeyCommand,
+  GetKeyRotationStatusCommand,
+  ListAliasesCommand,
+} from '@aws-sdk/client-kms';
 import type {
   AwsRoleCredentials,
   DiscoveredResource,
@@ -136,6 +144,12 @@ export const REQUIRED_AWS_PERMISSIONS = [
   'ec2:DescribeLaunchTemplateVersions',
   'autoscaling:DescribeAutoScalingGroups',
   'autoscaling:DescribePolicies',
+  'sqs:ListQueues',
+  'sqs:GetQueueAttributes',
+  'kms:ListKeys',
+  'kms:DescribeKey',
+  'kms:GetKeyRotationStatus',
+  'kms:ListAliases',
   'sts:GetCallerIdentity',
 ];
 
@@ -339,6 +353,30 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
   private async _makeAutoScalingClient(region: string): Promise<AutoScalingClient> {
     const creds = await this._assumeRole();
     return new AutoScalingClient({
+      region,
+      credentials: {
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
+        sessionToken: creds.sessionToken,
+      },
+    });
+  }
+
+  private async _makeSqsClient(region: string): Promise<SQSClient> {
+    const creds = await this._assumeRole();
+    return new SQSClient({
+      region,
+      credentials: {
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
+        sessionToken: creds.sessionToken,
+      },
+    });
+  }
+
+  private async _makeKmsClient(region: string): Promise<KMSClient> {
+    const creds = await this._assumeRole();
+    return new KMSClient({
       region,
       credentials: {
         accessKeyId: creds.accessKeyId,
@@ -628,6 +666,11 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             this._discoverNetworkAcls(region, accountId),
           ]);
 
+          const [queues, kmsKeys] = await Promise.all([
+            this._discoverSqsQueues(region, accountId),
+            this._discoverKmsKeys(region, accountId),
+          ]);
+
           allResources.push(
             ...vpcs,
             ...subnets,
@@ -647,6 +690,8 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             ...elastiCacheClusters,
             ...asgs,
             ...nacls,
+            ...queues,
+            ...kmsKeys,
           );
 
           // Build topology relationships for this region
@@ -2006,6 +2051,168 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
           discoveredAt: now(),
         });
       }
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverSqsQueues(region: string, accountId: string): Promise<CloudResource[]> {
+    const sqs = await this._makeSqsClient(region);
+    const results: CloudResource[] = [];
+    try {
+      let nextToken: string | undefined;
+      do {
+        const resp = await retryWithBackoff(() =>
+          sqs.send(new ListQueuesCommand({ NextToken: nextToken })),
+        );
+        for (const queueUrl of resp.QueueUrls ?? []) {
+          const name = queueUrl.split('/').pop() ?? queueUrl;
+          try {
+            const attrResp = await retryWithBackoff(() =>
+              sqs.send(new GetQueueAttributesCommand({ QueueUrl: queueUrl, AttributeNames: ['All'] })),
+            );
+            const attrs = attrResp.Attributes ?? {};
+
+            let deadLetterTargetArn = '';
+            let maxReceiveCount = 5;
+            if (attrs['RedrivePolicy']) {
+              try {
+                const redrive = JSON.parse(attrs['RedrivePolicy']) as { deadLetterTargetArn?: string; maxReceiveCount?: number };
+                deadLetterTargetArn = redrive.deadLetterTargetArn ?? '';
+                maxReceiveCount = redrive.maxReceiveCount ?? maxReceiveCount;
+              } catch {
+                // Best effort
+              }
+            }
+
+            const config = {
+              name,
+              queueName: name,
+              fifoQueue: name.endsWith('.fifo'),
+              contentBasedDeduplication: attrs['ContentBasedDeduplication'] === 'true',
+              encryption: Boolean(attrs['KmsMasterKeyId']) || attrs['SqsManagedSseEnabled'] === 'true',
+              kmsMasterKeyId: attrs['KmsMasterKeyId'] ?? '',
+              visibilityTimeoutSeconds: Number(attrs['VisibilityTimeout'] ?? 30),
+              messageRetentionSeconds: Number(attrs['MessageRetentionPeriod'] ?? 345600),
+              delaySeconds: Number(attrs['DelaySeconds'] ?? 0),
+              receiveWaitTimeSeconds: Number(attrs['ReceiveMessageWaitTimeSeconds'] ?? 0),
+              deadLetterTargetArn,
+              maxReceiveCount,
+              source: 'aws-api',
+              imported: true,
+            };
+
+            results.push({
+              id: name,
+              provider: 'aws',
+              accountId,
+              region,
+              resourceType: 'sqs-queue',
+              name,
+              arn: attrs['QueueArn'] ?? `arn:aws:sqs:${region}:${accountId}:${name}`,
+              resourceId: name,
+              tags: {},
+              status: 'active',
+              configuration: config,
+              metadata: { queueUrl },
+              configurationHash: computeConfigHash(config),
+              discoveredAt: now(),
+            });
+          } catch {
+            // Best effort per queue
+          }
+        }
+        nextToken = resp.NextToken;
+      } while (nextToken);
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverKmsKeys(region: string, accountId: string): Promise<CloudResource[]> {
+    const kms = await this._makeKmsClient(region);
+    const results: CloudResource[] = [];
+    try {
+      const aliasesByKeyId = new Map<string, string>();
+      try {
+        let aliasMarker: string | undefined;
+        do {
+          const aliasResp = await retryWithBackoff(() =>
+            kms.send(new ListAliasesCommand({ Marker: aliasMarker })),
+          );
+          for (const alias of aliasResp.Aliases ?? []) {
+            if (alias.TargetKeyId && alias.AliasName && !alias.AliasName.startsWith('alias/aws/')) {
+              aliasesByKeyId.set(alias.TargetKeyId, alias.AliasName.replace(/^alias\//, ''));
+            }
+          }
+          aliasMarker = aliasResp.NextMarker;
+        } while (aliasMarker);
+      } catch {
+        // Best effort
+      }
+
+      let marker: string | undefined;
+      do {
+        const resp = await retryWithBackoff(() => kms.send(new ListKeysCommand({ Marker: marker })));
+        for (const key of resp.Keys ?? []) {
+          const keyId = safeString(key.KeyId);
+          if (!keyId) continue;
+
+          try {
+            const descResp = await retryWithBackoff(() => kms.send(new DescribeKeyCommand({ KeyId: keyId })));
+            const meta = descResp.KeyMetadata;
+            // Only customer-managed keys are user infrastructure; AWS-managed keys
+            // (used internally by other services) aren't something a user configures.
+            if (!meta || meta.KeyManager !== 'CUSTOMER') continue;
+
+            let enableKeyRotation = false;
+            try {
+              const rotResp = await retryWithBackoff(() =>
+                kms.send(new GetKeyRotationStatusCommand({ KeyId: keyId })),
+              );
+              enableKeyRotation = rotResp.KeyRotationEnabled ?? false;
+            } catch {
+              // Best effort — not supported for all key specs
+            }
+
+            const name = aliasesByKeyId.get(keyId) || keyId;
+            const config = {
+              name,
+              enableKeyRotation,
+              keyUsage: meta.KeyUsage ?? 'ENCRYPT_DECRYPT',
+              keySpec: meta.KeySpec ?? 'SYMMETRIC_DEFAULT',
+              // DescribeKey doesn't expose the pending-deletion window itself, only
+              // whether deletion is scheduled — default to the schema's own default.
+              deletionWindowDays: 30,
+              multiRegion: meta.MultiRegion ?? false,
+              source: 'aws-api',
+              imported: true,
+            };
+
+            results.push({
+              id: keyId,
+              provider: 'aws',
+              accountId,
+              region,
+              resourceType: 'kms-key',
+              name,
+              arn: safeString(meta.Arn),
+              resourceId: keyId,
+              tags: {},
+              status: meta.Enabled ? 'active' : 'disabled',
+              configuration: config,
+              metadata: { description: meta.Description ?? '' },
+              configurationHash: computeConfigHash(config),
+              discoveredAt: now(),
+            });
+          } catch {
+            // Best effort per key
+          }
+        }
+        marker = resp.NextMarker;
+      } while (marker);
     } catch {
       // Best effort
     }

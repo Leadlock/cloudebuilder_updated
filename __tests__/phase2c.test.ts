@@ -236,6 +236,64 @@ jest.mock('@aws-sdk/client-auto-scaling', () => ({
   DescribePoliciesCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribePoliciesCommand' } })),
 }));
 
+jest.mock('@aws-sdk/client-sqs', () => ({
+  SQSClient: jest.fn().mockImplementation(() => ({
+    send: jest.fn().mockImplementation((cmd: { constructor: { name: string } }) => {
+      const name = cmd.constructor?.name ?? '';
+      if (name === 'ListQueuesCommand') {
+        return Promise.resolve({ QueueUrls: ['https://sqs.us-east-1.amazonaws.com/123456789012/orders-queue.fifo'] });
+      }
+      if (name === 'GetQueueAttributesCommand') {
+        return Promise.resolve({
+          Attributes: {
+            QueueArn: 'arn:aws:sqs:us-east-1:123456789012:orders-queue.fifo',
+            ContentBasedDeduplication: 'true', KmsMasterKeyId: 'alias/aws/sqs',
+            VisibilityTimeout: '60', MessageRetentionPeriod: '1209600', DelaySeconds: '5', ReceiveMessageWaitTimeSeconds: '10',
+            RedrivePolicy: JSON.stringify({ deadLetterTargetArn: 'arn:aws:sqs:us-east-1:123456789012:orders-dlq', maxReceiveCount: 3 }),
+          },
+        });
+      }
+      return Promise.resolve({});
+    }),
+  })),
+  ListQueuesCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'ListQueuesCommand' } })),
+  GetQueueAttributesCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'GetQueueAttributesCommand' } })),
+}));
+
+jest.mock('@aws-sdk/client-kms', () => ({
+  KMSClient: jest.fn().mockImplementation(() => ({
+    send: jest.fn().mockImplementation((cmd: { constructor: { name: string } }) => {
+      const name = cmd.constructor?.name ?? '';
+      if (name === 'ListAliasesCommand') {
+        return Promise.resolve({ Aliases: [{ AliasName: 'alias/app-secrets', TargetKeyId: 'key-abc123' }] });
+      }
+      if (name === 'ListKeysCommand') {
+        return Promise.resolve({ Keys: [{ KeyId: 'key-abc123' }, { KeyId: 'key-aws-managed' }] });
+      }
+      if (name === 'DescribeKeyCommand') {
+        const keyId = (cmd as unknown as { KeyId: string }).KeyId;
+        if (keyId === 'key-aws-managed') {
+          return Promise.resolve({ KeyMetadata: { KeyId: keyId, KeyManager: 'AWS', Enabled: true } });
+        }
+        return Promise.resolve({
+          KeyMetadata: {
+            KeyId: keyId, Arn: 'arn:aws:kms:us-east-1:123456789012:key/key-abc123', KeyManager: 'CUSTOMER',
+            KeyUsage: 'ENCRYPT_DECRYPT', KeySpec: 'SYMMETRIC_DEFAULT', MultiRegion: false, Enabled: true,
+          },
+        });
+      }
+      if (name === 'GetKeyRotationStatusCommand') {
+        return Promise.resolve({ KeyRotationEnabled: true });
+      }
+      return Promise.resolve({});
+    }),
+  })),
+  ListKeysCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'ListKeysCommand' } })),
+  DescribeKeyCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeKeyCommand' } })),
+  GetKeyRotationStatusCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'GetKeyRotationStatusCommand' } })),
+  ListAliasesCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'ListAliasesCommand' } })),
+}));
+
 jest.mock('@aws-sdk/client-s3', () => ({
   S3Client: jest.fn().mockImplementation(() => ({
     send: jest.fn().mockImplementation((cmd: { constructor: { name: string } }) => {
@@ -805,6 +863,31 @@ describe('AWS Adapter', () => {
     expect(nacls[0].configuration.inboundProtocol).toBe('tcp');
     expect(nacls[0].configuration.inboundPortFrom).toBe(443);
     expect(nacls[0].configuration.allowAllOutbound).toBe(true);
+    await adapter.dispose();
+  });
+
+  it('discovers SQS queues, parsing the redrive policy and detecting FIFO from the queue name', async () => {
+    const adapter = new AwsDiscoveryAdapter(awsCreds);
+    const result = await adapter.discoverAll();
+    const queues = result.resources.filter((r) => r.resourceType === 'sqs-queue');
+    expect(queues.length).toBeGreaterThan(0);
+    expect(queues[0].name).toBe('orders-queue.fifo');
+    expect(queues[0].configuration.fifoQueue).toBe(true);
+    expect(queues[0].configuration.contentBasedDeduplication).toBe(true);
+    expect(queues[0].configuration.deadLetterTargetArn).toBe('arn:aws:sqs:us-east-1:123456789012:orders-dlq');
+    expect(queues[0].configuration.maxReceiveCount).toBe(3);
+    expect(queues[0].configuration.visibilityTimeoutSeconds).toBe(60);
+    await adapter.dispose();
+  });
+
+  it('discovers customer-managed KMS keys, resolving alias as the display name and skipping AWS-managed keys', async () => {
+    const adapter = new AwsDiscoveryAdapter(awsCreds);
+    const result = await adapter.discoverAll();
+    const keys = result.resources.filter((r) => r.resourceType === 'kms-key');
+    expect(keys.length).toBe(1);
+    expect(keys[0].name).toBe('app-secrets');
+    expect(keys[0].configuration.enableKeyRotation).toBe(true);
+    expect(keys[0].configuration.keyUsage).toBe('ENCRYPT_DECRYPT');
     await adapter.dispose();
   });
 

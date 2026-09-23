@@ -49,6 +49,9 @@ const RESOURCE_TYPE_MAP: Record<string, string> = {
   'security-group': 'aws_sg',
   'iam-role': 'aws_iam',
   'network-acl': 'aws_nacl',
+  'kms-key': 'aws_kms',
+  // AWS messaging
+  'sqs-queue': 'aws_sqs',
   // Azure networking
   vnet: 'azure_vnet',
   'load-balancer': 'azure_lb',
