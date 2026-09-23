@@ -11,18 +11,59 @@
 import type { ICostService } from './CostService';
 import type { CanvasNode, CostItem, CostOptimization } from '@/types';
 
-export interface CostComparisonItem {
-  resourceId: string;
-  resourceLabel: string;
-  resourceType: string;
-  monthlyUsd: number;
+/**
+ * One side (current or translated) of a comparison. `items` are full
+ * CostItems — the same shape CostPanel already renders — with `monthlyCost`
+ * already converted to `currency` via mapItem's isConverted logic, so
+ * callers never need to re-derive a converted value themselves.
+ *
+ * totalMonthlyUsd/totalHourlyUsd stay in raw USD for reference; the values
+ * a UI should actually DISPLAY are totalMonthlyConverted/totalHourlyConverted
+ * (which equal the USD figures when currency is 'USD').
+ */
+export interface CostComparisonSide {
+  items: CostItem[];
+  /** Resources whose confidence came back 'unsupported' — priced at nothing, excluded from `items`/totals. */
+  unsupportedCount: number;
+  /** items.length + unsupportedCount. */
+  totalResourceCount: number;
+  /** 0-100. (totalResourceCount - unsupportedCount) / totalResourceCount, i.e. how much of this side's cost is a real number vs a known gap. 100 when there are zero resources. */
+  pricingCoveragePct: number;
+  totalMonthlyUsd: number;
+  totalHourlyUsd: number;
+  totalMonthlyConverted: number;
+  totalHourlyConverted: number;
+  currency: string;
 }
 
 export interface CostComparisonResult {
   currentProvider: string;
   targetProvider: string;
-  current: { items: CostComparisonItem[]; totalMonthlyUsd: number; totalHourlyUsd: number };
-  translated: { items: CostComparisonItem[]; totalMonthlyUsd: number; totalHourlyUsd: number };
+  current: CostComparisonSide;
+  translated: CostComparisonSide;
+  targetCurrency: string;
+}
+
+/**
+ * Raw shape POST /api/projects/:id/cost-comparison actually returns — each
+ * side is a CostEstimationResult (lib/engines/cost/types.ts) as returned
+ * directly by CostEstimator.estimateAsync, NOT a CostEstimateResponse (that
+ * type additionally carries estimateId/architectureId, which the
+ * comparison route never sets since it doesn't persist an estimate row).
+ */
+interface ApiCostComparisonSide {
+  items: ApiCostLineItem[];
+  totalMonthlyUsd: number;
+  totalHourlyUsd: number;
+  totalMonthlyConverted?: number;
+  totalHourlyConverted?: number;
+  currency: string;
+}
+interface ApiCostComparisonResponse {
+  currentProvider: string;
+  targetProvider: string;
+  current: ApiCostComparisonSide;
+  translated: ApiCostComparisonSide;
   targetCurrency: string;
 }
 
@@ -219,7 +260,7 @@ class ApiCostServiceImpl implements ICostService {
       bodyPayload.currency = currency.toUpperCase();
     }
 
-    const data = await apiFetch<CostComparisonResult>(
+    const data = await apiFetch<ApiCostComparisonResponse>(
       `/api/projects/${projectId}/cost-comparison${query}`,
       {
         method: 'POST',
@@ -227,7 +268,34 @@ class ApiCostServiceImpl implements ICostService {
       },
     );
 
-    return data;
+    // mapItem (used by calculateCosts above) is the single source of truth
+    // for "which number does the UI actually display" — reused here so the
+    // comparison panel can never regress to showing raw USD figures under a
+    // non-USD currency label the way it previously did.
+    const toSide = (side: ApiCostComparisonSide): CostComparisonSide => {
+      const rawItems = side.items ?? [];
+      const unsupportedCount = rawItems.filter((i) => i.confidence === 'unsupported').length;
+      const totalResourceCount = rawItems.length;
+      return {
+        items: rawItems.filter((i) => i.confidence !== 'unsupported').map(mapItem),
+        unsupportedCount,
+        totalResourceCount,
+        pricingCoveragePct: totalResourceCount > 0 ? ((totalResourceCount - unsupportedCount) / totalResourceCount) * 100 : 100,
+        totalMonthlyUsd: side.totalMonthlyUsd,
+        totalHourlyUsd: side.totalHourlyUsd,
+        totalMonthlyConverted: side.totalMonthlyConverted ?? side.totalMonthlyUsd,
+        totalHourlyConverted: side.totalHourlyConverted ?? side.totalHourlyUsd,
+        currency: side.currency,
+      };
+    };
+
+    return {
+      currentProvider: data.currentProvider,
+      targetProvider: data.targetProvider,
+      current: toSide(data.current),
+      translated: toSide(data.translated),
+      targetCurrency: data.targetCurrency,
+    };
   }
 
   generateOptimizations(nodes: CanvasNode[]): CostOptimization[] {

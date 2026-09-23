@@ -100,12 +100,27 @@ export default function CostComparisonPanel() {
 
   if (!data) return null;
 
-  const curMonthly = data.current.totalMonthlyUsd;
-  const tgtMonthly = data.translated.totalMonthlyUsd;
-  
+  // Always compare in the display currency — totalMonthlyConverted equals
+  // totalMonthlyUsd when the display currency is USD, and is the properly
+  // exchange-rate-converted figure otherwise. Comparing/formatting the raw
+  // USD totals under a non-USD currency label was the panel's own display
+  // bug (numbers never actually converted when switching currency).
+  const curMonthly = data.current.totalMonthlyConverted;
+  const tgtMonthly = data.translated.totalMonthlyConverted;
+
   const diff = tgtMonthly - curMonthly;
   const isTargetCheaper = diff < 0;
   const diffPct = curMonthly > 0 ? (Math.abs(diff) / curMonthly) * 100 : 0;
+
+  // Guardrail: don't declare a confident "winner" when too much of either
+  // side's pricing is unsupported (resource types the translation/pricing
+  // layer couldn't price at all) — a precise-looking percentage over
+  // mostly-missing data is misleading.
+  const combinedCoveragePct = data.current.totalResourceCount + data.translated.totalResourceCount > 0
+    ? ((data.current.totalResourceCount - data.current.unsupportedCount) + (data.translated.totalResourceCount - data.translated.unsupportedCount))
+      / (data.current.totalResourceCount + data.translated.totalResourceCount) * 100
+    : 100;
+  const comparisonUnreliable = combinedCoveragePct < 75;
 
   return (
     <div className="flex-1 overflow-y-auto bg-slate-950 p-6">
@@ -125,6 +140,17 @@ export default function CostComparisonPanel() {
           </div>
         )}
 
+        {comparisonUnreliable && (
+          <div className="bg-rose-900/30 border border-rose-800/50 rounded-xl p-4 flex items-center gap-3 mb-6">
+            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+            <p className="text-rose-300 text-sm">
+              <strong>Comparison confidence is low</strong> — only {combinedCoveragePct.toFixed(0)}% of resources across
+              both architectures could be priced. Totals below only reflect what was priceable; treat any
+              &quot;cheaper&quot; conclusion cautiously until pricing coverage improves.
+            </p>
+          </div>
+        )}
+
         {/* Top Summary Banner */}
         <div className="bg-gradient-to-r from-slate-900 to-slate-800 border border-slate-700 rounded-2xl p-6 mb-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
           <div className="flex-1 text-center md:text-left">
@@ -134,20 +160,26 @@ export default function CostComparisonPanel() {
               <span className="text-3xl font-bold text-white uppercase">{data.currentProvider}</span>
             </div>
             <p className="text-2xl text-slate-300 mt-2 font-mono">{formatCurrency(curMonthly, data.targetCurrency)}<span className="text-sm text-slate-500">/mo</span></p>
+            <p className="text-slate-500 text-xs mt-1">{data.current.pricingCoveragePct.toFixed(0)}% pricing coverage{data.current.unsupportedCount > 0 && ` · ${data.current.unsupportedCount} unpriced`}</p>
           </div>
 
           <div className="shrink-0 text-center">
             <div className="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center mx-auto mb-2">
               <ArrowRightLeft className="w-6 h-6 text-slate-400" />
             </div>
-            {Math.abs(diff) > 0.01 && (
+            {Math.abs(diff) > 0.01 && !comparisonUnreliable && (
               <div className={clsx(
                 "px-3 py-1 rounded-full text-xs font-bold border",
-                isTargetCheaper 
-                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" 
+                isTargetCheaper
+                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                   : "bg-rose-500/10 text-rose-400 border-rose-500/20"
               )}>
                 {isTargetCheaper ? '-' : '+'}{diffPct.toFixed(1)}% {isTargetCheaper ? 'Cheaper' : 'More Expensive'}
+              </div>
+            )}
+            {comparisonUnreliable && (
+              <div className="px-3 py-1 rounded-full text-xs font-bold border bg-slate-800 text-slate-400 border-slate-700">
+                Coverage too low to call
               </div>
             )}
           </div>
@@ -159,13 +191,14 @@ export default function CostComparisonPanel() {
               <Cloud className={clsx("w-6 h-6", data.targetProvider === 'aws' ? 'text-orange-400' : 'text-blue-400')} />
             </div>
             <p className="text-2xl text-slate-300 mt-2 font-mono">{formatCurrency(tgtMonthly, data.targetCurrency)}<span className="text-sm text-slate-500">/mo</span></p>
+            <p className="text-slate-500 text-xs mt-1">{data.translated.pricingCoveragePct.toFixed(0)}% pricing coverage{data.translated.unsupportedCount > 0 && ` · ${data.translated.unsupportedCount} unpriced`}</p>
           </div>
         </div>
 
         {/* Detailed Breakdown */}
         <h3 className="text-lg font-bold text-white mb-4">Resource Breakdown</h3>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
+
           {/* Current Provider Column */}
           <div className="space-y-3">
             <div className={clsx("p-3 rounded-t-xl border-b-2 font-bold uppercase tracking-wider text-sm", data.currentProvider === 'aws' ? "bg-orange-500/10 border-orange-500 text-orange-400" : "bg-blue-500/10 border-blue-500 text-blue-400")}>
@@ -174,22 +207,27 @@ export default function CostComparisonPanel() {
             {data.current.items.map((item) => {
               const def = getResourceDefinition(item.resourceType);
               return (
-                <div key={item.resourceId} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+                <div key={item.nodeId} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: def?.color ?? '#475569' }}>
                       {def?.icon}
                     </div>
                     <div>
-                      <p className="text-white font-medium text-sm">{item.resourceLabel}</p>
-                      <p className="text-slate-500 text-xs">{def?.label || item.resourceType}</p>
+                      <p className="text-white font-medium text-sm">{item.nodeLabel}</p>
+                      <p className="text-slate-500 text-xs">{def?.label || item.resourceType}{item.region ? ` · ${item.region}` : ''}</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-slate-200 font-mono font-medium">{formatCurrency(item.monthlyUsd, data.targetCurrency)}</p>
+                    <p className="text-slate-200 font-mono font-medium">{formatCurrency(item.monthlyCost, data.targetCurrency)}</p>
                   </div>
                 </div>
               );
             })}
+            {data.current.unsupportedCount > 0 && (
+              <p className="text-slate-600 text-xs px-1">
+                + {data.current.unsupportedCount} resource{data.current.unsupportedCount === 1 ? '' : 's'} without a usable price (excluded from the total above)
+              </p>
+            )}
           </div>
 
           {/* Target Provider Column */}
@@ -200,28 +238,33 @@ export default function CostComparisonPanel() {
             {data.translated.items.map((item) => {
               const def = getResourceDefinition(item.resourceType);
               return (
-                <div key={item.resourceId} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+                <div key={item.nodeId} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: def?.color ?? '#475569' }}>
                       {def?.icon}
                     </div>
                     <div>
-                      <p className="text-white font-medium text-sm">{item.resourceLabel}</p>
-                      <p className="text-slate-500 text-xs">{def?.label || item.resourceType}</p>
+                      <p className="text-white font-medium text-sm">{item.nodeLabel}</p>
+                      <p className="text-slate-500 text-xs">{def?.label || item.resourceType}{item.region ? ` · ${item.region}` : ''}</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-slate-200 font-mono font-medium">{formatCurrency(item.monthlyUsd, data.targetCurrency)}</p>
+                    <p className="text-slate-200 font-mono font-medium">{formatCurrency(item.monthlyCost, data.targetCurrency)}</p>
                   </div>
                 </div>
               );
             })}
+            {data.translated.unsupportedCount > 0 && (
+              <p className="text-slate-600 text-xs px-1">
+                + {data.translated.unsupportedCount} resource{data.translated.unsupportedCount === 1 ? '' : 's'} without a usable price (excluded from the total above)
+              </p>
+            )}
           </div>
 
         </div>
-        
+
         <div className="mt-8 p-4 bg-blue-900/20 border border-blue-900/50 rounded-xl text-sm text-blue-300/80 text-center">
-          <p>This comparison translates resources to their closest generic equivalents in the alternative cloud. Pricing uses 730 hours/month standard usage where applicable.</p>
+          <p>This comparison translates each resource to its nearest capacity-equivalent SKU in the alternative cloud (e.g. by vCPU/RAM for compute, by allocated storage for databases/object storage) — not just a relabeled resource type. Pricing uses 730 hours/month standard usage where applicable.</p>
         </div>
       </div>
     </div>

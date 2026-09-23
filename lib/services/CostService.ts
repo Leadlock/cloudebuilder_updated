@@ -52,37 +52,45 @@ class MockCostService implements ICostService {
   async compareCosts(nodes: CanvasNode[], currency: string = 'USD'): Promise<CostComparisonResult> {
     const currentProvider = nodes.find((n) => n.provider === 'aws' || n.provider === 'azure')?.provider ?? 'aws';
     const targetProvider = currentProvider === 'aws' ? 'azure' : 'aws';
+    const targetCurr = (currency || 'USD').toUpperCase();
 
     const translatedNodes = CloudCostComparisonService.translateNodes(nodes, targetProvider);
 
+    // calculateCosts (above) already produces CostItems whose monthlyCost is
+    // converted to `currency` (see its own USD/non-USD branch) — reused
+    // as-is here instead of re-deriving a "USD or converted?" value a
+    // second time, which is exactly what let the real (non-mock) path drift
+    // into displaying raw USD under a non-USD currency label.
     const [currentItems, translatedItems] = await Promise.all([
       this.calculateCosts(nodes, currency),
       this.calculateCosts(translatedNodes, currency),
     ]);
 
-    const toComparisonItems = (items: CostItem[]) => items.map((item) => ({
-      resourceId: item.nodeId,
-      resourceLabel: item.nodeLabel,
-      resourceType: item.resourceType,
-      monthlyUsd: item.providerCostUsd ?? item.monthlyCost,
-    }));
-
     const sumUsd = (items: CostItem[]) => items.reduce((a, i) => a + (i.providerCostUsd ?? i.monthlyCost), 0);
+    const sumConverted = (items: CostItem[]) => items.reduce((a, i) => a + i.monthlyCost, 0);
+
+    // The local fixture calculator (lib/analysis.ts calculateCosts) has no
+    // per-resource confidence/unsupported concept — every resource it knows
+    // about gets a fixture price — so coverage is honestly reported as
+    // "everything it priced", not fabricated partial coverage.
+    const toSide = (items: CostItem[]) => ({
+      items,
+      unsupportedCount: 0,
+      totalResourceCount: items.length,
+      pricingCoveragePct: 100,
+      totalMonthlyUsd: sumUsd(items),
+      totalHourlyUsd: sumUsd(items) / 730,
+      totalMonthlyConverted: sumConverted(items),
+      totalHourlyConverted: sumConverted(items) / 730,
+      currency: targetCurr,
+    });
 
     return {
       currentProvider,
       targetProvider,
-      current: {
-        items: toComparisonItems(currentItems),
-        totalMonthlyUsd: sumUsd(currentItems),
-        totalHourlyUsd: sumUsd(currentItems) / 730,
-      },
-      translated: {
-        items: toComparisonItems(translatedItems),
-        totalMonthlyUsd: sumUsd(translatedItems),
-        totalHourlyUsd: sumUsd(translatedItems) / 730,
-      },
-      targetCurrency: (currency || 'USD').toUpperCase(),
+      current: toSide(currentItems),
+      translated: toSide(translatedItems),
+      targetCurrency: targetCurr,
     };
   }
 
