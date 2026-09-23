@@ -8,16 +8,17 @@
  * - S3 buckets, RDS instances
  * - Application & Network Load Balancers, Target Groups, Target Health
  * - Lambda functions, DynamoDB tables
+ * - ECS services (Fargate & EC2 launch types), EKS clusters & node groups
  * - Accessible Regions
  *
  * Reconstructs full infrastructure topology and relationships:
  * - VPC contains Subnets
- * - Subnet contains EC2, RDS, ALB, VPC-attached Lambda functions
+ * - Subnet contains EC2, RDS, ALB, VPC-attached Lambda functions, ECS services, EKS clusters
  * - Internet Gateway -> VPC
  * - NAT Gateway -> Subnet
  * - Route Table -> Subnet
  * - ALB -> Target Group -> EC2
- * - Security Group -> EC2 / RDS / ALB / Lambda
+ * - Security Group -> EC2 / RDS / ALB / Lambda / ECS / EKS
  * - EC2 -> EBS Volume
  * - DynamoDB tables are discovered as regional resources (not VPC-attached)
  *
@@ -50,6 +51,20 @@ import {
 } from '@aws-sdk/client-elastic-load-balancing-v2';
 import { LambdaClient, ListFunctionsCommand } from '@aws-sdk/client-lambda';
 import { DynamoDBClient, ListTablesCommand, DescribeTableCommand } from '@aws-sdk/client-dynamodb';
+import {
+  ECSClient,
+  ListClustersCommand as ListEcsClustersCommand,
+  ListServicesCommand,
+  DescribeServicesCommand,
+  DescribeTaskDefinitionCommand,
+} from '@aws-sdk/client-ecs';
+import {
+  EKSClient,
+  ListClustersCommand as ListEksClustersCommand,
+  DescribeClusterCommand,
+  ListNodegroupsCommand,
+  DescribeNodegroupCommand,
+} from '@aws-sdk/client-eks';
 import type {
   AwsRoleCredentials,
   DiscoveredResource,
@@ -87,6 +102,14 @@ export const REQUIRED_AWS_PERMISSIONS = [
   'lambda:ListFunctions',
   'dynamodb:ListTables',
   'dynamodb:DescribeTable',
+  'ecs:ListClusters',
+  'ecs:ListServices',
+  'ecs:DescribeServices',
+  'ecs:DescribeTaskDefinition',
+  'eks:ListClusters',
+  'eks:DescribeCluster',
+  'eks:ListNodegroups',
+  'eks:DescribeNodegroup',
   'sts:GetCallerIdentity',
 ];
 
@@ -229,6 +252,30 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
   private async _makeDynamoDbClient(region: string): Promise<DynamoDBClient> {
     const creds = await this._assumeRole();
     return new DynamoDBClient({
+      region,
+      credentials: {
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
+        sessionToken: creds.sessionToken,
+      },
+    });
+  }
+
+  private async _makeEcsClient(region: string): Promise<ECSClient> {
+    const creds = await this._assumeRole();
+    return new ECSClient({
+      region,
+      credentials: {
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
+        sessionToken: creds.sessionToken,
+      },
+    });
+  }
+
+  private async _makeEksClient(region: string): Promise<EKSClient> {
+    const creds = await this._assumeRole();
+    return new EKSClient({
       region,
       credentials: {
         accessKeyId: creds.accessKeyId,
@@ -461,6 +508,11 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             this._discoverDynamoDbTables(region, accountId),
           ]);
 
+          const [ecsServices, eksClusters] = await Promise.all([
+            this._discoverEcsServices(region, accountId),
+            this._discoverEksClusters(region, accountId),
+          ]);
+
           allResources.push(
             ...vpcs,
             ...subnets,
@@ -475,6 +527,8 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             ...tgs,
             ...lambdas,
             ...dynamoTables,
+            ...ecsServices,
+            ...eksClusters,
           );
 
           // Build topology relationships for this region
@@ -491,6 +545,8 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             lbs,
             tgs,
             lambdas,
+            ecsServices,
+            eksClusters,
           });
           allRelationships.push(...regionRelationships);
 
@@ -1258,6 +1314,206 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     return results;
   }
 
+  private async _discoverEcsServices(region: string, accountId: string): Promise<CloudResource[]> {
+    const ecs = await this._makeEcsClient(region);
+    const results: CloudResource[] = [];
+    try {
+      const clusterArns: string[] = [];
+      let nextToken: string | undefined;
+      do {
+        const resp = await retryWithBackoff(() => ecs.send(new ListEcsClustersCommand({ nextToken })));
+        clusterArns.push(...(resp.clusterArns ?? []));
+        nextToken = resp.nextToken;
+      } while (nextToken);
+
+      for (const clusterArn of clusterArns) {
+        try {
+          const serviceArns: string[] = [];
+          let svcToken: string | undefined;
+          do {
+            const resp = await retryWithBackoff(() =>
+              ecs.send(new ListServicesCommand({ cluster: clusterArn, nextToken: svcToken })),
+            );
+            serviceArns.push(...(resp.serviceArns ?? []));
+            svcToken = resp.nextToken;
+          } while (svcToken);
+          if (serviceArns.length === 0) continue;
+
+          // DescribeServices accepts at most 10 service ARNs per call.
+          for (let i = 0; i < serviceArns.length; i += 10) {
+            const batch = serviceArns.slice(i, i + 10);
+            const descResp = await retryWithBackoff(() =>
+              ecs.send(new DescribeServicesCommand({ cluster: clusterArn, services: batch })),
+            );
+            for (const svc of descResp.services ?? []) {
+              const name = safeString(svc.serviceName);
+              if (!name) continue;
+
+              let cpu = 256;
+              let memory = 512;
+              let containerImage = 'nginx:latest';
+              let containerPort = 80;
+              if (svc.taskDefinition) {
+                try {
+                  const tdResp = await retryWithBackoff(() =>
+                    ecs.send(new DescribeTaskDefinitionCommand({ taskDefinition: svc.taskDefinition })),
+                  );
+                  const td = tdResp.taskDefinition;
+                  if (td) {
+                    cpu = Number(td.cpu) || cpu;
+                    memory = Number(td.memory) || memory;
+                    const container = td.containerDefinitions?.[0];
+                    if (container) {
+                      containerImage = container.image ?? containerImage;
+                      containerPort = container.portMappings?.[0]?.containerPort ?? containerPort;
+                    }
+                  }
+                } catch {
+                  // Best effort — keep defaults if task definition lookup fails
+                }
+              }
+
+              const netConfig = svc.networkConfiguration?.awsvpcConfiguration;
+              const subnetId = netConfig?.subnets?.[0] ?? null;
+              const config = {
+                name,
+                launchType: svc.launchType ?? 'FARGATE',
+                desiredCount: svc.desiredCount ?? 1,
+                cpu,
+                memory,
+                containerImage,
+                containerPort,
+                assignPublicIp: netConfig?.assignPublicIp === 'ENABLED',
+                subnetId,
+                securityGroupIds: netConfig?.securityGroups ?? [],
+                source: 'aws-api',
+                imported: true,
+              };
+
+              results.push({
+                id: name,
+                provider: 'aws',
+                accountId,
+                region,
+                resourceType: 'ecs',
+                name,
+                arn: safeString(svc.serviceArn),
+                resourceId: name,
+                tags: {},
+                status: svc.status ?? 'ACTIVE',
+                configuration: config,
+                parentResourceId: subnetId ?? undefined,
+                metadata: { clusterArn },
+                configurationHash: computeConfigHash(config),
+                discoveredAt: now(),
+              });
+            }
+          }
+        } catch {
+          // Best effort per cluster
+        }
+      }
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverEksClusters(region: string, accountId: string): Promise<CloudResource[]> {
+    const eks = await this._makeEksClient(region);
+    const results: CloudResource[] = [];
+    try {
+      const clusterNames: string[] = [];
+      let nextToken: string | undefined;
+      do {
+        const resp = await retryWithBackoff(() => eks.send(new ListEksClustersCommand({ nextToken })));
+        clusterNames.push(...(resp.clusters ?? []));
+        nextToken = resp.nextToken;
+      } while (nextToken);
+
+      for (const clusterName of clusterNames) {
+        try {
+          const descResp = await retryWithBackoff(() =>
+            eks.send(new DescribeClusterCommand({ name: clusterName })),
+          );
+          const cluster = descResp.cluster;
+          if (!cluster) continue;
+
+          let nodeInstanceType = 't3.medium';
+          let nodeCount = 3;
+          let capacityType = 'ON_DEMAND';
+          let nodeDiskSizeGb = 20;
+          try {
+            const ngListResp = await retryWithBackoff(() =>
+              eks.send(new ListNodegroupsCommand({ clusterName })),
+            );
+            const firstNg = ngListResp.nodegroups?.[0];
+            if (firstNg) {
+              const ngResp = await retryWithBackoff(() =>
+                eks.send(new DescribeNodegroupCommand({ clusterName, nodegroupName: firstNg })),
+              );
+              const ng = ngResp.nodegroup;
+              if (ng) {
+                nodeInstanceType = ng.instanceTypes?.[0] ?? nodeInstanceType;
+                nodeCount = ng.scalingConfig?.desiredSize ?? nodeCount;
+                capacityType = ng.capacityType ?? capacityType;
+                nodeDiskSizeGb = ng.diskSize ?? nodeDiskSizeGb;
+              }
+            }
+          } catch {
+            // Best effort — node group details are supplementary
+          }
+
+          const subnetId = cluster.resourcesVpcConfig?.subnetIds?.[0] ?? null;
+          const vpcId = cluster.resourcesVpcConfig?.vpcId ?? null;
+          const config = {
+            name: clusterName,
+            version: cluster.version ?? '1.30',
+            nodeCount,
+            nodeInstanceType,
+            capacityType,
+            nodeDiskSizeGb,
+            endpointPublicAccess: cluster.resourcesVpcConfig?.endpointPublicAccess ?? true,
+            endpointPrivateAccess: cluster.resourcesVpcConfig?.endpointPrivateAccess ?? false,
+            publicAccessCidrs: (cluster.resourcesVpcConfig?.publicAccessCidrs ?? ['0.0.0.0/0']).join(','),
+            clusterLogTypes: (cluster.logging?.clusterLogging ?? [])
+              .filter((l) => l.enabled)
+              .flatMap((l) => l.types ?? []),
+            secretsEncryption: (cluster.encryptionConfig ?? []).length > 0,
+            vpcId,
+            subnetId,
+            securityGroupIds: cluster.resourcesVpcConfig?.securityGroupIds ?? [],
+            source: 'aws-api',
+            imported: true,
+          };
+
+          results.push({
+            id: clusterName,
+            provider: 'aws',
+            accountId,
+            region,
+            resourceType: 'eks',
+            name: clusterName,
+            arn: safeString(cluster.arn),
+            resourceId: clusterName,
+            tags: cluster.tags ?? {},
+            status: cluster.status ?? 'ACTIVE',
+            configuration: config,
+            parentResourceId: subnetId || vpcId || undefined,
+            metadata: {},
+            configurationHash: computeConfigHash(config),
+            discoveredAt: now(),
+          });
+        } catch {
+          // Best effort per cluster
+        }
+      }
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
   // ── Relationship & Topology Reconstructor ────────────────────────────────
 
   private _reconstructAwsRelationships(catalog: {
@@ -1273,6 +1529,8 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     lbs: CloudResource[];
     tgs: CloudResource[];
     lambdas: CloudResource[];
+    ecsServices: CloudResource[];
+    eksClusters: CloudResource[];
   }): CloudRelationship[] {
     const rels: CloudRelationship[] = [];
     const added = new Set<string>();
@@ -1340,6 +1598,21 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
       }
     }
 
+    // 4c. ECS services / EKS clusters in Subnet / VPC
+    for (const svc of catalog.ecsServices) {
+      const subnetId = svc.configuration.subnetId as string;
+      if (subnetId) addRel(subnetId, svc.id, 'containment', 'Service in Subnet');
+    }
+    for (const cluster of catalog.eksClusters) {
+      const subnetId = cluster.configuration.subnetId as string;
+      const vpcId = cluster.configuration.vpcId as string;
+      if (subnetId) {
+        addRel(subnetId, cluster.id, 'containment', 'Cluster in Subnet');
+      } else if (vpcId) {
+        addRel(vpcId, cluster.id, 'containment', 'Cluster in VPC');
+      }
+    }
+
     // 5. Internet Gateway to VPC
     for (const igw of catalog.igws) {
       const vpcId = (igw.configuration.attachedVpcId as string) || (igw.configuration.vpcId as string);
@@ -1393,6 +1666,18 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         const sgIds = (fn.configuration.securityGroupIds as string[]) ?? [];
         if (sgIds.includes(sg.id) || sgIds.includes(sg.resourceId)) {
           addRel(sg.id, fn.id, 'security', 'Protects');
+        }
+      }
+      for (const svc of catalog.ecsServices) {
+        const sgIds = (svc.configuration.securityGroupIds as string[]) ?? [];
+        if (sgIds.includes(sg.id) || sgIds.includes(sg.resourceId)) {
+          addRel(sg.id, svc.id, 'security', 'Protects');
+        }
+      }
+      for (const cluster of catalog.eksClusters) {
+        const sgIds = (cluster.configuration.securityGroupIds as string[]) ?? [];
+        if (sgIds.includes(sg.id) || sgIds.includes(sg.resourceId)) {
+          addRel(sg.id, cluster.id, 'security', 'Protects');
         }
       }
     }

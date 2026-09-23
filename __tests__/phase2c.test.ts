@@ -267,6 +267,84 @@ jest.mock('@aws-sdk/client-dynamodb', () => ({
   DescribeTableCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeTableCommand' } })),
 }));
 
+jest.mock('@aws-sdk/client-ecs', () => ({
+  ECSClient: jest.fn().mockImplementation(() => ({
+    send: jest.fn().mockImplementation((cmd: { constructor: { name: string } }) => {
+      const name = cmd.constructor?.name ?? '';
+      if (name === 'ListClustersCommand') {
+        return Promise.resolve({ clusterArns: ['arn:aws:ecs:us-east-1:123456789012:cluster/my-cluster'] });
+      }
+      if (name === 'ListServicesCommand') {
+        return Promise.resolve({ serviceArns: ['arn:aws:ecs:us-east-1:123456789012:service/my-cluster/web-service'] });
+      }
+      if (name === 'DescribeServicesCommand') {
+        return Promise.resolve({
+          services: [
+            {
+              serviceName: 'web-service', serviceArn: 'arn:aws:ecs:us-east-1:123456789012:service/my-cluster/web-service',
+              status: 'ACTIVE', launchType: 'FARGATE', desiredCount: 3,
+              taskDefinition: 'arn:aws:ecs:us-east-1:123456789012:task-definition/web-task:1',
+              networkConfiguration: { awsvpcConfiguration: { subnets: ['subnet-abc'], securityGroups: ['sg-abc123'], assignPublicIp: 'DISABLED' } },
+            },
+          ],
+        });
+      }
+      if (name === 'DescribeTaskDefinitionCommand') {
+        return Promise.resolve({
+          taskDefinition: {
+            cpu: '512', memory: '1024',
+            containerDefinitions: [{ image: 'my-repo/web:latest', portMappings: [{ containerPort: 8080 }] }],
+          },
+        });
+      }
+      return Promise.resolve({});
+    }),
+  })),
+  ListClustersCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'ListClustersCommand' } })),
+  ListServicesCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'ListServicesCommand' } })),
+  DescribeServicesCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeServicesCommand' } })),
+  DescribeTaskDefinitionCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeTaskDefinitionCommand' } })),
+}));
+
+jest.mock('@aws-sdk/client-eks', () => ({
+  EKSClient: jest.fn().mockImplementation(() => ({
+    send: jest.fn().mockImplementation((cmd: { constructor: { name: string } }) => {
+      const name = cmd.constructor?.name ?? '';
+      if (name === 'ListClustersCommand') {
+        return Promise.resolve({ clusters: ['prod-cluster'] });
+      }
+      if (name === 'DescribeClusterCommand') {
+        return Promise.resolve({
+          cluster: {
+            name: 'prod-cluster', arn: 'arn:aws:eks:us-east-1:123456789012:cluster/prod-cluster',
+            version: '1.31', status: 'ACTIVE',
+            resourcesVpcConfig: {
+              vpcId: 'vpc-abc123', subnetIds: ['subnet-abc'], securityGroupIds: ['sg-abc123'],
+              endpointPublicAccess: true, endpointPrivateAccess: true, publicAccessCidrs: ['203.0.113.0/24'],
+            },
+            logging: { clusterLogging: [{ enabled: true, types: ['api', 'audit'] }] },
+            encryptionConfig: [{ resources: ['secrets'] }],
+            tags: { Env: 'prod' },
+          },
+        });
+      }
+      if (name === 'ListNodegroupsCommand') {
+        return Promise.resolve({ nodegroups: ['default-ng'] });
+      }
+      if (name === 'DescribeNodegroupCommand') {
+        return Promise.resolve({
+          nodegroup: { instanceTypes: ['m5.xlarge'], scalingConfig: { desiredSize: 5 }, capacityType: 'SPOT', diskSize: 50 },
+        });
+      }
+      return Promise.resolve({});
+    }),
+  })),
+  ListClustersCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'ListClustersCommand' } })),
+  DescribeClusterCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeClusterCommand' } })),
+  ListNodegroupsCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'ListNodegroupsCommand' } })),
+  DescribeNodegroupCommand: jest.fn().mockImplementation((p: unknown) => ({ ...p as object, constructor: { name: 'DescribeNodegroupCommand' } })),
+}));
+
 // ─── Mock Azure SDK ───────────────────────────────────────────────────────────
 
 jest.mock('@azure/identity', () => ({
@@ -436,6 +514,35 @@ describe('AWS Adapter', () => {
     expect(tables[0].configuration.partitionKeyName).toBe('orderId');
     expect(tables[0].configuration.partitionKeyType).toBe('S');
     expect(tables[0].configuration.billingMode).toBe('PAY_PER_REQUEST');
+    await adapter.dispose();
+  });
+
+  it('discovers ECS services with task definition cpu/memory/image resolved', async () => {
+    const adapter = new AwsDiscoveryAdapter(awsCreds);
+    const result = await adapter.discoverAll();
+    const services = result.resources.filter((r) => r.resourceType === 'ecs');
+    expect(services.length).toBeGreaterThan(0);
+    expect(services[0].name).toBe('web-service');
+    expect(services[0].configuration.desiredCount).toBe(3);
+    expect(services[0].configuration.cpu).toBe(512);
+    expect(services[0].configuration.memory).toBe(1024);
+    expect(services[0].configuration.containerImage).toBe('my-repo/web:latest');
+    expect(services[0].configuration.containerPort).toBe(8080);
+    await adapter.dispose();
+  });
+
+  it('discovers EKS clusters with node group instance type/count/capacity type resolved', async () => {
+    const adapter = new AwsDiscoveryAdapter(awsCreds);
+    const result = await adapter.discoverAll();
+    const clusters = result.resources.filter((r) => r.resourceType === 'eks');
+    expect(clusters.length).toBeGreaterThan(0);
+    expect(clusters[0].name).toBe('prod-cluster');
+    expect(clusters[0].configuration.version).toBe('1.31');
+    expect(clusters[0].configuration.nodeInstanceType).toBe('m5.xlarge');
+    expect(clusters[0].configuration.nodeCount).toBe(5);
+    expect(clusters[0].configuration.capacityType).toBe('SPOT');
+    expect(clusters[0].configuration.secretsEncryption).toBe(true);
+    expect(clusters[0].configuration.clusterLogTypes).toEqual(['api', 'audit']);
     await adapter.dispose();
   });
 
