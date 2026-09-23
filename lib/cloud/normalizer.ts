@@ -62,6 +62,7 @@ const RESOURCE_TYPE_MAP: Record<string, string> = {
   'application-gateway': 'azure_app_gateway',
   'network-security-group': 'azure_nsg',
   'public-ip': 'azure_public_ip',
+  'front-door': 'azure_front_door',
   // Azure compute
   'virtual-machine': 'azure_vm',
   aks: 'azure_aks',
@@ -74,6 +75,8 @@ const RESOURCE_TYPE_MAP: Record<string, string> = {
   // Azure database
   'sql-server': 'azure_sql',
   'sql-database': 'azure_sql',
+  'cosmos-db': 'azure_cosmos_db',
+  'redis-cache': 'azure_redis',
   // Azure security & org
   'key-vault': 'azure_key_vault',
   'resource-group': 'azure_resource_group',

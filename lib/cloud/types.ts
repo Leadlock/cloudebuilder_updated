@@ -47,11 +47,11 @@ export type DiscoveredResourceType =
   // Storage
   | 's3-bucket' | 'storage-account' | 'blob-container' | 'ebs-volume'
   // Database
-  | 'rds-instance' | 'sql-database' | 'sql-server' | 'dynamodb-table' | 'elasticache'
+  | 'rds-instance' | 'sql-database' | 'sql-server' | 'dynamodb-table' | 'elasticache' | 'cosmos-db' | 'redis-cache'
   // Load balancing
   | 'alb' | 'nlb' | 'load-balancer' | 'application-gateway' | 'target-group'
   // CDN
-  | 'cloudfront'
+  | 'cloudfront' | 'front-door'
   // Identity / security
   | 'iam-role' | 'security-group' | 'network-security-group' | 'key-vault' | 'network-acl' | 'kms-key' | 'waf-web-acl' | 'waf-policy' | 'bastion-host'
   // Messaging

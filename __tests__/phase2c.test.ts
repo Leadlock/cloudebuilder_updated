@@ -788,6 +788,72 @@ jest.mock('@azure/arm-keyvault', () => ({
   })),
 }));
 
+const mockCosmosAccountList = [
+  {
+    id: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.DocumentDB/databaseAccounts/my-cosmos',
+    name: 'my-cosmos', location: 'eastus', provisioningState: 'Succeeded', tags: {},
+    kind: 'MongoDB', consistencyPolicy: { defaultConsistencyLevel: 'Strong' }, enableAutomaticFailover: true,
+    publicNetworkAccess: 'Disabled', capabilities: [{ name: 'EnableServerless' }], backupPolicy: { type: 'Continuous' },
+    documentEndpoint: 'https://my-cosmos.documents.azure.com:443/',
+  },
+];
+
+jest.mock('@azure/arm-cosmosdb', () => ({
+  CosmosDBManagementClient: jest.fn().mockImplementation(() => ({
+    databaseAccounts: { list: () => makeAsyncIterator(mockCosmosAccountList) },
+  })),
+}));
+
+const mockRedisList = [
+  {
+    id: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Cache/redis/my-redis',
+    name: 'my-redis', location: 'eastus', provisioningState: 'Succeeded', tags: {},
+    sku: { name: 'Premium', family: 'P', capacity: 2 }, enableNonSslPort: false, minimumTlsVersion: '1.2',
+    redisVersion: '6.0', publicNetworkAccess: 'Enabled',
+  },
+];
+
+jest.mock('@azure/arm-rediscache', () => ({
+  RedisManagementClient: jest.fn().mockImplementation(() => ({
+    redis: { listBySubscription: () => makeAsyncIterator(mockRedisList) },
+  })),
+}));
+
+function makeSingleValueIterator<T>(item: T | undefined) {
+  return {
+    next: () => Promise.resolve(item === undefined ? { value: undefined, done: true } : { value: item, done: false }),
+  };
+}
+
+const mockFrontDoorProfileList = [
+  {
+    id: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Cdn/profiles/my-frontdoor',
+    name: 'my-frontdoor', location: 'global', provisioningState: 'Succeeded', tags: {},
+    sku: { name: 'Premium_AzureFrontDoor' },
+  },
+  {
+    // A classic (non-AFD) CDN profile — must be excluded from azure_front_door discovery.
+    id: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Cdn/profiles/classic-cdn',
+    name: 'classic-cdn', location: 'global', provisioningState: 'Succeeded', tags: {},
+    sku: { name: 'Standard_Microsoft' },
+  },
+];
+
+jest.mock('@azure/arm-cdn', () => ({
+  CdnManagementClient: jest.fn().mockImplementation(() => ({
+    profiles: { list: () => makeAsyncIterator(mockFrontDoorProfileList) },
+    afdOriginGroups: { listByProfile: () => makeSingleValueIterator({ name: 'default-origin-group' }) },
+    afdOrigins: { listByOriginGroup: () => makeSingleValueIterator({ hostName: 'origin.internal.example.com' }) },
+    afdEndpoints: { listByProfile: () => makeSingleValueIterator({ name: 'default-endpoint' }) },
+    routes: {
+      listByEndpoint: () => makeSingleValueIterator({
+        supportedProtocols: ['Https'],
+        cacheConfiguration: { queryStringCachingBehavior: 'UseQueryString' },
+      }),
+    },
+  })),
+}));
+
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
 import { AwsDiscoveryAdapter } from '@/lib/cloud/adapters/awsAdapter';
@@ -1251,6 +1317,47 @@ describe('Azure Adapter', () => {
     const functionApps = result.resources.filter((r) => r.resourceType === 'functions');
     expect(functionApps.some((f) => f.name === 'my-webapp')).toBe(false);
     expect(webApps.some((w) => w.name === 'my-func')).toBe(false);
+    await adapter.dispose();
+  });
+
+  it('discovers Cosmos DB accounts, detecting serverless mode from capabilities', async () => {
+    const adapter = new AzureDiscoveryAdapter(azureCreds);
+    const result = await adapter.discoverAll();
+    const accounts = result.resources.filter((r) => r.resourceType === 'cosmos-db');
+    expect(accounts.length).toBeGreaterThan(0);
+    expect(accounts[0].name).toBe('my-cosmos');
+    expect(accounts[0].configuration.kind).toBe('MongoDB');
+    expect(accounts[0].configuration.defaultConsistency).toBe('Strong');
+    expect(accounts[0].configuration.throughputMode).toBe('Serverless');
+    expect(accounts[0].configuration.publicNetworkAccess).toBe(false);
+    expect(accounts[0].configuration.backupType).toBe('Continuous');
+    await adapter.dispose();
+  });
+
+  it('discovers Redis caches', async () => {
+    const adapter = new AzureDiscoveryAdapter(azureCreds);
+    const result = await adapter.discoverAll();
+    const caches = result.resources.filter((r) => r.resourceType === 'redis-cache');
+    expect(caches.length).toBeGreaterThan(0);
+    expect(caches[0].name).toBe('my-redis');
+    expect(caches[0].configuration.sku).toBe('Premium');
+    expect(caches[0].configuration.family).toBe('P');
+    expect(caches[0].configuration.capacity).toBe(2);
+    expect(caches[0].configuration.redisVersion).toBe('6');
+    await adapter.dispose();
+  });
+
+  it('discovers Front Door (AFD) profiles, excludes classic CDN profiles, and resolves origin/route config', async () => {
+    const adapter = new AzureDiscoveryAdapter(azureCreds);
+    const result = await adapter.discoverAll();
+    const frontDoors = result.resources.filter((r) => r.resourceType === 'front-door');
+    expect(frontDoors.length).toBe(1);
+    expect(frontDoors[0].name).toBe('my-frontdoor');
+    expect(frontDoors[0].configuration.sku).toBe('Premium_AzureFrontDoor');
+    expect(frontDoors[0].configuration.originHostName).toBe('origin.internal.example.com');
+    expect(frontDoors[0].configuration.httpsOnly).toBe(true);
+    expect(frontDoors[0].configuration.queryStringCachingBehavior).toBe('UseQueryString');
+    expect(frontDoors.some((f) => f.name === 'classic-cdn')).toBe(false);
     await adapter.dispose();
   });
 });

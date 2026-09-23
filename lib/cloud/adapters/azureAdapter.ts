@@ -14,6 +14,9 @@
  * - NAT Gateways, Route Tables (schema's single route mapped from the first
  *   custom route), Network Interfaces, Bastion Hosts, WAF Policies (App
  *   Gateway-scoped ApplicationGatewayWebApplicationFirewallPolicies)
+ * - VM Scale Sets, non-Function Web Apps (App Service)
+ * - Cosmos DB accounts, Azure Cache for Redis, Front Door (Standard/Premium
+ *   AFD profiles only — classic Azure CDN profiles on the same API are excluded)
  *
  * Reconstructs full infrastructure topology:
  * - Resource Group contains VNets, Storage, SQL
@@ -36,6 +39,9 @@ import { ResourceManagementClient } from '@azure/arm-resources';
 import { ContainerServiceClient } from '@azure/arm-containerservice';
 import { WebSiteManagementClient } from '@azure/arm-appservice';
 import { KeyVaultManagementClient } from '@azure/arm-keyvault';
+import { CosmosDBManagementClient } from '@azure/arm-cosmosdb';
+import { RedisManagementClient } from '@azure/arm-rediscache';
+import { CdnManagementClient } from '@azure/arm-cdn';
 import type {
   AzureSpCredentials,
   DiscoveredResource,
@@ -70,6 +76,15 @@ export const REQUIRED_AZURE_PERMISSIONS = [
   'Microsoft.Web/sites/read',
   'Microsoft.Web/serverfarms/read',
   'Microsoft.KeyVault/vaults/read',
+  'Microsoft.Network/natGateways/read',
+  'Microsoft.Network/routeTables/read',
+  'Microsoft.Network/networkInterfaces/read',
+  'Microsoft.Network/bastionHosts/read',
+  'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/read',
+  'Microsoft.Compute/virtualMachineScaleSets/read',
+  'Microsoft.DocumentDB/databaseAccounts/read',
+  'Microsoft.Cache/redis/read',
+  'Microsoft.Cdn/profiles/read',
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -326,6 +341,14 @@ export class AzureDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         this._discoverWebApps(credential),
       ]);
       allResources.push(...vmssList, ...webApps);
+
+      // 4e. Cosmos DB, Redis Cache, Front Door
+      const [cosmosAccounts, redisCaches, frontDoors] = await Promise.all([
+        this._discoverCosmosDbAccounts(credential),
+        this._discoverRedisCaches(credential),
+        this._discoverFrontDoorProfiles(credential),
+      ]);
+      allResources.push(...cosmosAccounts, ...redisCaches, ...frontDoors);
 
       // 5. Build Topology Relationships
       options.onProgress?.({
@@ -1318,6 +1341,172 @@ export class AzureDiscoveryAdapter implements InfrastructureDiscoveryProvider {
           resourceId: id,
           tags: site.tags ?? {},
           status: site.state ?? 'Running',
+          configuration: config,
+          metadata: { resourceGroup: rg },
+          configurationHash: computeConfigHash(config),
+          discoveredAt: now(),
+        });
+      }
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverCosmosDbAccounts(credential: ClientSecretCredential): Promise<CloudResource[]> {
+    const client = new CosmosDBManagementClient(credential, this._subscriptionId);
+    const results: CloudResource[] = [];
+    try {
+      for await (const account of client.databaseAccounts.list()) {
+        const id = safeString(account.id);
+        const loc = extractRegion(account.location);
+        const rg = extractResourceGroup(id);
+        const isServerless = (account.capabilities ?? []).some((c) => c.name === 'EnableServerless');
+
+        const config = {
+          name: account.name ?? 'unnamed-cosmos',
+          kind: account.kind ?? 'GlobalDocumentDB',
+          defaultConsistency: account.consistencyPolicy?.defaultConsistencyLevel ?? 'Session',
+          enableAutomaticFailover: account.enableAutomaticFailover ?? false,
+          publicNetworkAccess: account.publicNetworkAccess !== 'Disabled',
+          throughputMode: isServerless ? 'Serverless' : 'Provisioned',
+          maxThroughputRu: 4000,
+          backupType: account.backupPolicy?.type ?? 'Periodic',
+          source: 'azure-arm',
+          imported: true,
+        };
+
+        results.push({
+          id,
+          provider: 'azure',
+          subscriptionId: this._subscriptionId,
+          region: loc,
+          resourceType: 'cosmos-db',
+          name: account.name ?? 'unnamed-cosmos',
+          arn: id,
+          resourceId: id,
+          tags: account.tags ?? {},
+          status: account.provisioningState ?? 'Succeeded',
+          configuration: config,
+          metadata: { resourceGroup: rg, documentEndpoint: account.documentEndpoint ?? null },
+          configurationHash: computeConfigHash(config),
+          discoveredAt: now(),
+        });
+      }
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverRedisCaches(credential: ClientSecretCredential): Promise<CloudResource[]> {
+    const client = new RedisManagementClient(credential, this._subscriptionId);
+    const results: CloudResource[] = [];
+    try {
+      for await (const cache of client.redis.listBySubscription()) {
+        const id = safeString(cache.id);
+        const loc = extractRegion(cache.location);
+        const rg = extractResourceGroup(id);
+
+        const config = {
+          name: cache.name ?? 'unnamed-redis',
+          sku: cache.sku?.name ?? 'Standard',
+          family: cache.sku?.family ?? 'C',
+          capacity: cache.sku?.capacity ?? 1,
+          enableNonSslPort: cache.enableNonSslPort ?? false,
+          minimumTlsVersion: cache.minimumTlsVersion ?? '1.2',
+          redisVersion: (cache.redisVersion ?? '6').split('.')[0],
+          publicNetworkAccessEnabled: cache.publicNetworkAccess !== 'Disabled',
+          source: 'azure-arm',
+          imported: true,
+        };
+
+        results.push({
+          id,
+          provider: 'azure',
+          subscriptionId: this._subscriptionId,
+          region: loc,
+          resourceType: 'redis-cache',
+          name: cache.name ?? 'unnamed-redis',
+          arn: id,
+          resourceId: id,
+          tags: cache.tags ?? {},
+          status: cache.provisioningState ?? 'Succeeded',
+          configuration: config,
+          metadata: { resourceGroup: rg },
+          configurationHash: computeConfigHash(config),
+          discoveredAt: now(),
+        });
+      }
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverFrontDoorProfiles(credential: ClientSecretCredential): Promise<CloudResource[]> {
+    const client = new CdnManagementClient(credential, this._subscriptionId);
+    const results: CloudResource[] = [];
+    try {
+      for await (const profile of client.profiles.list()) {
+        const id = safeString(profile.id);
+        const loc = extractRegion(profile.location);
+        const rg = extractResourceGroup(id);
+        const name = profile.name ?? 'unnamed-frontdoor';
+        // Only Standard/Premium Azure Front Door profiles map to azure_front_door
+        // (this client also lists classic Azure CDN profiles, which aren't AFD).
+        if (!profile.sku?.name?.includes('AzureFrontDoor')) continue;
+
+        let originHostName = 'origin.example.com';
+        try {
+          const originGroup = (await client.afdOriginGroups.listByProfile(rg, name).next()).value;
+          if (originGroup?.name) {
+            const origin = (await client.afdOrigins.listByOriginGroup(rg, name, originGroup.name).next()).value;
+            if (origin?.hostName) originHostName = origin.hostName;
+          }
+        } catch {
+          // Best effort
+        }
+
+        let httpsOnly = true;
+        let cachingEnabled = true;
+        let queryStringCachingBehavior = 'IgnoreQueryString';
+        try {
+          const endpoint = (await client.afdEndpoints.listByProfile(rg, name).next()).value;
+          if (endpoint?.name) {
+            const route = (await client.routes.listByEndpoint(rg, name, endpoint.name).next()).value;
+            if (route) {
+              httpsOnly = (route.supportedProtocols ?? []).every((p: string) => p === 'Https');
+              cachingEnabled = Boolean(route.cacheConfiguration);
+              queryStringCachingBehavior = route.cacheConfiguration?.queryStringCachingBehavior === 'UseQueryString' ? 'UseQueryString' : 'IgnoreQueryString';
+            }
+          }
+        } catch {
+          // Best effort
+        }
+
+        const config = {
+          name,
+          sku: profile.sku?.name ?? 'Standard_AzureFrontDoor',
+          originHostName,
+          httpsOnly,
+          cachingEnabled,
+          queryStringCachingBehavior,
+          source: 'azure-arm',
+          imported: true,
+        };
+
+        results.push({
+          id,
+          provider: 'azure',
+          subscriptionId: this._subscriptionId,
+          region: loc,
+          resourceType: 'front-door',
+          name,
+          arn: id,
+          resourceId: id,
+          tags: profile.tags ?? {},
+          status: profile.provisioningState ?? 'Succeeded',
           configuration: config,
           metadata: { resourceGroup: rg },
           configurationHash: computeConfigHash(config),
