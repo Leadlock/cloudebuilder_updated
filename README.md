@@ -70,24 +70,37 @@ npm run build
 npm start
 ```
 
-### Background Worker (required for cloud account discovery)
+### Background Workers (required for discovery and Terraform apply)
 
-Cloud infrastructure discovery (`POST /api/cloud-accounts/:id/discover`) runs
-as a durable job on [pg-boss](https://github.com/timgit/pg-boss), not inside
-the web server's request handler — the API route only enqueues the job
-(persisted in the same Postgres database via `DATABASE_URL`) and returns
-immediately. A separate, long-running worker process actually executes it:
+Two operations run as durable jobs on [pg-boss](https://github.com/timgit/pg-boss)
+rather than inside the web server's request handler — the API route only
+enqueues the job (persisted in the same Postgres database via
+`DATABASE_URL`) and returns immediately. Separate, long-running worker
+processes actually execute them:
 
 ```bash
-npm run worker:discovery
+npm run worker:discovery        # cloud account discovery
+npm run worker:terraform-apply  # terraform apply (infrastructure deployment)
 ```
 
-This must be running (as its own process — a second `npm start`-style
-process, not part of the Next.js server) for discovery runs to ever leave
-the "pending" state. It needs the same `DATABASE_URL` and `ENCRYPTION_KEY`
-environment variables as the main app. See `lib/jobs/queue.ts` and
-`lib/jobs/discoveryJob.ts` for how the queue and job are defined, and
-`workers/discoveryWorker.ts` for the worker entrypoint itself.
+Both must be running (each as its own process — not part of the Next.js
+server) for the corresponding operation to ever leave the "pending" state.
+They need the same `DATABASE_URL` and `ENCRYPTION_KEY` environment
+variables as the main app; the apply worker additionally needs the
+`terraform` CLI on PATH (see `.env.example`). See `lib/jobs/queue.ts`,
+`lib/jobs/discoveryJob.ts`, and `lib/jobs/terraformApplyJob.ts` for how the
+queues and jobs are defined, and `workers/discoveryWorker.ts` /
+`workers/terraformApplyWorker.ts` for the worker entrypoints.
+
+Terraform plan generation (`POST /api/projects/:id/terraform/plan`) is
+NOT a background job — it's read-only against the target cloud account,
+so it runs synchronously and returns a plan summary + hash directly. Only
+`POST /api/projects/:id/terraform/apply` (confirming and running that
+exact plan) is durable/asynchronous, since it genuinely mutates
+infrastructure and can take a long time. See
+`lib/terraform/execution/TerraformExecutionService.ts` for the full gate
+list (admin-only, approved review + hash match, mandatory remote state
+backend, all destroy actions blocked).
 
 ## Project Structure
 
