@@ -1675,19 +1675,37 @@ ${tagLines.join('\n')}
   }
 
   private _nat(name: string, cfg: Record<string, unknown>, subnetRef: string): string {
-    return `resource "aws_eip" "${name}_eip" {
-  domain = "vpc"
-}
+    const isPrivate = cfg['connectivityType'] === 'private';
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+    const secondaryIds = Array.isArray(cfg['secondaryAllocationIds']) ? cfg['secondaryAllocationIds'] as string[] : [];
 
-resource "aws_nat_gateway" "${name}" {
-  allocation_id     = aws_eip.${name}_eip.id
-  subnet_id         = ${subnetRef}
-  connectivity_type = "${cfg['connectivityType'] ?? 'public'}"
-  tags = {
-    Name      = "${name}"
-    ManagedBy = "CloudCraft"
-  }
-}`;
+    const parts: string[] = [];
+    let allocationId: string | null = null;
+
+    // Private NAT gateways have no public IP at all — allocation_id is invalid for them.
+    if (!isPrivate) {
+      if (cfg['eipAllocationId']) {
+        allocationId = `"${cfg['eipAllocationId']}"`;
+      } else {
+        parts.push(`resource "aws_eip" "${name}_eip" {\n  domain = "vpc"\n}`);
+        allocationId = `aws_eip.${name}_eip.id`;
+      }
+    }
+
+    const lines: string[] = [`resource "aws_nat_gateway" "${name}" {`];
+    if (allocationId) lines.push(`  allocation_id     = ${allocationId}`);
+    lines.push(`  subnet_id         = ${subnetRef}`, `  connectivity_type = "${cfg['connectivityType'] ?? 'public'}"`);
+    if (isPrivate && cfg['privateIpAddress']) {
+      lines.push(`  private_ip        = "${cfg['privateIpAddress']}"`);
+    }
+    if (!isPrivate && secondaryIds.length > 0) {
+      lines.push(`  secondary_allocation_ids = [${secondaryIds.map((id) => `"${id}"`).join(', ')}]`);
+    }
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    parts.push(lines.join('\n'));
+
+    return parts.join('\n\n');
   }
 
   private _sg(name: string, cfg: Record<string, unknown>, vpcRef: string): string {
@@ -1777,57 +1795,79 @@ ${tagLines.join('\n')}
     const priceClass = (cfg['priceClass'] as string) || 'PriceClass_100';
     const defaultRoot = (cfg['defaultRootObject'] as string) || 'index.html';
     const enabled = cfg['enabled'] !== false;
+    const geoType = (cfg['geoRestrictionType'] as string) || 'none';
+    const geoCountries = Array.isArray(cfg['geoRestrictionCountries']) ? cfg['geoRestrictionCountries'] as string[] : [];
+    const useCustomCert = cfg['useCustomCertificate'] === true;
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
 
-    return `resource "aws_cloudfront_distribution" "${name}" {
-  enabled             = ${enabled}
-  price_class         = "${priceClass}"
-  default_root_object = "${defaultRoot}"
-
-  origin {
-    domain_name = ${originDns}
-    origin_id   = "${name}-alb-origin"
-
-    custom_origin_config {
-      http_port              = 80
-      https_port             = 443
-      origin_protocol_policy = "match-viewer"
-      origin_ssl_protocols   = ["TLSv1.2"]
+    const lines: string[] = [
+      `resource "aws_cloudfront_distribution" "${name}" {`,
+      `  enabled             = ${enabled}`,
+      `  price_class         = "${priceClass}"`,
+      `  default_root_object = "${defaultRoot}"`,
+      `  is_ipv6_enabled     = ${cfg['ipv6Enabled'] !== false}`,
+      `  http_version        = "${cfg['httpVersion'] ?? 'http2'}"`,
+    ];
+    if (cfg['webAclId']) {
+      lines.push(`  web_acl_id          = "${cfg['webAclId']}"`);
     }
-  }
-
-  default_cache_behavior {
-    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "${name}-alb-origin"
-
-    forwarded_values {
-      query_string = true
-      cookies {
-        forward = "all"
+    lines.push(
+      ``,
+      `  origin {`,
+      `    domain_name = ${originDns}`,
+      `    origin_id   = "${name}-alb-origin"`,
+      ``,
+      `    custom_origin_config {`,
+      `      http_port              = 80`,
+      `      https_port             = 443`,
+      `      origin_protocol_policy = "match-viewer"`,
+      `      origin_ssl_protocols   = ["TLSv1.2"]`,
+      `    }`,
+      `  }`,
+      ``,
+      `  default_cache_behavior {`,
+      `    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]`,
+      `    cached_methods   = ["GET", "HEAD"]`,
+      `    target_origin_id = "${name}-alb-origin"`,
+      `    compress         = ${cfg['compressionEnabled'] !== false}`,
+      ``,
+      `    forwarded_values {`,
+      `      query_string = true`,
+      `      cookies {`,
+      `        forward = "all"`,
+      `      }`,
+      `    }`,
+      ``,
+      `    viewer_protocol_policy = "${cfg['viewerProtocolPolicy'] ?? 'redirect-to-https'}"`,
+      `    min_ttl                = ${cfg['minTtl'] ?? 0}`,
+      `    default_ttl            = ${cfg['defaultTtl'] ?? 3600}`,
+      `    max_ttl                = ${cfg['maxTtl'] ?? 86400}`,
+      `  }`,
+      ``,
+      `  restrictions {`,
+      `    geo_restriction {`,
+      `      restriction_type = "${geoType}"`,
+    );
+    if (geoType !== 'none') {
+      lines.push(`      locations         = [${geoCountries.map((c) => `"${c}"`).join(', ')}]`);
+    }
+    lines.push(`    }`, `  }`, ``, `  viewer_certificate {`);
+    if (useCustomCert && cfg['customCertificateArn']) {
+      lines.push(
+        `    acm_certificate_arn      = "${cfg['customCertificateArn']}"`,
+        `    ssl_support_method       = "sni-only"`,
+        `    minimum_protocol_version = "${cfg['minimumProtocolVersion'] ?? 'TLSv1.2_2021'}"`,
+      );
+    } else {
+      if (useCustomCert) {
+        lines.push(`    # WARNING: useCustomCertificate is enabled but no customCertificateArn was set — falling back to the default CloudFront certificate.`);
       }
+      lines.push(`    cloudfront_default_certificate = true`);
     }
+    lines.push(`  }`, ``, `  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
 
-    viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 0
-    default_ttl            = 3600
-    max_ttl                = 86400
-  }
-
-  restrictions {
-    geo_restriction {
-      restriction_type = "none"
-    }
-  }
-
-  viewer_certificate {
-    cloudfront_default_certificate = true
-  }
-
-  tags = {
-    Name      = "${name}"
-    ManagedBy = "CloudCraft"
-  }
-}`;
+    return lines.join('\n');
   }
 
   private _dataVpc(name: string, cfg: Record<string, unknown>): string {
@@ -3157,51 +3197,103 @@ ${tagLines.join('\n')}
   }
 
   private _nsg(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
+    const sourceCidr = (cfg['sourceCidr'] as string) || '*';
+    const isPublicSource = sourceCidr === '*';
     const rules: string[] = [];
-    if (cfg['allowSsh'] === true) {
+    if (cfg['allowHttp'] === true) {
       rules.push(`
   security_rule {
-    name                       = "allow-ssh"
+    name                       = "allow-http"
     priority                   = 1001
     direction                  = "Inbound"
     access                     = "Allow"
     protocol                   = "Tcp"
     source_port_range          = "*"
-    destination_port_range     = "22"
-    source_address_prefix      = "*" # WARNING: Restrict to known IPs in production
+    destination_port_range     = "80"
+    source_address_prefix      = "${sourceCidr}"
     destination_address_prefix = "*"
-    description                = "SSH - RESTRICT THIS IN PRODUCTION"
+    description                = "HTTP"
+  }`);
+    }
+    if (cfg['allowHttps'] === true) {
+      rules.push(`
+  security_rule {
+    name                       = "allow-https"
+    priority                   = 1002
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "${sourceCidr}"
+    destination_address_prefix = "*"
+    description                = "HTTPS"
+  }`);
+    }
+    if (cfg['allowSsh'] === true) {
+      rules.push(`
+  security_rule {
+    name                       = "allow-ssh"
+    priority                   = 1003
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "${sourceCidr}"${isPublicSource ? ' # WARNING: Restrict to known IPs in production' : ''}
+    destination_address_prefix = "*"
+    description                = "SSH${isPublicSource ? ' - RESTRICT THIS IN PRODUCTION' : ''}"
   }`);
     }
     if (cfg['allowRdp'] === true) {
       rules.push(`
   security_rule {
     name                       = "allow-rdp"
-    priority                   = 1002
+    priority                   = 1004
     direction                  = "Inbound"
     access                     = "Allow"
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "3389"
-    source_address_prefix      = "*" # WARNING: Restrict to known IPs in production
+    source_address_prefix      = "${sourceCidr}"${isPublicSource ? ' # WARNING: Restrict to known IPs in production' : ''}
     destination_address_prefix = "*"
-    description                = "RDP - RESTRICT THIS IN PRODUCTION"
+    description                = "RDP${isPublicSource ? ' - RESTRICT THIS IN PRODUCTION' : ''}"
   }`);
     }
-    if (cfg['allowHttp'] === true) {
-      rules.push(`
+
+    const allowAllOutbound = cfg['allowAllOutbound'] !== false;
+    const egressCidr = (cfg['egressCidr'] as string) || '*';
+    rules.push(allowAllOutbound
+      ? `
   security_rule {
-    name                       = "allow-http"
-    priority                   = 1003
-    direction                  = "Inbound"
+    name                       = "allow-all-outbound"
+    priority                   = 2001
+    direction                  = "Outbound"
     access                     = "Allow"
-    protocol                   = "Tcp"
+    protocol                   = "*"
     source_port_range          = "*"
-    destination_port_range     = "80"
+    destination_port_range     = "*"
     source_address_prefix      = "*"
     destination_address_prefix = "*"
+    description                = "All outbound"
+  }`
+      : `
+  security_rule {
+    name                       = "restricted-outbound"
+    priority                   = 2001
+    direction                  = "Outbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "${egressCidr}"
+    description                = "Restricted outbound"
   }`);
-    }
+
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
     return `resource "azurerm_network_security_group" "${name}" {
   name                = "${name}"
   location            = ${rgLoc}
@@ -3209,6 +3301,7 @@ ${tagLines.join('\n')}
 ${rules.join('\n')}
   tags = {
     ManagedBy = "CloudCraft"
+${tagLines.join('\n')}
   }
 }`;
   }

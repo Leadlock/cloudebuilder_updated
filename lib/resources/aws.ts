@@ -587,11 +587,18 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#EDE9FE',
     borderColor: '#7C3AED',
     monthlyBaseCost: 15.0,
-    defaultConfig: { name: 'my-cdn', priceClass: 'PriceClass_100', defaultRootObject: 'index.html', enabled: true },
+    defaultConfig: {
+      name: 'my-cdn', priceClass: 'PriceClass_100', defaultRootObject: 'index.html', enabled: true,
+      viewerProtocolPolicy: 'redirect-to-https', minTtl: 0, defaultTtl: 3600, maxTtl: 86400,
+      compressionEnabled: true, httpVersion: 'http2', ipv6Enabled: true,
+      geoRestrictionType: 'none', geoRestrictionCountries: [],
+      useCustomCertificate: false, customCertificateArn: '', minimumProtocolVersion: 'TLSv1.2_2021',
+      webAclId: '', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Distribution Name', type: 'text', defaultValue: 'my-cdn', required: true },
       {
-        key: 'priceClass', label: 'Price Class', type: 'select', defaultValue: 'PriceClass_100',
+        key: 'priceClass', label: 'Price Class', type: 'select', defaultValue: 'PriceClass_100', section: 'Compute / Capacity',
         options: [
           { label: 'Price Class 100 (US, Europe, Israel)', value: 'PriceClass_100' },
           { label: 'Price Class 200 (+ Asia, Africa, Oceania)', value: 'PriceClass_200' },
@@ -600,8 +607,76 @@ export const awsResources: ResourceDefinition[] = [
       },
       { key: 'defaultRootObject', label: 'Default Root Object', type: 'text', defaultValue: 'index.html' },
       { key: 'enabled', label: 'Enabled', type: 'boolean', defaultValue: true },
+      {
+        key: 'viewerProtocolPolicy', label: 'Viewer Protocol Policy', type: 'select', defaultValue: 'redirect-to-https', section: 'Security',
+        options: [
+          { label: 'Redirect HTTP to HTTPS', value: 'redirect-to-https' },
+          { label: 'HTTPS Only', value: 'https-only' },
+          { label: 'Allow HTTP and HTTPS', value: 'allow-all' },
+        ],
+      },
+      { key: 'useCustomCertificate', label: 'Custom SSL Certificate', type: 'boolean', defaultValue: false, section: 'Security' },
+      {
+        key: 'customCertificateArn', label: 'ACM Certificate ARN', type: 'text', defaultValue: '', section: 'Security',
+        visibleWhen: (c) => c['useCustomCertificate'] === true,
+        placeholder: 'arn:aws:acm:us-east-1:...',
+        description: 'Must be an ACM certificate in us-east-1, regardless of the distribution’s other regions.',
+      },
+      {
+        key: 'minimumProtocolVersion', label: 'Minimum TLS Version', type: 'select', defaultValue: 'TLSv1.2_2021', section: 'Security', advanced: true,
+        visibleWhen: (c) => c['useCustomCertificate'] === true,
+        options: [
+          { label: 'TLSv1.2_2021', value: 'TLSv1.2_2021' },
+          { label: 'TLSv1.2_2019', value: 'TLSv1.2_2019' },
+          { label: 'TLSv1_2016', value: 'TLSv1_2016' },
+        ],
+      },
+      { key: 'webAclId', label: 'AWS WAF Web ACL ARN', type: 'text', defaultValue: '', section: 'Security', advanced: true, placeholder: 'blank = no WAF association' },
+      { key: 'minTtl', label: 'Minimum TTL (seconds)', type: 'number', defaultValue: 0, min: 0, section: 'Advanced', advanced: true },
+      { key: 'defaultTtl', label: 'Default TTL (seconds)', type: 'number', defaultValue: 3600, min: 0, section: 'Advanced', advanced: true },
+      { key: 'maxTtl', label: 'Maximum TTL (seconds)', type: 'number', defaultValue: 86400, min: 0, section: 'Advanced', advanced: true },
+      { key: 'compressionEnabled', label: 'Automatic Compression', type: 'boolean', defaultValue: true, section: 'Advanced', advanced: true },
+      {
+        key: 'httpVersion', label: 'Supported HTTP Versions', type: 'select', defaultValue: 'http2', section: 'Advanced', advanced: true,
+        options: [
+          { label: 'HTTP/1.1', value: 'http1.1' },
+          { label: 'HTTP/2', value: 'http2' },
+          { label: 'HTTP/2 and HTTP/3', value: 'http2and3' },
+        ],
+      },
+      { key: 'ipv6Enabled', label: 'IPv6', type: 'boolean', defaultValue: true, section: 'Networking' },
+      {
+        key: 'geoRestrictionType', label: 'Geo-Restriction', type: 'select', defaultValue: 'none', section: 'Advanced',
+        options: [
+          { label: 'None', value: 'none' },
+          { label: 'Allow Listed Countries Only', value: 'whitelist' },
+          { label: 'Block Listed Countries', value: 'blacklist' },
+        ],
+      },
+      {
+        key: 'geoRestrictionCountries', label: 'Country Codes (ISO 3166-1 alpha-2)', type: 'tags', defaultValue: [], section: 'Advanced', advanced: true,
+        visibleWhen: (c) => c['geoRestrictionType'] !== 'none',
+        placeholder: 'e.g. US, CA, GB',
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'cloudfront-no-waf',
+        severity: 'low',
+        check: (config) => !config.webAclId ? 'CloudFront distribution has no WAF Web ACL associated' : null,
+        message: 'CloudFront distribution is not protected by an AWS WAF Web ACL',
+        recommendation: 'Associate a WAF Web ACL for protection against common web exploits',
+      },
+      {
+        id: 'cloudfront-http-allowed',
+        severity: 'medium',
+        check: (config) => config.viewerProtocolPolicy === 'allow-all' ? 'CloudFront distribution allows unencrypted HTTP traffic to viewers' : null,
+        message: 'Viewer protocol policy allows plain HTTP, not just HTTPS',
+        recommendation: 'Set viewer protocol policy to "Redirect HTTP to HTTPS" or "HTTPS Only"',
+        fixAction: (config) => ({ ...config, viewerProtocolPolicy: 'redirect-to-https' }),
+      },
+    ],
   },
   {
     type: 'aws_alb',
@@ -1005,16 +1080,36 @@ export const awsResources: ResourceDefinition[] = [
     bgColor: '#FFEDD5',
     borderColor: '#EA580C',
     monthlyBaseCost: 45,
-    defaultConfig: { connectivityType: 'public', name: 'my-nat' },
+    defaultConfig: {
+      connectivityType: 'public', name: 'my-nat', eipAllocationId: '',
+      secondaryAllocationIds: [], privateIpAddress: '', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-nat', required: true },
       {
-        key: 'connectivityType', label: 'Connectivity Type', type: 'select', defaultValue: 'public',
+        key: 'connectivityType', label: 'Connectivity Type', type: 'select', defaultValue: 'public', section: 'Networking',
         options: [
           { label: 'Public', value: 'public' },
           { label: 'Private', value: 'private' },
         ],
       },
+      {
+        key: 'eipAllocationId', label: 'Elastic IP Allocation ID', type: 'text', defaultValue: '', section: 'Networking',
+        visibleWhen: (c) => c['connectivityType'] !== 'private',
+        placeholder: 'blank = allocate a new Elastic IP',
+        description: 'Bring an existing Elastic IP allocation instead of provisioning a new one.',
+      },
+      {
+        key: 'privateIpAddress', label: 'Private IP Address', type: 'text', defaultValue: '', section: 'Networking', advanced: true,
+        visibleWhen: (c) => c['connectivityType'] === 'private',
+        placeholder: 'blank = auto-assigned from the subnet CIDR',
+      },
+      {
+        key: 'secondaryAllocationIds', label: 'Secondary Elastic IP Allocation IDs', type: 'tags', defaultValue: [], section: 'Advanced', advanced: true,
+        visibleWhen: (c) => c['connectivityType'] !== 'private',
+        description: 'Additional Elastic IPs for higher port-allocation capacity under heavy connection load.',
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [],
   },

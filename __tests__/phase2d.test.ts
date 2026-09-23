@@ -911,6 +911,105 @@ describe('TerraformGenerator — AWS', () => {
     });
   });
 
+  describe('NAT Gateway config depth round-trip', () => {
+    function natWithSubnet(natConfig: Record<string, unknown>) {
+      const subnet = makeResource({ id: 'sub-1', resourceType: 'aws_subnet', provider: 'aws', configJson: JSON.stringify({ name: 'nat_subnet' }) });
+      const nat = makeResource({ id: 'nat-1', resourceType: 'aws_nat', provider: 'aws', configJson: JSON.stringify(natConfig) });
+      const conn = makeConnection('sub-1', 'nat-1');
+      return gen.generate(awsInput([subnet, nat], [conn]));
+    }
+
+    test('public NAT with no eipAllocationId provisions its own aws_eip', () => {
+      const result = natWithSubnet({ connectivityType: 'public' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "aws_eip"');
+      expect(main.content).toContain('allocation_id     = aws_eip.');
+      expect(main.content).toContain('connectivity_type = "public"');
+    });
+
+    test('public NAT with a bring-your-own eipAllocationId skips aws_eip creation', () => {
+      const result = natWithSubnet({ connectivityType: 'public', eipAllocationId: 'eipalloc-12345' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).not.toContain('resource "aws_eip"');
+      expect(main.content).toContain('allocation_id     = "eipalloc-12345"');
+    });
+
+    test('private NAT does not create or reference any Elastic IP', () => {
+      const result = natWithSubnet({ connectivityType: 'private' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).not.toContain('resource "aws_eip"');
+      expect(main.content).not.toContain('allocation_id');
+      expect(main.content).toContain('connectivity_type = "private"');
+    });
+
+    test('private NAT with a privateIpAddress sets private_ip', () => {
+      const result = natWithSubnet({ connectivityType: 'private', privateIpAddress: '10.0.1.25' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('private_ip        = "10.0.1.25"');
+    });
+
+    test('secondary allocation IDs flow into secondary_allocation_ids on a public NAT', () => {
+      const result = natWithSubnet({ connectivityType: 'public', secondaryAllocationIds: ['eipalloc-aaa', 'eipalloc-bbb'] });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('secondary_allocation_ids = ["eipalloc-aaa", "eipalloc-bbb"]');
+    });
+  });
+
+  describe('CloudFront config depth round-trip', () => {
+    test('viewerProtocolPolicy flows into the default_cache_behavior block', () => {
+      const cf = makeResource({ id: 'cf-1', resourceType: 'aws_cloudfront', provider: 'aws', configJson: JSON.stringify({ name: 'cdn', viewerProtocolPolicy: 'https-only' }) });
+      const result = gen.generate(awsInput([cf]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('viewer_protocol_policy = "https-only"');
+    });
+
+    test('useCustomCertificate with an ARN generates an acm_certificate_arn viewer_certificate block', () => {
+      const cf = makeResource({
+        id: 'cf-1', resourceType: 'aws_cloudfront', provider: 'aws',
+        configJson: JSON.stringify({ name: 'cdn', useCustomCertificate: true, customCertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/abc', minimumProtocolVersion: 'TLSv1.2_2021' }),
+      });
+      const result = gen.generate(awsInput([cf]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('acm_certificate_arn      = "arn:aws:acm:us-east-1:123456789012:certificate/abc"');
+      expect(main.content).toContain('minimum_protocol_version = "TLSv1.2_2021"');
+    });
+
+    test('without a custom certificate, the default CloudFront certificate is used', () => {
+      const cf = makeResource({ id: 'cf-1', resourceType: 'aws_cloudfront', provider: 'aws', configJson: JSON.stringify({ name: 'cdn' }) });
+      const result = gen.generate(awsInput([cf]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('cloudfront_default_certificate = true');
+    });
+
+    test('geoRestrictionType with countries generates a geo_restriction block with locations', () => {
+      const cf = makeResource({
+        id: 'cf-1', resourceType: 'aws_cloudfront', provider: 'aws',
+        configJson: JSON.stringify({ name: 'cdn', geoRestrictionType: 'whitelist', geoRestrictionCountries: ['US', 'CA'] }),
+      });
+      const result = gen.generate(awsInput([cf]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('restriction_type = "whitelist"');
+      expect(main.content).toContain('locations         = ["US", "CA"]');
+    });
+
+    test('geoRestrictionType none generates a none restriction with no locations', () => {
+      const cf = makeResource({ id: 'cf-1', resourceType: 'aws_cloudfront', provider: 'aws', configJson: JSON.stringify({ name: 'cdn', geoRestrictionType: 'none' }) });
+      const result = gen.generate(awsInput([cf]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('restriction_type = "none"');
+    });
+
+    test('webAclId associates the distribution with a WAF ACL', () => {
+      const cf = makeResource({
+        id: 'cf-1', resourceType: 'aws_cloudfront', provider: 'aws',
+        configJson: JSON.stringify({ name: 'cdn', webAclId: 'arn:aws:wafv2:us-east-1:123456789012:global/webacl/my-acl/abc' }),
+      });
+      const result = gen.generate(awsInput([cf]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('web_acl_id          = "arn:aws:wafv2:us-east-1:123456789012:global/webacl/my-acl/abc"');
+    });
+  });
+
   describe('ALB target group and listener (previously never generated)', () => {
     function albWithVpc(albConfig: Record<string, unknown>) {
       const vpc = makeResource({ id: 'vpc-1', resourceType: 'aws_vpc', provider: 'aws', configJson: JSON.stringify({ name: 'main_vpc' }) });
@@ -1351,6 +1450,54 @@ describe('TerraformGenerator — Azure', () => {
     const result = gen.generate(azureInput([st]));
     const main = result.files.find((f) => f.filename === 'main.tf')!;
     expect(main.content).toContain('enable_https_traffic_only');
+  });
+
+  describe('NSG config depth round-trip', () => {
+    function nsgWithRg(nsgConfig: Record<string, unknown>) {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const nsg = makeResource({ id: 'nsg-1', resourceType: 'azure_nsg', provider: 'azure', configJson: JSON.stringify(nsgConfig) });
+      const conn = makeConnection('rg-1', 'nsg-1');
+      return gen.generate(azureInput([rg, nsg], [conn]));
+    }
+
+    test('sourceCidr is applied to every enabled inbound rule instead of a hardcoded "*"', () => {
+      const result = nsgWithRg({ allowSsh: true, allowRdp: true, sourceCidr: '10.0.0.0/24' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      const inboundCount = (main.content.match(/direction\s+= "Inbound"/g) || []).length;
+      expect(inboundCount).toBe(2);
+      expect(main.content).toContain('source_address_prefix      = "10.0.0.0/24"');
+    });
+
+    test('default source "*" adds a production warning comment on SSH/RDP rules', () => {
+      const result = nsgWithRg({ allowSsh: true, allowRdp: true });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('RESTRICT THIS IN PRODUCTION');
+    });
+
+    test('allowHttps generates a dedicated HTTPS inbound rule', () => {
+      const result = nsgWithRg({ allowHttps: true });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('destination_port_range     = "443"');
+    });
+
+    test('allowAllOutbound=false generates a restricted outbound rule using egressCidr', () => {
+      const result = nsgWithRg({ allowAllOutbound: false, egressCidr: '10.1.0.0/16' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('destination_address_prefix = "10.1.0.0/16"');
+      expect(main.content).toContain('restricted-outbound');
+    });
+
+    test('allowAllOutbound=true (default) generates an allow-all outbound rule', () => {
+      const result = nsgWithRg({});
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('allow-all-outbound');
+    });
+
+    test('tags flow into the tags block', () => {
+      const result = nsgWithRg({ tags: { Env: 'prod' } });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('Env = "prod"');
+    });
   });
 
   describe('AKS Terraform generation (previously completely unsupported)', () => {

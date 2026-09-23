@@ -416,21 +416,31 @@ export class AwsPricingProvider implements PricingProvider {
 
   private _cloudfront(
     resource: DbArchitectureResource,
-    _config: Record<string, unknown>,
+    config: Record<string, unknown>,
     region: string,
     _mult: number,
   ): CostLineItem {
-    const monthly = 12.0;
+    // Baseline assumption (1TB egress) priced at the blended rate for each price class's edge locations.
+    const priceClass = (config['priceClass'] as string) || 'PriceClass_100';
+    const monthlyByClass: Record<string, number> = { PriceClass_100: 12.0, PriceClass_200: 16.0, PriceClass_All: 22.0 };
+    const monthly = monthlyByClass[priceClass] ?? monthlyByClass['PriceClass_100']!;
+    let webAclMonthly = 0;
+    if (config['webAclId']) {
+      webAclMonthly = 1.0; // Incremental WAF request-processing charge estimate; the Web ACL itself is priced separately.
+    }
+    const total = monthly + webAclMonthly;
+
     return {
       resourceId: resource.id,
       resourceLabel: resource.label,
       resourceType: resource.resourceType,
       provider: 'aws',
       region,
-      hourlyUsd: monthly / 730,
-      monthlyUsd: monthly,
+      hourlyUsd: total / 730,
+      monthlyUsd: total,
       breakdown: [
-        { label: 'CloudFront CDN data transfer & requests', monthlyUsd: monthly },
+        { label: `CloudFront CDN data transfer & requests (${priceClass})`, monthlyUsd: monthly },
+        ...(webAclMonthly > 0 ? [{ label: 'Associated WAF request processing (estimate)', monthlyUsd: webAclMonthly }] : []),
       ],
       assumptions: [
         'Includes 1TB data egress and 10M requests free tier allowance',

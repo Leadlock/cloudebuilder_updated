@@ -413,6 +413,23 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
     expect(withPc.items[0].breakdown.some((b) => b.label.includes('Provisioned concurrency'))).toBe(true);
   });
 
+  test('CloudFront cost scales with priceClass (previously a flat $12 regardless of config)', () => {
+    const p100 = makeResource({ resourceType: 'aws_cloudfront', provider: 'aws', configJson: JSON.stringify({ priceClass: 'PriceClass_100' }) });
+    const pAll = makeResource({ resourceType: 'aws_cloudfront', provider: 'aws', configJson: JSON.stringify({ priceClass: 'PriceClass_All' }) });
+    const p100Result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [p100] }, 'TEST');
+    const pAllResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [pAll] }, 'TEST');
+    expect(pAllResult.items[0].monthlyUsd).toBeGreaterThan(p100Result.items[0].monthlyUsd);
+  });
+
+  test('CloudFront cost adds an estimated WAF line item when webAclId is set', () => {
+    const noWaf = makeResource({ resourceType: 'aws_cloudfront', provider: 'aws', configJson: '{}' });
+    const withWaf = makeResource({ resourceType: 'aws_cloudfront', provider: 'aws', configJson: JSON.stringify({ webAclId: 'arn:aws:wafv2:us-east-1:123456789012:global/webacl/my-acl/abc' }) });
+    const noWafResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [noWaf] }, 'TEST');
+    const withWafResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [withWaf] }, 'TEST');
+    expect(withWafResult.items[0].monthlyUsd).toBeGreaterThan(noWafResult.items[0].monthlyUsd);
+    expect(withWafResult.items[0].breakdown.some((b) => b.label.includes('WAF'))).toBe(true);
+  });
+
   test('DynamoDB cost scales with configured capacity/usage (previously a flat $5 regardless of config)', () => {
     const light = makeResource({ resourceType: 'aws_dynamodb', provider: 'aws', configJson: JSON.stringify({ billingMode: 'PAY_PER_REQUEST', estimatedReadRequestUnitsPerMonth: 100_000, estimatedWriteRequestUnitsPerMonth: 50_000, estimatedStorageGb: 1 }) });
     const heavy = makeResource({ resourceType: 'aws_dynamodb', provider: 'aws', configJson: JSON.stringify({ billingMode: 'PAY_PER_REQUEST', estimatedReadRequestUnitsPerMonth: 100_000_000, estimatedWriteRequestUnitsPerMonth: 50_000_000, estimatedStorageGb: 500 }) });

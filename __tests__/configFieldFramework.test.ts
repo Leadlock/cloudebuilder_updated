@@ -184,6 +184,64 @@ describe('aws_sg — deepened config schema', () => {
   });
 });
 
+describe('aws_nat — deepened config schema', () => {
+  const def = getResourceDefinition('aws_nat')!;
+
+  test('eipAllocationId is hidden for private connectivity', () => {
+    const field = def.configSchema.find((f) => f.key === 'eipAllocationId')!;
+    expect(field.visibleWhen!({ connectivityType: 'public' })).toBe(true);
+    expect(field.visibleWhen!({ connectivityType: 'private' })).toBe(false);
+  });
+
+  test('privateIpAddress is only visible for private connectivity', () => {
+    const field = def.configSchema.find((f) => f.key === 'privateIpAddress')!;
+    expect(field.visibleWhen!({ connectivityType: 'private' })).toBe(true);
+    expect(field.visibleWhen!({ connectivityType: 'public' })).toBe(false);
+  });
+
+  test('secondaryAllocationIds is hidden for private connectivity', () => {
+    const field = def.configSchema.find((f) => f.key === 'secondaryAllocationIds')!;
+    expect(field.visibleWhen!({ connectivityType: 'public' })).toBe(true);
+    expect(field.visibleWhen!({ connectivityType: 'private' })).toBe(false);
+  });
+});
+
+describe('aws_cloudfront — deepened config schema', () => {
+  const def = getResourceDefinition('aws_cloudfront')!;
+
+  test('customCertificateArn and minimumProtocolVersion only visible when useCustomCertificate is true', () => {
+    const arnField = def.configSchema.find((f) => f.key === 'customCertificateArn')!;
+    const versionField = def.configSchema.find((f) => f.key === 'minimumProtocolVersion')!;
+    expect(arnField.visibleWhen!({ useCustomCertificate: true })).toBe(true);
+    expect(arnField.visibleWhen!({ useCustomCertificate: false })).toBe(false);
+    expect(versionField.visibleWhen!({ useCustomCertificate: true })).toBe(true);
+    expect(versionField.visibleWhen!({ useCustomCertificate: false })).toBe(false);
+  });
+
+  test('geoRestrictionCountries is only visible when geoRestrictionType is not none', () => {
+    const field = def.configSchema.find((f) => f.key === 'geoRestrictionCountries')!;
+    expect(field.visibleWhen!({ geoRestrictionType: 'whitelist' })).toBe(true);
+    expect(field.visibleWhen!({ geoRestrictionType: 'blacklist' })).toBe(true);
+    expect(field.visibleWhen!({ geoRestrictionType: 'none' })).toBe(false);
+  });
+});
+
+describe('azure_nsg — deepened config schema', () => {
+  const def = getResourceDefinition('azure_nsg')!;
+
+  test('egressCidr is only visible when outbound traffic is restricted', () => {
+    const field = def.configSchema.find((f) => f.key === 'egressCidr')!;
+    expect(field.visibleWhen!({ allowAllOutbound: false })).toBe(true);
+    expect(field.visibleWhen!({ allowAllOutbound: true })).toBe(false);
+    expect(field.visibleWhen!({})).toBe(false);
+  });
+
+  test('allowHttps exists in the schema alongside allowHttp', () => {
+    expect(def.configSchema.find((f) => f.key === 'allowHttps')).toBeDefined();
+    expect(def.configSchema.find((f) => f.key === 'allowHttp')).toBeDefined();
+  });
+});
+
 describe('azure_vm — deepened config schema', () => {
   const def = getResourceDefinition('azure_vm')!;
 
