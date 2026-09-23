@@ -563,4 +563,25 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
     const io2Result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [io2] }, 'TEST');
     expect(io2Result.items[0].monthlyUsd).toBeGreaterThan(gp3Result.items[0].monthlyUsd);
   });
+
+  test('Azure Standard Public IPs cost real money (previously marked as having no direct charges)', () => {
+    const standard = makeResource({ resourceType: 'azure_public_ip', provider: 'azure', configJson: JSON.stringify({ sku: 'Standard' }) });
+    const result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [standard] }, 'TEST');
+    expect(result.items[0].monthlyUsd).toBeGreaterThan(0);
+  });
+
+  test('Azure Route Tables and NICs correctly have no direct charge', () => {
+    const rt = makeResource({ resourceType: 'azure_route_table', provider: 'azure', configJson: '{}' });
+    const nic = makeResource({ resourceType: 'azure_nic', provider: 'azure', configJson: '{}' });
+    const result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [rt, nic] }, 'TEST');
+    expect(result.items.length).toBe(0);
+  });
+
+  test('Azure Redis cost scales with SKU and capacity (previously entirely unsupported)', () => {
+    const small = makeResource({ resourceType: 'azure_redis', provider: 'azure', configJson: JSON.stringify({ sku: 'Basic', capacity: 0 }) });
+    const large = makeResource({ resourceType: 'azure_redis', provider: 'azure', configJson: JSON.stringify({ sku: 'Premium', capacity: 3 }) });
+    const smallResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [small] }, 'TEST');
+    const largeResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [large] }, 'TEST');
+    expect(largeResult.items[0].monthlyUsd).toBeGreaterThan(smallResult.items[0].monthlyUsd);
+  });
 });

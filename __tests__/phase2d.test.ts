@@ -1435,6 +1435,134 @@ describe('TerraformGenerator — Azure', () => {
     });
   });
 
+  describe('Load Balancer Terraform generation (previously completely unsupported)', () => {
+    function lbWithRgAndPip(lbConfig: Record<string, unknown>) {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const pip = makeResource({ id: 'pip-1', resourceType: 'azure_public_ip', provider: 'azure', configJson: JSON.stringify({ name: 'lb_pip' }) });
+      const lb = makeResource({ id: 'lb-1', resourceType: 'azure_lb', provider: 'azure', configJson: JSON.stringify(lbConfig) });
+      const conns = [makeConnection('rg-1', 'lb-1'), makeConnection('pip-1', 'lb-1')];
+      return gen.generate(azureInput([rg, pip, lb], conns));
+    }
+
+    test('generates the LB, backend pool, probe, and rule', () => {
+      const result = lbWithRgAndPip({ name: 'web_lb', backendPort: 8080 });
+      expect(result.warnings.some((w) => w.includes('azure_lb') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_lb" "web_lb"');
+      expect(main.content).toContain('resource "azurerm_lb_backend_address_pool" "web_lb_backend"');
+      expect(main.content).toContain('resource "azurerm_lb_probe" "web_lb_probe"');
+      expect(main.content).toContain('resource "azurerm_lb_rule" "web_lb_rule"');
+      expect(main.content).toContain('frontend_port                  = 8080');
+    });
+
+    test('connected Public IP flows into the frontend configuration', () => {
+      const result = lbWithRgAndPip({ name: 'public_lb' });
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('public_ip_address_id          = azurerm_public_ip.lb_pip.id');
+    });
+
+    test('Internal type uses private_ip_address_allocation instead of a Public IP', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const lb = makeResource({ id: 'lb-1', resourceType: 'azure_lb', provider: 'azure', configJson: JSON.stringify({ name: 'internal_lb', type: 'Internal' }) });
+      const result = gen.generate(azureInput([rg, lb], [makeConnection('rg-1', 'lb-1')]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('private_ip_address_allocation = "Dynamic"');
+    });
+  });
+
+  describe('Key Vault Terraform generation (previously completely unsupported)', () => {
+    test('generates the vault with a single shared client_config data source even with multiple vaults', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const kv1 = makeResource({ id: 'kv-1', resourceType: 'azure_key_vault', provider: 'azure', configJson: JSON.stringify({ name: 'vault_one' }) });
+      const kv2 = makeResource({ id: 'kv-2', resourceType: 'azure_key_vault', provider: 'azure', configJson: JSON.stringify({ name: 'vault_two' }) });
+      const result = gen.generate(azureInput([rg, kv1, kv2], [makeConnection('rg-1', 'kv-1'), makeConnection('rg-1', 'kv-2')]));
+      expect(result.warnings.some((w) => w.includes('azure_key_vault') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_key_vault" "vault_one"');
+      expect(main.content).toContain('resource "azurerm_key_vault" "vault_two"');
+      const clientConfigMatches = main.content.match(/data "azurerm_client_config" "current"/g) ?? [];
+      expect(clientConfigMatches.length).toBe(1);
+    });
+
+    test('publicNetworkAccessEnabled=true generates a network_acls block with the configured default action', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const kv = makeResource({ id: 'kv-1', resourceType: 'azure_key_vault', provider: 'azure', configJson: JSON.stringify({ name: 'open_vault', publicNetworkAccessEnabled: true, networkAclsDefaultAction: 'Deny' }) });
+      const result = gen.generate(azureInput([rg, kv], [makeConnection('rg-1', 'kv-1')]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('network_acls {');
+      expect(main.content).toContain('default_action = "Deny"');
+    });
+  });
+
+  describe('Redis Terraform generation (previously completely unsupported)', () => {
+    test('generates the cache with the configured SKU/family/capacity/TLS settings', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const redis = makeResource({ id: 'redis-1', resourceType: 'azure_redis', provider: 'azure', configJson: JSON.stringify({ name: 'session_cache', sku: 'Premium', family: 'P', capacity: 2, enableNonSslPort: false }) });
+      const result = gen.generate(azureInput([rg, redis], [makeConnection('rg-1', 'redis-1')]));
+      expect(result.warnings.some((w) => w.includes('azure_redis') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_redis_cache" "session_cache"');
+      expect(main.content).toContain('sku_name                      = "Premium"');
+      expect(main.content).toContain('family                        = "P"');
+      expect(main.content).toContain('enable_non_ssl_port            = false');
+    });
+  });
+
+  describe('Public IP Terraform generation (previously completely unsupported)', () => {
+    test('generates the public IP with the configured allocation method and zone', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const pip = makeResource({ id: 'pip-1', resourceType: 'azure_public_ip', provider: 'azure', configJson: JSON.stringify({ name: 'app_pip', allocationMethod: 'Static', availabilityZone: '2' }) });
+      const result = gen.generate(azureInput([rg, pip], [makeConnection('rg-1', 'pip-1')]));
+      expect(result.warnings.some((w) => w.includes('azure_public_ip') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_public_ip" "app_pip"');
+      expect(main.content).toContain('allocation_method   = "Static"');
+      expect(main.content).toContain('zones               = ["2"]');
+    });
+  });
+
+  describe('Network Interface Terraform generation (previously completely unsupported)', () => {
+    test('generates the NIC with subnet_id resolved from a connected subnet', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const subnet = makeResource({ id: 'sub-1', resourceType: 'azure_subnet', provider: 'azure', configJson: JSON.stringify({ name: 'app_subnet' }) });
+      const nic = makeResource({ id: 'nic-1', resourceType: 'azure_nic', provider: 'azure', configJson: JSON.stringify({ name: 'app_nic', enableAcceleratedNetworking: true }) });
+      const result = gen.generate(azureInput([rg, subnet, nic], [makeConnection('rg-1', 'nic-1'), makeConnection('sub-1', 'nic-1')]));
+      expect(result.warnings.some((w) => w.includes('azure_nic') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_network_interface" "app_nic"');
+      expect(main.content).toContain('subnet_id                     = azurerm_subnet.app_subnet.id');
+      expect(main.content).toContain('enable_accelerated_networking = true');
+    });
+
+    test('unconnected NIC generates a warning', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const nic = makeResource({ id: 'nic-1', resourceType: 'azure_nic', provider: 'azure', label: 'orphan_nic', configJson: JSON.stringify({ name: 'orphan_nic' }) });
+      const result = gen.generate(azureInput([rg, nic], [makeConnection('rg-1', 'nic-1')]));
+      expect(result.warnings.some((w) => w.includes('orphan_nic') && w.includes('subnet'))).toBe(true);
+    });
+  });
+
+  describe('Route Table (Azure) Terraform generation (previously completely unsupported)', () => {
+    test('generates a route table with a route matching the configured next hop', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const rt = makeResource({ id: 'rt-1', resourceType: 'azure_route_table', provider: 'azure', configJson: JSON.stringify({ name: 'nva_rt', nextHopType: 'VirtualAppliance', nextHopIpAddress: '10.0.5.4' }) });
+      const result = gen.generate(azureInput([rg, rt], [makeConnection('rg-1', 'rt-1')]));
+      expect(result.warnings.some((w) => w.includes('azure_route_table') && w.toLowerCase().includes('unsupported'))).toBe(false);
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).toContain('resource "azurerm_route_table" "nva_rt"');
+      expect(main.content).toContain('next_hop_type  = "VirtualAppliance"');
+      expect(main.content).toContain('next_hop_in_ip_address = "10.0.5.4"');
+    });
+
+    test('nextHopType=None omits the route block', () => {
+      const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });
+      const rt = makeResource({ id: 'rt-1', resourceType: 'azure_route_table', provider: 'azure', configJson: JSON.stringify({ name: 'no_route_rt', nextHopType: 'None' }) });
+      const result = gen.generate(azureInput([rg, rt], [makeConnection('rg-1', 'rt-1')]));
+      const main = result.files.find((f) => f.filename === 'main.tf')!;
+      expect(main.content).not.toContain('route {');
+    });
+  });
+
   describe('Function App Terraform generation (previously completely unsupported)', () => {
     function functionsWithRg(fnConfig: Record<string, unknown>) {
       const rg = makeResource({ id: 'rg-1', resourceType: 'azure_resource_group', provider: 'azure', configJson: JSON.stringify({ name: 'main_rg' }) });

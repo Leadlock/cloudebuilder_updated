@@ -411,6 +411,68 @@ describe('aws_auto_scaling — deepened config schema', () => {
   });
 });
 
+describe('azure_lb — deepened config schema', () => {
+  const def = getResourceDefinition('azure_lb')!;
+
+  test('healthProbePath is hidden for the Tcp probe protocol', () => {
+    const field = def.configSchema.find((f) => f.key === 'healthProbePath')!;
+    expect(field.visibleWhen!({ healthProbeProtocol: 'Tcp' })).toBe(false);
+    expect(field.visibleWhen!({ healthProbeProtocol: 'Http' })).toBe(true);
+  });
+});
+
+describe('azure_key_vault — deepened config schema', () => {
+  const def = getResourceDefinition('azure_key_vault')!;
+
+  test('networkAclsDefaultAction is only visible when public network access is enabled', () => {
+    const field = def.configSchema.find((f) => f.key === 'networkAclsDefaultAction')!;
+    expect(field.visibleWhen!({ publicNetworkAccessEnabled: true })).toBe(true);
+    expect(field.visibleWhen!({ publicNetworkAccessEnabled: false })).toBe(false);
+  });
+
+  test('has security rules for public access and purge protection', () => {
+    expect(def.securityRules!.some((r) => r.id === 'keyvault-public-access')).toBe(true);
+    expect(def.securityRules!.some((r) => r.id === 'keyvault-no-purge-protection')).toBe(true);
+  });
+});
+
+describe('azure_redis — deepened config schema', () => {
+  const def = getResourceDefinition('azure_redis')!;
+
+  test('has security rules for non-SSL port and public access', () => {
+    expect(def.securityRules!.some((r) => r.id === 'redis-non-ssl-port')).toBe(true);
+    expect(def.securityRules!.some((r) => r.id === 'redis-public-access')).toBe(true);
+  });
+});
+
+describe('azure_public_ip — deepened config schema', () => {
+  const def = getResourceDefinition('azure_public_ip')!;
+
+  test('grew beyond a single name field', () => {
+    expect(def.configSchema.length).toBeGreaterThan(1);
+    const keys = def.configSchema.map((f) => f.key);
+    expect(keys).toEqual(expect.arrayContaining(['allocationMethod', 'availabilityZone']));
+  });
+});
+
+describe('azure_nic — deepened config schema', () => {
+  const def = getResourceDefinition('azure_nic')!;
+
+  test('has a security rule for IP forwarding', () => {
+    expect(def.securityRules!.some((r) => r.id === 'nic-ip-forwarding')).toBe(true);
+  });
+});
+
+describe('azure_route_table (Azure) — deepened config schema', () => {
+  const def = getResourceDefinition('azure_route_table')!;
+
+  test('nextHopIpAddress is only visible for VirtualAppliance next hop type', () => {
+    const field = def.configSchema.find((f) => f.key === 'nextHopIpAddress')!;
+    expect(field.visibleWhen!({ nextHopType: 'VirtualAppliance' })).toBe(true);
+    expect(field.visibleWhen!({ nextHopType: 'Internet' })).toBe(false);
+  });
+});
+
 describe('azure_app_service — newly added resource', () => {
   const def = getResourceDefinition('azure_app_service')!;
 

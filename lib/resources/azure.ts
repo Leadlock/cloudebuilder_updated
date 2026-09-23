@@ -426,7 +426,10 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#E0E7FF',
     borderColor: '#4F46E5',
     monthlyBaseCost: 18.25,
-    defaultConfig: { sku: 'Standard', tier: 'Regional', name: 'my-lb' },
+    defaultConfig: {
+      sku: 'Standard', tier: 'Regional', name: 'my-lb', type: 'Public',
+      backendPort: 80, healthProbePath: '/', healthProbeProtocol: 'Http', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-lb', required: true },
       {
@@ -436,6 +439,17 @@ export const azureResources: ResourceDefinition[] = [
           { label: 'Standard', value: 'Standard' },
         ],
       },
+      {
+        key: 'type', label: 'Type', type: 'select', defaultValue: 'Public', section: 'Networking',
+        options: [
+          { label: 'Public', value: 'Public' },
+          { label: 'Internal', value: 'Internal' },
+        ],
+      },
+      { key: 'backendPort', label: 'Backend Port', type: 'number', defaultValue: 80, min: 1, max: 65535, section: 'Networking' },
+      { key: 'healthProbeProtocol', label: 'Health Probe Protocol', type: 'select', defaultValue: 'Http', section: 'Monitoring', options: [{ label: 'HTTP', value: 'Http' }, { label: 'HTTPS', value: 'Https' }, { label: 'TCP', value: 'Tcp' }] },
+      { key: 'healthProbePath', label: 'Health Probe Path', type: 'text', defaultValue: '/', section: 'Monitoring', visibleWhen: (c) => c['healthProbeProtocol'] !== 'Tcp' },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [],
   },
@@ -521,10 +535,29 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#E0F2FE',
     borderColor: '#0284C7',
     monthlyBaseCost: 0,
-    defaultConfig: { name: 'my-route-table', disableBgpRoutePropagation: false },
+    defaultConfig: {
+      name: 'my-route-table', disableBgpRoutePropagation: false,
+      destinationCidr: '0.0.0.0/0', nextHopType: 'Internet', nextHopIpAddress: '', tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-route-table', required: true },
       { key: 'disableBgpRoutePropagation', label: 'Disable BGP Route Propagation', type: 'boolean', defaultValue: false },
+      { key: 'destinationCidr', label: 'Destination CIDR', type: 'cidr', defaultValue: '0.0.0.0/0', section: 'Routes' },
+      {
+        key: 'nextHopType', label: 'Next Hop Type', type: 'select', defaultValue: 'Internet', section: 'Routes',
+        options: [
+          { label: 'Internet', value: 'Internet' },
+          { label: 'Virtual Network Gateway', value: 'VirtualNetworkGateway' },
+          { label: 'Virtual Appliance (NVA)', value: 'VirtualAppliance' },
+          { label: 'None', value: 'None' },
+        ],
+      },
+      {
+        key: 'nextHopIpAddress', label: 'Next Hop IP Address', type: 'text', defaultValue: '', section: 'Routes',
+        visibleWhen: (c) => c['nextHopType'] === 'VirtualAppliance',
+        placeholder: 'IP address of the network virtual appliance',
+      },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [],
   },
@@ -563,11 +596,53 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#FEE2E2',
     borderColor: '#DC2626',
     monthlyBaseCost: 0.03,
-    defaultConfig: { name: 'my-vault', sku: 'standard' },
+    defaultConfig: {
+      name: 'my-vault', sku: 'standard', enableRbacAuthorization: true,
+      purgeProtectionEnabled: true, softDeleteRetentionDays: 90, publicNetworkAccessEnabled: false,
+      networkAclsDefaultAction: 'Deny', enabledForDiskEncryption: false, tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Vault Name', type: 'text', defaultValue: 'my-vault', required: true },
+      {
+        key: 'sku', label: 'SKU', type: 'select', defaultValue: 'standard', section: 'Compute / Capacity',
+        options: [
+          { label: 'Standard', value: 'standard' },
+          { label: 'Premium (HSM-backed keys)', value: 'premium' },
+        ],
+      },
+      { key: 'enableRbacAuthorization', label: 'Azure RBAC Authorization', type: 'boolean', defaultValue: true, section: 'Security' },
+      { key: 'publicNetworkAccessEnabled', label: 'Public Network Access', type: 'boolean', defaultValue: false, section: 'Security' },
+      {
+        key: 'networkAclsDefaultAction', label: 'Network Default Action', type: 'select', defaultValue: 'Deny', section: 'Security',
+        visibleWhen: (c) => c['publicNetworkAccessEnabled'] === true,
+        options: [
+          { label: 'Allow (all networks)', value: 'Allow' },
+          { label: 'Deny (firewall/VNet rules required)', value: 'Deny' },
+        ],
+      },
+      { key: 'purgeProtectionEnabled', label: 'Purge Protection', type: 'boolean', defaultValue: true, section: 'Backup & Recovery' },
+      { key: 'softDeleteRetentionDays', label: 'Soft Delete Retention (days)', type: 'number', defaultValue: 90, min: 7, max: 90, section: 'Backup & Recovery', advanced: true },
+      { key: 'enabledForDiskEncryption', label: 'Enable for Azure Disk Encryption', type: 'boolean', defaultValue: false, section: 'Advanced', advanced: true },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'keyvault-public-access',
+        severity: 'high',
+        check: (config) => config.publicNetworkAccessEnabled === true ? 'Key Vault allows public network access' : null,
+        message: 'Key Vault is reachable from the public internet',
+        recommendation: 'Disable public network access and use Private Endpoint, or restrict the network ACL default action to Deny',
+        fixAction: (config) => ({ ...config, publicNetworkAccessEnabled: false }),
+      },
+      {
+        id: 'keyvault-no-purge-protection',
+        severity: 'medium',
+        check: (config) => config.purgeProtectionEnabled === false ? 'Key Vault purge protection disabled' : null,
+        message: 'Key Vault does not have purge protection enabled',
+        recommendation: 'Enable purge protection to prevent permanent deletion of secrets/keys during the soft-delete retention window',
+        fixAction: (config) => ({ ...config, purgeProtectionEnabled: true }),
+      },
+    ],
   },
   {
     type: 'azure_functions',
@@ -866,9 +941,35 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#CCFBF1',
     borderColor: '#0D9488',
     monthlyBaseCost: 3.5,
-    defaultConfig: { name: 'my-pip', sku: 'Standard' },
+    defaultConfig: { name: 'my-pip', sku: 'Standard', allocationMethod: 'Static', availabilityZone: '', domainNameLabel: '', tags: {} },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-pip', required: true },
+      {
+        key: 'sku', label: 'SKU', type: 'select', defaultValue: 'Standard',
+        options: [
+          { label: 'Basic', value: 'Basic' },
+          { label: 'Standard', value: 'Standard' },
+        ],
+      },
+      {
+        key: 'allocationMethod', label: 'Allocation Method', type: 'select', defaultValue: 'Static', section: 'Networking',
+        description: 'Standard SKU requires Static allocation.',
+        options: [
+          { label: 'Static', value: 'Static' },
+          { label: 'Dynamic', value: 'Dynamic' },
+        ],
+      },
+      {
+        key: 'availabilityZone', label: 'Availability Zone', type: 'select', defaultValue: '', section: 'Availability & Scaling',
+        options: [
+          { label: 'None (zone-redundant if Standard)', value: '' },
+          { label: 'Zone 1', value: '1' },
+          { label: 'Zone 2', value: '2' },
+          { label: 'Zone 3', value: '3' },
+        ],
+      },
+      { key: 'domainNameLabel', label: 'DNS Name Label', type: 'text', defaultValue: '', section: 'Networking', advanced: true, placeholder: 'blank = no DNS label' },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
     securityRules: [],
   },
@@ -883,11 +984,29 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#CCFBF1',
     borderColor: '#0D9488',
     monthlyBaseCost: 0,
-    defaultConfig: { name: 'my-nic' },
+    defaultConfig: { name: 'my-nic', privateIpAllocationMethod: 'Dynamic', enableAcceleratedNetworking: false, enableIpForwarding: false, tags: {} },
     configSchema: [
       { key: 'name', label: 'NIC Name', type: 'text', defaultValue: 'my-nic', required: true },
+      {
+        key: 'privateIpAllocationMethod', label: 'Private IP Allocation', type: 'select', defaultValue: 'Dynamic', section: 'Networking',
+        options: [
+          { label: 'Dynamic', value: 'Dynamic' },
+          { label: 'Static', value: 'Static' },
+        ],
+      },
+      { key: 'enableAcceleratedNetworking', label: 'Accelerated Networking', type: 'boolean', defaultValue: false, section: 'Networking' },
+      { key: 'enableIpForwarding', label: 'IP Forwarding', type: 'boolean', defaultValue: false, section: 'Advanced', advanced: true },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'nic-ip-forwarding',
+        severity: 'low',
+        check: (config) => config.enableIpForwarding === true ? 'NIC has IP forwarding enabled' : null,
+        message: 'Network interface allows IP forwarding, which can enable it to act as a router/NVA',
+        recommendation: 'Disable IP forwarding unless this NIC is intentionally used as a network virtual appliance',
+      },
+    ],
   },
   {
     type: 'azure_unsupported',
@@ -968,11 +1087,58 @@ export const azureResources: ResourceDefinition[] = [
     bgColor: '#FCE7F3',
     borderColor: '#DB2777',
     monthlyBaseCost: 40.0,
-    defaultConfig: { name: 'my-redis', sku: 'Standard', family: 'C', capacity: 1 },
+    defaultConfig: {
+      name: 'my-redis', sku: 'Standard', family: 'C', capacity: 1,
+      enableNonSslPort: false, minimumTlsVersion: '1.2', redisVersion: '6', publicNetworkAccessEnabled: true, tags: {},
+    },
     configSchema: [
       { key: 'name', label: 'Cache Name', type: 'text', defaultValue: 'my-redis', required: true },
+      {
+        key: 'sku', label: 'SKU', type: 'select', defaultValue: 'Standard', section: 'Compute / Capacity',
+        options: [
+          { label: 'Basic', value: 'Basic' },
+          { label: 'Standard', value: 'Standard' },
+          { label: 'Premium', value: 'Premium' },
+        ],
+      },
+      {
+        key: 'family', label: 'Family', type: 'select', defaultValue: 'C', section: 'Compute / Capacity',
+        options: [
+          { label: 'C (Basic/Standard)', value: 'C' },
+          { label: 'P (Premium)', value: 'P' },
+        ],
+      },
+      { key: 'capacity', label: 'Capacity (size tier, 0-6)', type: 'number', defaultValue: 1, min: 0, max: 6, section: 'Compute / Capacity' },
+      { key: 'enableNonSslPort', label: 'Allow Non-SSL Port (6379)', type: 'boolean', defaultValue: false, section: 'Security' },
+      { key: 'publicNetworkAccessEnabled', label: 'Public Network Access', type: 'boolean', defaultValue: true, section: 'Security' },
+      {
+        key: 'minimumTlsVersion', label: 'Minimum TLS Version', type: 'select', defaultValue: '1.2', section: 'Security', advanced: true,
+        options: [
+          { label: 'TLS 1.0', value: '1.0' },
+          { label: 'TLS 1.1', value: '1.1' },
+          { label: 'TLS 1.2', value: '1.2' },
+        ],
+      },
+      { key: 'redisVersion', label: 'Redis Version', type: 'select', defaultValue: '6', section: 'Compute / Capacity', advanced: true, options: [{ label: 'Redis 6', value: '6' }] },
+      { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
+    securityRules: [
+      {
+        id: 'redis-non-ssl-port',
+        severity: 'high',
+        check: (config) => config.enableNonSslPort === true ? 'Azure Cache for Redis allows unencrypted (non-SSL) connections' : null,
+        message: 'Non-SSL port 6379 is enabled, allowing unencrypted connections',
+        recommendation: 'Disable the non-SSL port; use SSL/TLS port 6380 only',
+        fixAction: (config) => ({ ...config, enableNonSslPort: false }),
+      },
+      {
+        id: 'redis-public-access',
+        severity: 'medium',
+        check: (config) => config.publicNetworkAccessEnabled === true ? 'Azure Cache for Redis allows public network access' : null,
+        message: 'Redis cache is reachable from the public internet',
+        recommendation: 'Disable public network access and use Private Endpoint or VNet injection (Premium tier)',
+      },
+    ],
   },
   {
     type: 'azure_vmss',

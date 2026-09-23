@@ -1899,6 +1899,7 @@ class AzureTerraformGenerator {
     const blocks: string[] = [];
     const warnings: string[] = [];
     const resourceMap: Record<string, string> = {};
+    let clientConfigEmitted = false;
 
     for (const r of resources) {
       const cfg = this._cfg(r);
@@ -2040,6 +2041,81 @@ class AzureTerraformGenerator {
           const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
           blocks.push(this._appService(name, cfg, rgName, rgLoc));
           resourceMap[r.id] = `${cfg['osType'] === 'Windows' ? 'azurerm_windows_web_app' : 'azurerm_linux_web_app'}.${name}`;
+          break;
+        }
+        case 'azure_lb': {
+          const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          const pip = resolver.resolveParent(r.id, 'azure_public_ip', connections, resources);
+          const pipRef = pip ? `azurerm_public_ip.${resolver.tfNameOf(pip.id) ?? 'main'}.id` : null;
+          if (cfg['type'] !== 'Internal' && !pipRef) {
+            warnings.push(`Load Balancer "${r.label}" is Public but has no connected Public IP — the generated frontend_ip_configuration will reference a placeholder that will fail to apply.`);
+          }
+          blocks.push(this._lb(name, cfg, rgName, rgLoc, pipRef));
+          resourceMap[r.id] = `azurerm_lb.${name}`;
+          break;
+        }
+        case 'azure_key_vault': {
+          const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          if (!clientConfigEmitted) {
+            blocks.push(`data "azurerm_client_config" "current" {}`);
+            clientConfigEmitted = true;
+          }
+          blocks.push(this._keyVault(name, cfg, rgName, rgLoc));
+          resourceMap[r.id] = `azurerm_key_vault.${name}`;
+          break;
+        }
+        case 'azure_redis': {
+          const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          blocks.push(this._redis(name, cfg, rgName, rgLoc));
+          resourceMap[r.id] = `azurerm_redis_cache.${name}`;
+          break;
+        }
+        case 'azure_public_ip': {
+          const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          blocks.push(this._publicIpAzure(name, cfg, rgName, rgLoc));
+          resourceMap[r.id] = `azurerm_public_ip.${name}`;
+          break;
+        }
+        case 'azure_nic': {
+          const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources);
+          const isSubnetImported = subnet && Boolean(this._cfg(subnet).imported || this._cfg(subnet).importState === 'imported');
+          const subnetRef = subnet ? `${isSubnetImported ? 'data.' : ''}azurerm_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id` : null;
+          if (!subnetRef) {
+            warnings.push(`Network Interface "${r.label}" is not connected to any subnet — the generated azurerm_network_interface will fail to apply.`);
+          }
+          blocks.push(this._nicAzure(name, cfg, rgName, rgLoc, subnetRef));
+          resourceMap[r.id] = `azurerm_network_interface.${name}`;
+          break;
+        }
+        case 'azure_route_table': {
+          const rg = resolver.resolveParent(r.id, 'azure_resource_group', connections, resources);
+          const isRgImported = rg && Boolean(this._cfg(rg).imported || this._cfg(rg).importState === 'imported');
+          const rgPrefix = isRgImported ? 'data.' : '';
+          const rgName = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.name` : 'azurerm_resource_group.main.name # WARNING: RG not connected';
+          const rgLoc  = rg ? `${rgPrefix}azurerm_resource_group.${resolver.tfNameOf(rg.id) ?? 'main'}.location` : '"eastus"';
+          blocks.push(this._azureRouteTable(name, cfg, rgName, rgLoc));
+          resourceMap[r.id] = `azurerm_route_table.${name}`;
           break;
         }
         case 'azure_nsg': {
@@ -2525,6 +2601,168 @@ data "azurerm_network_security_group" "${name}" {
     parts.push(appLines.join('\n'));
 
     return parts.join('\n\n');
+  }
+
+  private _lb(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string, pipRef: string | null): string {
+    const isInternal = cfg['type'] === 'Internal';
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const parts: string[] = [
+      `resource "azurerm_lb" "${name}" {
+  name                = "${name}"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+  sku                 = "${cfg['sku'] ?? 'Standard'}"
+
+  frontend_ip_configuration {
+    name                 = "${name}-frontend"${isInternal ? `\n    private_ip_address_allocation = "Dynamic"` : `\n    public_ip_address_id          = ${pipRef ?? 'azurerm_public_ip.main.id # WARNING: no Public IP connected'}`}
+  }
+
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+${tagLines.join('\n')}
+  }
+}`,
+      `resource "azurerm_lb_backend_address_pool" "${name}_backend" {
+  loadbalancer_id = azurerm_lb.${name}.id
+  name            = "${name}-backend"
+}`,
+      `resource "azurerm_lb_probe" "${name}_probe" {
+  loadbalancer_id = azurerm_lb.${name}.id
+  name            = "${name}-probe"
+  protocol        = "${cfg['healthProbeProtocol'] ?? 'Http'}"
+  port            = ${cfg['backendPort'] ?? 80}${cfg['healthProbeProtocol'] !== 'Tcp' ? `\n  request_path    = "${cfg['healthProbePath'] ?? '/'}"` : ''}
+}`,
+      `resource "azurerm_lb_rule" "${name}_rule" {
+  loadbalancer_id                = azurerm_lb.${name}.id
+  name                           = "${name}-rule"
+  protocol                       = "Tcp"
+  frontend_port                  = ${cfg['backendPort'] ?? 80}
+  backend_port                   = ${cfg['backendPort'] ?? 80}
+  frontend_ip_configuration_name = "${name}-frontend"
+  backend_address_pool_ids       = [azurerm_lb_backend_address_pool.${name}_backend.id]
+  probe_id                       = azurerm_lb_probe.${name}_probe.id
+}`,
+    ];
+    return parts.join('\n\n');
+  }
+
+  private _keyVault(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const lines: string[] = [
+      `resource "azurerm_key_vault" "${name}" {`,
+      `  name                       = "${name}"`,
+      `  resource_group_name        = ${rgName}`,
+      `  location                   = ${rgLoc}`,
+      `  tenant_id                  = data.azurerm_client_config.current.tenant_id`,
+      `  sku_name                   = "${cfg['sku'] ?? 'standard'}"`,
+      `  enable_rbac_authorization  = ${cfg['enableRbacAuthorization'] !== false}`,
+      `  public_network_access_enabled = ${cfg['publicNetworkAccessEnabled'] === true}`,
+      `  purge_protection_enabled   = ${cfg['purgeProtectionEnabled'] !== false}`,
+      `  soft_delete_retention_days = ${cfg['softDeleteRetentionDays'] ?? 90}`,
+      `  enabled_for_disk_encryption = ${cfg['enabledForDiskEncryption'] === true}`,
+    ];
+    if (cfg['publicNetworkAccessEnabled'] === true) {
+      lines.push(`  network_acls {`, `    default_action = "${cfg['networkAclsDefaultAction'] ?? 'Deny'}"`, `    bypass         = "AzureServices"`, `  }`);
+    }
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    return lines.join('\n');
+  }
+
+  private _redis(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    return `resource "azurerm_redis_cache" "${name}" {
+  name                          = "${name}"
+  resource_group_name           = ${rgName}
+  location                      = ${rgLoc}
+  capacity                      = ${cfg['capacity'] ?? 1}
+  family                        = "${cfg['family'] ?? 'C'}"
+  sku_name                      = "${cfg['sku'] ?? 'Standard'}"
+  enable_non_ssl_port            = ${cfg['enableNonSslPort'] === true}
+  minimum_tls_version            = "${cfg['minimumTlsVersion'] ?? '1.2'}"
+  public_network_access_enabled  = ${cfg['publicNetworkAccessEnabled'] !== false}
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+${tagLines.join('\n')}
+  }
+}`;
+  }
+
+  private _publicIpAzure(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const lines: string[] = [
+      `resource "azurerm_public_ip" "${name}" {`,
+      `  name                = "${name}"`,
+      `  resource_group_name = ${rgName}`,
+      `  location            = ${rgLoc}`,
+      `  allocation_method   = "${cfg['allocationMethod'] ?? 'Static'}"`,
+      `  sku                 = "${cfg['sku'] ?? 'Standard'}"`,
+    ];
+    if (cfg['availabilityZone']) {
+      lines.push(`  zones               = ["${cfg['availabilityZone']}"]`);
+    }
+    if (cfg['domainNameLabel']) {
+      lines.push(`  domain_name_label   = "${cfg['domainNameLabel']}"`);
+    }
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    return lines.join('\n');
+  }
+
+  private _nicAzure(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string, subnetRef: string | null): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    return `resource "azurerm_network_interface" "${name}" {
+  name                = "${name}"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+  enable_accelerated_networking = ${cfg['enableAcceleratedNetworking'] === true}
+  enable_ip_forwarding           = ${cfg['enableIpForwarding'] === true}
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = ${subnetRef ?? 'azurerm_subnet.main.id # WARNING: subnet not connected'}
+    private_ip_address_allocation = "${cfg['privateIpAllocationMethod'] ?? 'Dynamic'}"
+  }
+
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+${tagLines.join('\n')}
+  }
+}`;
+  }
+
+  private _azureRouteTable(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+    const nextHopType = (cfg['nextHopType'] as string) || 'Internet';
+
+    const lines: string[] = [
+      `resource "azurerm_route_table" "${name}" {`,
+      `  name                          = "${name}"`,
+      `  resource_group_name           = ${rgName}`,
+      `  location                      = ${rgLoc}`,
+      `  disable_bgp_route_propagation = ${cfg['disableBgpRoutePropagation'] === true}`,
+    ];
+    if (nextHopType !== 'None') {
+      lines.push(`  route {`, `    name           = "${name}-route"`, `    address_prefix = "${cfg['destinationCidr'] ?? '0.0.0.0/0'}"`, `    next_hop_type  = "${nextHopType}"`);
+      if (nextHopType === 'VirtualAppliance' && cfg['nextHopIpAddress']) {
+        lines.push(`    next_hop_in_ip_address = "${cfg['nextHopIpAddress']}"`);
+      }
+      lines.push(`  }`);
+    }
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    return lines.join('\n');
   }
 
   private _nsg(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {

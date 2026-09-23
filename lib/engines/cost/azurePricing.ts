@@ -88,11 +88,13 @@ export class AzurePricingProvider implements PricingProvider {
       case 'azure_app_service':     return this._appService(resource, config, region, mult);
       case 'azure_key_vault':       return this._keyVault(resource, config, region, mult);
       case 'azure_nat':             return this._nat(resource, config, region, mult);
+      case 'azure_redis':           return this._redis(resource, config, region, mult);
+      case 'azure_public_ip':       return this._publicIp(resource, config, region, mult);
       case 'azure_resource_group':
       case 'azure_vnet':
       case 'azure_subnet':
       case 'azure_nsg':
-      case 'azure_public_ip':
+      case 'azure_route_table':
       case 'azure_nic':
         return null; // No direct charges
       default:
@@ -421,6 +423,75 @@ export class AzurePricingProvider implements PricingProvider {
         `Region: ${region}`,
       ],
       pricingSource: 'azure-app-service-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _redis(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    // us-east-1 Azure Cache for Redis hourly list prices by SKU family + capacity tier.
+    const sku = (config['sku'] as string) || 'Standard';
+    const capacity = Number(config['capacity'] ?? 1);
+    const hourlyBySku: Record<string, number[]> = {
+      Basic: [0.022, 0.043, 0.087, 0.173, 0.344, 0.688, 1.376],
+      Standard: [0.043, 0.087, 0.173, 0.344, 0.688, 1.376, 2.752],
+      Premium: [0.344, 0.688, 1.376, 2.752],
+    };
+    const tiers = hourlyBySku[sku] ?? hourlyBySku['Standard']!;
+    const hourly = (tiers[Math.min(capacity, tiers.length - 1)] ?? tiers[0]!) * mult;
+    const monthly = toMonthly(hourly);
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'azure',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: `Azure Cache for Redis ${sku} C${capacity}`, monthlyUsd: monthly },
+      ],
+      assumptions: [
+        `SKU: ${sku}, capacity tier: ${capacity}`,
+        `Region: ${region}`,
+      ],
+      pricingSource: 'azure-redis-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  private _publicIp(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const sku = (config['sku'] as string) || 'Standard';
+    // Standard SKU: $0.005/hr (~$3.65/mo). Basic SKU is being retired but still effectively free/negligible.
+    const hourly = (sku === 'Standard' ? 0.005 : 0) * mult;
+    const monthly = toMonthly(hourly);
+
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'azure',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: `Public IP (${sku})`, monthlyUsd: monthly },
+      ],
+      assumptions: [
+        `SKU: ${sku}`,
+        `Region: ${region}`,
+      ],
+      pricingSource: 'azure-public-ip-list-price',
       confidence: 'estimate',
     };
   }
