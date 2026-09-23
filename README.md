@@ -70,6 +70,25 @@ npm run build
 npm start
 ```
 
+### Background Worker (required for cloud account discovery)
+
+Cloud infrastructure discovery (`POST /api/cloud-accounts/:id/discover`) runs
+as a durable job on [pg-boss](https://github.com/timgit/pg-boss), not inside
+the web server's request handler — the API route only enqueues the job
+(persisted in the same Postgres database via `DATABASE_URL`) and returns
+immediately. A separate, long-running worker process actually executes it:
+
+```bash
+npm run worker:discovery
+```
+
+This must be running (as its own process — a second `npm start`-style
+process, not part of the Next.js server) for discovery runs to ever leave
+the "pending" state. It needs the same `DATABASE_URL` and `ENCRYPTION_KEY`
+environment variables as the main app. See `lib/jobs/queue.ts` and
+`lib/jobs/discoveryJob.ts` for how the queue and job are defined, and
+`workers/discoveryWorker.ts` for the worker entrypoint itself.
+
 ## Project Structure
 
 ```

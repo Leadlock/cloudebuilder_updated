@@ -2,42 +2,29 @@
  * POST /api/cloud-accounts/[id]/discover — trigger a discovery run
  *
  * Security:
- * - Credentials are loaded server-side; never in the request body.
+ * - Credentials are loaded server-side by the worker, never here, never in
+ *   the request or response body.
  * - Discovery result (resources) contains no credentials.
  * - Org isolation is enforced before any credential access.
  *
- * ⚠ RELIABILITY LIMITATION (known, not yet resolved):
- * Discovery executes as an unawaited Promise ("fire-and-forget") inside a
- * Next.js Serverless/Edge Function request handler.
- *
- * This is NOT production-safe because:
- *  1. The Node.js runtime may be frozen or evicted after the HTTP response is
- *     sent, terminating the background Promise mid-flight before it can write
- *     results to the database.
- *  2. There is no retry mechanism; a transient AWS/Azure error leaves the run
- *     permanently in the "running" state with no way to resume it.
- *  3. No back-pressure or concurrency cap — many simultaneous discovery
- *     triggers will run all at once with no queue.
- *
- * Production fix (Phase 3):
- *  Replace runDiscoveryAsync with a durable job queue (e.g. pg-boss, BullMQ,
- *  or a dedicated worker process) so that the job is persisted before the
- *  HTTP response is returned and is guaranteed to complete independently of
- *  the web process lifecycle.
- *
- * Until that migration is done, this endpoint is safe for development and
- * low-concurrency internal use only.
+ * Reliability: discovery execution is durable. The run row is created here
+ * and the job is enqueued via pg-boss (lib/jobs/discoveryJob.ts) BEFORE this
+ * handler returns — the job is persisted in Postgres, not held in this
+ * process's memory. A separate long-running worker process
+ * (workers/discoveryWorker.ts) picks it up, with automatic retries on
+ * transient failure. This survives the web process restarting or being
+ * evicted after the response is sent, which a bare fire-and-forget
+ * in-process Promise cannot.
  */
 import { NextRequest } from 'next/server';
 import {
-  ok, created, notFound, forbidden, unauthorized, internalError,
+  created, notFound, forbidden, unauthorized, internalError,
 } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId } from '@/lib/api/phase2d';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
 import { discoveryRepository } from '@/lib/repositories/discoveryRepository';
-import { createDiscoveryProvider } from '@/lib/cloud/provider';
-import type { CloudCredentials } from '@/lib/cloud/types';
+import { enqueueDiscoveryJob } from '@/lib/jobs/discoveryJob';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,16 +48,10 @@ export async function POST(
     const account = await cloudAccountRepository.findById(id, orgId);
     if (!account) return notFound('CloudAccount');
 
-    // Load credentials server-side — never returned
+    // Confirm credentials exist before enqueuing — the worker will load and
+    // decrypt them itself when it actually processes the job.
     const credentialsJson = await cloudAccountRepository.getCredentials(id, orgId);
     if (!credentialsJson) return notFound('CloudAccount credentials');
-
-    let credentials: CloudCredentials;
-    try {
-      credentials = JSON.parse(credentialsJson) as CloudCredentials;
-    } catch {
-      return internalError('Stored credentials are malformed');
-    }
 
     // Parse optional regions from body
     let regions: string[] | undefined;
@@ -86,9 +67,8 @@ export async function POST(
     // Create the run record in 'pending' state
     const run = await discoveryRepository.create(id);
 
-    // Run discovery asynchronously — do not block the HTTP response
-    // The run is persisted; client polls GET /discover for completion
-    void runDiscoveryAsync(run.id, id, orgId, credentials, regions);
+    // Durably enqueue the job — persisted in Postgres before we respond.
+    await enqueueDiscoveryJob({ runId: run.id, accountId: id, orgId, regions });
 
     return created({ runId: run.id, status: 'pending' });
   } catch (err) {
@@ -97,45 +77,5 @@ export async function POST(
       err instanceof Error ? err.message : String(err),
     );
     return internalError();
-  }
-}
-
-/**
- * Executes the discovery job and persists the result.
- * All errors are caught and persisted as failed run status.
- * Credentials are used only within this function scope.
- */
-async function runDiscoveryAsync(
-  runId: string,
-  accountId: string,
-  orgId: string,
-  credentials: CloudCredentials,
-  regions?: string[],
-): Promise<void> {
-  await discoveryRepository.markRunning(runId);
-
-  const provider = await createDiscoveryProvider(credentials);
-  try {
-    const result = await provider.discoverAll(regions);
-
-    if (result.status === 'completed') {
-      await discoveryRepository.markCompleted(runId, result.resources, result.summary, result.relationships);
-      // Update account status to active after successful discovery
-      await cloudAccountRepository.updateStatus(accountId, orgId, 'active');
-      console.info(
-        `[Discovery] Run ${runId} completed. Account: ${accountId}. Resources: ${result.resources.length}`,
-      );
-    } else {
-      const errorMsg = result.error ?? 'Discovery failed with unknown error';
-      await discoveryRepository.markFailed(runId, errorMsg);
-      console.error(`[Discovery] Run ${runId} failed. Account: ${accountId}. Error: ${errorMsg}`);
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    // Log without credentials
-    console.error(`[Discovery] Run ${runId} threw unexpectedly. Account: ${accountId}. Error: ${message}`);
-    await discoveryRepository.markFailed(runId, message);
-  } finally {
-    await provider.dispose();
   }
 }

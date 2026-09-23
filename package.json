@@ -13,7 +13,8 @@
     "contract:emit": "prisma contract emit",
     "db:migrate": "prisma db migrate",
     "db:update": "prisma db update",
-    "db:reset": "docker compose down -v && docker compose up -d && prisma db init"
+    "db:reset": "docker compose down -v && docker compose up -d && prisma db init",
+    "worker:discovery": "tsx workers/discoveryWorker.ts"
   },
   "dependencies": {
     "@aws-sdk/client-auto-scaling": "^3.1138.0",
@@ -59,6 +60,7 @@
     "lucide-react": "^1.42.0",
     "next": "16.3.4",
     "pdfkit": "^0.20.2",
+    "pg-boss": "^12.33.6",
     "prisma": "^8.0.0-rc.13",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -87,6 +89,7 @@
     "puppeteer-core": "^25.10.0",
     "tailwindcss": "^4",
     "ts-jest": "^29.4.12",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }
