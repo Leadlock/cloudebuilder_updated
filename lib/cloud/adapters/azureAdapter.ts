@@ -320,6 +320,13 @@ export class AzureDiscoveryAdapter implements InfrastructureDiscoveryProvider {
       ]);
       allResources.push(...natGateways, ...routeTables, ...nics, ...bastionHosts, ...wafPolicies);
 
+      // 4d. VM Scale Sets, non-Function Web Apps
+      const [vmssList, webApps] = await Promise.all([
+        this._discoverVmScaleSets(credential),
+        this._discoverWebApps(credential),
+      ]);
+      allResources.push(...vmssList, ...webApps);
+
       // 5. Build Topology Relationships
       options.onProgress?.({
         stage: 'building_relationships',
@@ -1179,6 +1186,140 @@ export class AzureDiscoveryAdapter implements InfrastructureDiscoveryProvider {
           status: policy.provisioningState ?? 'Succeeded',
           configuration: config,
           metadata: { resourceGroup: rg, resourceState: policy.resourceState ?? null },
+          configurationHash: computeConfigHash(config),
+          discoveredAt: now(),
+        });
+      }
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverVmScaleSets(credential: ClientSecretCredential): Promise<CloudResource[]> {
+    const client = new ComputeManagementClient(credential, this._subscriptionId);
+    const results: CloudResource[] = [];
+    try {
+      for await (const vmss of client.virtualMachineScaleSets.listAll()) {
+        const id = safeString(vmss.id);
+        const loc = extractRegion(vmss.location);
+        const rg = extractResourceGroup(id);
+        const profile = vmss.virtualMachineProfile;
+        const osDisk = profile?.storageProfile?.osDisk;
+
+        const config = {
+          name: vmss.name ?? 'unnamed-vmss',
+          sku: vmss.sku?.name ?? 'Standard_B2s',
+          capacity: vmss.sku?.capacity ?? 2,
+          osType: osDisk?.osType ?? 'Linux',
+          // Azure Disk Encryption status isn't reliably derivable from this response
+          // without a separate per-VM extension lookup — kept at the schema default.
+          osDiskEncryption: true,
+          adminUsername: profile?.osProfile?.adminUsername ?? 'azureuser',
+          // Autoscale is a separate Microsoft.Insights/autoscaleSettings resource,
+          // not part of the VMSS resource itself — not looked up here.
+          autoscaleEnabled: false,
+          minCapacity: vmss.sku?.capacity ?? 2,
+          maxCapacity: vmss.sku?.capacity ?? 10,
+          overprovision: vmss.overprovision ?? true,
+          upgradeMode: vmss.upgradePolicy?.mode ?? 'Manual',
+          source: 'azure-arm',
+          imported: true,
+        };
+
+        results.push({
+          id,
+          provider: 'azure',
+          subscriptionId: this._subscriptionId,
+          region: loc,
+          resourceType: 'vm-scale-set',
+          name: vmss.name ?? 'unnamed-vmss',
+          arn: id,
+          resourceId: id,
+          tags: vmss.tags ?? {},
+          status: vmss.provisioningState ?? 'Succeeded',
+          configuration: config,
+          metadata: { resourceGroup: rg, zones: vmss.zones ?? [] },
+          configurationHash: computeConfigHash(config),
+          discoveredAt: now(),
+        });
+      }
+    } catch {
+      // Best effort
+    }
+    return results;
+  }
+
+  private async _discoverWebApps(credential: ClientSecretCredential): Promise<CloudResource[]> {
+    const client = new WebSiteManagementClient(credential, this._subscriptionId);
+    const results: CloudResource[] = [];
+    try {
+      for await (const site of client.webApps.list()) {
+        // Function Apps are discovered separately by _discoverFunctionApps.
+        if (site.kind?.toLowerCase().includes('functionapp')) continue;
+        const id = safeString(site.id);
+        const loc = extractRegion(site.location);
+        const rg = extractResourceGroup(id);
+        const name = site.name ?? 'unnamed-webapp';
+
+        let siteConfig: Awaited<ReturnType<typeof client.webApps.get>>['siteConfig'] | undefined;
+        try {
+          const full = await retryWithBackoff(() => client.webApps.get(rg, name));
+          siteConfig = full.siteConfig;
+        } catch {
+          // Best effort — fall back to defaults below
+        }
+
+        let skuName = 'B1';
+        const serverFarmId = site.serverFarmId;
+        if (serverFarmId) {
+          const planMatch = serverFarmId.match(/\/serverfarms\/([^/]+)/i);
+          if (planMatch?.[1]) {
+            try {
+              const plan = await retryWithBackoff(() => client.appServicePlans.get(rg, planMatch[1]!));
+              skuName = plan.sku?.name ?? skuName;
+            } catch {
+              // Best effort
+            }
+          }
+        }
+
+        const isLinux = site.reserved === true;
+        const linuxFxVersion = siteConfig?.linuxFxVersion ?? '';
+        const [runtimeRaw, runtimeVersion] = linuxFxVersion ? linuxFxVersion.split('|') : ['NODE', '20-lts'];
+
+        const config = {
+          name,
+          osType: isLinux ? 'Linux' : 'Windows',
+          runtime: (runtimeRaw ?? 'NODE').toLowerCase(),
+          runtimeVersion: runtimeVersion ?? '20-lts',
+          skuName,
+          httpsOnly: site.httpsOnly ?? true,
+          alwaysOn: siteConfig?.alwaysOn ?? true,
+          minimumTlsVersion: siteConfig?.minTlsVersion ?? '1.2',
+          http2Enabled: siteConfig?.http20Enabled ?? true,
+          ftpsState: siteConfig?.ftpsState ?? 'Disabled',
+          clientAffinityEnabled: site.clientAffinityEnabled ?? false,
+          publicNetworkAccess: site.publicNetworkAccess !== 'Disabled',
+          healthCheckPath: siteConfig?.healthCheckPath ?? '',
+          appSettings: {},
+          source: 'azure-arm',
+          imported: true,
+        };
+
+        results.push({
+          id,
+          provider: 'azure',
+          subscriptionId: this._subscriptionId,
+          region: loc,
+          resourceType: 'web-app',
+          name,
+          arn: id,
+          resourceId: id,
+          tags: site.tags ?? {},
+          status: site.state ?? 'Running',
+          configuration: config,
+          metadata: { resourceGroup: rg },
           configurationHash: computeConfigHash(config),
           discoveredAt: now(),
         });

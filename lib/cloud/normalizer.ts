@@ -66,6 +66,8 @@ const RESOURCE_TYPE_MAP: Record<string, string> = {
   'virtual-machine': 'azure_vm',
   aks: 'azure_aks',
   functions: 'azure_functions',
+  'vm-scale-set': 'azure_vmss',
+  'web-app': 'azure_app_service',
   // Azure storage
   'storage-account': 'azure_storage',
   'blob-container': 'azure_storage',

@@ -689,9 +689,19 @@ jest.mock('@azure/arm-network', () => ({
   })),
 }));
 
+const mockVmssList = [
+  {
+    id: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Compute/virtualMachineScaleSets/my-vmss',
+    name: 'my-vmss', location: 'eastus', provisioningState: 'Succeeded', tags: {},
+    sku: { name: 'Standard_D2s_v3', capacity: 6 }, overprovision: false, upgradePolicy: { mode: 'Rolling' },
+    virtualMachineProfile: { osProfile: { adminUsername: 'vmssadmin' }, storageProfile: { osDisk: { osType: 'Linux' } } },
+  },
+];
+
 jest.mock('@azure/arm-compute', () => ({
   ComputeManagementClient: jest.fn().mockImplementation(() => ({
     virtualMachines: { listAll: () => makeAsyncIterator([]) },
+    virtualMachineScaleSets: { listAll: () => makeAsyncIterator(mockVmssList) },
   })),
 }));
 
@@ -730,18 +740,32 @@ const mockFunctionAppList = [
     httpsOnly: true, publicNetworkAccess: 'Enabled', tags: {},
     serverFarmId: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Web/serverfarms/my-plan',
   },
+  {
+    id: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Web/sites/my-webapp',
+    name: 'my-webapp', location: 'eastus', kind: 'app,linux', state: 'Running', reserved: true,
+    httpsOnly: true, publicNetworkAccess: 'Enabled', tags: {}, clientAffinityEnabled: true,
+    serverFarmId: '/subscriptions/sub-1/resourceGroups/my-rg/providers/Microsoft.Web/serverfarms/my-webapp-plan',
+  },
 ];
 
 jest.mock('@azure/arm-appservice', () => ({
   WebSiteManagementClient: jest.fn().mockImplementation(() => ({
     webApps: {
       list: () => makeAsyncIterator(mockFunctionAppList),
-      get: jest.fn().mockResolvedValue({
-        siteConfig: { linuxFxVersion: 'NODE|20-lts', minTlsVersion: '1.2', alwaysOn: true },
+      get: jest.fn().mockImplementation((_rg: string, name: string) => {
+        if (name === 'my-webapp') {
+          return Promise.resolve({
+            siteConfig: { linuxFxVersion: 'PYTHON|3.12', minTlsVersion: '1.3', alwaysOn: false, http20Enabled: true, ftpsState: 'FtpsOnly', healthCheckPath: '/healthz' },
+          });
+        }
+        return Promise.resolve({
+          siteConfig: { linuxFxVersion: 'NODE|20-lts', minTlsVersion: '1.2', alwaysOn: true },
+        });
       }),
     },
     appServicePlans: {
-      get: jest.fn().mockResolvedValue({ sku: { name: 'EP1' } }),
+      get: jest.fn().mockImplementation((_rg: string, planName: string) =>
+        Promise.resolve({ sku: { name: planName === 'my-webapp-plan' ? 'P1v3' : 'EP1' } })),
     },
   })),
 }));
@@ -1194,6 +1218,39 @@ describe('Azure Adapter', () => {
     expect(policies[0].configuration.mode).toBe('Prevention');
     expect(policies[0].configuration.managedRuleSetVersion).toBe('3.2');
     expect(policies[0].configuration.maxRequestBodySizeKb).toBe(256);
+    await adapter.dispose();
+  });
+
+  it('discovers VM Scale Sets with SKU capacity and upgrade mode', async () => {
+    const adapter = new AzureDiscoveryAdapter(azureCreds);
+    const result = await adapter.discoverAll();
+    const scaleSets = result.resources.filter((r) => r.resourceType === 'vm-scale-set');
+    expect(scaleSets.length).toBeGreaterThan(0);
+    expect(scaleSets[0].name).toBe('my-vmss');
+    expect(scaleSets[0].configuration.sku).toBe('Standard_D2s_v3');
+    expect(scaleSets[0].configuration.capacity).toBe(6);
+    expect(scaleSets[0].configuration.upgradeMode).toBe('Rolling');
+    expect(scaleSets[0].configuration.overprovision).toBe(false);
+    await adapter.dispose();
+  });
+
+  it('discovers non-Function Web Apps separately from Function Apps, resolving runtime/plan independently', async () => {
+    const adapter = new AzureDiscoveryAdapter(azureCreds);
+    const result = await adapter.discoverAll();
+    const webApps = result.resources.filter((r) => r.resourceType === 'web-app');
+    expect(webApps.length).toBe(1);
+    expect(webApps[0].name).toBe('my-webapp');
+    expect(webApps[0].configuration.runtime).toBe('python');
+    expect(webApps[0].configuration.runtimeVersion).toBe('3.12');
+    expect(webApps[0].configuration.skuName).toBe('P1v3');
+    expect(webApps[0].configuration.alwaysOn).toBe(false);
+    expect(webApps[0].configuration.ftpsState).toBe('FtpsOnly');
+    expect(webApps[0].configuration.healthCheckPath).toBe('/healthz');
+
+    // Function Apps must not leak into the web-app bucket, and vice versa.
+    const functionApps = result.resources.filter((r) => r.resourceType === 'functions');
+    expect(functionApps.some((f) => f.name === 'my-webapp')).toBe(false);
+    expect(webApps.some((w) => w.name === 'my-func')).toBe(false);
     await adapter.dispose();
   });
 });
