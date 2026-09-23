@@ -1,20 +1,28 @@
 /**
- * AWS Pricing Provider — Phase 2D
+ * AWS Pricing Provider — static fallback
  *
- * IMPORTANT: This implementation uses AWS public list prices sourced from
- * AWS pricing documentation (https://aws.amazon.com/pricing/).
- * Prices are stored as static data tables per resource type and region.
+ * This is NOT the primary pricing path anymore. CostEstimator.estimateAsync()
+ * (lib/engines/cost/CostEstimator.ts) queries the live
+ * CloudProviderPricingService (lib/cloud/pricing/CloudProviderPricingService.ts)
+ * first — which itself hits the real AWS Price List Query API for EC2, RDS,
+ * S3, EBS, ALB, NAT Gateway, and EKS (see lib/cloud/pricing/AwsPricingProvider.ts)
+ * — and only falls back to this class when that live call is unavailable or
+ * throws. So in the normal case this file's static tables are dead code that
+ * exists purely for resilience, not the day-to-day pricing source.
  *
- * LIMITATIONS:
- * - These are on-demand list prices as of late 2024. Actual AWS bills may
- *   differ due to reserved instances, savings plans, spot pricing,
- *   enterprise discounts, support charges, or data transfer.
- * - The AWS Price List API (https://pricing.us-east-1.amazonaws.com/) requires
- *   no authentication for public resources but returns very large JSON files
- *   unsuitable for per-request loading. Live API calls are not implemented in
- *   Phase 2D; that is a Phase 2E enhancement.
- * - Prices labelled "estimate" are based on typical instance configurations.
- *   Storage and transfer costs use average assumptions documented per resource.
+ * It's still load-bearing for two real reasons, not just inertia:
+ * 1. It's the offline/no-credentials/API-down fallback for every resource
+ *    type, including the ones the live provider does cover.
+ * 2. Lambda, CloudFront, and DynamoDB are usage-tiered (free tier + per-
+ *    request/GB/RU bands) rather than a single on-demand SKU rate, so the
+ *    live provider deliberately never covers them (see the "NOT live"
+ *    section of AwsPricingProvider.ts's header) — this file's usage-aware
+ *    scaling logic for those three is the ONLY place that modeling exists,
+ *    live or not.
+ *
+ * Prices below are AWS public list prices as of late 2024, sourced from
+ * https://aws.amazon.com/pricing/, and will drift over time — that's
+ * expected and acceptable for a fallback path, not a correctness bug.
  */
 
 import type { PricingProvider, CostLineItem } from './types';

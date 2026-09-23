@@ -1,17 +1,19 @@
 /**
- * Azure Pricing Provider — Phase 2D
+ * Azure Pricing Provider — static fallback
  *
- * IMPORTANT: This implementation uses Azure public list prices sourced from
- * the Azure Pricing Calculator and Azure documentation.
+ * This is NOT the primary pricing path anymore. CostEstimator.estimateAsync()
+ * (lib/engines/cost/CostEstimator.ts) queries the live
+ * CloudProviderPricingService first, which for Azure hits the real, public,
+ * unauthenticated Azure Retail Prices API
+ * (https://prices.azure.com/api/retail/prices) via
+ * lib/cloud/pricing/AzurePricingProvider.ts, and only falls back to this
+ * class when that live call fails or times out. So this file's static
+ * tables are the offline/API-down resilience path, not the everyday
+ * pricing source — Azure design-time estimates are genuinely live in the
+ * normal case.
  *
- * LIMITATIONS:
- * - The Azure Retail Prices API (https://prices.azure.com/api/retail/prices) is
- *   publicly accessible without authentication and returns real-time pricing.
- *   However, making live HTTP requests per estimate would add latency and
- *   create external dependencies. Phase 2D uses static price tables instead.
- * - Prices are Pay-As-You-Go East US list prices as of late 2024.
- * - Actual Azure bills may differ due to Azure Hybrid Benefit, reservations,
- *   enterprise agreements, support plans, or Azure dev/test pricing.
+ * Prices below are Pay-As-You-Go East US list prices as of late 2024 and
+ * will drift over time — expected for a fallback path, not a correctness bug.
  */
 
 import type { PricingProvider, CostLineItem } from './types';
