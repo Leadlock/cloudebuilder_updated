@@ -93,6 +93,14 @@ async function mockExecSql(sql: string, params: unknown[]): Promise<{ rows: Reco
     const row = [...mockDb._stores['Architecture'].values()].find((r) => (r as Record<string, unknown>)['environmentId'] === environmentId);
     return { rows: row ? [row as Record<string, unknown>] : [] };
   }
+  if (isSelect && /= ANY\(\$1::text\[\]\)/.test(sql)) {
+    // saveCanvas guard: IDs already owned by a different architecture (global PK).
+    const [nodeIds, archId, edgeIds] = params as [string[], string, string[]];
+    const owned = (store: string, ids: string[]) => [...mockDb._stores[store].values()]
+      .filter((r) => ids.includes((r as Record<string, unknown>)['id'] as string) && (r as Record<string, unknown>)['architectureId'] !== archId)
+      .map((r) => ({ id: (r as Record<string, unknown>)['id'] }));
+    return { rows: [...owned('ArchitectureResource', nodeIds), ...owned('ArchitectureConnection', edgeIds)] };
+  }
   if (isDelete && /architectureResource/i.test(sql) && params[0]) {
     const archId = params[0] as string;
     for (const [k, v] of mockDb._stores['ArchitectureResource']) {

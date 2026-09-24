@@ -4,6 +4,7 @@ import { useApp } from '@/context/AppContext';
 import { architectureTemplates } from '@/lib/templates';
 import { Shield, Clock, DollarSign, AlertCircle } from 'lucide-react';
 import clsx from 'clsx';
+import { instantiateTemplate } from '@/lib/domain/instantiateTemplate';
 
 const DR_STRATEGIES = [
   { id: 'backup', name: 'Backup & Restore', description: 'Periodic backups stored in S3/Azure Storage. Restore when disaster occurs.', rto: '24–72 hours', rpo: '1–24 hours', costMultiplier: 1.15, complexity: 'low' as const },
@@ -36,7 +37,7 @@ export default function DisasterRecovery() {
     // non-existent template id — this is a known gap, not a silent fake.
     const template =
       architectureTemplates.find((t) => t.id === 'ref-aws-dr-warm-standby') ?? architectureTemplates[0];
-    const { nodes, edges } = template.generate({});
+    const { nodes, edges } = instantiateTemplate(template, {});
     dispatch({ type: 'CREATE_PROJECT', provider: 'multi', name: `DR — ${selectedStrategy.name}`, nodes, edges });
     setGenerating(false);
   }

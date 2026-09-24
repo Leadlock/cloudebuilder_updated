@@ -7,6 +7,7 @@ import { LayoutGrid, DollarSign, Server } from 'lucide-react';
 import { formatCurrency } from '@/lib/currency/formatter';
 import { calculateCosts } from '@/lib/analysis';
 import clsx from 'clsx';
+import { instantiateTemplate } from '@/lib/domain/instantiateTemplate';
 
 // Estimated monthly cost per template, computed from the SAME resource graph
 // the template actually generates (via the shared static-rate-table cost
@@ -64,7 +65,7 @@ export default function TemplateGallery() {
     setLoading(templateId);
     await new Promise((r) => setTimeout(r, 800));
     const template = architectureTemplates.find((t) => t.id === templateId)!;
-    const { nodes, edges } = template.generate({});
+    const { nodes, edges } = instantiateTemplate(template, {});
     dispatch({ type: 'CREATE_PROJECT', provider, name: template.name, nodes, edges });
     setLoading(null);
   }

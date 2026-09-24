@@ -6,7 +6,7 @@ import { NextRequest } from 'next/server';
 import { ok, notFound, forbidden, unauthorized, internalError, badRequest, parseBody } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { projectRepository, environmentRepository } from '@/lib/repositories/projectRepository';
-import { architectureRepository, toCanvas, RevisionConflictError } from '@/lib/repositories/architectureRepository';
+import { architectureRepository, toCanvas, RevisionConflictError, ResourceIdConflictError } from '@/lib/repositories/architectureRepository';
 import { resolveOrgId } from '@/lib/api/phase2d';
 import { ArchitectureReviewService } from '@/lib/services/ArchitectureReviewService';
 import { SaveCanvasSchema } from '@/lib/api/schemas/canvasSchema';
@@ -108,6 +108,19 @@ export async function PUT(
       const canvasData = toCanvas(arch.resources, arch.connections);
       return ok({ ...canvasData, revision: arch.revision });
     } catch (dbErr) {
+      if (dbErr instanceof ResourceIdConflictError) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: {
+              code: 'RESOURCE_ID_CONFLICT',
+              message: 'Some resource IDs in this canvas already belong to another architecture. Re-create the resources (or re-apply the template) so they receive new IDs.',
+              conflictingIds: dbErr.conflictingIds.slice(0, 20),
+            },
+          }),
+          { status: 409, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
       if (dbErr instanceof RevisionConflictError) {
         return new Response(
           JSON.stringify({

@@ -28,6 +28,14 @@ async function mockExecSql(sql: string, params: unknown[]): Promise<{ rows: Reco
     const row = [...mockDb._stores['Architecture'].values()].find((r) => (r as Record<string, unknown>)['environmentId'] === environmentId);
     return { rows: row ? [row as Record<string, unknown>] : [] };
   }
+  if (isSelect && /= ANY\(\$1::text\[\]\)/.test(sql)) {
+    // saveCanvas guard: IDs already owned by a different architecture (global PK).
+    const [nodeIds, archId, edgeIds] = params as [string[], string, string[]];
+    const owned = (store: string, ids: string[]) => [...mockDb._stores[store].values()]
+      .filter((r) => ids.includes((r as Record<string, unknown>)['id'] as string) && (r as Record<string, unknown>)['architectureId'] !== archId)
+      .map((r) => ({ id: (r as Record<string, unknown>)['id'] }));
+    return { rows: [...owned('ArchitectureResource', nodeIds), ...owned('ArchitectureConnection', edgeIds)] };
+  }
   if (isDelete && /architectureResource/i.test(sql) && params[0]) {
     const archId = params[0] as string;
     for (const [k, v] of mockDb._stores['ArchitectureResource']) {
@@ -382,6 +390,30 @@ describe('Architecture save', () => {
     expect(canvas.nodes.find((n) => n.id === 'n1')).toBeTruthy();
     expect(canvas.edges[0].source).toBe('n1');
     expect(canvas.edges[0].target).toBe('n2');
+  });
+
+  test('template instances do not collide: same template in Project A, Project B, and twice in one canvas', async () => {
+    const { architectureTemplates } = await import('@/lib/templates');
+    const { instantiateTemplate } = await import('@/lib/domain/instantiateTemplate');
+    const { ResourceIdConflictError } = await import('@/lib/repositories/architectureRepository');
+    const { orgId } = await seedOrg();
+    const tpl = architectureTemplates.find((t) => t.id === 'ref-azure-three-tier-vmss') ?? architectureTemplates[0];
+    const envOf = async (name: string) => {
+      const p = await projectRepository.create({ name, provider: 'aws', region: 'us-east-1', orgId, ownerId: 'dev-user-id' });
+      return (await environmentRepository.findByKey(p.id, 'production'))!;
+    };
+    const a = instantiateTemplate(tpl, {});
+    const b = instantiateTemplate(tpl, {});
+    const c1 = instantiateTemplate(tpl, {}); const c2 = instantiateTemplate(tpl, {});
+    await expect(architectureRepository.saveCanvas((await envOf('A')).id, a.nodes, a.edges)).resolves.toBeTruthy();
+    await expect(architectureRepository.saveCanvas((await envOf('B')).id, b.nodes, b.edges)).resolves.toBeTruthy();
+    const both = await architectureRepository.saveCanvas((await envOf('C')).id, [...c1.nodes, ...c2.nodes], [...c1.edges, ...c2.edges]);
+    expect(both.resources).toHaveLength(c1.nodes.length * 2);
+
+    // Master template IDs saved twice (the pre-fix behaviour) are refused with a clear error, not a raw PK violation.
+    const master = tpl.generate({});
+    await architectureRepository.saveCanvas((await envOf('D')).id, master.nodes, master.edges);
+    await expect(architectureRepository.saveCanvas((await envOf('E')).id, master.nodes, master.edges)).rejects.toBeInstanceOf(ResourceIdConflictError);
   });
 
   test('replacing canvas removes old nodes', async () => {

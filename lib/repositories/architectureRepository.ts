@@ -25,6 +25,18 @@ export class RevisionConflictError extends Error {
   }
 }
 
+/**
+ * Thrown by saveCanvas when node or edge IDs already belong to a different architecture.
+ * Resource IDs are a global primary key; a graph copied without re-keying (e.g. a template
+ * instantiated without instantiateTemplate) would otherwise fail with a raw constraint error.
+ */
+export class ResourceIdConflictError extends Error {
+  constructor(public readonly conflictingIds: string[]) {
+    super(`Resource IDs already used by another architecture: ${conflictingIds.slice(0, 5).join(', ')}${conflictingIds.length > 5 ? ', …' : ''}`);
+    this.name = 'ResourceIdConflictError';
+  }
+}
+
 export interface DbArchitectureResource {
   id: string;
   resourceType: string;
@@ -178,6 +190,20 @@ export const architectureRepository = {
         archId = uuidv4();
         createdAt = ts;
         newRevision = 1;
+      }
+
+      // Refuse IDs owned by another architecture (global PK) with a clear error.
+      if (nodes.length > 0 || edges.length > 0) {
+        const taken = await query(
+          `SELECT "id" FROM "architectureResource" WHERE "id" = ANY($1::text[]) AND "architectureId" <> $2
+           UNION ALL
+           SELECT "id" FROM "architectureConnection" WHERE "id" = ANY($3::text[]) AND "architectureId" <> $2`,
+          [nodes.map((n) => n.id), archId, edges.map((e) => e.id)],
+        );
+        if (taken.rows.length > 0) throw new ResourceIdConflictError((taken.rows as { id: string }[]).map((r) => r.id));
+      }
+
+      if (!existing) {
         await query(
           'INSERT INTO "architecture" ("id", "environmentId", "createdAt", "updatedAt", "revision") VALUES ($1, $2, $3, $4, $5)',
           [archId, environmentId, ts, ts, newRevision],

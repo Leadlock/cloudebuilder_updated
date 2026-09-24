@@ -10,6 +10,7 @@ import { CloudProvider, CanvasNode, CanvasEdge } from '@/types';
 import { formatCurrency } from '@/lib/currency/formatter';
 import { formatDate } from '@/lib/date';
 import { architectureTemplates } from '@/lib/templates';
+import { instantiateTemplate } from '@/lib/domain/instantiateTemplate';
 
 function ScoreBadge({ score }: { score: number }) {
   const color = score >= 80 ? 'text-emerald-400' : score >= 60 ? 'text-yellow-400' : 'text-red-400';
@@ -75,7 +76,7 @@ export default function Dashboard() {
     if (selectedTemplateId && selectedTemplateId !== 'blank') {
       const template = architectureTemplates.find((t) => t.id === selectedTemplateId);
       if (template) {
-        const gen = template.generate({});
+        const gen = instantiateTemplate(template, {});
         initialNodes = gen.nodes;
         initialEdges = gen.edges;
       }

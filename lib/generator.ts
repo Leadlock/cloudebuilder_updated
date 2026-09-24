@@ -1,6 +1,7 @@
 import { AIGeneratorResult, CanvasNode, CanvasEdge, WizardOptions, Recommendation, CostOptimization } from '@/types';
 import { SECURITY_SEVERITY } from '@/lib/domain/securitySeverity';
 import { architectureTemplates, getTemplate } from './templates';
+import { instantiateTemplate } from '@/lib/domain/instantiateTemplate';
 
 // ─── AI Generator ─────────────────────────────────────────────────────────────
 const promptKeywords: Record<string, string[]> = {
@@ -67,7 +68,7 @@ export function generateFromPrompt(prompt: string): AIGeneratorResult {
   if (!template) {
     return { nodes: [], edges: [], summary: 'Could not generate architecture.', suggestedResources: [], estimatedCost: 0, securityScore: 0 };
   }
-  const { nodes, edges } = template.generate({ highAvailability: prompt.toLowerCase().includes('highly available') });
+  const { nodes, edges } = instantiateTemplate(template, { highAvailability: prompt.toLowerCase().includes('highly available') });
   const validation = architectureValidator.validate(nodes, edges);
   return {
     nodes,
@@ -82,7 +83,7 @@ export function generateFromPrompt(prompt: string): AIGeneratorResult {
 // ─── Wizard Generator ─────────────────────────────────────────────────────────
 export function generateFromWizard(opts: WizardOptions): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
   const template = getTemplate(opts.templateId) ?? architectureTemplates[0];
-  return template.generate({
+  return instantiateTemplate(template, {
     region: opts.region,
     environment: opts.environment,
     highAvailability: opts.highAvailability,
