@@ -170,8 +170,10 @@ describe('AWS assessment', () => {
     const a = runAssessment({ nodes: [imported], edges: [] });
     for (const id of ['AWS-RDS-001', 'AWS-RDS-002', 'AWS-RDS-006']) expect(statusOf(a.evaluations, id)).toBe('INSUFFICIENT_DATA');
     expect(a.findings).toEqual([]);
-    expect(a.analysisMode).toBe('DESIGN_TIME_WITH_DISCOVERED_CONFIGURATION');
-    expect(a.evaluations.find((e) => e.ruleId === 'AWS-RDS-001')?.provenance).toBe('DISCOVERED_CONFIGURATION');
+    // Imported before field-level provenance existed: values cannot be attributed to
+    // discovery, so nothing is labelled as discovered.
+    expect(a.analysisMode).toBe('DESIGN_TIME');
+    expect(a.evaluations.find((e) => e.ruleId === 'AWS-RDS-001')?.provenance).toBe('DESIGN_TIME');
     expect(a.evaluations.some((e) => e.provenance === 'LIVE_VERIFIED')).toBe(false);
   });
 
@@ -692,5 +694,88 @@ describe('Architecture (topology) rules', () => {
     expect(archStatus([rg, node('azure_vm'), node('azure_sql'), node('azure_redis')], 'AZ-ARCH-030')).toBe('PASS');
     const f = runAssessment({ nodes: [node('aws_ec2'), node('aws_rds')], edges: [] }).findings.find((x) => x.ruleId === 'AWS-ARCH-004')!;
     expect(f.severity).toBe('INFORMATIONAL');
+  });
+});
+
+
+// ─── Evidence provenance: design-time vs discovered vs live-verified ─────────
+
+describe('Evidence provenance', () => {
+  const T0 = '2026-09-24T10:00:00.000Z';
+  function importedS3(values: Record<string, unknown>, extraConfig: Record<string, unknown> = {}, importState = 'imported'): CanvasNode {
+    return {
+      id: 's3-imp', type: 'cloudNode', resourceType: 'aws_s3', provider: 'aws', label: 'discovered-bucket', position: { x: 0, y: 0 },
+      importState: importState as CanvasNode['importState'],
+      config: { ...values, ...extraConfig, imported: true, importState, _discovery: { source: 'aws-api', discoveredAt: T0, values } },
+    } as CanvasNode;
+  }
+  const evalOf = (a: ReturnType<typeof runAssessment>, ruleId: string) => a.evaluations.find((e) => e.ruleId === ruleId)!;
+
+  test('discovered values are labelled DISCOVERED; fields discovery did not return are unknown, not defaults', () => {
+    // Discovery returned public-access settings but NOT encryption. The node also carries a
+    // design value encryption=true (e.g. from an earlier design merged on re-import).
+    const n = importedS3({ publicAccess: false, blockPublicAcls: true, blockPublicPolicy: true }, { encryption: true });
+    const a = runAssessment({ nodes: [n], edges: [], evaluatedAt: T0 });
+    const pub = evalOf(a, 'AWS-S3-001');
+    expect(pub.status).toBe('PASS');
+    expect(pub.provenance).toBe('DISCOVERED_CONFIGURATION');
+    expect(pub.evidence.filter((e) => e.field).every((e) => e.source === 'DISCOVERED' && e.observedAt === T0)).toBe(true);
+
+    const enc = evalOf(a, 'AWS-S3-002');
+    expect(enc.status).toBe('INSUFFICIENT_DATA');
+    expect(enc.observation).toMatch(/Discovery did not return/);
+    expect(a.analysisMode).toBe('DESIGN_TIME_WITH_DISCOVERED_CONFIGURATION');
+  });
+
+  test('a planned change on a discovered resource is DESIGN evidence that shows the discovered value', () => {
+    // Design says encryption enabled; discovery says it is not.
+    const n = importedS3({ encryption: false, publicAccess: false, blockPublicAcls: true, blockPublicPolicy: true }, { encryption: true }, 'modified');
+    const a = runAssessment({ nodes: [n], edges: [], evaluatedAt: T0 });
+    const enc = evalOf(a, 'AWS-S3-002');
+    expect(enc.status).toBe('PASS'); // the design passes …
+    expect(enc.provenance).toBe('DESIGN_TIME'); // … but only as a design
+    const item = enc.evidence.find((e) => e.field === 'encryption')!;
+    expect(item.source).toBe('DESIGN');
+    expect(item.discoveredValue).toBe('Disabled / No');
+    // the unchanged fields are still attributed to discovery
+    expect(evalOf(a, 'AWS-S3-001').provenance).toBe('DISCOVERED_CONFIGURATION');
+  });
+
+  test('LIVE_VERIFIED only from a fresh, matching provider read supplied to the assessment', () => {
+    const values = { publicAccess: false, blockPublicAcls: true, blockPublicPolicy: true };
+    const n = importedS3(values);
+    const fresh = { source: 'aws-s3-GetPublicAccessBlock', observedAt: '2026-09-24T09:55:00.000Z', values };
+    expect(evalOf(runAssessment({ nodes: [n], edges: [], evaluatedAt: T0, liveEvidence: { [n.id]: fresh } }), 'AWS-S3-001').provenance).toBe('LIVE_VERIFIED');
+
+    // stale (older than 15 minutes)
+    const stale = { ...fresh, observedAt: '2026-09-24T09:30:00.000Z' };
+    expect(evalOf(runAssessment({ nodes: [n], edges: [], evaluatedAt: T0, liveEvidence: { [n.id]: stale } }), 'AWS-S3-001').provenance).toBe('DISCOVERED_CONFIGURATION');
+
+    // live read disagrees with the configuration being assessed
+    const drift = { ...fresh, values: { ...values, publicAccess: true } };
+    expect(evalOf(runAssessment({ nodes: [n], edges: [], evaluatedAt: T0, liveEvidence: { [n.id]: drift } }), 'AWS-S3-001').provenance).not.toBe('LIVE_VERIFIED');
+
+    // partial live read (one field) is not enough to call the evaluation live-verified
+    const partial = { ...fresh, values: { publicAccess: false } };
+    expect(evalOf(runAssessment({ nodes: [n], edges: [], evaluatedAt: T0, liveEvidence: { [n.id]: partial } }), 'AWS-S3-001').provenance).toBe('DISCOVERED_CONFIGURATION');
+  });
+
+  test('without live evidence nothing is ever LIVE_VERIFIED (design, discovered and legacy imports)', () => {
+    const design = node('aws_s3');
+    const a = runAssessment({ nodes: [design, importedS3({ publicAccess: false })], edges: [] });
+    expect(a.evaluations.some((e) => e.provenance === 'LIVE_VERIFIED')).toBe(false);
+    expect(a.analysisMode).not.toBe('INCLUDES_LIVE_VERIFIED_EVIDENCE');
+  });
+
+  test('Azure: discovered storage settings are assessed on discovered values only', () => {
+    const rg = node('azure_resource_group');
+    const values = { httpsOnly: true };
+    const st: CanvasNode = {
+      id: 'st-imp', type: 'cloudNode', resourceType: 'azure_storage', provider: 'azure', label: 'stdiscovered', position: { x: 0, y: 0 }, importState: 'imported',
+      config: { ...values, allowBlobPublicAccess: false, imported: true, _discovery: { source: 'azure-arm', discoveredAt: T0, values } },
+    } as CanvasNode;
+    const a = runAssessment({ nodes: [rg, st], edges: [], evaluatedAt: T0 });
+    expect(evalOf(a, 'AZ-STG-001').provenance).toBe('DISCOVERED_CONFIGURATION');
+    expect(evalOf(a, 'AZ-STG-002').status).toBe('INSUFFICIENT_DATA'); // allowBlobPublicAccess not discovered
   });
 });

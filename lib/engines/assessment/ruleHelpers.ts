@@ -35,6 +35,23 @@ export function isMissing(v: unknown): boolean {
   return v === undefined || v === null;
 }
 
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Field-level provenance of a configuration value. */
+export function fieldSource(r: AssessResource, field: string): Pick<EvidenceItem, 'source' | 'discoveredValue' | 'observedAt'> {
+  const value = r.config[field];
+  if (r.live && field in r.live.values && same(r.live.values[field], value)) {
+    return { source: 'LIVE', observedAt: r.live.observedAt };
+  }
+  if (r.discovery && field in r.discovery.values) {
+    const discovered = r.discovery.values[field];
+    return same(discovered, value)
+      ? { source: 'DISCOVERED', observedAt: r.discovery.discoveredAt }
+      : { source: 'DESIGN', discoveredValue: fmt(discovered), observedAt: r.discovery.discoveredAt };
+  }
+  return { source: 'DESIGN' };
+}
+
 export function ev(r: AssessResource, field: string, expected?: string): EvidenceItem {
   return {
     field,
@@ -42,6 +59,7 @@ export function ev(r: AssessResource, field: string, expected?: string): Evidenc
     observed: fmt(r.config[field]),
     expected,
     basis: 'CONFIGURATION',
+    ...fieldSource(r, field),
   };
 }
 
@@ -66,11 +84,16 @@ export function configEvaluator(
     const missing = required.filter((k) => isMissing(r.config[k]));
     const evidence = [...required, ...optional].map((k) => ev(r, k, expected[k]));
     if (missing.length > 0) {
+      const names = missing.map((k) => `"${fieldLabel(r.resourceType, k)}"`).join(', ');
       return {
         status: 'INSUFFICIENT_DATA',
-        observation: `The configuration does not specify ${missing.map((k) => `"${fieldLabel(r.resourceType, k)}"`).join(', ')}, so this control cannot be evaluated.`,
+        observation: r.discovery && r.importState === 'imported'
+          ? `Discovery did not return ${names} for this resource, so this control cannot be evaluated.`
+          : `The configuration does not specify ${names}, so this control cannot be evaluated.`,
         evidence,
-        requiredData: `Set or import: ${missing.map((k) => fieldLabel(r.resourceType, k)).join(', ')}.`,
+        requiredData: r.discovery && r.importState === 'imported'
+          ? `Grant discovery read access to ${missing.map((k) => fieldLabel(r.resourceType, k)).join(', ')}, or set the value explicitly.`
+          : `Set or import: ${missing.map((k) => fieldLabel(r.resourceType, k)).join(', ')}.`,
       };
     }
     const res = check(r.config, r, ctx);

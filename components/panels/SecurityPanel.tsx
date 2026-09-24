@@ -211,7 +211,7 @@ export default function SecurityPanel() {
         <div className="flex flex-wrap items-center gap-3">
           <ShieldCheck className="w-5 h-5 text-blue-400" />
           <h2 className="text-white font-bold text-lg">Security &amp; Architecture Assessment</h2>
-          <span className="text-[11px] px-2 py-0.5 rounded bg-amber-900/40 text-amber-200 border border-amber-800/50">{assessment.analysisMode === 'DESIGN_TIME' ? 'Design-time analysis' : 'Design-time + discovered configuration'}</span>
+          <span className="text-[11px] px-2 py-0.5 rounded bg-amber-900/40 text-amber-200 border border-amber-800/50">{assessment.analysisMode === 'DESIGN_TIME' ? 'Design-time analysis' : assessment.analysisMode === 'INCLUDES_LIVE_VERIFIED_EVIDENCE' ? 'Includes live-verified evidence' : 'Design-time + discovered configuration'}</span>
           <span className="text-[11px] text-gray-500">Ruleset {assessment.rulesetVersion} · {assessment.providers.map((p) => p.toUpperCase()).join(' + ')}</span>
           <div className="ml-auto flex gap-2">
             <button onClick={() => void refreshServer()} disabled={!isSaved || isStale || scanning} title={!isSaved ? 'Save the project to run persisted scans' : isStale ? 'Save your changes first' : 'Re-run the persisted scan'}

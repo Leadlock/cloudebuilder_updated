@@ -158,7 +158,7 @@ export class WellArchitectedRuleEngine {
       evaluatedAt: a.evaluatedAt,
       source: 'DESIGN_TIME',
       sourceLabel: hasResources
-        ? (a.analysisMode === 'DESIGN_TIME' ? 'Design-time assessment' : 'Design-time assessment (includes discovered configuration)')
+        ? (a.analysisMode === 'DESIGN_TIME' ? 'Design-time assessment' : a.analysisMode === 'INCLUDES_LIVE_VERIFIED_EVIDENCE' ? 'Design-time assessment (includes live-verified configuration)' : 'Design-time assessment (includes discovered configuration)')
         : 'Design-time assessment (no resources)',
       confidence: 'design-time',
       isStale: false,

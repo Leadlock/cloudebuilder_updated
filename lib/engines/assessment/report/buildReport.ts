@@ -227,9 +227,14 @@ export function buildReport(snap: ReportSnapshotInput, opts: { comparison?: Comp
     notEvaluated: Array.from(new Set(notEval.map((e) => RULES_BY_ID.get(e.ruleId)!.title))).slice(0, 40),
     dataSources: [
       'CloudCraft canonical architecture graph (resource configuration, containment and connections).',
-      a.analysisMode === 'DESIGN_TIME'
-        ? 'No live cloud evidence: all resources are design-time configuration.'
-        : 'Some resources were imported from provider APIs (discovered configuration, point-in-time). No field is marked LIVE VERIFIED because CloudCraft does not record field-level provenance.',
+      (() => {
+        const evaluated = a.evaluations.filter((e) => e.status !== 'NOT_APPLICABLE');
+        const n = (p: string) => evaluated.filter((e) => e.provenance === p).length;
+        const live = n('LIVE_VERIFIED'); const disc = n('DISCOVERED_CONFIGURATION'); const design = n('DESIGN_TIME');
+        if (live === 0 && disc === 0) return `Evidence provenance: all ${design} applicable checks used design-time configuration authored in CloudCraft. No value was read from, or verified against, a live cloud account.`;
+        return `Evidence provenance: ${design} applicable checks used design-time configuration, ${disc} used only configuration returned by AWS/Azure discovery (point-in-time, as of the discovery run)`
+          + `, and ${live} used values confirmed by a provider API read made for this assessment (live verified).`;
+      })(),
       'Official guidance metadata: AWS Security Hub (FSBP) controls, AWS Well-Architected, Microsoft cloud security benchmark and Azure Policy definitions, Azure Well-Architected, HashiCorp provider documentation.',
     ],
     limitations: [
@@ -328,7 +333,9 @@ export function buildReport(snap: ReportSnapshotInput, opts: { comparison?: Comp
       engine: a.engine,
       reportFormatVersion: REPORT_FORMAT_VERSION,
       scanId: snap.scanId,
-      analysisMode: a.analysisMode === 'DESIGN_TIME' ? 'Design-time analysis' : 'Design-time analysis with discovered configuration',
+      analysisMode: a.analysisMode === 'DESIGN_TIME' ? 'Design-time analysis'
+        : a.analysisMode === 'INCLUDES_LIVE_VERIFIED_EVIDENCE' ? 'Design-time analysis with discovered and live-verified configuration'
+          : 'Design-time analysis with discovered configuration',
       preparedFor: snap.project.name,
     },
     executive: {

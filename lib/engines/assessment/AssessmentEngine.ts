@@ -14,6 +14,7 @@
  */
 import type { CanvasEdge, CanvasNode } from '@/types';
 import { inferNodeProvider } from '@/types';
+import { getResourceDefinition } from '@/lib/resources';
 import { computeGraphHash, toCanonicalGraph } from '@/lib/domain/canonicalArchitecture';
 import { ALL_RULES, RULES_BY_ID } from './rules';
 import { resolveReferences } from './references';
@@ -23,6 +24,7 @@ import { pillarsFor, frameworkName } from './pillars';
 import type {
   AssessContext, AssessEdge, AssessResource, AssessmentProvider, AssessmentResult, AutoFixAvailability,
   Evaluation, Finding, FindingReview, PillarResult, RuleDefinition, RuleOutcome, EvidenceProvenance,
+  DiscoveryEvidence, LiveEvidence,
 } from './types';
 import { ENGINE_NAME, RULESET_VERSION, SEVERITY_ORDER } from './types';
 
@@ -46,19 +48,66 @@ export function findingIdFor(ruleId: string, resourceId: string | null): string 
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
-export function toAssessResources(nodes: CanvasNode[]): AssessResource[] {
+/** Live evidence older than this is not treated as live (default 15 minutes). */
+export const LIVE_EVIDENCE_MAX_AGE_MS = 15 * 60 * 1000;
+
+function parseDiscovery(raw: unknown): DiscoveryEvidence | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const d = raw as Partial<DiscoveryEvidence>;
+  if (typeof d.source !== 'string' || typeof d.discoveredAt !== 'string' || !d.values || typeof d.values !== 'object') return undefined;
+  return { source: d.source, discoveredAt: d.discoveredAt, values: d.values as Record<string, unknown> };
+}
+
+const schemaKeysCache = new Map<string, Set<string>>();
+function schemaKeys(resourceType: string): Set<string> {
+  let keys = schemaKeysCache.get(resourceType);
+  if (!keys) {
+    const def = getResourceDefinition(resourceType);
+    keys = new Set([...Object.keys(def?.defaultConfig ?? {}), ...(def?.configSchema ?? []).map((c) => c.key)]);
+    schemaKeysCache.set(resourceType, keys);
+  }
+  return keys;
+}
+
+export interface ToAssessOptions {
+  liveEvidence?: Record<string, LiveEvidence>;
+  evaluatedAt?: string;
+}
+
+export function toAssessResources(nodes: CanvasNode[], opts: ToAssessOptions = {}): AssessResource[] {
+  const at = Date.parse(opts.evaluatedAt ?? new Date().toISOString());
   return nodes
     .filter((n) => !NON_RESOURCE_TYPES.has(n.resourceType))
-    .map((n) => ({
-      id: n.id,
-      label: n.label || n.resourceType,
-      resourceType: n.resourceType,
-      provider: inferNodeProvider(n) as AssessmentProvider,
-      region: (n.region as string | undefined) ?? (typeof n.config?.region === 'string' ? n.config.region : undefined),
-      parentId: n.parentId ?? n.groupId,
-      config: (n.config ?? {}) as Record<string, unknown>,
-      importState: n.importState ?? (typeof n.config?.importState === 'string' ? n.config.importState as string : undefined),
-    }));
+    .map((n) => {
+      const raw = (n.config ?? {}) as Record<string, unknown>;
+      const importState = n.importState ?? (typeof raw.importState === 'string' ? raw.importState as string : undefined);
+      const discovery = parseDiscovery(raw._discovery);
+      let config = raw;
+      if (importState === 'imported' && discovery) {
+        // An unmodified imported resource is assessed only on what discovery returned:
+        // configuration fields discovery did not return are unknown, even if a value is
+        // present from an earlier design or a merge.
+        const keys = schemaKeys(n.resourceType);
+        config = Object.fromEntries(Object.entries(raw).filter(([k]) => !keys.has(k) || k in discovery.values));
+      }
+      const liveRaw = opts.liveEvidence?.[n.id];
+      const live = liveRaw && Number.isFinite(Date.parse(liveRaw.observedAt))
+        && at - Date.parse(liveRaw.observedAt) <= LIVE_EVIDENCE_MAX_AGE_MS && Date.parse(liveRaw.observedAt) <= at + 60_000
+        ? liveRaw : undefined;
+      return {
+        id: n.id,
+        label: n.label || n.resourceType,
+        resourceType: n.resourceType,
+        provider: inferNodeProvider(n) as AssessmentProvider,
+        region: (n.region as string | undefined) ?? (typeof raw.region === 'string' ? raw.region : undefined),
+        parentId: n.parentId ?? n.groupId,
+        config,
+        importState,
+        discovery,
+        live,
+        legacyImport: importState === 'imported' && !discovery,
+      };
+    });
 }
 
 export function buildContext(resources: AssessResource[], edges: AssessEdge[]): AssessContext {
@@ -89,8 +138,16 @@ export function buildContext(resources: AssessResource[], edges: AssessEdge[]): 
 
 // ─── Rule execution ───────────────────────────────────────────────────────────
 
-function provenanceOf(r?: AssessResource): EvidenceProvenance {
-  return r?.importState === 'imported' ? 'DISCOVERED_CONFIGURATION' : 'DESIGN_TIME';
+/**
+ * Evaluation provenance from field-level evidence (weakest wins). Configuration values with
+ * no recorded source are design-time; a legacy import (no field provenance) is design-time.
+ */
+function provenanceOf(outcome: RuleOutcome, resources: AssessResource[]): EvidenceProvenance {
+  const cfg = outcome.evidence.filter((e) => e.basis === 'CONFIGURATION' && e.field && e.observed !== 'Not specified');
+  if (cfg.length > 0 && cfg.every((e) => e.source === 'LIVE')) return 'LIVE_VERIFIED';
+  const discovered = resources.length > 0 && resources.every((r) => r.discovery);
+  if (discovered && cfg.every((e) => e.source === 'DISCOVERED' || e.source === 'LIVE')) return 'DISCOVERED_CONFIGURATION';
+  return 'DESIGN_TIME';
 }
 
 function toEvaluation(rule: RuleDefinition, outcome: RuleOutcome, ctx: AssessContext, resource?: AssessResource): Evaluation {
@@ -110,7 +167,7 @@ function toEvaluation(rule: RuleDefinition, outcome: RuleOutcome, ctx: AssessCon
     observation: outcome.observation,
     evidence: outcome.evidence,
     requiredData: outcome.requiredData,
-    provenance: resource ? provenanceOf(resource) : (resources.every((r) => r.importState === 'imported') && resources.length > 0 ? 'DISCOVERED_CONFIGURATION' : 'DESIGN_TIME'),
+    provenance: provenanceOf(outcome, resource ? [resource] : resources),
   };
 }
 
@@ -184,12 +241,17 @@ export interface AssessInput {
   /** Override for deterministic tests / snapshot re-rendering. */
   evaluatedAt?: string;
   rules?: RuleDefinition[];
+  /**
+   * Provider API reads keyed by node id. The only source of LIVE_VERIFIED evidence;
+   * entries older than LIVE_EVIDENCE_MAX_AGE_MS are ignored.
+   */
+  liveEvidence?: Record<string, LiveEvidence>;
 }
 
 export function runAssessment(input: AssessInput): AssessmentResult {
   const evaluatedAt = input.evaluatedAt ?? new Date().toISOString();
   const rules = input.rules ?? ALL_RULES;
-  const resources = toAssessResources(input.nodes ?? []);
+  const resources = toAssessResources(input.nodes ?? [], { liveEvidence: input.liveEvidence, evaluatedAt });
   const edges: AssessEdge[] = (input.edges ?? []).map((e) => ({ id: e.id, source: e.source, target: e.target, label: e.label }));
   const ctx = buildContext(resources, edges);
 
@@ -243,7 +305,9 @@ export function runAssessment(input: AssessInput): AssessmentResult {
     overallScore: scoreOf(evaluations),
     pillarResults,
     soc1,
-    analysisMode: resources.some((r) => r.importState === 'imported') ? 'DESIGN_TIME_WITH_DISCOVERED_CONFIGURATION' : 'DESIGN_TIME',
+    analysisMode: evaluations.some((e) => e.provenance === 'LIVE_VERIFIED') ? 'INCLUDES_LIVE_VERIFIED_EVIDENCE'
+      : evaluations.some((e) => e.provenance === 'DISCOVERED_CONFIGURATION') || resources.some((r) => r.importState === 'imported' && r.discovery)
+        ? 'DESIGN_TIME_WITH_DISCOVERED_CONFIGURATION' : 'DESIGN_TIME',
   };
 }
 

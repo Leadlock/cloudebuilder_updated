@@ -17,6 +17,9 @@ import type { DiscoveredResource } from './types';
 import type { CloudResource, CloudRelationship } from './discovery/types';
 import { getResourceDefinition } from '@/lib/resources';
 
+/** Adapter bookkeeping keys that are not provider configuration. */
+const DISCOVERY_BOOKKEEPING_KEYS = new Set(['source', 'imported', 'importState', 'lastImportedAt', '_metadata', '_discovery']);
+
 // ─── Resource type → CloudCraft resourceType mapping ─────────────────────────
 
 const RESOURCE_TYPE_MAP: Record<string, string> = {
@@ -168,6 +171,13 @@ export function normalizeDiscoveredInfrastructure(
     const source = (r.configuration?.source as string) || (provider === 'azure' ? 'azure-arm' : 'aws-api');
     const arn = (r as CloudResource).arn || (r as DiscoveredResource).providerResourceId || rawId;
 
+    const discoveredAt = (r as CloudResource).discoveredAt || new Date().toISOString();
+    // Field-level provenance: exactly the configuration values the provider API returned.
+    // Anything absent here is unknown to the assessment engine (never a default).
+    const discoveredValues = Object.fromEntries(
+      Object.entries(r.configuration ?? {}).filter(([k, v]) => v !== undefined && v !== null && !DISCOVERY_BOOKKEEPING_KEYS.has(k)),
+    );
+
     const config: Record<string, unknown> = {
       ...r.configuration,
       originalResourceType: rawType,
@@ -180,8 +190,9 @@ export function normalizeDiscoveredInfrastructure(
       imported: true,
       importState: 'imported',
       source,
-      lastImportedAt: (r as CloudResource).discoveredAt || new Date().toISOString(),
+      lastImportedAt: discoveredAt,
       _metadata: r.metadata,
+      _discovery: { source, discoveredAt, values: discoveredValues },
     };
 
     return {

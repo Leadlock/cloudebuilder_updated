@@ -55,6 +55,8 @@ function seed() {
   res('db-1', 'aws_rds', 'production-db', { publiclyAccessible: true, encrypted: true, multiAz: true, backupRetentionPeriod: 7, deletionProtection: true, iamDatabaseAuthenticationEnabled: false });
   res('bucket-1', 'aws_s3', 'app-bucket', { publicAccess: false, encryption: true, versioning: true, loggingEnabled: true, objectOwnership: 'BucketOwnerEnforced' });
   res('fn-1', 'aws_lambda', 'worker', { tracingMode: 'Active', architecture: 'arm64', environmentVariables: { DB_PASSWORD: 'super-secret-value' } });
+  // Discovered resource with a secret nested inside the discovery provenance record.
+  res('fn-2', 'aws_lambda', 'discovered-worker', { tracingMode: 'PassThrough', importState: 'imported', _discovery: { source: 'aws-api', discoveredAt: '2026-09-24T00:00:00Z', values: { tracingMode: 'PassThrough', environmentVariables: { API_TOKEN: 'nested-discovered-secret' } } }, _metadata: { tags: { password: 'tag-secret-value' } } });
 }
 
 const req = (url: string, user: string, body?: unknown, method = 'POST') => new NextRequest(`http://localhost:3000${url}`, {
@@ -149,6 +151,8 @@ describe('Assessment report API', () => {
     expect(body.data.report.meta.architectureRevision).toBe(4);
     expect(body.data.report.meta.projectName).toBe('Ledger Platform');
     expect(JSON.stringify(body)).not.toContain('super-secret-value');
+    expect(JSON.stringify(body)).not.toContain('nested-discovered-secret');
+    expect(JSON.stringify(body)).not.toContain('tag-secret-value');
   }, 30_000);
 
   test('re-rendering an old snapshot is unaffected by later architecture changes; comparison shows resolution', async () => {

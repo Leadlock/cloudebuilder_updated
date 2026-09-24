@@ -54,13 +54,20 @@ export interface SnapshotSummary {
 const SENSITIVE_KEY = /(password|passwd|secret|token|credential|private.?key|connection.?string|sas|userData|customData|environmentVariables|appSettings|adminPassword)/i;
 
 export function sanitizeConfig(config: Record<string, unknown>): Record<string, unknown> {
+  return sanitizeValue(config ?? {}, 0) as Record<string, unknown>;
+}
+
+/** Redacts sensitive keys at any depth (e.g. inside `_discovery.values` or `_metadata`). */
+function sanitizeValue(v: unknown, depth: number): unknown {
+  if (depth > 8 || v === null || typeof v !== 'object') return v;
+  if (Array.isArray(v)) return v.map((x) => sanitizeValue(x, depth + 1));
   const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(config ?? {})) {
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
     if (SENSITIVE_KEY.test(k)) {
-      const empty = v === undefined || v === null || v === '' || (typeof v === 'object' && Object.keys(v as object).length === 0);
-      out[k] = empty ? v : '[redacted]';
+      const empty = val === undefined || val === null || val === '' || (typeof val === 'object' && Object.keys(val as object).length === 0);
+      out[k] = empty ? val : '[redacted]';
     } else {
-      out[k] = v;
+      out[k] = sanitizeValue(val, depth + 1);
     }
   }
   return out;

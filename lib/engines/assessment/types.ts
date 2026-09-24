@@ -68,13 +68,16 @@ export type CostImpact = 'NONE' | 'POSSIBLE_INCREASE' | 'POSSIBLE_DECREASE';
 export type EvidenceBasis = 'CONFIGURATION' | 'RELATIONSHIP' | 'TOPOLOGY' | 'NOT_MODELLED';
 
 /**
- * Provenance of the configuration the rule evaluated.
- *  - DESIGN_TIME: configuration authored in CloudCraft (not deployed/confirmed).
- *  - DISCOVERED_CONFIGURATION: resource imported from a provider API and not modified
- *    since. Point-in-time and without field-level provenance, so NOT "live verified".
- *  - LIVE_VERIFIED: reserved — only set when a provider API confirmed the exact field.
- *    CloudCraft does not currently record field-level provenance, so no evaluation is
- *    marked LIVE_VERIFIED today.
+ * Provenance of the configuration an evaluation relied on (weakest field wins):
+ *  - DESIGN_TIME: at least one value was authored in CloudCraft (a design or a planned
+ *    change) rather than read from the cloud provider.
+ *  - DISCOVERED_CONFIGURATION: every configuration value the rule used was returned by
+ *    AWS/Azure discovery (field-level provenance in `_discovery`). Point-in-time: it
+ *    describes the resource when discovery ran, not now.
+ *  - LIVE_VERIFIED: every configuration value was confirmed by a provider API read
+ *    supplied to this assessment (`liveEvidence`) within the freshness window, and it
+ *    matches the value being assessed. Only set from that input — never inferred from
+ *    discovery age or import state.
  */
 export type EvidenceProvenance = 'DESIGN_TIME' | 'DISCOVERED_CONFIGURATION' | 'LIVE_VERIFIED';
 
@@ -102,6 +105,9 @@ export type Soc1AreaId =
   | 'SOC1-CM-01'
   | 'SOC1-CM-02';
 
+/** Where a single configuration value came from. */
+export type FieldSource = 'DESIGN' | 'DISCOVERED' | 'LIVE';
+
 export interface EvidenceItem {
   /** Config key — internal; the report shows `label`. */
   field?: string;
@@ -109,6 +115,33 @@ export interface EvidenceItem {
   observed: string;
   expected?: string;
   basis: EvidenceBasis;
+  /** Field-level provenance of `observed` (configuration evidence only). */
+  source?: FieldSource;
+  /** Value returned by discovery when it differs from the value assessed (a planned change). */
+  discoveredValue?: string;
+  /** When the discovered/live value was read. */
+  observedAt?: string;
+}
+
+/**
+ * Field-level record of what discovery actually returned for a resource, stored on the
+ * node as `config._discovery` by the discovery normalizer. A field absent from `values`
+ * was NOT returned by the provider API and is unknown — never a default.
+ */
+export interface DiscoveryEvidence {
+  source: string;
+  discoveredAt: string;
+  values: Record<string, unknown>;
+}
+
+/**
+ * Provider API read of specific fields made for (or immediately before) an assessment.
+ * The only input that can produce LIVE_VERIFIED evidence.
+ */
+export interface LiveEvidence {
+  source: string;
+  observedAt: string;
+  values: Record<string, unknown>;
 }
 
 // ─── Rule inputs ──────────────────────────────────────────────────────────────
@@ -122,6 +155,10 @@ export interface AssessResource {
   parentId?: string;
   config: Record<string, unknown>;
   importState?: string;
+  discovery?: DiscoveryEvidence;
+  live?: LiveEvidence;
+  /** Imported before field-level discovery provenance was recorded. */
+  legacyImport?: boolean;
 }
 
 export interface AssessEdge {
@@ -359,5 +396,5 @@ export interface AssessmentResult {
   overallScore: ScoreResult;
   pillarResults: PillarResult[];
   soc1: Soc1AreaResult[];
-  analysisMode: 'DESIGN_TIME' | 'DESIGN_TIME_WITH_DISCOVERED_CONFIGURATION';
+  analysisMode: 'DESIGN_TIME' | 'DESIGN_TIME_WITH_DISCOVERED_CONFIGURATION' | 'INCLUDES_LIVE_VERIFIED_EVIDENCE';
 }
