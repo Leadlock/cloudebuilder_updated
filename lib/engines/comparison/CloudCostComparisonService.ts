@@ -32,6 +32,7 @@ const AWS_TO_AZURE_TYPE: Record<string, string> = {
   aws_elasticache: 'azure_redis',
   aws_cloudfront: 'azure_front_door',
   aws_cloud_boundary: 'azure_cloud_boundary',
+  aws_waf: 'azure_waf',
 };
 const AZURE_TO_AWS_TYPE: Record<string, string> = Object.fromEntries(
   Object.entries(AWS_TO_AZURE_TYPE).map(([aws, azure]) => [azure, aws]),

@@ -102,6 +102,26 @@ export default function CostPanel() {
   const azureCost = costs.filter((c) => c.provider === 'azure').reduce((a, c) => a + c.monthlyCost, 0);
   const sortedCosts = [...costs].sort((a, b) => b.monthlyCost - a.monthlyCost);
 
+  // Group the detailed breakdown by resource category (compute/database/storage/etc.)
+  // rather than a flat cost-sorted list, so a 20+ resource architecture reads as a
+  // bill by service type instead of a wall of cards. Category order is by total
+  // cost descending; resources within a category keep the cost-descending order too.
+  const CATEGORY_LABELS: Record<string, string> = {
+    compute: 'Compute', database: 'Database', storage: 'Storage', networking: 'Networking',
+    loadbalancing: 'Load Balancing', security: 'Security', monitoring: 'Monitoring', messaging: 'Messaging',
+  };
+  const groupedByCategory = (() => {
+    const groups = new Map<string, CostItem[]>();
+    for (const item of sortedCosts) {
+      const category = getResourceDefinition(item.resourceType)?.category ?? 'other';
+      if (!groups.has(category)) groups.set(category, []);
+      groups.get(category)!.push(item);
+    }
+    return [...groups.entries()]
+      .map(([category, items]) => ({ category, items, total: items.reduce((a, c) => a + c.monthlyCost, 0) }))
+      .sort((a, b) => b.total - a.total);
+  })();
+
   function toggleBreakdown(nodeId: string) {
     setExpandedBreakdown((prev) => ({ ...prev, [nodeId]: !prev[nodeId] }));
   }
@@ -376,8 +396,18 @@ export default function CostPanel() {
             <p className="text-gray-600 text-sm mt-1">Free resources (VPCs, Subnets, etc.) have no base cost</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {sortedCosts.map((item) => {
+          <div className="space-y-6">
+            {groupedByCategory.map(({ category, items, total: categoryTotal }) => (
+              <div key={category}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wider">
+                    {CATEGORY_LABELS[category] ?? category}
+                    <span className="text-gray-600 font-normal ml-2 normal-case">({items.length} resource{items.length === 1 ? '' : 's'})</span>
+                  </h3>
+                  <span className="text-gray-400 text-xs font-medium">{formatCurrency(categoryTotal, displayCurrency)}/mo</span>
+                </div>
+                <div className="space-y-3">
+            {items.map((item) => {
               const def = getResourceDefinition(item.resourceType);
               const isExpanded = expandedBreakdown[item.nodeId];
               const providerUsd = item.providerCostUsd ?? item.monthlyCost;
@@ -470,6 +500,9 @@ export default function CostPanel() {
                 </div>
               );
             })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
         <p className="text-gray-600 text-xs text-center mt-6">

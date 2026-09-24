@@ -45,6 +45,23 @@ describe('CloudCostComparisonService — resourceType translation', () => {
     expect(translated.resourceType).toBe('aws_ecs');
     expect(translated.provider).toBe('azure'); // provider still flips — CostEstimator will correctly report this as unsupported
   });
+
+  it('translates aws_waf to azure_waf (both exist and were previously left unmapped, silently unsupported)', () => {
+    const [translated] = CloudCostComparisonService.translateNodes([makeNode({ resourceType: 'aws_waf' })], 'azure');
+    expect(translated.resourceType).toBe('azure_waf');
+  });
+
+  it('round-trips azure_waf back to aws_waf', () => {
+    const [translated] = CloudCostComparisonService.translateNodes(
+      [makeNode({ resourceType: 'azure_waf', provider: 'azure' })], 'aws',
+    );
+    expect(translated.resourceType).toBe('aws_waf');
+  });
+
+  it('leaves aws_route53 unmapped — Azure has no equivalent DNS zone resource type in this catalog', () => {
+    const [translated] = CloudCostComparisonService.translateNodes([makeNode({ resourceType: 'aws_route53' })], 'azure');
+    expect(translated.resourceType).toBe('aws_route53');
+  });
 });
 
 describe('CloudCostComparisonService — EC2 <-> VM config translation', () => {
