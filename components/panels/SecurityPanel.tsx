@@ -90,11 +90,12 @@ export default function SecurityPanel() {
     if (!isSaved) return;
     setScanning(true);
     try {
-      const [scan, hist, revs] = await Promise.all([
+      const [scan, revs] = await Promise.all([
         apiSecurityService.runPersistedScan(),
-        apiSecurityService.listScans().catch(() => ({ scans: [] as ScanHistoryEntry[] })),
         apiSecurityService.listReviews().catch(() => [] as ReviewRecord[]),
       ]);
+      // History is read after the new snapshot is stored so it includes it.
+      const hist = await apiSecurityService.listScans().catch(() => ({ scans: [] as ScanHistoryEntry[] }));
       setPersisted(scan); setHistory(hist.scans); setReviews(revs); setScanError(null);
     } catch (e) {
       setScanError((e as Error).message);
@@ -109,9 +110,12 @@ export default function SecurityPanel() {
     void refreshServer();
     // After an Auto-Fix is saved, record it in the architecture version history (audit trail).
     if (pendingAudit.current.length > 0 && project) {
+      const count = pendingAudit.current.length;
       const summary = pendingAudit.current.join('; ');
       pendingAudit.current = [];
-      apiArchitectureService.saveVersion(project.id, `Security Auto-Fix: ${summary}`.slice(0, 480), state.activeEnvironment).catch(() => {});
+      const label = `Security Auto-Fix: ${count} fix${count === 1 ? '' : 'es'} applied and verified`;
+      apiArchitectureService.saveVersion(project.id, `Security Auto-Fix: ${summary}`, state.activeEnvironment, label)
+        .catch((e) => setScanError(`Auto-Fix was applied but its audit entry could not be recorded: ${(e as Error).message}`));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedKey, isStale, isSaved]);

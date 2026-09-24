@@ -23,7 +23,7 @@ const CONTENT_W = PAGE.w - PAGE.m * 2;
 export function pdfSafe(s: unknown): string {
   return String(s ?? '')
     .replace(/→/g, '->').replace(/←/g, '<-').replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/≠/g, '!=')
-    .replace(/[✓✔]/g, 'Yes').replace(/[✗✘]/g, 'No').replace(/Σ/g, 'Sum').replace(/÷/g, '/')
+    .replace(/[✓✔]/g, 'Yes').replace(/[✗✘]/g, 'No').replace(/Σ/g, 'Sum').replace(/÷/g, '/').replace(/[−‐‑]/g, '-')
     .replace(/[→⇒]/g, '->').replace(/ /g, ' ')
     .replace(/[^\x00-\xFF–—‘’“”•…€™]/g, '?');
 }

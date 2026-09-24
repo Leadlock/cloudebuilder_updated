@@ -317,7 +317,7 @@ export interface PillarResult {
   label: string;
   referenceUrl: string;
   score: ScoreResult;
-  status: 'No issues observed' | 'Issues found' | 'Critical issues' | 'Insufficient evidence';
+  status: 'No issues observed' | 'Observations only' | 'Issues found' | 'Critical issues' | 'Insufficient evidence';
   strengths: string[];
   findingIds: string[];
 }

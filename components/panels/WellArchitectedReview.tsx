@@ -111,8 +111,10 @@ export default function WellArchitectedReview() {
         const data = await apiWellArchitectedService.analyze(activeProject.nodes, activeProject.edges);
         setAssessment(data);
       } else {
+        // Use the latest persisted assessment; if none exists yet, analyze the
+        // saved architecture now rather than showing an empty review.
         const data = await apiWellArchitectedService.getAssessment();
-        setAssessment(data);
+        setAssessment(data ?? await apiWellArchitectedService.analyze(activeProject.nodes, activeProject.edges));
       }
     } catch (err) {
       try {
@@ -230,8 +232,8 @@ export default function WellArchitectedReview() {
             )}
           </div>
           <p className="text-sm text-slate-400 mt-1">
-            Design-time checks mapped to the {activeProject.provider === 'azure' ? 'Microsoft Azure' : 'AWS'} Well-Architected Framework&apos;s
-            pillars — a heuristic assessment, not an official certification or compliance report.
+            Design-time checks mapped to the pillars of the {activeProject.provider === 'azure' ? 'Microsoft Azure Well-Architected Framework' : activeProject.provider === 'multi' ? 'AWS and Microsoft Azure Well-Architected Frameworks' : 'AWS Well-Architected Framework'}
+            — a heuristic assessment, not an official certification or compliance report.
           </p>
         </div>
 
@@ -272,7 +274,7 @@ export default function WellArchitectedReview() {
               {assessment && overallScored ? `${overallScore}` : '—'}
             </span>
             <span className="text-xs text-slate-400">
-              {assessment && overallScored ? `/100 · coverage ${assessment.coveragePct ?? 0}%` : 'Not scored — insufficient evidence'}
+              {!assessment ? (loading ? 'Analyzing…' : 'Not analyzed yet — run the review') : overallScored ? `/100 · coverage ${assessment.coveragePct ?? 0}%` : 'Not scored — insufficient evidence'}
             </span>
           </div>
           <div className="mt-3 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
@@ -411,7 +413,7 @@ export default function WellArchitectedReview() {
                 </div>
 
                 <h4 className="font-bold text-xs text-white mt-3 truncate">{ps.provider && assessment?.provider === 'multi' ? `${ps.provider.toUpperCase()} · ` : ''}{config.label}</h4>
-                <p className="text-[10px] text-slate-500 mt-0.5">{scored ? `Coverage ${ps.coveragePct ?? 0}% · ${ps.status ?? ''}` : 'Insufficient evidence'}</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">{scored ? `Coverage ${ps.coveragePct ?? 0}% · ${ps.status ?? ''}` : (ps.status === 'Insufficient evidence' || !ps.status ? 'Insufficient evidence' : `${ps.status} (informational checks only)`)}</p>
                 <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1">
                   <span>{ps.findingCount} finding{ps.findingCount === 1 ? '' : 's'}</span>
                   {ps.criticalCount > 0 && (

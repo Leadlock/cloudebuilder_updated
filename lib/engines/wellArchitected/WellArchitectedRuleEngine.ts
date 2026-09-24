@@ -176,7 +176,9 @@ export class WellArchitectedRuleEngine {
       projectId,
       provider: 'multi',
       framework: 'AWS + Azure Well-Architected Frameworks',
-      frameworkVersion: `${awsAssessment.frameworkVersion} / ${azureAssessment.frameworkVersion}`,
+      frameworkVersion: awsAssessment.frameworkVersion === azureAssessment.frameworkVersion
+        ? awsAssessment.frameworkVersion
+        : `AWS ${awsAssessment.frameworkVersion} / Azure ${azureAssessment.frameworkVersion}`,
       frameworkSource: 'https://docs.aws.amazon.com/wellarchitected/ | https://learn.microsoft.com/azure/well-architected/',
       overallScore: overall.score ?? 0,
       overallScored: overall.score !== null,

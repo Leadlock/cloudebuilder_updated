@@ -117,7 +117,7 @@ export interface WaPillarScore {
   coveragePct?: number | null;
   evaluatedChecks?: number;
   notEvaluatedChecks?: number;
-  status?: 'No issues observed' | 'Issues found' | 'Critical issues' | 'Insufficient evidence';
+  status?: 'No issues observed' | 'Observations only' | 'Issues found' | 'Critical issues' | 'Insufficient evidence';
 }
 
 // ─── Assessment ───────────────────────────────────────────────────────────────

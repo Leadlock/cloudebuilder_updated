@@ -214,7 +214,8 @@ export function runAssessment(input: AssessInput): AssessmentResult {
       const status: PillarResult['status'] = score.coverage.evaluated === 0
         ? 'Insufficient evidence'
         : failing.some((e) => e.status === 'FAIL' && e.severity === 'CRITICAL') ? 'Critical issues'
-          : failing.length > 0 ? 'Issues found' : 'No issues observed';
+          : failing.some((e) => e.severity !== 'INFORMATIONAL') ? 'Issues found'
+            : failing.length > 0 ? 'Observations only' : 'No issues observed';
       const strengths = Array.from(new Set(evals.filter((e) => e.status === 'PASS' && e.resourceLabels.length > 0)
         .map((e) => `${e.resourceLabels[0]}: ${e.observation}`))).slice(0, 6);
       pillarResults.push({

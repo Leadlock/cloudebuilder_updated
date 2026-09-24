@@ -133,7 +133,7 @@ export default function Dashboard() {
         {[
           { label: 'Total Projects', value: projects.length, icon: Box, color: 'text-blue-400', bg: 'bg-blue-900/30' },
           { label: 'Total Resources', value: totalResources, icon: Server, color: 'text-purple-400', bg: 'bg-purple-900/30' },
-          { label: 'Avg Security Score', value: `${avgScore}/100`, icon: ShieldCheck, color: avgScore >= 80 ? 'text-emerald-400' : 'text-yellow-400', bg: avgScore >= 80 ? 'bg-emerald-900/30' : 'bg-yellow-900/30' },
+          { label: 'Avg Security Score', value: scoredProjects.length ? `${avgScore}/100` : 'Not assessed', icon: ShieldCheck, color: avgScore >= 80 ? 'text-emerald-400' : 'text-yellow-400', bg: avgScore >= 80 ? 'bg-emerald-900/30' : 'bg-yellow-900/30' },
           { label: `Est. Monthly Cost (${activeCurrency})`, value: formatCurrency(totalCost, activeCurrency), icon: DollarSign, color: 'text-orange-400', bg: 'bg-orange-900/30' },
         ].map(({ label, value, icon: Icon, color, bg }) => (
           <div key={label} className="bg-gray-800 rounded-xl p-4 border border-gray-700">

@@ -191,9 +191,17 @@ export async function listSnapshots(projectId: string, architectureId?: string):
   }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-/** Most recent snapshot for the architecture created before `before` (for historical comparison). */
-export async function previousSnapshot(projectId: string, architectureId: string, before: string): Promise<AssessmentSnapshot | null> {
-  const list = (await listSnapshots(projectId, architectureId)).filter((s) => !s.legacy && s.createdAt < before);
+/**
+ * Most recent snapshot for the architecture created before `before` (for historical comparison).
+ * When `current` is given, re-scans of the identical graph under the same ruleset are skipped so
+ * the comparison is against the last genuinely different assessed state.
+ */
+export async function previousSnapshot(
+  projectId: string, architectureId: string, before: string,
+  current?: { graphHash: string; rulesetVersion: string },
+): Promise<AssessmentSnapshot | null> {
+  const list = (await listSnapshots(projectId, architectureId)).filter((s) => !s.legacy && s.createdAt < before
+    && !(current && s.graphHash === current.graphHash && s.rulesetVersion === current.rulesetVersion));
   return list[0] ? getSnapshot(projectId, list[0].scanId) : null;
 }
 

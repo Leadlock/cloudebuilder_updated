@@ -115,7 +115,10 @@ function mapApiProject(p: ApiProject, nodes: CanvasNode[] = [], edges: CanvasEdg
     nodes,
     edges,
     resourceCount: nodes.length,
-    securityScore: 100,
+    // Not assessed until the canvas is loaded and evaluated — never a default 100.
+    securityScore: 0,
+    securityScored: false,
+    securityCoveragePct: null,
     architectureScore: 0,
     estimatedMonthlyCost: 0,
     environment: 'production',
@@ -220,7 +223,10 @@ class ApiArchitectureServiceImpl implements IArchitectureService {
     }));
   }
 
-  async saveVersion(projectId: string, summary: string, env = 'production'): Promise<ArchitectureVersion> {
+  async saveVersion(projectId: string, summary: string, env = 'production', label?: string): Promise<ArchitectureVersion> {
+    // The API caps label at 120 and summary at 500 characters.
+    const safeLabel = (label ?? summary).slice(0, 120);
+    const safeSummary = summary.slice(0, 500);
     const raw = await apiFetch<{
       id: string;
       version: number;
@@ -231,7 +237,7 @@ class ApiArchitectureServiceImpl implements IArchitectureService {
       nodeCount?: number;
     }>(`/api/projects/${projectId}/versions`, {
       method: 'POST',
-      body: JSON.stringify({ label: summary, summary, env }),
+      body: JSON.stringify({ label: safeLabel, summary: safeSummary, env }),
     });
     return {
       id: raw.id,

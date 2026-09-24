@@ -503,7 +503,7 @@ export const azureRules: RuleDefinition[] = [
   // ════════════════════════════════════════════════════════════════════════
   ...([['AZ-NSG-001', 'SSH', 22, 'allowSsh'], ['AZ-NSG-002', 'RDP', 3389, 'allowRdp']] as const).map(([id, proto, port, field]) => rule({
     ...common,
-    id, service: 'Network security groups', scope: 'resource', resourceTypes: ['azure_nsg'],
+    id, service: 'Azure network security groups', scope: 'resource', resourceTypes: ['azure_nsg'],
     domain: 'SECURITY', category: 'Network exposure', severity: 'HIGH', priority: 'REQUIRED_REMEDIATION',
     title: `NSG allows ${proto} (${port}) from any source`,
     description: `An inbound rule allows TCP ${port} from "*" / Internet / 0.0.0.0/0.`,
@@ -527,7 +527,7 @@ export const azureRules: RuleDefinition[] = [
   })),
   rule({
     ...common,
-    id: 'AZ-NIC-001', service: 'Network interfaces', scope: 'resource', resourceTypes: ['azure_nic'],
+    id: 'AZ-NIC-001', service: 'Azure network interfaces', scope: 'resource', resourceTypes: ['azure_nic'],
     domain: 'SECURITY', category: 'Network exposure', severity: 'MEDIUM', priority: 'RECOMMENDED_IMPROVEMENT',
     title: 'IP forwarding is enabled on a network interface',
     description: 'The NIC can forward traffic not addressed to it.',
@@ -547,7 +547,7 @@ export const azureRules: RuleDefinition[] = [
   }),
   rule({
     ...common,
-    id: 'AZ-ARCH-001', service: 'Virtual networks', scope: 'architecture',
+    id: 'AZ-ARCH-001', service: 'Azure Virtual Network', scope: 'architecture',
     domain: 'SECURITY', category: 'Network exposure', severity: 'MEDIUM', priority: 'REQUIRED_REMEDIATION',
     title: 'Subnets are not protected by a network security group',
     description: 'Subnets in the architecture have no associated NSG.',

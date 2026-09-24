@@ -13,7 +13,7 @@ export interface IArchitectureService {
   loadCanvas(projectId: string, env?: string): Promise<{ nodes: CanvasNode[]; edges: CanvasEdge[]; revision?: number }>;
   createProject(name: string, provider: CloudProvider): Promise<Project>;
   listVersions(projectId: string, env?: string): Promise<ArchitectureVersion[]>;
-  saveVersion(projectId: string, summary: string, env?: string): Promise<ArchitectureVersion>;
+  saveVersion(projectId: string, summary: string, env?: string, label?: string): Promise<ArchitectureVersion>;
   restoreVersion(projectId: string, versionId: string, env?: string): Promise<{ nodes: CanvasNode[]; edges: CanvasEdge[] }>;
   cloneEnvironment(projectId: string, from: string, to: string): Promise<{ cloned: boolean; from: string; to: string; nodeCount: number }>;
   promoteEnvironment(projectId: string, from: string, to: string): Promise<{ promoted: boolean; from: string; to: string; nodeCount: number }>;

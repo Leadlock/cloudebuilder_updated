@@ -441,3 +441,22 @@ describe('Environment Clone / Promote API Integration', () => {
     ).rejects.toThrow('Source environment not found');
   });
 });
+
+describe('ApiArchitectureService.saveVersion field limits', () => {
+  it('keeps the label within the API\'s 120-character limit and uses an explicit label when given', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true, status: 201,
+      json: async () => ({ ok: true, data: { id: 'v', version: 1, label: 'l', summary: 's', author: 'a', timestamp: '2026-09-24T00:00:00.000Z' } }),
+    } as Response);
+    const long = 'Security Auto-Fix: ' + 'AWS-RDS-001 on RDS PostgreSQL (Publicly Accessible: Yes -> No); '.repeat(12);
+    await apiArchitectureService.saveVersion('p', long, 'production');
+    let body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    expect(body.label.length).toBeLessThanOrEqual(120);
+    expect(body.summary.length).toBeLessThanOrEqual(500);
+
+    await apiArchitectureService.saveVersion('p', long, 'production', 'Security Auto-Fix: 12 fixes applied and verified');
+    body = JSON.parse((global.fetch as jest.Mock).mock.calls[1][1].body);
+    expect(body.label).toBe('Security Auto-Fix: 12 fixes applied and verified');
+    expect(body.summary.startsWith('Security Auto-Fix: AWS-RDS-001')).toBe(true);
+  });
+});

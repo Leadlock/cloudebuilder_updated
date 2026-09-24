@@ -28,7 +28,7 @@ export default function FindingCard({ finding: f, onAutoFix, onReview, canReview
           </div>
           <p className="text-white font-medium text-sm">{f.title}</p>
           <p className="text-gray-400 text-xs mt-0.5">
-            {f.resourceLabels.join(', ') || 'Architecture-wide'} · {f.provider === 'aws' ? 'AWS' : 'Azure'} {f.service}{f.region ? ` · ${f.region}` : ''}
+            {f.resourceLabels.join(', ') || 'Architecture-wide'} · {f.service}{f.region ? ` · ${f.region}` : ''}
           </p>
           <p className="text-gray-300 text-xs mt-1.5">{f.observation}</p>
         </div>

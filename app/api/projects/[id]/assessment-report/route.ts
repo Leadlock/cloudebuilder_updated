@@ -79,7 +79,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       await persistSnapshot(snapshot);
     }
 
-    const prev = await previousSnapshot(projectId, snapshot.architecture.architectureId, snapshot.createdAt).catch(() => null);
+    const prev = await previousSnapshot(projectId, snapshot.architecture.architectureId, snapshot.createdAt, {
+      graphHash: snapshot.architecture.graphHash, rulesetVersion: snapshot.assessment.rulesetVersion,
+    }).catch(() => null);
     const cmp = prev ? compareSnapshots(prev, snapshot) : undefined;
     const report = buildReport(snapshot, {
       comparison: cmp ? { ...cmp, unchangedCount: cmp.unchangedFindings.length } : undefined,

@@ -203,7 +203,7 @@ export function createDefaultDraftProject(
     nodes: initialNodes,
     edges: initialEdges,
     resourceCount: initialNodes.length,
-    securityScore: 100,
+    ...(() => { const sec = runAssessment({ nodes: initialNodes, edges: initialEdges }).securityScore; return { securityScore: sec.score ?? 0, securityScored: sec.score !== null, securityCoveragePct: sec.coverage.coveragePct }; })(),
     architectureScore: scores.overall,
     estimatedMonthlyCost,
     currency: 'USD',
@@ -602,7 +602,7 @@ function reducer(state: AppState, action: Action): AppState {
         nodes,
         edges,
         resourceCount: nodes.length,
-        securityScore: 100,
+        ...(() => { const sec = runAssessment({ nodes, edges }).securityScore; return { securityScore: sec.score ?? 0, securityScored: sec.score !== null, securityCoveragePct: sec.coverage.coveragePct }; })(),
         architectureScore: scores.overall,
         estimatedMonthlyCost,
         environment: 'production',
@@ -998,16 +998,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ── Mirror mutations to the API (fire-and-forget) ───────────────────────────
   // We use a ref to the previous action so we can react after state settles.
-  const lastActionRef = useRef<Action | null>(null);
+  // Queue (not a single "last action" ref): callers often dispatch several
+  // actions synchronously (e.g. SET_ACTIVE_PROJECT then SET_VIEW). With a single
+  // ref only the last one's side effect ran, so opening a project from the
+  // sidebar or dashboard never loaded its canvas.
+  const pendingActionsRef = useRef<Action[]>([]);
 
   const dispatchWithSideEffect = React.useCallback((action: Action) => {
-    lastActionRef.current = action;
+    pendingActionsRef.current.push(action);
     dispatch(action);
   }, []);
 
   // After each render triggered by dispatchWithSideEffect, sync to API.
-  // We track the last processed action to avoid re-running.
-  const processedActionRef = useRef<Action | null>(null);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const saveInFlightRef = useRef<boolean>(false);
   const pendingSaveRef = useRef<boolean>(false);
@@ -1194,12 +1196,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const action = lastActionRef.current;
-    if (!action || action === processedActionRef.current) return;
-    processedActionRef.current = action;
+    const queue = pendingActionsRef.current.splice(0);
+    if (queue.length === 0) return;
 
     const currentState = stateRef.current;
 
+    for (const action of queue) {
     switch (action.type) {
       case 'SAVE_NOW': {
         triggerAutoSave(true);
@@ -1325,9 +1327,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       default:
         break;
     }
+    }
     // Deliberately depends on `state`: this effect's job is to mirror every
-    // dispatched action exactly once (via the lastActionRef/processedActionRef
-    // guard above) to the backend API. Actions are dispatched through
+    // dispatched action exactly once (drained from pendingActionsRef above) to
+    // the backend API. Actions are dispatched through
     // dispatchWithSideEffect, which records the action in a ref (not state) and
     // then calls the reducer — so the only reliable render-time signal that a
     // new action may be waiting to be processed is a state change. A narrower

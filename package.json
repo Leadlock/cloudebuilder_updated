@@ -15,7 +15,8 @@
     "db:update": "prisma db update",
     "db:reset": "docker compose down -v && docker compose up -d && prisma db init",
     "worker:discovery": "tsx workers/discoveryWorker.ts",
-    "worker:terraform-apply": "tsx workers/terraformApplyWorker.ts"
+    "worker:terraform-apply": "tsx workers/terraformApplyWorker.ts",
+    "docs:rule-matrix": "tsx --tsconfig tsconfig.json scripts/generate-rule-matrix.ts"
   },
   "dependencies": {
     "@aws-sdk/client-auto-scaling": "^3.1138.0",
