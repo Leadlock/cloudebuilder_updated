@@ -22,6 +22,10 @@ import { CurrencyExchangeRateService } from '@/lib/currency/CurrencyExchangeRate
 import { MockExchangeRateProvider, DETERMINISTIC_MOCK_RATES } from '@/lib/currency/providers/MockExchangeRateProvider';
 import type { IExchangeRateProvider } from '@/lib/currency/providers/IExchangeRateProvider';
 import { CostEstimator } from '@/lib/engines/cost/CostEstimator';
+import { CloudProviderPricingService } from '@/lib/cloud/pricing/CloudProviderPricingService';
+import { AwsPricingProvider } from '@/lib/cloud/pricing/AwsPricingProvider';
+import { AzurePricingProvider } from '@/lib/cloud/pricing/AzurePricingProvider';
+import { PricingCache } from '@/lib/cloud/pricing/PricingCache';
 import type { DbArchitectureResource } from '@/lib/repositories/architectureRepository';
 
 describe('Currency Definition & Formatter', () => {
@@ -215,7 +219,20 @@ describe('Cost Engine + Multi-Currency Integration', () => {
     mockProvider = new MockExchangeRateProvider();
     customCache = new CurrencyExchangeRateCache(1000, false);
     service = new CurrencyExchangeRateService(customCache, [mockProvider]);
-    estimator = new CostEstimator();
+    // The mocked FX service must actually be wired in (previously it was created but the
+    // estimator used the live singleton, so these tests silently depended on the network).
+    // AWS pricing uses the static table (no credentials); Azure uses a fixed fixture price.
+    const azureFixture = new AzurePricingProvider();
+    azureFixture.getPrice = async (q) => ({
+      provider: 'azure', service: 'Virtual Machines', resourceType: q.resourceType, region: q.region, sku: String(q.configuration['size']),
+      pricingModel: 'on-demand', unit: '1 Hour', unitPrice: 0.0416, monthlyPrice: 0.0416 * 730, currency: 'USD', description: 'fixture',
+      source: 'azure-retail-api', retrievedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600_000).toISOString(), assumptions: [],
+    });
+    const pricingCache = new PricingCache(); pricingCache.clear();
+    estimator = new CostEstimator({
+      currency: service,
+      pricing: new CloudProviderPricingService(pricingCache, [new AwsPricingProvider(), azureFixture]),
+    });
   });
 
   test('Synchronous estimate keeps original providerPrice in USD', () => {
@@ -292,7 +309,8 @@ describe('Cost Engine + Multi-Currency Integration', () => {
     // Exchange rate meta attached
     expect(result.exchangeRateMeta).toBeDefined();
     expect(result.exchangeRateMeta!.toCurrency).toBe('INR');
-    expect(result.exchangeRateMeta!.rate).toBeGreaterThan(0);
+    expect(result.exchangeRateMeta!.rate).toBe(DETERMINISTIC_MOCK_RATES['USD:INR']);
+    expect(result.exchangeRateTier).toBe('LIVE');
   });
 
   test('Azure VM pricing with USD -> EUR real currency conversion', async () => {

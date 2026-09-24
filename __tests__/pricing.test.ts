@@ -12,6 +12,16 @@ import { PricingCache } from '@/lib/cloud/pricing/PricingCache';
 import { CloudProviderPricingService } from '@/lib/cloud/pricing/CloudProviderPricingService';
 import { CostEstimator } from '@/lib/engines/cost/CostEstimator';
 import type { DbArchitectureResource } from '@/lib/repositories/architectureRepository';
+import fs from 'fs';
+import path from 'path';
+
+// Azure tests use a recorded Retail Prices API response shape (no network).
+const AZURE_VM_FIXTURE = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'pricing', 'azure-retail-vm-b2s-eastus.json'), 'utf8'));
+const guardedFetch = global.fetch;
+function mockAzureRetail(items: unknown[]) {
+  global.fetch = jest.fn(() => Promise.resolve(new Response(JSON.stringify({ Items: items, Count: items.length, NextPageLink: null }), { status: 200 }))) as unknown as typeof fetch;
+}
+afterEach(() => { global.fetch = guardedFetch; });
 
 function makeResource(overrides: Partial<DbArchitectureResource>): DbArchitectureResource {
   return {
@@ -73,7 +83,10 @@ describe('Authoritative Cloud Regions', () => {
   });
 });
 
-describe('AwsPricingProvider (Real Data & Configuration Awareness)', () => {
+// No AWS_PRICING_* credentials in the test environment: these exercise the static
+// rate table (FALLBACK_ESTIMATE). The live Price List API path is covered with a
+// mocked SDK in awsLivePricing.test.ts.
+describe('AwsPricingProvider (static rate table, configuration awareness)', () => {
   const provider = new AwsPricingProvider();
 
   test('EC2 configuration-aware pricing for t3.micro vs m5.large', async () => {
@@ -146,6 +159,7 @@ describe('AzurePricingProvider (Retail Prices Normalization)', () => {
   const provider = new AzurePricingProvider();
 
   test('Azure VM pricing normalization', async () => {
+    mockAzureRetail(AZURE_VM_FIXTURE.Items);
     const vmPrice = await provider.getPrice({
       provider: 'azure',
       resourceType: 'azure_vm',
@@ -156,9 +170,11 @@ describe('AzurePricingProvider (Retail Prices Normalization)', () => {
     expect(vmPrice!.unitPrice).toBeGreaterThan(0);
     expect(vmPrice!.monthlyPrice).toBeGreaterThan(vmPrice!.unitPrice * 700);
     expect(vmPrice!.currency).toBe('USD');
+    expect(vmPrice!.source).toBe('azure-retail-api');
   });
 
   test('Azure SQL pricing normalization with storage', async () => {
+    mockAzureRetail([{ currencyCode: 'USD', retailPrice: 0.0202, unitPrice: 0.0202, armRegionName: 'eastus', meterName: 'S0 DTUs', productName: 'SQL Database Single Standard', skuName: 'S0', serviceName: 'SQL Database', unitOfMeasure: '1 Hour', type: 'Consumption' }]);
     const sqlPrice = await provider.getPrice({
       provider: 'azure',
       resourceType: 'azure_sql',
@@ -168,6 +184,8 @@ describe('AzurePricingProvider (Retail Prices Normalization)', () => {
     expect(sqlPrice).not.toBeNull();
     expect(sqlPrice!.monthlyPrice).toBeGreaterThan(0);
     expect(sqlPrice!.assumptions.some((a) => a.includes('storage') || a.includes('price'))).toBe(true);
+    expect(sqlPrice!.source).toBe('azure-retail-api');
+    expect(sqlPrice!.unitPrice).toBe(0.0202);
   });
 
   test('Azure networking containers return zero price', async () => {
@@ -274,6 +292,8 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
     expect(price).toBeDefined();
     expect(price.monthlyPrice).toBeGreaterThan(0);
     expect(price.currency).toBe('USD');
+    // No AWS pricing credentials here: must be reported as an estimate, never live.
+    expect(price.tier).toBe('FALLBACK_ESTIMATE');
   });
 
   test('CostEstimator.estimateAsync runs with REAL mode', async () => {
@@ -306,6 +326,8 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
     expect(result.totalHourlyUsd).toBeGreaterThan(0);
     expect(result.currency).toBe('USD');
     expect(result.pricingSource).toBeTruthy();
+    expect(result.pricingTier).toBe('FALLBACK_ESTIMATE');
+    expect(result.items.every((i) => i.pricingTier === 'FALLBACK_ESTIMATE')).toBe(true);
   });
 
   test('CostEstimator.estimate synchronous backward compatibility in TEST mode', () => {

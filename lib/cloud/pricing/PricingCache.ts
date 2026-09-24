@@ -10,6 +10,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { NormalizedPrice, PriceQuery } from './types';
+import { classifyPricingSource } from './tiers';
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -77,10 +78,14 @@ export class PricingCache {
     }
 
     if (allowStale) {
-      // Return stale item marked as cached
+      // Return stale item marked as cached; the tier is derived from the original source
+      // before the display label is rewritten.
+      const original = classifyPricingSource(item.source);
       return {
         ...item,
         source: `cached (stale from ${new Date(item.retrievedAt).toLocaleDateString()})`,
+        tier: original === 'LIVE' ? 'CACHED_LIVE' : original,
+        isStale: true,
       };
     }
 

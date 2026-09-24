@@ -79,7 +79,7 @@ export class AzurePricingProvider implements ICloudPricingProvider {
             monthlyPrice: 0,
             currency: 'USD',
             description: 'No direct charges for networking/container boundaries',
-            source: 'azure-retail-api',
+            source: 'azure-static-estimate',
             retrievedAt: new Date().toISOString(),
             expiresAt: new Date(Date.now() + 86400000).toISOString(),
             assumptions: ['Free tier resource boundary'],
@@ -118,14 +118,16 @@ export class AzurePricingProvider implements ICloudPricingProvider {
     
     const items = await this._fetchRetailPrices(filter);
     // Find non-spot, non-low-priority Linux instance
-    const best = items.find((i) => 
+    // Only a meter that matches the requested SKU counts as a live price; an unrelated
+    // first result is not used (it would be a real price for the wrong size).
+    const best = items.find((i) =>
       !i.meterName.toLowerCase().includes('spot') &&
       !i.meterName.toLowerCase().includes('low priority') &&
       !i.productName.toLowerCase().includes('windows') &&
       (i.armSkuName === size || i.skuName.toLowerCase().includes(bareSize.toLowerCase()))
-    ) || items[0];
+    );
 
-    const hourly = best ? best.retailPrice : 0.0416;
+    const hourly = best && best.retailPrice > 0 ? best.retailPrice : 0.0416;
     const osDiskGb = Number(config['osDiskGb'] || 128);
     // Standard Premium SSD rate ~$0.10/GB/month
     const diskMonthly = osDiskGb * 0.10;
@@ -143,11 +145,12 @@ export class AzurePricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: `Azure VM ${size} (Pay-As-You-Go, Linux) + ${osDiskGb}GB Premium SSD`,
-      source: best ? 'azure-retail-api' : 'azure-retail-cached',
+      source: best && best.retailPrice > 0 ? 'azure-retail-api' : 'azure-static-estimate',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
-        `Live price from Azure Retail Prices API: $${hourly.toFixed(4)}/hr`,
+        best && best.retailPrice > 0 ? `Live price from Azure Retail Prices API: $${hourly.toFixed(4)}/hr`
+          : `No matching Azure Retail Prices meter for ${size}; CloudCraft baseline estimate $${hourly.toFixed(4)}/hr`,
         `Assumes 730 hours/month compute runtime: $${(hourly * 730).toFixed(2)}/mo`,
         `${osDiskGb}GB Premium SSD OS disk: $${diskMonthly.toFixed(2)}/mo`,
         `Region: ${region}`,
@@ -193,7 +196,7 @@ export class AzurePricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: `Azure SQL Database ${tier} + ${maxSizeGb}GB storage`,
-      source: item ? 'azure-retail-api' : 'azure-retail-cached',
+      source: item && item.retailPrice > 0 ? 'azure-retail-api' : 'azure-static-estimate',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
@@ -210,10 +213,11 @@ export class AzurePricingProvider implements ICloudPricingProvider {
     const filter = `serviceName eq 'Storage' and armRegionName eq '${region}' and contains(meterName, 'Data Stored') and priceType eq 'Consumption'`;
     
     let pricePerGb = sku.includes('GRS') ? 0.036 : 0.0184;
+    let live = false;
     try {
       const items = await this._fetchRetailPrices(filter);
       const match = items.find((i) => sku.includes('GRS') ? i.meterName.includes('GRS') : i.meterName.includes('LRS'));
-      if (match && match.retailPrice > 0) pricePerGb = match.retailPrice;
+      if (match && match.retailPrice > 0) { pricePerGb = match.retailPrice; live = true; }
     } catch {
       // Fallback
     }
@@ -232,7 +236,7 @@ export class AzurePricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: `Azure Blob Storage ${sku} (${capacityGb}GB)`,
-      source: 'azure-retail-api',
+      source: live ? 'azure-retail-api' : 'azure-static-estimate',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
@@ -249,10 +253,11 @@ export class AzurePricingProvider implements ICloudPricingProvider {
     const filter = `serviceName eq 'Load Balancer' and armRegionName eq '${region}' and priceType eq 'Consumption'`;
     
     let hourly = 0.005;
+    let live = false;
     try {
       const items = await this._fetchRetailPrices(filter);
       const match = items.find((i) => i.meterName.toLowerCase().includes('rule') || i.meterName.toLowerCase().includes('load balancer'));
-      if (match && match.retailPrice > 0) hourly = match.retailPrice;
+      if (match && match.retailPrice > 0) { hourly = match.retailPrice; live = true; }
     } catch {
       // Fallback
     }
@@ -272,7 +277,7 @@ export class AzurePricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: `Azure Load Balancer ${sku}`,
-      source: 'azure-retail-api',
+      source: live ? 'azure-retail-api' : 'azure-static-estimate',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
@@ -286,10 +291,11 @@ export class AzurePricingProvider implements ICloudPricingProvider {
   private async _getAppGatewayPrice(_config: Record<string, unknown>, region: string): Promise<NormalizedPrice> {
     const filter = `serviceName eq 'Application Gateway' and armRegionName eq '${region}' and priceType eq 'Consumption'`;
     let hourly = 0.246; // Standard_v2 base
+    let live = false;
     try {
       const items = await this._fetchRetailPrices(filter);
       const match = items.find((i) => i.meterName.toLowerCase().includes('fixed') || i.meterName.toLowerCase().includes('gateway'));
-      if (match && match.retailPrice > 0) hourly = match.retailPrice;
+      if (match && match.retailPrice > 0) { hourly = match.retailPrice; live = true; }
     } catch {
       // Fallback
     }
@@ -306,7 +312,7 @@ export class AzurePricingProvider implements ICloudPricingProvider {
       monthlyPrice: hourly * 730,
       currency: 'USD',
       description: 'Azure Application Gateway Standard_v2',
-      source: 'azure-retail-api',
+      source: live ? 'azure-retail-api' : 'azure-static-estimate',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
@@ -332,7 +338,8 @@ export class AzurePricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: 'Azure Functions Consumption Plan',
-      source: 'azure-retail-api',
+      // Not queried from the Retail Prices API (usage-tiered / flat baseline).
+      source: 'azure-static-estimate',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
@@ -358,7 +365,8 @@ export class AzurePricingProvider implements ICloudPricingProvider {
       monthlyPrice: hourly * 730,
       currency: 'USD',
       description: 'AKS Cluster Management (Uptime SLA enabled)',
-      source: 'azure-retail-api',
+      // Not queried from the Retail Prices API (usage-tiered / flat baseline).
+      source: 'azure-static-estimate',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
@@ -383,7 +391,8 @@ export class AzurePricingProvider implements ICloudPricingProvider {
       monthlyPrice,
       currency: 'USD',
       description: 'Azure Key Vault Standard',
-      source: 'azure-retail-api',
+      // Not queried from the Retail Prices API (usage-tiered / flat baseline).
+      source: 'azure-static-estimate',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [

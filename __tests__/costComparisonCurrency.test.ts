@@ -115,7 +115,9 @@ describe('ApiCostService.compareCosts — currency conversion', () => {
 });
 
 describe('MockCostService.compareCosts (fallback path) — currency conversion', () => {
-  it('produces a totalMonthlyConverted that differs from totalMonthlyUsd for a non-USD currency', async () => {
+  it('does not invent an exchange rate offline: a non-USD request stays in USD', async () => {
+    // The offline fallback has no exchange-rate source. It previously converted with
+    // hard-coded fixture rates and labelled the result INR — a fabricated conversion.
     const { costService } = await import('@/lib/services/CostService');
     const nodes = [{
       id: 'n1', type: 'cloudNode' as const, resourceType: 'aws_ec2', provider: 'aws' as const, label: 'Web',
@@ -123,11 +125,9 @@ describe('MockCostService.compareCosts (fallback path) — currency conversion',
     }];
 
     const result = await costService.compareCosts!(nodes, 'INR');
-    expect(result.current.currency).toBe('INR');
-    if (result.current.totalMonthlyUsd > 0) {
-      expect(result.current.totalMonthlyConverted).not.toBe(result.current.totalMonthlyUsd);
-      expect(result.current.totalMonthlyConverted).toBeGreaterThan(result.current.totalMonthlyUsd);
-    }
+    expect(result.current.currency).toBe('USD');
+    expect(result.current.totalMonthlyConverted).toBe(result.current.totalMonthlyUsd);
+    expect(result.current.items.every((i) => i.exchangeRateTier === 'UNAVAILABLE' && i.pricingTier === 'FALLBACK_ESTIMATE')).toBe(true);
   });
 
   it('leaves totalMonthlyConverted equal to totalMonthlyUsd for USD (no conversion needed)', async () => {

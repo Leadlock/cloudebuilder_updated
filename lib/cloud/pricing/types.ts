@@ -6,6 +6,9 @@
  * into a single unified internal structure.
  */
 
+import type { PricingTier } from './tiers';
+export type { PricingTier } from './tiers';
+
 export type PricingModel = 'on-demand' | 'consumption' | 'tier' | 'reservation' | 'free';
 
 export interface NormalizedPrice {
@@ -24,6 +27,10 @@ export interface NormalizedPrice {
   retrievedAt: string;     // ISO timestamp of price retrieval
   expiresAt: string;       // ISO timestamp when cache entry expires
   assumptions: string[];
+  /** Set by CloudProviderPricingService: where this figure actually came from. */
+  tier?: PricingTier;
+  /** True when served from cache after its expiry because the live API failed. */
+  isStale?: boolean;
 }
 
 export interface PriceQuery {

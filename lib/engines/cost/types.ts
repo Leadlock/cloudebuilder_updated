@@ -2,6 +2,8 @@
  * Cost Engine — shared types for Phase 2D cost estimation and multi-currency pricing.
  */
 import type { DbArchitectureResource } from '@/lib/repositories/architectureRepository';
+import type { PricingTier } from '@/lib/cloud/pricing/tiers';
+export type { PricingTier } from '@/lib/cloud/pricing/tiers';
 
 // ─── Currency / Price Info ───────────────────────────────────────────────────
 
@@ -21,6 +23,7 @@ export interface ConvertedPriceInfo {
   exchangeRateRetrievedAt: string;
   isCachedRate?: boolean;
   isStaleRate?: boolean;
+  exchangeRateTier?: PricingTier;
 }
 
 export interface ExchangeRateConversionMeta {
@@ -31,6 +34,7 @@ export interface ExchangeRateConversionMeta {
   retrievedAt: string;
   isCached: boolean;
   isStale?: boolean;
+  tier: PricingTier;
 }
 
 // ─── Input ────────────────────────────────────────────────────────────────────
@@ -57,6 +61,10 @@ export interface CostLineItem {
   breakdown: CostBreakdownItem[];
   assumptions: string[];
   pricingSource: string;
+  /** LIVE | CACHED_LIVE | FALLBACK_ESTIMATE | UNAVAILABLE — set by CostEstimator. */
+  pricingTier?: PricingTier;
+  /** True when a cached live price is past its expiry. */
+  pricingIsStale?: boolean;
   /** estimate | approximation | unsupported */
   confidence: string;
 
@@ -84,6 +92,12 @@ export interface CostEstimationResult {
   exchangeRateMeta?: ExchangeRateConversionMeta;
   assumptions: string[];
   pricingSource: string;
+  /** Weakest tier across billable items (a total is only "Live" if every item is). */
+  pricingTier: PricingTier | null;
+  /** Item count per tier. */
+  pricingTierCounts: Record<PricingTier, number>;
+  /** Tier of the currency conversion; null when no conversion was requested (USD). */
+  exchangeRateTier: PricingTier | null;
   confidence: string;
 }
 

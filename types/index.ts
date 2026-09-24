@@ -357,6 +357,10 @@ export interface CostItem {
   exchangeRateRetrievedAt?: string;
   isCachedRate?: boolean;
   isStaleRate?: boolean;
+  /** LIVE | CACHED_LIVE | FALLBACK_ESTIMATE | UNAVAILABLE — never present a fallback as live. */
+  pricingTier?: 'LIVE' | 'CACHED_LIVE' | 'FALLBACK_ESTIMATE' | 'UNAVAILABLE';
+  pricingIsStale?: boolean;
+  exchangeRateTier?: 'LIVE' | 'CACHED_LIVE' | 'FALLBACK_ESTIMATE' | 'UNAVAILABLE';
   breakdown: { label: string; cost: number; originalCostUsd?: number }[];
 }
 

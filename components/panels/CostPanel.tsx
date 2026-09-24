@@ -10,6 +10,28 @@ import { cloudRegionService } from '@/lib/cloud/regions/CloudRegionService';
 import { formatCurrency } from '@/lib/currency/formatter';
 import { getCurrencyDefinition } from '@/lib/currency/types';
 import clsx from 'clsx';
+import { PRICING_TIER_LABEL, weakestTier, type PricingTier } from '@/lib/cloud/pricing/tiers';
+
+const TIER_STYLE: Record<PricingTier, string> = {
+  LIVE: 'bg-emerald-950/80 text-emerald-300 border-emerald-800/80',
+  CACHED_LIVE: 'bg-sky-950/80 text-sky-300 border-sky-800/80',
+  FALLBACK_ESTIMATE: 'bg-amber-950/80 text-amber-300 border-amber-800/80',
+  UNAVAILABLE: 'bg-gray-800 text-gray-400 border-gray-600',
+};
+const TIER_HELP: Record<PricingTier, string> = {
+  LIVE: 'Official list price returned by the AWS Price List API / Azure Retail Prices API for this estimate.',
+  CACHED_LIVE: 'Official list price retrieved earlier from the provider API and served from cache.',
+  FALLBACK_ESTIMATE: 'The provider API was not available or does not price this resource: CloudCraft static list-price estimate, not a live price.',
+  UNAVAILABLE: 'No price could be determined for this resource. It is excluded from totals.',
+};
+
+function TierBadge({ tier, stale }: { tier: PricingTier; stale?: boolean }) {
+  return (
+    <span className={clsx('text-[9px] px-1.5 py-0.5 rounded border font-medium', TIER_STYLE[tier])} title={TIER_HELP[tier]} data-testid="pricing-tier">
+      {PRICING_TIER_LABEL[tier]}{stale ? ' (stale)' : ''}
+    </span>
+  );
+}
 
 export default function CostPanel() {
   const { state, dispatch } = useApp();
@@ -96,6 +118,13 @@ export default function CostPanel() {
   const exchangeRateTime = firstConverted?.exchangeRateRetrievedAt;
   const isCachedRate = costs.some((c) => c.isCachedRate);
   const isStaleRate = costs.some((c) => c.isStaleRate);
+  const pricedCosts = costs.filter((c) => c.pricingTier !== 'UNAVAILABLE');
+  const unavailableCount = costs.length - pricedCosts.length;
+  const overallTier = weakestTier(pricedCosts.map((c) => c.pricingTier ?? 'FALLBACK_ESTIMATE'));
+  const rateTier: PricingTier | undefined = costs.find((c) => c.exchangeRateTier)?.exchangeRateTier;
+  // Figures are only in the display currency when a real exchange rate was applied;
+  // otherwise they are USD and must be labelled as USD.
+  const valueCurrency = displayCurrency !== 'USD' && (!exchangeRate || rateTier === 'UNAVAILABLE') ? 'USD' : displayCurrency;
   const potential = exchangeRate ? potentialUsd * exchangeRate : potentialUsd;
 
   const awsCost = costs.filter((c) => c.provider === 'aws').reduce((a, c) => a + c.monthlyCost, 0);
@@ -130,7 +159,7 @@ export default function CostPanel() {
     dispatch({ type: 'APPLY_COST_OPTIMIZATION', optimizationId: id, nodeId });
     setAppliedOpts((s) => new Set(s).add(id));
     const opt = allOptimizations.find((o) => o.id === id);
-    const savingsFormatted = formatCurrency(exchangeRate ? (opt?.potentialSavings ?? 0) * exchangeRate : (opt?.potentialSavings ?? 0), displayCurrency);
+    const savingsFormatted = formatCurrency(exchangeRate ? (opt?.potentialSavings ?? 0) * exchangeRate : (opt?.potentialSavings ?? 0), valueCurrency);
     setSuccessMsg(`✓ Applied: ${opt?.title ?? 'Optimization'} — saving ~${savingsFormatted}/mo`);
     setTimeout(() => setSuccessMsg(null), 3000);
   }
@@ -202,8 +231,8 @@ export default function CostPanel() {
           <div className="bg-amber-900/30 border border-amber-800/50 rounded-xl p-4 flex items-center gap-3 mb-6">
             <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
             <p className="text-amber-300 text-sm">
-              The live pricing service is unreachable — showing an <strong>offline estimate</strong> from cached
-              reference rates. Figures below may not reflect current pricing.
+              The pricing service is unreachable — showing an <strong>offline fallback estimate</strong> from
+              CloudCraft&apos;s static list-price tables. These are not live prices{displayCurrency !== 'USD' ? ', and no exchange rate is available, so figures are shown in USD' : ''}.
             </p>
           </div>
         )}
@@ -213,12 +242,20 @@ export default function CostPanel() {
           <div className="flex items-center gap-3">
             <DollarSign className="w-5 h-5 text-orange-400" />
             <h2 className="text-white font-bold text-lg">Cost Estimate</h2>
-            <span
-              className="text-xs px-2.5 py-0.5 bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 rounded-full font-medium"
-              title="Estimated from public on-demand list prices. Azure pricing is fetched live from the Azure Retail Prices API; AWS pricing uses a static reference rate table, not a live API call. Neither reflects negotiated discounts, Reserved Instances, or Savings Plans."
-            >
-              {activeProject.provider.toUpperCase()} List-Price Estimate
-            </span>
+            {overallTier && (
+              <span
+                className={clsx('text-xs px-2.5 py-0.5 border rounded-full font-medium', TIER_STYLE[overallTier])}
+                title={`${TIER_HELP[overallTier]} On-demand list prices; negotiated discounts, Reserved Instances and Savings Plans are not reflected.`}
+                data-testid="pricing-tier-overall"
+              >
+                {overallTier === 'LIVE' ? 'Live list prices' : overallTier === 'CACHED_LIVE' ? 'Live list prices (cached)' : 'Includes fallback estimates'}
+              </span>
+            )}
+            {unavailableCount > 0 && (
+              <span className={clsx('text-xs px-2.5 py-0.5 border rounded-full font-medium', TIER_STYLE.UNAVAILABLE)} title={TIER_HELP.UNAVAILABLE}>
+                {unavailableCount} unpriced
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-1.5 text-xs text-gray-400 bg-gray-800/70 border border-gray-700/60 rounded-lg px-2.5 py-1">
@@ -258,7 +295,7 @@ export default function CostPanel() {
               )}
             </div>
             <span className="text-[10px] text-slate-500 uppercase tracking-wider">
-              {exchangeRate ? 'Live Conversion' : 'No Conversion'}
+              {rateTier === 'UNAVAILABLE' || !exchangeRate ? 'No Conversion' : rateTier === 'CACHED_LIVE' ? (isStaleRate ? 'Cached rate (stale)' : 'Cached rate') : 'Live rate'}
             </span>
           </div>
         )}
@@ -274,26 +311,26 @@ export default function CostPanel() {
         {/* Summary cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <div className="bg-gray-800 border border-gray-700 rounded-xl p-3">
-            <p className="text-gray-400 text-xs mb-1">Monthly ({displayCurrency})</p>
-            <p className="text-xl font-bold text-orange-400">{formatCurrency(total, displayCurrency)}</p>
+            <p className="text-gray-400 text-xs mb-1">Monthly ({valueCurrency})</p>
+            <p className="text-xl font-bold text-orange-400">{formatCurrency(total, valueCurrency)}</p>
             {displayCurrency !== 'USD' && (
               <p className="text-[11px] text-gray-500 mt-0.5">≈ {formatCurrency(totalUsd, 'USD')}</p>
             )}
           </div>
           <div className="bg-gray-800 border border-gray-700 rounded-xl p-3">
-            <p className="text-gray-400 text-xs mb-1">Annual ({displayCurrency})</p>
-            <p className="text-xl font-bold text-white">{formatCurrency(annual, displayCurrency)}</p>
+            <p className="text-gray-400 text-xs mb-1">Annual ({valueCurrency})</p>
+            <p className="text-xl font-bold text-white">{formatCurrency(annual, valueCurrency)}</p>
             {displayCurrency !== 'USD' && (
               <p className="text-[11px] text-gray-500 mt-0.5">≈ {formatCurrency(annualUsd, 'USD')}</p>
             )}
           </div>
           <div className="bg-gray-800 border border-gray-700 rounded-xl p-3">
             <p className="text-gray-400 text-xs mb-1">AWS</p>
-            <p className="text-xl font-bold text-orange-300">{formatCurrency(awsCost, displayCurrency)}</p>
+            <p className="text-xl font-bold text-orange-300">{formatCurrency(awsCost, valueCurrency)}</p>
           </div>
           <div className="bg-gray-800 border border-gray-700 rounded-xl p-3">
             <p className="text-gray-400 text-xs mb-1">Azure</p>
-            <p className="text-xl font-bold text-blue-300">{formatCurrency(azureCost, displayCurrency)}</p>
+            <p className="text-xl font-bold text-blue-300">{formatCurrency(azureCost, valueCurrency)}</p>
           </div>
         </div>
 
@@ -302,7 +339,7 @@ export default function CostPanel() {
           <div className="bg-emerald-900/20 border border-emerald-800 rounded-xl p-3 mb-5 flex items-center gap-3">
             <TrendingDown className="w-4 h-4 text-emerald-400 shrink-0" aria-hidden="true" />
             <p className="text-emerald-300 text-sm">
-              <span className="font-bold">{formatCurrency(potential, displayCurrency)}/mo</span> in potential savings identified
+              <span className="font-bold">{formatCurrency(potential, valueCurrency)}/mo</span> in potential savings identified
               {displayCurrency !== 'USD' && <span className="text-emerald-400/70 text-xs ml-1"> (≈ {formatCurrency(potentialUsd, 'USD')}/mo)</span>}
             </p>
           </div>
@@ -312,7 +349,7 @@ export default function CostPanel() {
         {costs.length > 0 && (
           <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 mb-5">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-gray-400 text-xs font-medium uppercase tracking-wider">Cost by Resource ({displayCurrency})</p>
+              <p className="text-gray-400 text-xs font-medium uppercase tracking-wider">Cost by Resource ({valueCurrency})</p>
               {displayCurrency !== 'USD' && (
                 <span className="text-[10px] text-gray-500 font-mono">Original USD transparently retained</span>
               )}
@@ -332,10 +369,11 @@ export default function CostPanel() {
                         <span className={clsx('text-[9px] px-1 py-0.5 rounded', item.provider === 'aws' ? 'bg-orange-900/40 text-orange-400' : 'bg-blue-900/40 text-blue-400')}>
                           {item.provider.toUpperCase()}
                         </span>
+                        <TierBadge tier={item.pricingTier ?? 'FALLBACK_ESTIMATE'} stale={item.pricingIsStale} />
                       </div>
                       <div className="text-right">
-                        <span className="text-orange-400 text-xs font-medium">{formatCurrency(item.monthlyCost, displayCurrency)}/mo</span>
-                        {displayCurrency !== 'USD' && (
+                        <span className="text-orange-400 text-xs font-medium">{item.pricingTier === 'UNAVAILABLE' ? 'Price unavailable' : `${formatCurrency(item.monthlyCost, valueCurrency)}/mo`}</span>
+                        {valueCurrency !== 'USD' && (
                           <span className="text-gray-500 text-[10px] block">≈ {formatCurrency(item.providerCostUsd ?? item.monthlyCost, 'USD')}</span>
                         )}
                       </div>
@@ -367,7 +405,7 @@ export default function CostPanel() {
                         <p className="text-white font-medium text-sm">{opt.title}</p>
                         <p className="text-gray-500 text-xs mt-0.5 mb-2">{opt.description}</p>
                         <div className="flex items-center gap-3">
-                          <span className="text-emerald-400 text-xs font-medium">Save ~{formatCurrency(optSavings, displayCurrency)}/mo</span>
+                          <span className="text-emerald-400 text-xs font-medium">Save ~{formatCurrency(optSavings, valueCurrency)}/mo</span>
                           <span className={clsx('text-xs px-1.5 py-0.5 rounded', opt.effort === 'low' ? 'bg-emerald-900/40 text-emerald-400' : opt.effort === 'medium' ? 'bg-yellow-900/40 text-yellow-400' : 'bg-red-900/40 text-red-400')}>
                             {opt.effort} effort
                           </span>
@@ -404,7 +442,7 @@ export default function CostPanel() {
                     {CATEGORY_LABELS[category] ?? category}
                     <span className="text-gray-600 font-normal ml-2 normal-case">({items.length} resource{items.length === 1 ? '' : 's'})</span>
                   </h3>
-                  <span className="text-gray-400 text-xs font-medium">{formatCurrency(categoryTotal, displayCurrency)}/mo</span>
+                  <span className="text-gray-400 text-xs font-medium">{formatCurrency(categoryTotal, valueCurrency)}/mo</span>
                 </div>
                 <div className="space-y-3">
             {items.map((item) => {
@@ -422,12 +460,12 @@ export default function CostPanel() {
                       </div>
                       <div>
                         <p className="text-white font-medium text-sm">{item.nodeLabel}</p>
-                        <p className="text-gray-500 text-xs">{def?.label} · <span className="font-mono text-gray-400">{item.provider.toUpperCase()}</span></p>
+                        <p className="text-gray-500 text-xs flex items-center gap-1.5">{def?.label} · <span className="font-mono text-gray-400">{item.provider.toUpperCase()}</span> <TierBadge tier={item.pricingTier ?? 'FALLBACK_ESTIMATE'} stale={item.pricingIsStale} /></p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-orange-400 font-bold text-lg">{formatCurrency(item.monthlyCost, displayCurrency)}</p>
-                      {displayCurrency !== 'USD' && (
+                      <p className="text-orange-400 font-bold text-lg">{item.pricingTier === 'UNAVAILABLE' ? 'Unavailable' : formatCurrency(item.monthlyCost, valueCurrency)}</p>
+                      {valueCurrency !== 'USD' && (
                         <p className="text-gray-500 text-xs">≈ {formatCurrency(providerUsd, 'USD')}</p>
                       )}
                     </div>
@@ -473,7 +511,7 @@ export default function CostPanel() {
                             </div>
                             <div className="flex justify-between font-semibold pt-1 border-t border-gray-800">
                               <span className="text-gray-400">Displayed estimate:</span>
-                              <span className="text-emerald-400">{formatCurrency(item.monthlyCost, displayCurrency)}/month</span>
+                              <span className="text-emerald-400">{formatCurrency(item.monthlyCost, valueCurrency)}/month</span>
                             </div>
                           </>
                         )}
@@ -488,7 +526,7 @@ export default function CostPanel() {
                         <div key={i} className="flex justify-between text-xs">
                           <span className="text-gray-500">{b.label}</span>
                           <span className="text-gray-400">
-                            {formatCurrency(b.cost, displayCurrency)}
+                            {formatCurrency(b.cost, valueCurrency)}
                             {displayCurrency !== 'USD' && b.originalCostUsd !== undefined && (
                               <span className="text-gray-600 text-[10px] ml-1">({formatCurrency(b.originalCostUsd, 'USD')})</span>
                             )}

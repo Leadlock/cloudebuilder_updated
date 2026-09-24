@@ -13,8 +13,9 @@ import type { CostEstimationInput, CostEstimationResult, CostLineItem, ExchangeR
 import { awsPricingProvider } from './awsPricing';
 import { azurePricingProvider } from './azurePricing';
 import type { PricingProvider } from './types';
-import { cloudProviderPricingService } from '@/lib/cloud/pricing/CloudProviderPricingService';
-import { currencyExchangeRateService } from '@/lib/currency/CurrencyExchangeRateService';
+import { cloudProviderPricingService, type CloudProviderPricingService } from '@/lib/cloud/pricing/CloudProviderPricingService';
+import { currencyExchangeRateService, type CurrencyExchangeRateService } from '@/lib/currency/CurrencyExchangeRateService';
+import { classifyRate, weakestTier, type PricingTier } from '@/lib/cloud/pricing/tiers';
 
 // ─── Provider registry ────────────────────────────────────────────────────────
 
@@ -25,7 +26,20 @@ const PROVIDERS: Record<string, PricingProvider> = {
 
 // ─── CostEstimator ────────────────────────────────────────────────────────────
 
+export interface CostEstimatorDeps {
+  pricing?: Pick<CloudProviderPricingService, 'getPrice'>;
+  currency?: Pick<CurrencyExchangeRateService, 'getExchangeRate'>;
+}
+
 export class CostEstimator {
+  private readonly _pricing: Pick<CloudProviderPricingService, 'getPrice'>;
+  private readonly _currency: Pick<CurrencyExchangeRateService, 'getExchangeRate'>;
+
+  /** Dependencies are injectable so unit tests never reach the network. */
+  constructor(deps: CostEstimatorDeps = {}) {
+    this._pricing = deps.pricing ?? cloudProviderPricingService;
+    this._currency = deps.currency ?? currencyExchangeRateService;
+  }
   /**
    * Asynchronous estimation using the real CloudProviderPricingService and CurrencyExchangeRateService.
    * Preferred for server API routes.
@@ -70,6 +84,7 @@ export class CostEstimator {
           breakdown: [],
           assumptions: [`No pricing provider for: ${resource.provider}`],
           pricingSource: 'none',
+          pricingTier: 'UNAVAILABLE',
           confidence: 'unsupported',
         });
         continue;
@@ -91,7 +106,7 @@ export class CostEstimator {
       }
 
       try {
-        const normalized = await cloudProviderPricingService.getPrice({
+        const normalized = await this._pricing.getPrice({
           provider: providerKey as 'aws' | 'azure',
           resourceType: resource.resourceType,
           region,
@@ -121,6 +136,8 @@ export class CostEstimator {
             ],
             assumptions: normalized.assumptions,
             pricingSource: normalized.source,
+            pricingTier: normalized.tier ?? 'FALLBACK_ESTIMATE',
+            pricingIsStale: normalized.isStale ?? false,
             confidence: 'estimate',
           });
         } else {
@@ -130,6 +147,7 @@ export class CostEstimator {
           if (syncItem) {
             items.push({
               ...syncItem,
+              pricingTier: 'FALLBACK_ESTIMATE',
               providerPrice: {
                 unitPrice: syncItem.hourlyUsd,
                 monthlyPrice: syncItem.monthlyUsd,
@@ -155,6 +173,7 @@ export class CostEstimator {
               breakdown: [],
               assumptions: ['Pricing unavailable from official cloud provider API'],
               pricingSource: 'unavailable',
+              pricingTier: 'UNAVAILABLE',
               confidence: 'unsupported',
             });
           }
@@ -166,6 +185,7 @@ export class CostEstimator {
         if (syncItem) {
           items.push({
             ...syncItem,
+            pricingTier: 'FALLBACK_ESTIMATE',
             providerPrice: {
               unitPrice: syncItem.hourlyUsd,
               monthlyPrice: syncItem.monthlyUsd,
@@ -209,6 +229,7 @@ export class CostEstimator {
           breakdown: [],
           assumptions: [`No pricing provider for: ${resource.provider}`],
           pricingSource: 'none',
+          pricingTier: 'UNAVAILABLE',
           confidence: 'unsupported',
         });
         continue;
@@ -226,6 +247,7 @@ export class CostEstimator {
       if (item !== null) {
         items.push({
           ...item,
+          pricingTier: item.pricingSource === 'none' ? 'UNAVAILABLE' : 'FALLBACK_ESTIMATE',
           providerPrice: {
             unitPrice: item.hourlyUsd,
             monthlyPrice: item.monthlyUsd,
@@ -248,7 +270,7 @@ export class CostEstimator {
     }
 
     // Retrieve real exchange rate
-    const rateResult = await currencyExchangeRateService.getExchangeRate({
+    const rateResult = await this._currency.getExchangeRate({
       from: 'USD',
       to: targetCurrency,
     });
@@ -256,11 +278,13 @@ export class CostEstimator {
     if (!rateResult) {
       // Exchange rate unavailable — NEVER invent a fake rate!
       const res = this._compileResult(items, 'USD');
+      res.exchangeRateTier = 'UNAVAILABLE';
       res.assumptions.unshift(`Exchange rate unavailable for ${targetCurrency}. Showing provider pricing in USD.`);
       return res;
     }
 
     const { rate, source, retrievedAt, isCached, isStale } = rateResult;
+    const rateTier = classifyRate(rateResult);
 
     // Convert each line item
     for (const item of items) {
@@ -276,6 +300,7 @@ export class CostEstimator {
         exchangeRateRetrievedAt: retrievedAt,
         isCachedRate: isCached,
         isStaleRate: isStale,
+        exchangeRateTier: rateTier,
       };
 
       item.breakdown = item.breakdown.map((b) => ({
@@ -293,6 +318,7 @@ export class CostEstimator {
       retrievedAt,
       isCached: isCached ?? false,
       isStale: isStale ?? false,
+      tier: rateTier,
     };
 
     return this._compileResult(items, targetCurrency, conversionMeta);
@@ -311,9 +337,18 @@ export class CostEstimator {
     const totalMonthlyConverted = currency === 'USD' ? totalMonthlyUsd : totalMonthlyUsd * rate;
     const totalHourlyConverted  = currency === 'USD' ? totalHourlyUsd  : totalHourlyUsd  * rate;
 
+    const counts: Record<PricingTier, number> = { LIVE: 0, CACHED_LIVE: 0, FALLBACK_ESTIMATE: 0, UNAVAILABLE: 0 };
+    for (const i of items) counts[i.pricingTier ?? 'FALLBACK_ESTIMATE'] += 1;
+    const tier = weakestTier(items.map((i) => i.pricingTier ?? 'FALLBACK_ESTIMATE'));
+    const liveCount = counts.LIVE + counts.CACHED_LIVE;
+    const sourceNote = items.length === 0 ? 'No billable resources.'
+      : liveCount === items.length ? 'All prices are official list prices from the AWS Price List API / Azure Retail Prices API (USD).'
+      : liveCount === 0 ? 'No live provider prices were available: all figures are CloudCraft fallback estimates from static list-price tables (USD), not live prices.'
+      : `${liveCount} of ${items.length} prices are official live/cached list prices; ${counts.FALLBACK_ESTIMATE} are CloudCraft fallback estimates${counts.UNAVAILABLE ? ` and ${counts.UNAVAILABLE} are unavailable` : ''} (USD).`;
+
     const globalAssumptions = [
-      'Official list prices sourced from AWS Price List API and Microsoft Azure Retail Prices API in USD.',
-      'All prices reflect Pay-As-You-Go / on-demand list pricing without reservations or enterprise discount agreements.',
+      sourceNote,
+      'Prices are Pay-As-You-Go / on-demand list prices, without reservations, savings plans or enterprise discount agreements.',
       'Monthly estimates assume standard 730 hours/month operation unless specified otherwise.',
       'Actual AWS/Azure invoices may vary based on data transfer egress and specific usage metrics.',
     ];
@@ -337,6 +372,9 @@ export class CostEstimator {
       exchangeRateMeta,
       assumptions: globalAssumptions,
       pricingSource: this._combinedSource(items),
+      pricingTier: tier,
+      pricingTierCounts: counts,
+      exchangeRateTier: currency === 'USD' ? null : (exchangeRateMeta?.tier ?? null),
       confidence: 'estimate',
     };
   }

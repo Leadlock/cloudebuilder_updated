@@ -1,7 +1,6 @@
 import { CanvasNode, CostItem, CostOptimization } from '@/types';
 import { calculateCosts } from '@/lib/analysis';
 import { generateCostOptimizations } from '@/lib/generator';
-import { DETERMINISTIC_MOCK_RATES } from '@/lib/currency/providers/MockExchangeRateProvider';
 import { CloudCostComparisonService } from '@/lib/engines/comparison/CloudCostComparisonService';
 import type { CostComparisonResult } from './ApiCostService';
 
@@ -25,42 +24,30 @@ const INSTANCE_DOWNSIZE: Record<string, string> = {
 
 // ─── Mock Implementation ──────────────────────────────────────────────────────
 class MockCostService implements ICostService {
+  /**
+   * Offline estimate from CloudCraft's static tables. Used only when the pricing API is
+   * unreachable, so every item is a FALLBACK_ESTIMATE. No exchange rate is invented: a
+   * non-USD request returns USD figures with the conversion marked UNAVAILABLE.
+   */
   async calculateCosts(nodes: CanvasNode[], currency: string = 'USD'): Promise<CostItem[]> {
     await Promise.resolve();
-    const baseItems = calculateCosts(nodes);
     const targetCurr = (currency || 'USD').toUpperCase();
-    if (targetCurr === 'USD') {
-      return baseItems;
-    }
-
-    const rate = DETERMINISTIC_MOCK_RATES[`USD:${targetCurr}`] ?? 1.0;
-    return baseItems.map((item) => ({
+    return calculateCosts(nodes).map((item) => ({
       ...item,
-      monthlyCost: item.monthlyCost * rate,
-      currency: targetCurr,
+      currency: 'USD',
       providerCostUsd: item.monthlyCost,
-      exchangeRate: rate,
-      exchangeRateSource: 'mock-fixtures',
-      breakdown: item.breakdown.map((b) => ({
-        ...b,
-        cost: b.cost * rate,
-        originalCostUsd: b.cost,
-      })),
+      pricingTier: 'FALLBACK_ESTIMATE' as const,
+      ...(targetCurr !== 'USD' ? { exchangeRateTier: 'UNAVAILABLE' as const } : {}),
     }));
   }
 
   async compareCosts(nodes: CanvasNode[], currency: string = 'USD'): Promise<CostComparisonResult> {
     const currentProvider = nodes.find((n) => n.provider === 'aws' || n.provider === 'azure')?.provider ?? 'aws';
     const targetProvider = currentProvider === 'aws' ? 'azure' : 'aws';
-    const targetCurr = (currency || 'USD').toUpperCase();
 
     const translatedNodes = CloudCostComparisonService.translateNodes(nodes, targetProvider);
 
-    // calculateCosts (above) already produces CostItems whose monthlyCost is
-    // converted to `currency` (see its own USD/non-USD branch) — reused
-    // as-is here instead of re-deriving a "USD or converted?" value a
-    // second time, which is exactly what let the real (non-mock) path drift
-    // into displaying raw USD under a non-USD currency label.
+    // calculateCosts (above) never converts (no invented FX rate), so items are USD.
     const [currentItems, translatedItems] = await Promise.all([
       this.calculateCosts(nodes, currency),
       this.calculateCosts(translatedNodes, currency),
@@ -82,7 +69,8 @@ class MockCostService implements ICostService {
       totalHourlyUsd: sumUsd(items) / 730,
       totalMonthlyConverted: sumConverted(items),
       totalHourlyConverted: sumConverted(items) / 730,
-      currency: targetCurr,
+      // No exchange rate is available offline, so figures stay in USD.
+      currency: 'USD',
     });
 
     return {
@@ -90,7 +78,7 @@ class MockCostService implements ICostService {
       targetProvider,
       current: toSide(currentItems),
       translated: toSide(translatedItems),
-      targetCurrency: targetCurr,
+      targetCurrency: 'USD',
     };
   }
 

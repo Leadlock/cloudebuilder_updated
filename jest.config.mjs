@@ -28,8 +28,9 @@ const config = {
       },
     }],
   },
-  // Don't try to run front-end component tests in this suite
-  testPathIgnorePatterns: ['/node_modules/'],
+  // Deterministic suite (unit + integration). Live verification tests need external
+  // connectivity/credentials and run only via `npm run test:live` (jest.live.config.mjs).
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/__tests__/live/'],
   setupFiles: ['<rootDir>/__tests__/setup.ts'],
   // uuid v14 is ESM-only; transform it through ts-jest
   transformIgnorePatterns: [

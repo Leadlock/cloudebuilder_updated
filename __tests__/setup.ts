@@ -10,3 +10,22 @@ process.env['DATABASE_URL'] = 'postgresql://test:test@localhost:5432/cloudcraft_
 // lib/api/auth.ts's extractIdentity() otherwise refuses outside this opt-in —
 // this test suite is exactly that sanctioned automation consumer.
 process.env['CLOUDCRAFT_ALLOW_TEST_AUTH_HEADERS'] = '1';
+
+// ─── Deterministic suite: no external network ────────────────────────────────
+// Unit and integration tests must never depend on third-party APIs (pricing, FX,
+// cloud providers). Any real outbound request fails loudly here, so a test that
+// accidentally reaches the network is a failing test, not a flaky one. Tests
+// that need HTTP replace global.fetch with a mock of the official response.
+// Live verification tests live in __tests__/live and run via `npm run test:live`.
+{
+  const realFetch = globalThis.fetch;
+  const guarded: typeof fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const host = (() => { try { return new URL(url, 'http://localhost').hostname; } catch { return ''; } })();
+    if (process.env['CLOUDCRAFT_LIVE_TESTS'] === '1' || host === 'localhost' || host === '127.0.0.1') {
+      return realFetch(input, init);
+    }
+    throw new Error(`[deterministic test suite] external network request blocked: ${url}. Mock fetch with an official response fixture, or move the test to __tests__/live.`);
+  };
+  globalThis.fetch = guarded;
+}

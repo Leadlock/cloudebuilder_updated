@@ -1,0 +1,33 @@
+{
+  "BillingCurrency": "USD",
+  "CustomerEntityId": "Default",
+  "CustomerEntityType": "Retail",
+  "Items": [
+    {
+      "currencyCode": "USD", "tierMinimumUnits": 0.0, "retailPrice": 0.0166, "unitPrice": 0.0166,
+      "armRegionName": "eastus", "location": "US East", "effectiveStartDate": "2024-01-01T00:00:00Z",
+      "meterId": "fixture-meter-spot", "meterName": "B2s Spot", "productId": "fixture-product-linux",
+      "skuId": "fixture-sku-spot", "productName": "Virtual Machines BS Series", "skuName": "B2s Spot",
+      "serviceName": "Virtual Machines", "serviceId": "fixture-service", "serviceFamily": "Compute",
+      "unitOfMeasure": "1 Hour", "type": "Consumption", "isPrimaryMeterRegion": true, "armSkuName": "Standard_B2s"
+    },
+    {
+      "currencyCode": "USD", "tierMinimumUnits": 0.0, "retailPrice": 0.0496, "unitPrice": 0.0496,
+      "armRegionName": "eastus", "location": "US East", "effectiveStartDate": "2024-01-01T00:00:00Z",
+      "meterId": "fixture-meter-win", "meterName": "B2s", "productId": "fixture-product-win",
+      "skuId": "fixture-sku-win", "productName": "Virtual Machines BS Series Windows", "skuName": "B2s",
+      "serviceName": "Virtual Machines", "serviceId": "fixture-service", "serviceFamily": "Compute",
+      "unitOfMeasure": "1 Hour", "type": "Consumption", "isPrimaryMeterRegion": true, "armSkuName": "Standard_B2s"
+    },
+    {
+      "currencyCode": "USD", "tierMinimumUnits": 0.0, "retailPrice": 0.0416, "unitPrice": 0.0416,
+      "armRegionName": "eastus", "location": "US East", "effectiveStartDate": "2024-01-01T00:00:00Z",
+      "meterId": "fixture-meter-linux", "meterName": "B2s", "productId": "fixture-product-linux",
+      "skuId": "fixture-sku-linux", "productName": "Virtual Machines BS Series", "skuName": "B2s",
+      "serviceName": "Virtual Machines", "serviceId": "fixture-service", "serviceFamily": "Compute",
+      "unitOfMeasure": "1 Hour", "type": "Consumption", "isPrimaryMeterRegion": true, "armSkuName": "Standard_B2s"
+    }
+  ],
+  "NextPageLink": null,
+  "Count": 3
+}

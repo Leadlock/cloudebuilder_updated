@@ -108,6 +108,8 @@ interface ApiCostLineItem {
   breakdown: Array<{ label: string; monthlyUsd: number; monthlyConverted?: number; currency?: string }>;
   assumptions: string[];
   pricingSource: string;
+  pricingTier?: 'LIVE' | 'CACHED_LIVE' | 'FALLBACK_ESTIMATE' | 'UNAVAILABLE';
+  pricingIsStale?: boolean;
   confidence: string;
   providerPrice?: {
     unitPrice: number;
@@ -124,6 +126,7 @@ interface ApiCostLineItem {
     exchangeRateRetrievedAt: string;
     isCachedRate?: boolean;
     isStaleRate?: boolean;
+    exchangeRateTier?: 'LIVE' | 'CACHED_LIVE' | 'FALLBACK_ESTIMATE' | 'UNAVAILABLE';
   };
 }
 
@@ -175,6 +178,10 @@ function mapItem(item: ApiCostLineItem): CostItem {
     exchangeRateRetrievedAt: item.convertedPrice?.exchangeRateRetrievedAt,
     isCachedRate: item.convertedPrice?.isCachedRate,
     isStaleRate: item.convertedPrice?.isStaleRate,
+    // Items from the server without a tier predate tiering; never assume they are live.
+    pricingTier: item.pricingTier ?? (item.confidence === 'unsupported' ? 'UNAVAILABLE' : 'FALLBACK_ESTIMATE'),
+    pricingIsStale: item.pricingIsStale,
+    exchangeRateTier: item.convertedPrice?.exchangeRateTier,
     breakdown: item.breakdown.map((b) => ({
       label: b.label,
       cost: isConverted && b.monthlyConverted !== undefined ? b.monthlyConverted : b.monthlyUsd,
@@ -267,9 +274,8 @@ class ApiCostServiceImpl implements ICostService {
       },
     );
 
-    return (data.items ?? [])
-      .filter((i) => i.confidence !== 'unsupported')
-      .map(mapItem);
+    // Unpriced items are kept (tier UNAVAILABLE) so the UI can say so instead of hiding them.
+    return (data.items ?? []).map(mapItem);
   }
 
   async compareCosts(nodes: CanvasNode[], currency?: string): Promise<CostComparisonResult> {
