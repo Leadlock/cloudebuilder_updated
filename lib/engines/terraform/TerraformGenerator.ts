@@ -534,6 +534,13 @@ class AwsTerraformGenerator {
     if (cfg['userData']) {
       lines.push(`  user_data                   = base64encode(<<-EOF\n    ${cfg['userData']}\n  EOF\n  )`);
     }
+    // Emitted only when specified, so Terraform never asserts a metadata setting the design did not choose.
+    if (cfg['metadataHttpTokens'] === 'required' || cfg['metadataHttpTokens'] === 'optional') {
+      lines.push(`  metadata_options {`);
+      lines.push(`    http_endpoint = "enabled"`);
+      lines.push(`    http_tokens   = "${cfg['metadataHttpTokens']}"`);
+      lines.push(`  }`);
+    }
     lines.push(`  root_block_device {`);
     lines.push(`    volume_size           = ${cfg['storageGb'] ?? 30}`);
     lines.push(`    volume_type           = "${storageType}"`);

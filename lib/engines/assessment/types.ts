@@ -360,25 +360,44 @@ export interface PillarResult {
 }
 
 export type Soc1EvidenceType =
-  | 'TECHNICALLY_OBSERVED'
-  | 'CONFIGURATION_BASED_EVIDENCE'
+  | 'ARCHITECTURE_EVIDENCE'
+  | 'DISCOVERED_CLOUD_EVIDENCE'
+  | 'LIVE_VERIFIED_EVIDENCE'
   | 'USER_PROVIDED_EVIDENCE'
   | 'NOT_EVALUATED'
   | 'REQUIRES_ORGANIZATIONAL_EVIDENCE'
   | 'REQUIRES_AUDITOR_ASSESSMENT';
 
+/**
+ * SOC 1 readiness for one IT general control area. Technical evidence is separated by
+ * source. No area ever reaches a control conclusion in CloudCraft: architecture or cloud
+ * configuration alone cannot show that a control is suitably designed or operating
+ * effectively.
+ */
 export interface Soc1AreaResult {
   id: Soc1AreaId;
   name: string;
   objective: string;
+  /** Technical readiness only — never a control opinion. */
   status: 'Technical evidence observed' | 'Gaps identified' | 'Partially evaluated' | 'Not evaluated';
   evidenceTypes: Soc1EvidenceType[];
+  /** All passing technical checks (architecture + discovered + live), for backwards compatibility. */
   technicalEvidence: string[];
+  /** Passing checks that relied on configuration authored in CloudCraft. */
+  architectureEvidence: string[];
+  /** Passing checks that relied only on configuration returned by AWS/Azure (discovered or live-verified). */
+  discoveredEvidence: string[];
+  /** Evidence supplied by the organization. CloudCraft does not yet accept evidence uploads, so this is empty. */
+  userProvidedEvidence: string[];
   gaps: string[];
   relatedResourceLabels: string[];
   relatedFindingIds: string[];
   recommendedActions: string[];
   organizationalEvidenceRequired: string[];
+  auditorAssessmentRequired: string;
+  /** Always NOT_CONCLUDED: CloudCraft does not conclude on SOC 1 controls. */
+  conclusion: 'NOT_CONCLUDED';
+  conclusionReason: string;
   limitations: string;
 }
 

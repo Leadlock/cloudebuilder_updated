@@ -7,6 +7,7 @@
  * does not change when the architecture changes later.
  */
 import { getResourceDefinition } from '@/lib/resources';
+import { EVIDENCE_AVAILABILITY, EVIDENCE_CLASS_LABEL } from '../evidenceAvailability';
 import { RULES_BY_ID } from '../rules';
 import { REFERENCES } from '../references';
 import { SCORE_METHODOLOGY, coverageOf } from '../scoring';
@@ -128,7 +129,7 @@ export interface AssessmentReport {
     methodology: string[];
     definitions: { term: string; definition: string }[];
     limitations: string[];
-    notEvaluated: { id: string; control: string; resources: string; requiredData: string }[];
+    notEvaluated: { id: string; control: string; resources: string; requiredData: string; availability: string }[];
   };
 }
 
@@ -384,7 +385,9 @@ export function buildReport(snap: ReportSnapshotInput, opts: { comparison?: Comp
         { term: 'INSUFFICIENT DATA', definition: 'The check applies but required configuration values are missing. Never treated as a pass.' },
         { term: 'ACCEPTED RISK / FALSE POSITIVE', definition: 'A human review decision recorded against a finding. The finding remains technically failing and still counts against the score.' },
         { term: 'DESIGN-TIME', definition: 'Evidence comes from the architecture as designed in CloudCraft, not from the deployed environment.' },
-        { term: 'DISCOVERED CONFIGURATION', definition: 'Configuration imported from provider APIs at discovery time; point-in-time and without field-level provenance.' },
+        { term: 'DISCOVERED CONFIGURATION', definition: 'Every value the check used was returned by AWS/Azure discovery (recorded per field). Point-in-time: it describes the resource when discovery ran.' },
+        { term: 'LIVE VERIFIED', definition: 'Every value the check used was confirmed by a provider API read made for this assessment (at most 15 minutes old) and matched the assessed configuration. Not claimed unless that evidence exists.' },
+        { term: 'INSUFFICIENT DATA', definition: 'A value the check needs was not specified in the design or not returned by discovery. Never counted as passing.' },
       ],
       limitations: scope.limitations,
       notEvaluated: notEval.map((e) => ({
@@ -392,6 +395,9 @@ export function buildReport(snap: ReportSnapshotInput, opts: { comparison?: Comp
         control: RULES_BY_ID.get(e.ruleId)!.title,
         resources: e.resourceLabels.join(', ') || (e.resourceIds.length === 0 ? 'Account / subscription' : '—'),
         requiredData: e.requiredData ?? e.observation,
+        availability: e.status === 'NOT_EVALUATED'
+          ? (() => { const a = EVIDENCE_AVAILABILITY[e.ruleId]; return a ? `${a.classes.map((c) => EVIDENCE_CLASS_LABEL[c]).join(' + ')}. ${a.explanation} Evidence: ${a.evidenceSource}` : 'Not evaluated.'; })()
+          : 'Insufficient data: the value can be set in the design or imported by discovery.',
       })),
     },
   };

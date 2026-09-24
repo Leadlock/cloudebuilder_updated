@@ -25,6 +25,9 @@ export const SOC1_DISCLAIMER =
   'internal control over financial reporting, and whether controls are suitably designed and operating effectively, can only be ' +
   'determined by management and an independent CPA firm performing a SOC 1 engagement (AICPA AT-C section 320).';
 
+export const AUDITOR_ASSESSMENT_REQUIRED =
+  'An independent service auditor (CPA firm) must determine whether this control area is relevant to user entities\' ICFR and whether the related controls are suitably designed and, for a Type 2 report, operating effectively over the review period.';
+
 interface AreaDef {
   id: Soc1AreaId;
   name: string;
@@ -116,10 +119,14 @@ export function buildSoc1(
     const unknown = evals.filter((e) => e.status === 'NOT_EVALUATED' || e.status === 'INSUFFICIENT_DATA');
     const areaFindings = findings.filter((f) => f.soc1Areas.includes(area.id));
 
+    const isDiscovered = (e: Evaluation) => e.provenance === 'DISCOVERED_CONFIGURATION' || e.provenance === 'LIVE_VERIFIED';
+    const passedDesign = passed.filter((e) => !isDiscovered(e));
+    const passedDiscovered = passed.filter(isDiscovered);
+
     const evidenceTypes = new Set<Soc1EvidenceType>();
-    if (passed.length + failing.length > 0) {
-      evidenceTypes.add('CONFIGURATION_BASED_EVIDENCE');
-    }
+    if (passedDesign.length > 0 || failing.some((e) => !isDiscovered(e))) evidenceTypes.add('ARCHITECTURE_EVIDENCE');
+    if (passedDiscovered.length > 0 || failing.some(isDiscovered)) evidenceTypes.add('DISCOVERED_CLOUD_EVIDENCE');
+    if (evals.some((e) => e.provenance === 'LIVE_VERIFIED')) evidenceTypes.add('LIVE_VERIFIED_EVIDENCE');
     if (unknown.length > 0 || evals.length === 0) evidenceTypes.add('NOT_EVALUATED');
     evidenceTypes.add('REQUIRES_ORGANIZATIONAL_EVIDENCE');
     evidenceTypes.add('REQUIRES_AUDITOR_ASSESSMENT');
@@ -130,8 +137,11 @@ export function buildSoc1(
       for (const e of list) m.set(e.ruleId, [...(m.get(e.ruleId) ?? []), e]);
       return m;
     };
-    const technicalEvidence = [...byRule(passed).entries()].map(([ruleId, es]) =>
-      `${ruleId} check passed (${ruleById.get(ruleId)?.service}) for ${es.length} resource${es.length === 1 ? '' : 's'} (${es.flatMap((e) => e.resourceLabels).slice(0, 4).join(', ')}${es.length > 4 ? ', …' : ''}).`);
+    const describePassed = (list: Evaluation[], basis: string) => [...byRule(list).entries()].map(([ruleId, es]) =>
+      `${ruleId} — ${ruleById.get(ruleId)?.title}: check passed (${basis}) for ${es.length} resource${es.length === 1 ? '' : 's'} (${es.flatMap((e) => e.resourceLabels).slice(0, 4).join(', ')}${es.length > 4 ? ', …' : ''}).`);
+    const architectureEvidence = describePassed(passedDesign, 'design-time configuration');
+    const discoveredEvidence = describePassed(passedDiscovered, 'discovered cloud configuration');
+    const technicalEvidence = [...architectureEvidence, ...discoveredEvidence];
     const gaps = [...byRule(failing).entries()].map(([ruleId, es]) =>
       `${ruleId} — ${ruleById.get(ruleId)?.title}: ${es.length} resource${es.length === 1 ? '' : 's'} (${es.flatMap((e) => e.resourceLabels).slice(0, 4).join(', ')}${es.length > 4 ? ', …' : ''}).`);
     for (const [ruleId] of byRule(unknown)) {
@@ -153,11 +163,19 @@ export function buildSoc1(
       status,
       evidenceTypes: Array.from(evidenceTypes),
       technicalEvidence,
+      architectureEvidence,
+      discoveredEvidence,
+      userProvidedEvidence: [],
       gaps,
       relatedResourceLabels: Array.from(new Set(evals.flatMap((e) => e.resourceLabels))).slice(0, 30),
       relatedFindingIds: areaFindings.map((f) => f.findingId),
       recommendedActions,
       organizationalEvidenceRequired: area.organizationalEvidence,
+      auditorAssessmentRequired: AUDITOR_ASSESSMENT_REQUIRED,
+      conclusion: 'NOT_CONCLUDED',
+      conclusionReason: architectureEvidence.length > 0 && discoveredEvidence.length === 0
+        ? 'Technical checks passed on the designed architecture only. A design does not show that the control exists in production, nor that it is suitably designed and operating effectively; that requires organizational evidence and an independent auditor.'
+        : 'Technical configuration evidence cannot by itself show that a control is suitably designed and operating effectively over a period. That requires organizational evidence and an independent auditor.',
       limitations: area.limitations,
     };
   });

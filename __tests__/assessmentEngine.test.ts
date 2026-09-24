@@ -11,6 +11,7 @@ import { ALL_RULES, RULES_BY_ID, resolveRuleId } from '@/lib/engines/assessment/
 import { REFERENCES } from '@/lib/engines/assessment/references';
 import { scoreOf } from '@/lib/engines/assessment/scoring';
 import { SOC1_AREAS, SOC1_DISCLAIMER } from '@/lib/engines/assessment/soc1';
+import { EVIDENCE_AVAILABILITY } from '@/lib/engines/assessment/evidenceAvailability';
 import { applyAutoFix, applySafeFixes, planAutoFix, safeFixCandidates, generateCanonicalTerraform } from '@/lib/engines/assessment/autofix';
 import type { Evaluation, RuleDefinition } from '@/lib/engines/assessment/types';
 import { buildReport } from '@/lib/engines/assessment/report/buildReport';
@@ -329,7 +330,7 @@ describe('Scoring and coverage', () => {
 
 // ─── SOC 1 ───────────────────────────────────────────────────────────────────
 
-describe('SOC 1-oriented technical control mapping', () => {
+describe('SOC 1 readiness analysis', () => {
   test('disclaimer states it is not an attestation; no certification/compliance claims anywhere', () => {
     expect(SOC1_DISCLAIMER).toMatch(/NOT a SOC 1® examination/);
     expect(SOC1_DISCLAIMER).toMatch(/not an independent service auditor/);
@@ -345,6 +346,36 @@ describe('SOC 1-oriented technical control mapping', () => {
       expect(area.evidenceTypes).toEqual(expect.arrayContaining(['REQUIRES_ORGANIZATIONAL_EVIDENCE', 'REQUIRES_AUDITOR_ASSESSMENT']));
       expect(area.organizationalEvidenceRequired.length).toBeGreaterThan(0);
     }
+  });
+
+  test('architecture configuration alone never concludes on a control (even when every technical check passes)', () => {
+    // A hardened RDS design: every RDS check that maps to SOC 1 passes at design time.
+    const db = node('aws_rds', { publiclyAccessible: false, encrypted: true, kmsKeyId: 'arn:aws:kms:us-east-1:111122223333:key/k', iamDatabaseAuthenticationEnabled: true, enableCloudwatchLogsExports: ['postgresql'], multiAz: true, backupRetentionPeriod: 14, deletionProtection: true, monitoringInterval: 60, autoMinorVersionUpgrade: true });
+    const a = runAssessment({ nodes: [db], edges: [] });
+    const dp = a.soc1.find((s) => s.id === 'SOC1-DP-01')!;
+    expect(dp.architectureEvidence.length).toBeGreaterThan(0);
+    expect(dp.discoveredEvidence).toEqual([]);
+    expect(dp.userProvidedEvidence).toEqual([]);
+    for (const area of a.soc1) {
+      expect(area.conclusion).toBe('NOT_CONCLUDED');
+      expect(area.auditorAssessmentRequired).toMatch(/independent service auditor/);
+      expect(area.status).not.toMatch(/pass|compliant|effective|satisf/i);
+      expect(area.evidenceTypes).toEqual(expect.arrayContaining(['REQUIRES_ORGANIZATIONAL_EVIDENCE', 'REQUIRES_AUDITOR_ASSESSMENT']));
+    }
+    expect(dp.conclusionReason).toMatch(/designed architecture only/);
+  });
+
+  test('discovered configuration is reported separately from architecture evidence', () => {
+    const values = { publiclyAccessible: false, encrypted: true, kmsKeyId: 'k', multiAz: true, backupRetentionPeriod: 7, deletionProtection: true };
+    const db: CanvasNode = { id: 'db-disc', type: 'cloudNode', resourceType: 'aws_rds', provider: 'aws', label: 'discovered-db', position: { x: 0, y: 0 }, importState: 'imported',
+      config: { ...values, _discovery: { source: 'aws-api', discoveredAt: '2026-09-24T00:00:00Z', values } } } as CanvasNode;
+    const a = runAssessment({ nodes: [db], edges: [] });
+    const dp = a.soc1.find((s) => s.id === 'SOC1-DP-01')!;
+    expect(dp.discoveredEvidence.length).toBeGreaterThan(0);
+    expect(dp.architectureEvidence).toEqual([]);
+    expect(dp.evidenceTypes).toContain('DISCOVERED_CLOUD_EVIDENCE');
+    expect(dp.evidenceTypes).not.toContain('LIVE_VERIFIED_EVIDENCE');
+    expect(dp.conclusion).toBe('NOT_CONCLUDED');
   });
 
   test('gaps are derived from technical failures; unknown areas are "Not evaluated"', () => {
@@ -372,6 +403,7 @@ const FAILING: Record<string, [string, Record<string, unknown>]> = {
   'AWS-KMS-001': ['aws_kms', { enableKeyRotation: false }], 'AWS-ELC-001': ['aws_elasticache', { transitEncryption: false }], 'AWS-ELC-002': ['aws_elasticache', { atRestEncryption: false }],
   'AWS-ELC-003': ['aws_elasticache', { automaticFailoverEnabled: false }], 'AWS-ELC-004': ['aws_elasticache', { snapshotRetentionLimit: 0 }],
   'AWS-DDB-002': ['aws_dynamodb', { pointInTimeRecovery: false }], 'AWS-DDB-003': ['aws_dynamodb', { deletionProtection: false }], 'AWS-SQS-001': ['aws_sqs', { encryption: false }],
+  'AWS-EC2-003': ['aws_ec2', { metadataHttpTokens: 'optional' }],
   'AWS-EC2-010': ['aws_ec2', { detailedMonitoring: false }], 'AWS-LAMBDA-001': ['aws_lambda', { tracingMode: 'PassThrough' }],
   'AWS-COST-001': ['aws_ebs', { volumeType: 'gp2' }], 'AWS-SUS-001': ['aws_lambda', { architecture: 'x86_64' }],
   'AZ-STG-001': ['azure_storage', { httpsOnly: false }], 'AZ-STG-002': ['azure_storage', { allowBlobPublicAccess: true }], 'AZ-STG-003': ['azure_storage', { minimumTlsVersion: 'TLS1_0' }],
@@ -542,7 +574,7 @@ describe('Assessment snapshots and reports', () => {
 
     const html = renderReportHtml(report);
     for (const h of ['Document Control', 'Executive Summary', 'Architecture Overview', 'Assessment Scope', 'Well-Architected Review', 'Security Assessment',
-      'SOC 1-Oriented Technical Control Analysis', 'Best-Practice Recommendations', 'Remediation Plan', 'Auto-Fix Summary', 'Resource Security Inventory',
+      'SOC 1 Readiness Analysis', 'Best-Practice Recommendations', 'Remediation Plan', 'Auto-Fix Summary', 'Resource Security Inventory',
       'Framework / Control Mapping', 'Appendix A', 'Appendix B', 'Appendix C', 'Appendix D', 'Appendix E']) {
       expect(html).toContain(h);
     }
@@ -777,5 +809,27 @@ describe('Evidence provenance', () => {
     const a = runAssessment({ nodes: [rg, st], edges: [], evaluatedAt: T0 });
     expect(evalOf(a, 'AZ-STG-001').provenance).toBe('DISCOVERED_CONFIGURATION');
     expect(evalOf(a, 'AZ-STG-002').status).toBe('INSUFFICIENT_DATA'); // allowBlobPublicAccess not discovered
+  });
+});
+
+
+// ─── NOT_EVALUATED disposition ───────────────────────────────────────────────
+
+describe('Controls that cannot be evaluated are classified and explained', () => {
+  test('every rule that can return NOT_EVALUATED has an evidence-availability classification', () => {
+    const types = Array.from(new Set(ALL_RULES.flatMap((r) => r.resourceTypes ?? [])));
+    const everything = [node('azure_resource_group'), ...types.filter((t) => t !== 'azure_resource_group').map((t) => node(t))];
+    // Remove security groups so AWS-SG-003's not-modelled branch is exercised too.
+    const a = runAssessment({ nodes: everything.filter((n) => n.resourceType !== 'aws_sg'), edges: [] });
+    const notEvaluatedRules = new Set(a.evaluations.filter((e) => e.status === 'NOT_EVALUATED').map((e) => e.ruleId));
+    for (const id of notEvaluatedRules) expect([id, EVIDENCE_AVAILABILITY[id]?.classes.length]).toEqual([id, expect.any(Number)]);
+    for (const id of Object.keys(EVIDENCE_AVAILABILITY)) expect(RULES_BY_ID.has(id)).toBe(true);
+  });
+
+  test('AWS-EC2-003 (IMDSv2) is now evaluated from design and discovery, never assumed', () => {
+    expect(statusOf(runAssessment({ nodes: [node('aws_ec2', { metadataHttpTokens: 'required' })], edges: [] }).evaluations, 'AWS-EC2-003')).toBe('PASS');
+    expect(statusOf(runAssessment({ nodes: [node('aws_ec2', { metadataHttpTokens: 'optional' })], edges: [] }).evaluations, 'AWS-EC2-003')).toBe('FAIL');
+    expect(statusOf(runAssessment({ nodes: [node('aws_ec2', { metadataHttpTokens: undefined })], edges: [] }).evaluations, 'AWS-EC2-003')).toBe('INSUFFICIENT_DATA');
+    expect(EVIDENCE_AVAILABILITY['AWS-EC2-003']).toBeUndefined();
   });
 });

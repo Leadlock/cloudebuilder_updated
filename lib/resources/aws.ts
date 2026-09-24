@@ -80,6 +80,7 @@ export const awsResources: ResourceDefinition[] = [
       deleteOnTermination: true,
       encrypted: true,
       detailedMonitoring: false,
+      metadataHttpTokens: 'required',
       tenancy: 'default',
       associatePublicIpAddress: false,
       ebsOptimized: true,
@@ -159,6 +160,14 @@ export const awsResources: ResourceDefinition[] = [
         key: 'iamInstanceProfile', label: 'IAM Instance Profile', type: 'text', defaultValue: '', section: 'Identity & Access', advanced: true,
         placeholder: 'blank = no instance profile',
         description: 'Name of an IAM instance profile granting the instance permissions to call AWS APIs.',
+      },
+      {
+        key: 'metadataHttpTokens', label: 'Instance Metadata (IMDS) Tokens', type: 'select', defaultValue: 'required', section: 'Security',
+        options: [
+          { label: 'Required (IMDSv2 only)', value: 'required' },
+          { label: 'Optional (IMDSv1 and IMDSv2)', value: 'optional' },
+        ],
+        description: 'metadata_options.http_tokens. "Required" enforces IMDSv2 session tokens (Security Hub EC2.8).',
       },
       { key: 'detailedMonitoring', label: 'Detailed CloudWatch Monitoring (1-min)', type: 'boolean', defaultValue: false, section: 'Monitoring' },
       { key: 'terminationProtection', label: 'Termination Protection', type: 'boolean', defaultValue: false, section: 'Advanced', advanced: true },

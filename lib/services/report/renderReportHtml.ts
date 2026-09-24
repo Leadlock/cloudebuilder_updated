@@ -75,7 +75,7 @@ export function renderReportHtml(r: AssessmentReport): string {
   ${ex.security.lowCoverage ? '<div class="callout warn"><b>Low assessment coverage.</b> Less than 60% of applicable security checks could be evaluated; the score reflects only evaluated checks.</div>' : ''}
   <h3>Open findings by severity</h3>${counts(ex.counts)}
   <h3>Well-Architected summary</h3>${ex.wellArchitected.map((p) => `<p><b>${esc(p.framework)}</b></p>${table(['Pillar', 'Status', 'Score', 'Coverage'], p.pillars.map((x) => [esc(x.label), `<span class="${statusClass(x.status)}">${esc(x.status)}</span>`, score(x.score), x.coverage === null ? '—' : `${x.coverage}%`]))}`).join('')}
-  <h3>SOC 1-oriented readiness summary</h3><p>${ex.soc1.observed} area(s) with technical evidence observed, ${ex.soc1.gaps} with gaps, ${ex.soc1.partial} partially evaluated, ${ex.soc1.notEvaluated} not evaluated. All areas require organizational evidence and independent auditor assessment.</p>
+  <h3>SOC 1 readiness summary</h3><p>${ex.soc1.observed} area(s) with technical evidence observed, ${ex.soc1.gaps} with gaps, ${ex.soc1.partial} partially evaluated, ${ex.soc1.notEvaluated} not evaluated. All areas require organizational evidence and independent auditor assessment.</p>
   <h3>Major strengths</h3>${list(ex.strengths, 'No high-impact security checks passed that could be highlighted.')}
   <h3>Major risks</h3>${list(ex.majorRisks, 'No critical or high severity failures in the evaluated checks.')}
   <h3>Immediate priorities</h3>${list(ex.immediatePriorities, 'No immediate remediation items.')}</section>`);
@@ -95,13 +95,18 @@ export function renderReportHtml(r: AssessmentReport): string {
 
   sections.push(`<section><h2>6. Security Assessment</h2>${counts(r.security.counts)}${r.security.findings.length ? r.security.findings.map(finding).join('') : '<p>No security findings in the evaluated checks.</p>'}</section>`);
 
-  sections.push(`<section><h2>7. SOC 1-Oriented Technical Control Analysis</h2><div class="callout bad"><b>Not a SOC 1 attestation.</b> ${esc(r.soc1.disclaimer)}</div>
+  sections.push(`<section><h2>7. SOC 1 Readiness Analysis</h2><div class="callout bad"><b>Not a SOC 1 attestation.</b> ${esc(r.soc1.disclaimer)}</div>
   ${table(['Control area', 'Status', 'Evidence types'], r.soc1.areas.map((a) => [`${esc(a.id)} ${esc(a.name)}`, `<span class="${statusClass(a.status)}">${esc(a.status)}</span>`, esc(a.evidenceTypes.map(human).join(', '))]))}
   ${r.soc1.areas.map((a) => `<h4 class="${statusClass(a.status)}">${esc(a.id)} ${esc(a.name)} — ${esc(a.status)}</h4><p class="muted">Objective: ${esc(a.objective)}</p>
-    ${a.technicalEvidence.length ? `<p><b>Technical evidence (configuration-based)</b></p>${list(a.technicalEvidence)}` : ''}
-    ${a.gaps.length ? `<p><b>Gaps / not evaluated</b></p>${list(a.gaps)}` : ''}
+    <p><b>Architecture evidence (design-time configuration)</b></p>${a.architectureEvidence.length ? list(a.architectureEvidence) : '<p class="muted">None.</p>'}
+    <p><b>Discovered cloud evidence</b></p>${a.discoveredEvidence.length ? list(a.discoveredEvidence) : '<p class="muted">None — no discovered configuration supported this area.</p>'}
+    <p><b>User-provided evidence</b></p>${a.userProvidedEvidence.length ? list(a.userProvidedEvidence) : '<p class="muted">None recorded. CloudCraft does not collect organizational evidence.</p>'}
+    ${a.gaps.length ? `<p><b>Technical gaps / not evaluated</b></p>${list(a.gaps)}` : ''}
     ${a.recommendedActions.length ? `<p><b>Recommended actions</b></p>${list(a.recommendedActions)}` : ''}
-    <p><b>Requires organizational evidence</b></p>${list(a.organizationalEvidenceRequired)}<p class="muted">Evidence limitations: ${esc(a.limitations)}</p>`).join('')}
+    <p><b>Organizational evidence required</b></p>${list(a.organizationalEvidenceRequired)}
+    <p><b>Auditor assessment required:</b> ${esc(a.auditorAssessmentRequired)}</p>
+    <p><b>Conclusion: not concluded.</b> ${esc(a.conclusionReason)}</p>
+    <p class="muted">Evidence limitations: ${esc(a.limitations)}</p>`).join('')}
   <h3>Organizational controls CloudCraft cannot evaluate</h3>${list(r.soc1.organizationalControls)}</section>`);
 
   sections.push(`<section><h2>8. Best-Practice Recommendations</h2><h3>Required remediation</h3>${recTable(r.bestPractices.required, 'None.')}<h3>Recommended improvements</h3>${recTable(r.bestPractices.recommended, 'None.')}<h3>Optional optimizations</h3>${recTable(r.bestPractices.optional, 'None.')}</section>`);
@@ -126,7 +131,7 @@ export function renderReportHtml(r: AssessmentReport): string {
   sections.push(`<section><h2>Appendix A — Rule Reference</h2>${table(['Rule ID', 'Provider', 'Service', 'Check', 'Severity', 'Control refs'], r.appendix.rules.map((x) => [esc(x.id), esc(x.provider), esc(x.service), esc(x.title), sevBadge(x.severity), esc(x.references)]))}</section>`);
   sections.push(`<section><h2>Appendix B — Official References</h2>${table(['Framework', 'Identifier', 'Title', 'Verification'], r.appendix.references.map((x) => [esc(x.framework), esc(x.identifier ?? '—'), x.url ? `<a href="${esc(x.url)}">${esc(x.title)}</a>` : esc(x.title), esc(human(x.verification))]))}</section>`);
   sections.push(`<section><h2>Appendix C — Methodology &amp; Definitions</h2>${list(r.appendix.methodology)}${table(['Term', 'Definition'], r.appendix.definitions.map((d) => [esc(d.term), esc(d.definition)]))}</section>`);
-  sections.push(`<section><h2>Appendix D — Controls Not Evaluated</h2>${table(['ID', 'Control', 'Resources', 'Information required'], r.appendix.notEvaluated.map((x) => [`<code>${esc(x.id)}</code>`, esc(x.control), esc(x.resources), esc(x.requiredData)]), 'All applicable checks were evaluated.')}</section>`);
+  sections.push(`<section><h2>Appendix D — Controls Not Evaluated</h2>${table(['ID', 'Control', 'Resources', 'Why not evaluated / evidence needed'], r.appendix.notEvaluated.map((x) => [`<code>${esc(x.id)}</code>`, esc(x.control), esc(x.resources), `${esc(x.availability)}<br>${esc(x.requiredData)}`]), 'All applicable checks were evaluated.')}</section>`);
   sections.push(`<section><h2>Appendix E — Limitations</h2>${list(r.appendix.limitations)}</section>`);
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

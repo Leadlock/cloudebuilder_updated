@@ -973,6 +973,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             architecture: instance.Architecture,
             platform: instance.Platform,
             keyName: instance.KeyName,
+            metadataHttpTokens: instance.MetadataOptions?.HttpTokens,
             securityGroupIds: (instance.SecurityGroups ?? []).map((sg) => sg.GroupId).filter(Boolean),
             blockDeviceMappings: (instance.BlockDeviceMappings ?? []).map((bdm) => ({
               deviceName: bdm.DeviceName,
