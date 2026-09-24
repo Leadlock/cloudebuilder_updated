@@ -56,3 +56,4 @@ tmp/
 temp/
 qa_screenshots/
 qa_recordings/
+.scratch/

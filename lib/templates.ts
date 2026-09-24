@@ -1,4 +1,5 @@
 import { ArchitectureTemplate, TemplateGenerateOptions, CanvasNode, CanvasEdge, CloudProvider, RelationshipType, NetworkScope } from '@/types';
+import { getResourceDefinition } from '@/lib/resources';
 import { allTemplates as catalogTemplates } from '@/lib/templates/catalogData';
 import { allReferenceArchitectures } from '@/lib/templates/referenceArchitectures';
 
@@ -31,7 +32,10 @@ function n(
     groupId,
     width,
     height,
-    config: { name: label.toLowerCase().replace(/\s+/g, '-'), ...config },
+    // Start from the resource definition defaults so the stored (canonical) config
+    // is explicit and identical to what the Properties panel shows, Terraform
+    // renders and the assessment engine evaluates.
+    config: { ...(getResourceDefinition(resourceType)?.defaultConfig ?? {}), name: label.toLowerCase().replace(/\s+/g, '-'), ...config },
   };
 }
 

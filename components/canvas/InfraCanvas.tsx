@@ -1898,6 +1898,8 @@ export default function InfraCanvas() {
             projectId={activeProject.id}
             architectureId={activeProject.id}
             resources={activeProject.nodes}
+            edges={activeProject.edges}
+            environment={state.activeEnvironment}
             onClose={() => setShowCompliance(false)}
           />
         )}

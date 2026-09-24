@@ -1235,9 +1235,10 @@ export class AzureDiscoveryAdapter implements InfrastructureDiscoveryProvider {
           sku: vmss.sku?.name ?? 'Standard_B2s',
           capacity: vmss.sku?.capacity ?? 2,
           osType: osDisk?.osType ?? 'Linux',
-          // Azure Disk Encryption status isn't reliably derivable from this response
-          // without a separate per-VM extension lookup — kept at the schema default.
-          osDiskEncryption: true,
+          // CloudCraft's osDiskEncryption models "encryption at host", which the VMSS
+          // profile reports directly. Left undefined (→ INSUFFICIENT_DATA) when absent,
+          // rather than assuming a secure default.
+          osDiskEncryption: profile?.securityProfile?.encryptionAtHost ?? undefined,
           adminUsername: profile?.osProfile?.adminUsername ?? 'azureuser',
           // Autoscale is a separate Microsoft.Insights/autoscaleSettings resource,
           // not part of the VMSS resource itself — not looked up here.

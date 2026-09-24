@@ -883,7 +883,11 @@ class AwsTerraformGenerator {
       `  delay_seconds              = ${cfg['delaySeconds'] ?? 0}`,
       `  receive_wait_time_seconds  = ${cfg['receiveWaitTimeSeconds'] ?? 0}`,
     );
-    if (cfg['encryption'] !== false) {
+    if (cfg['encryption'] === false) {
+      // Explicit: AWS enables SSE-SQS by default for new queues, so omitting the
+      // attribute would not produce the unencrypted queue the design describes.
+      lines.push(`  sqs_managed_sse_enabled    = false`);
+    } else {
       if (cfg['kmsMasterKeyId']) {
         lines.push(`  kms_master_key_id          = "${cfg['kmsMasterKeyId']}"`);
       } else {
@@ -2513,6 +2517,14 @@ data "azurerm_network_security_group" "${name}" {
 }`);
     }
 
+    if (cfg['threatDetectionEnabled'] === true) {
+      parts.push(`resource "azurerm_mssql_server_security_alert_policy" "${name}_threat_detection" {
+  resource_group_name = ${rgName}
+  server_name         = azurerm_mssql_server.${name}_server.name
+  state               = "Enabled"
+}`);
+    }
+
     if (cfg['auditingEnabled'] === true) {
       parts.push(`# NOTE: extended auditing policy requires a storage account or Log Analytics
 # workspace destination. Connect one on the canvas to generate
@@ -2661,6 +2673,7 @@ data "azurerm_network_security_group" "${name}" {
     lines.push(`  }`, ``);
     lines.push(`  identity {`, `    type = "SystemAssigned"`, `  }`);
     lines.push(``, `  network_profile {`, `    network_plugin = "${cfg['networkPlugin'] ?? 'azure'}"`, `  }`);
+    lines.push(``, `  role_based_access_control_enabled = ${cfg['rbacEnabled'] !== false}`);
     if (cfg['rbacEnabled'] !== false) {
       lines.push(``, `  azure_active_directory_role_based_access_control {`, `    azure_rbac_enabled = true`, `  }`);
     }
@@ -3040,6 +3053,7 @@ ${tagLines.join('\n')}
       `  admin_username      = "${cfg['adminUsername'] ?? 'azureuser'}"`,
       `  overprovision       = ${cfg['overprovision'] !== false}`,
       `  upgrade_mode        = "${cfg['upgradeMode'] ?? 'Manual'}"`,
+      `  encryption_at_host_enabled = ${cfg['osDiskEncryption'] === true}`,
     ];
     if (!isWindows) {
       lines.push(`  admin_ssh_key {`, `    username   = "${cfg['adminUsername'] ?? 'azureuser'}"`, `    public_key = var.admin_ssh_public_key`, `  }`);
@@ -3054,7 +3068,9 @@ ${tagLines.join('\n')}
       `    version   = "latest"`,
       `  }`,
       `  os_disk {`,
-      `    storage_account_type = "${cfg['osDiskEncryption'] !== false ? 'Premium_LRS' : 'Standard_LRS'}"`,
+      // osDiskEncryption models "encryption at host" (temp disk + cache encryption);
+      // it previously (incorrectly) switched the disk SKU between Premium and Standard.
+      `    storage_account_type = "Premium_LRS"`,
       `    caching              = "ReadWrite"`,
       `  }`,
       `  network_interface {`,

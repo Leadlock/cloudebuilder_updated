@@ -7,10 +7,11 @@ import {
   isNodeCompatibleWithProviderMode
 } from '@/types';
 import { mockProjects } from '@/lib/mockData';
-import { runSecurityScan, calculateSecurityScore, calculateCosts } from '@/lib/analysis';
+import { calculateCosts } from '@/lib/analysis';
+import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
 import { scoreArchitecture } from '@/lib/generator';
 import { v4 as uuidv4 } from 'uuid';
-import { applyRuleRemediation } from '@/lib/engines/security/remediation';
+import { applyAutoFix } from '@/lib/engines/assessment/autofix';
 import { adaptiveScaleEngine } from '@/lib/engines/capacity/AdaptiveScaleEngine';
 import { apiArchitectureService } from '@/lib/services/ApiArchitectureService';
 import type { IArchitectureService } from '@/lib/services/ArchitectureService';
@@ -95,8 +96,10 @@ type Action =
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function computeProject(p: Project, nodes: CanvasNode[], edges: CanvasEdge[]): Project {
-  const issues = runSecurityScan(nodes);
-  const securityScore = calculateSecurityScore(issues);
+  // Coverage-aware security score from the unified assessment engine. It is
+  // null when no security check could be evaluated — surfaced as "not scored"
+  // (securityScored=false) rather than a default 100.
+  const security = runAssessment({ nodes, edges }).securityScore;
   const costs = calculateCosts(nodes);
   const estimatedMonthlyCost = costs.reduce((acc, c) => acc + c.monthlyCost, 0);
   const scores = scoreArchitecture(nodes, edges);
@@ -105,7 +108,9 @@ function computeProject(p: Project, nodes: CanvasNode[], edges: CanvasEdge[]): P
     nodes,
     edges,
     resourceCount: nodes.length,
-    securityScore: Math.min(securityScore, scores.security),
+    securityScore: security.score ?? 0,
+    securityScored: security.score !== null,
+    securityCoveragePct: security.coverage.coveragePct,
     architectureScore: scores.overall,
     estimatedMonthlyCost,
     updatedAt: new Date().toISOString(),
@@ -774,10 +779,15 @@ function reducer(state: AppState, action: Action): AppState {
       if (!state.activeProjectId) return state;
       const projects = state.projects.map((p) => {
         if (p.id !== state.activeProjectId) return p;
-        const nodes = p.nodes.map((n) => {
-          if (n.id !== action.nodeId) return n;
-          return { ...n, config: applyRuleRemediation(n.config, action.ruleId) };
-        });
+        // Legacy entry point: resolve the finding and run it through the verified
+        // Auto-Fix pipeline. Only SAFE_AUTOFIX fixes are applied here (no
+        // confirmation channel); anything else leaves the graph unchanged.
+        const finding = runAssessment({ nodes: p.nodes, edges: p.edges }).findings
+          .find((f) => f.resourceIds[0] === action.nodeId && (f.ruleId === action.ruleId || f.findingId === action.ruleId));
+        if (!finding) return p;
+        const result = applyAutoFix(p.nodes, p.edges, finding.findingId);
+        if (result.status !== 'RESOLVED') return p;
+        const nodes = result.nodes;
         const updated = computeProject(p, nodes, p.edges);
         const envs: Record<Environment, EnvironmentState> = {
           ...p.environments,

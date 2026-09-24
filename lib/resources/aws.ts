@@ -1,5 +1,4 @@
 import { ResourceDefinition } from '@/types';
-import { SECURITY_SEVERITY } from '@/lib/domain/securitySeverity';
 
 export const awsResources: ResourceDefinition[] = [
   {
@@ -23,15 +22,6 @@ export const awsResources: ResourceDefinition[] = [
       { key: 'cidrBlock', label: 'CIDR Block', type: 'cidr', defaultValue: '10.0.0.0/16', required: true },
       { key: 'enableDnsSupport', label: 'Enable DNS Support', type: 'boolean', defaultValue: true },
       { key: 'enableDnsHostnames', label: 'Enable DNS Hostnames', type: 'boolean', defaultValue: true },
-    ],
-    securityRules: [
-      {
-        id: 'vpc-dns',
-        severity: 'low',
-        check: (config) => config.enableDnsSupport ? null : 'DNS support disabled',
-        message: 'DNS support is disabled',
-        recommendation: 'Enable DNS support for service discovery',
-      },
     ],
   },
   {
@@ -64,15 +54,6 @@ export const awsResources: ResourceDefinition[] = [
         ],
       },
       { key: 'mapPublicIpOnLaunch', label: 'Auto-assign Public IP', type: 'boolean', defaultValue: false },
-    ],
-    securityRules: [
-      {
-        id: 'subnet-public-ip',
-        severity: 'medium',
-        check: (config) => config.mapPublicIpOnLaunch ? 'Subnet auto-assigns public IPs' : null,
-        message: 'Subnet automatically assigns public IP addresses',
-        recommendation: 'Disable auto-assign public IP unless required for public subnets',
-      },
     ],
   },
   {
@@ -196,23 +177,6 @@ export const awsResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'ec2-key-pair',
-        severity: 'high',
-        check: (config) => !config.keyName ? 'EC2 instance has no key pair assigned' : null,
-        message: 'EC2 instance has no SSH key pair',
-        recommendation: 'Assign a key pair to enable secure SSH access',
-      },
-      {
-        id: 'ec2-public-ip',
-        severity: 'medium',
-        check: (config) => config.associatePublicIpAddress === true ? 'EC2 instance auto-assigns a public IP' : null,
-        message: 'EC2 instance is configured to receive a public IP address on launch',
-        recommendation: 'Disable public IP auto-assignment for instances that do not need direct internet exposure; use a load balancer or bastion instead',
-        fixAction: (config) => ({ ...config, associatePublicIpAddress: false }),
-      },
-    ],
   },
   {
     type: 'aws_s3',
@@ -306,48 +270,6 @@ export const awsResources: ResourceDefinition[] = [
         description: 'Used only to estimate monthly cost — has no effect on the deployed bucket.',
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
-    ],
-    securityRules: [
-      {
-        id: 's3-encryption',
-        severity: SECURITY_SEVERITY.AWS_S3_NOT_ENCRYPTED,
-        check: (config) => !config.encryption ? 'S3 bucket encryption not enabled' : null,
-        message: 'S3 bucket does not have server-side encryption enabled',
-        recommendation: 'Enable SSE-S3 or SSE-KMS encryption for data at rest',
-        fixAction: (config) => ({ ...config, encryption: true }),
-      },
-      {
-        id: 's3-public',
-        severity: SECURITY_SEVERITY.AWS_S3_PUBLIC_ACCESS,
-        check: (config) => config.publicAccess ? 'S3 bucket is publicly accessible' : null,
-        message: 'S3 bucket has public access enabled',
-        recommendation: 'Block all public access unless absolutely necessary',
-        fixAction: (config) => ({ ...config, publicAccess: false }),
-      },
-      {
-        id: 's3-block-public-access',
-        severity: 'high',
-        check: (config) => (!config.blockPublicAcls || !config.blockPublicPolicy) ? 'S3 Block Public Access is not fully enabled' : null,
-        message: 'S3 bucket does not have Block Public Access fully enabled at the account/bucket level',
-        recommendation: 'Enable Block Public ACLs and Block Public Policy to prevent accidental exposure',
-        fixAction: (config) => ({ ...config, blockPublicAcls: true, blockPublicPolicy: true }),
-      },
-      {
-        id: 's3-versioning',
-        severity: 'low',
-        check: (config) => !config.versioning ? 'S3 bucket versioning disabled' : null,
-        message: 'S3 bucket does not have versioning enabled',
-        recommendation: 'Enable versioning to protect against accidental deletion/overwrite',
-        fixAction: (config) => ({ ...config, versioning: true }),
-      },
-      {
-        id: 's3-logging',
-        severity: 'low',
-        check: (config) => !config.loggingEnabled ? 'S3 access logging disabled' : null,
-        message: 'S3 bucket does not have server access logging enabled',
-        recommendation: 'Enable access logging for audit and incident-response visibility',
-        fixAction: (config) => ({ ...config, loggingEnabled: true }),
-      },
     ],
   },
   {
@@ -516,48 +438,6 @@ export const awsResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'rds-encryption',
-        severity: SECURITY_SEVERITY.AWS_RDS_NOT_ENCRYPTED,
-        check: (config) => !config.encrypted ? 'RDS instance encryption not enabled' : null,
-        message: 'RDS instance storage is not encrypted',
-        recommendation: 'Enable storage encryption for sensitive data protection',
-        fixAction: (config) => ({ ...config, encrypted: true }),
-      },
-      {
-        id: 'rds-multi-az',
-        severity: SECURITY_SEVERITY.AWS_RDS_NOT_MULTI_AZ,
-        check: (config) => !config.multiAz ? 'RDS not configured for high availability' : null,
-        message: 'RDS instance is not deployed in Multi-AZ',
-        recommendation: 'Enable Multi-AZ for production workloads to ensure high availability',
-        fixAction: (config) => ({ ...config, multiAz: true }),
-      },
-      {
-        id: 'rds-public-access',
-        severity: SECURITY_SEVERITY.AWS_RDS_PUBLICLY_ACCESSIBLE,
-        check: (config) => config.publiclyAccessible ? 'RDS instance is publicly accessible' : null,
-        message: 'RDS instance is publicly accessible from the internet',
-        recommendation: 'Disable public accessibility; use a private subnet and bastion/VPN for admin access',
-        fixAction: (config) => ({ ...config, publiclyAccessible: false }),
-      },
-      {
-        id: 'rds-no-deletion-protection',
-        severity: 'medium',
-        check: (config) => !config.deletionProtection ? 'RDS deletion protection disabled' : null,
-        message: 'RDS instance can be accidentally deleted',
-        recommendation: 'Enable deletion protection for production databases',
-        fixAction: (config) => ({ ...config, deletionProtection: true }),
-      },
-      {
-        id: 'rds-backup-retention',
-        severity: 'low',
-        check: (config) => (typeof config.backupRetentionPeriod === 'number' && config.backupRetentionPeriod < 7) ? 'RDS backup retention below 7 days' : null,
-        message: 'RDS automated backup retention period is short',
-        recommendation: 'Set backup retention to at least 7 days for production workloads',
-        fixAction: (config) => ({ ...config, backupRetentionPeriod: 7 }),
-      },
-    ],
   },
   {
     type: 'aws_internet',
@@ -574,7 +454,6 @@ export const awsResources: ResourceDefinition[] = [
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'Internet', required: true },
     ],
-    securityRules: [],
   },
   {
     type: 'aws_cloudfront',
@@ -660,23 +539,6 @@ export const awsResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'cloudfront-no-waf',
-        severity: 'low',
-        check: (config) => !config.webAclId ? 'CloudFront distribution has no WAF Web ACL associated' : null,
-        message: 'CloudFront distribution is not protected by an AWS WAF Web ACL',
-        recommendation: 'Associate a WAF Web ACL for protection against common web exploits',
-      },
-      {
-        id: 'cloudfront-http-allowed',
-        severity: 'medium',
-        check: (config) => config.viewerProtocolPolicy === 'allow-all' ? 'CloudFront distribution allows unencrypted HTTP traffic to viewers' : null,
-        message: 'Viewer protocol policy allows plain HTTP, not just HTTPS',
-        recommendation: 'Set viewer protocol policy to "Redirect HTTP to HTTPS" or "HTTPS Only"',
-        fixAction: (config) => ({ ...config, viewerProtocolPolicy: 'redirect-to-https' }),
-      },
-    ],
   },
   {
     type: 'aws_alb',
@@ -757,23 +619,6 @@ export const awsResources: ResourceDefinition[] = [
       { key: 'deletionProtection', label: 'Deletion Protection', type: 'boolean', defaultValue: false, section: 'Advanced' },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'alb-https-no-cert',
-        severity: 'high',
-        check: (config) => (config.listenerProtocol === 'HTTPS' && !config.certificateArn) ? 'HTTPS listener configured without a certificate' : null,
-        message: 'Load balancer listener is HTTPS but no ACM certificate ARN is configured',
-        recommendation: 'Provide an ACM certificate ARN, or switch the listener to HTTP only for internal/non-TLS traffic',
-      },
-      {
-        id: 'alb-deletion-protection',
-        severity: 'low',
-        check: (config) => !config.deletionProtection ? 'Load balancer deletion protection disabled' : null,
-        message: 'Load balancer does not have deletion protection enabled',
-        recommendation: 'Enable deletion protection for production load balancers to prevent accidental deletion',
-        fixAction: (config) => ({ ...config, deletionProtection: true }),
-      },
-    ],
   },
   {
     type: 'aws_auto_scaling',
@@ -819,7 +664,6 @@ export const awsResources: ResourceDefinition[] = [
       { key: 'defaultCooldownSeconds', label: 'Default Cooldown (sec)', type: 'number', defaultValue: 300, min: 0, max: 86400, section: 'Advanced', advanced: true },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
   },
   {
     type: 'aws_lambda',
@@ -896,16 +740,6 @@ export const awsResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'lambda-tracing-disabled',
-        severity: 'low',
-        check: (config) => config.tracingMode !== 'Active' ? 'X-Ray active tracing not enabled' : null,
-        message: 'Lambda function does not have AWS X-Ray active tracing enabled',
-        recommendation: 'Enable Active tracing for distributed request tracing and easier debugging in production',
-        fixAction: (config) => ({ ...config, tracingMode: 'Active' }),
-      },
-    ],
   },
   {
     type: 'aws_ecs',
@@ -958,16 +792,6 @@ export const awsResources: ResourceDefinition[] = [
       { key: 'logRetentionDays', label: 'CloudWatch Log Retention (days)', type: 'number', defaultValue: 30, min: 1, max: 3650, section: 'Monitoring' },
       { key: 'environmentVariables', label: 'Environment Variables', type: 'keyvalue', defaultValue: {}, section: 'Advanced' },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
-    ],
-    securityRules: [
-      {
-        id: 'ecs-public-ip',
-        severity: 'medium',
-        check: (config) => config.assignPublicIp === true ? 'ECS tasks auto-assign a public IP' : null,
-        message: 'ECS service is configured to assign public IPs to its tasks',
-        recommendation: 'Disable public IP assignment for tasks in private subnets; route ingress through a load balancer instead',
-        fixAction: (config) => ({ ...config, assignPublicIp: false }),
-      },
     ],
   },
   {
@@ -1027,30 +851,6 @@ export const awsResources: ResourceDefinition[] = [
       { key: 'secretsEncryption', label: 'Encrypt Kubernetes Secrets (KMS)', type: 'boolean', defaultValue: true, section: 'Security' },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'eks-public-endpoint-open',
-        severity: 'high',
-        check: (config) => (config.endpointPublicAccess === true && config.publicAccessCidrs === '0.0.0.0/0') ? 'EKS public API endpoint open to the entire internet' : null,
-        message: 'EKS cluster API endpoint is publicly accessible from any IP address',
-        recommendation: 'Restrict publicAccessCidrs to known IP ranges, or disable public access and use the private endpoint with a VPN/Direct Connect',
-      },
-      {
-        id: 'eks-secrets-encryption',
-        severity: 'medium',
-        check: (config) => config.secretsEncryption === false ? 'EKS Kubernetes secrets encryption disabled' : null,
-        message: 'EKS cluster does not encrypt Kubernetes Secrets objects with KMS',
-        recommendation: 'Enable envelope encryption of Secrets using a KMS key',
-        fixAction: (config) => ({ ...config, secretsEncryption: true }),
-      },
-      {
-        id: 'eks-no-audit-logging',
-        severity: 'medium',
-        check: (config) => (Array.isArray(config.clusterLogTypes) && !config.clusterLogTypes.includes('audit')) ? 'EKS control plane audit logging disabled' : null,
-        message: 'EKS control plane audit log type is not enabled',
-        recommendation: 'Enable the audit log type for control plane activity visibility',
-      },
-    ],
   },
   {
     type: 'aws_igw',
@@ -1067,7 +867,6 @@ export const awsResources: ResourceDefinition[] = [
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-igw', required: true },
     ],
-    securityRules: [],
   },
   {
     type: 'aws_nat',
@@ -1111,7 +910,6 @@ export const awsResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
   },
   {
     type: 'aws_route_table',
@@ -1145,7 +943,6 @@ export const awsResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
   },
   {
     type: 'aws_nacl',
@@ -1203,16 +1000,6 @@ export const awsResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'nacl-allow-all-inbound',
-        severity: 'critical',
-        check: (config) => (config.allowAllInbound && config.inboundCidr === '0.0.0.0/0') ? 'NACL allows all inbound traffic from anywhere' : null,
-        message: 'Network ACL has an allow-all inbound rule (0.0.0.0/0, all protocols/ports)',
-        recommendation: 'Scope inbound rules to specific ports/CIDRs; do not allow all traffic at the subnet boundary',
-        fixAction: (config) => ({ ...config, allowAllInbound: false }),
-      },
-    ],
   },
   {
     type: 'aws_sg',
@@ -1247,24 +1034,6 @@ export const awsResources: ResourceDefinition[] = [
         description: 'Only used when "Allow All Outbound Traffic" is disabled — restricts egress to this CIDR on all ports.',
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
-    ],
-    securityRules: [
-      {
-        id: 'sg-open-ssh',
-        severity: 'critical',
-        check: (config) => (config.allowSsh && config.sourceCidr === '0.0.0.0/0') ? 'Security Group allows public SSH access' : null,
-        message: 'Security Group allows inbound SSH (0.0.0.0/0)',
-        recommendation: 'Restrict SSH to specific IP ranges or use AWS Systems Manager Session Manager',
-        fixAction: (config) => ({ ...config, allowSsh: false }),
-      },
-      {
-        id: 'sg-open-rdp',
-        severity: 'critical',
-        check: (config) => (config.allowRdp && config.sourceCidr === '0.0.0.0/0') ? 'Security Group allows public RDP access' : null,
-        message: 'Security Group allows inbound RDP (0.0.0.0/0)',
-        recommendation: 'Restrict RDP to specific IP ranges or use Session Manager / a bastion host',
-        fixAction: (config) => ({ ...config, allowRdp: false }),
-      },
     ],
   },
   {
@@ -1312,15 +1081,6 @@ export const awsResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'iam-admin-access',
-        severity: 'high',
-        check: (config) => (Array.isArray(config.managedPolicyArns) && config.managedPolicyArns.some((a) => String(a).includes('AdministratorAccess'))) ? 'IAM role has AdministratorAccess attached' : null,
-        message: 'IAM role has the AWS-managed AdministratorAccess policy attached',
-        recommendation: 'Attach only the specific managed/inline policies the role actually needs (least privilege)',
-      },
-    ],
   },
   {
     type: 'aws_kms',
@@ -1363,24 +1123,6 @@ export const awsResources: ResourceDefinition[] = [
         description: 'Waiting period before a scheduled key deletion actually takes effect. Longer windows give more time to cancel an accidental deletion.',
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
-    ],
-    securityRules: [
-      {
-        id: 'kms-key-rotation',
-        severity: 'medium',
-        check: (config) => (!config.enableKeyRotation && config.keyUsage !== 'SIGN_VERIFY') ? 'KMS key rotation disabled' : null,
-        message: 'KMS key does not have automatic annual rotation enabled',
-        recommendation: 'Enable key rotation to limit exposure from a compromised key',
-        fixAction: (config) => ({ ...config, enableKeyRotation: true }),
-      },
-      {
-        id: 'kms-short-deletion-window',
-        severity: 'low',
-        check: (config) => (typeof config.deletionWindowDays === 'number' && config.deletionWindowDays < 14) ? 'KMS key deletion window is short' : null,
-        message: 'KMS key deletion window is set below 14 days',
-        recommendation: 'Use a longer deletion window (e.g. 30 days) to allow more time to cancel an accidental key deletion',
-        fixAction: (config) => ({ ...config, deletionWindowDays: 30 }),
-      },
     ],
   },
   {
@@ -1446,7 +1188,6 @@ export const awsResources: ResourceDefinition[] = [
       { key: 'logRetentionDays', label: 'Log Group Retention (days)', type: 'number', defaultValue: 30, min: 1, max: 3650, section: 'Monitoring' },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
   },
   {
     type: 'aws_ebs',
@@ -1502,24 +1243,6 @@ export const awsResources: ResourceDefinition[] = [
         ],
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
-    ],
-    securityRules: [
-      {
-        id: 'ebs-encryption',
-        severity: 'high',
-        check: (config) => !config.encrypted ? 'EBS volume is not encrypted' : null,
-        message: 'EBS volume does not have encryption enabled',
-        recommendation: 'Enable encryption at rest for EBS volumes containing sensitive data',
-        fixAction: (config) => ({ ...config, encrypted: true }),
-      },
-      {
-        id: 'ebs-no-snapshot-schedule',
-        severity: 'medium',
-        check: (config) => (!config.snapshotSchedule || config.snapshotSchedule === 'none') ? 'No automated snapshot schedule configured' : null,
-        message: 'EBS volume has no automated backup/snapshot schedule',
-        recommendation: 'Configure a snapshot schedule (e.g. via Data Lifecycle Manager) for disaster recovery',
-        fixAction: (config) => ({ ...config, snapshotSchedule: 'daily' }),
-      },
     ],
   },
   {
@@ -1615,24 +1338,6 @@ export const awsResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'dynamodb-encryption',
-        severity: 'medium',
-        check: (config) => config.serverSideEncryption === false ? 'DynamoDB table encryption disabled' : null,
-        message: 'DynamoDB table does not have server-side encryption enabled',
-        recommendation: 'Enable server-side encryption (KMS) to protect data at rest',
-        fixAction: (config) => ({ ...config, serverSideEncryption: true }),
-      },
-      {
-        id: 'dynamodb-pitr',
-        severity: 'low',
-        check: (config) => config.pointInTimeRecovery === false ? 'DynamoDB point-in-time recovery disabled' : null,
-        message: 'DynamoDB table does not have point-in-time recovery enabled',
-        recommendation: 'Enable point-in-time recovery for protection against accidental writes/deletes',
-        fixAction: (config) => ({ ...config, pointInTimeRecovery: true }),
-      },
-    ],
   },
   {
     type: 'aws_unsupported',
@@ -1649,7 +1354,6 @@ export const awsResources: ResourceDefinition[] = [
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'imported-resource', required: true },
     ],
-    securityRules: [],
   },
   {
     type: 'aws_unknown',
@@ -1666,7 +1370,6 @@ export const awsResources: ResourceDefinition[] = [
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'imported-resource', required: true },
     ],
-    securityRules: [],
   },
   {
     type: 'aws_route53',
@@ -1725,7 +1428,6 @@ export const awsResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
   },
   {
     type: 'aws_waf',
@@ -1777,22 +1479,6 @@ export const awsResources: ResourceDefinition[] = [
       { key: 'cloudWatchMetricsEnabled', label: 'CloudWatch Metrics', type: 'boolean', defaultValue: true, section: 'Monitoring' },
       { key: 'sampledRequestsEnabled', label: 'Sampled Request Logging', type: 'boolean', defaultValue: true, section: 'Monitoring' },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
-    ],
-    securityRules: [
-      {
-        id: 'waf-no-managed-rules',
-        severity: 'high',
-        check: (config) => (!Array.isArray(config.managedRuleGroups) || config.managedRuleGroups.length === 0) ? 'WAF Web ACL has no managed rule groups' : null,
-        message: 'WAF Web ACL does not have any AWS managed rule groups enabled',
-        recommendation: 'Enable at least the Core Rule Set and Known Bad Inputs managed rule groups',
-      },
-      {
-        id: 'waf-default-allow',
-        severity: 'medium',
-        check: (config) => config.defaultAction === 'ALLOW' ? 'WAF Web ACL default action is Allow' : null,
-        message: 'WAF Web ACL defaults to allowing all traffic that does not match a rule',
-        recommendation: 'Consider a default Block action with explicit Allow rules for a stricter security posture, if application traffic patterns permit',
-      },
     ],
   },
   {
@@ -1849,32 +1535,6 @@ export const awsResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'elasticache-transit-encryption',
-        severity: 'high',
-        check: (config) => config.transitEncryption === false ? 'ElastiCache transit encryption disabled' : null,
-        message: 'ElastiCache cluster does not encrypt data in transit',
-        recommendation: 'Enable transit encryption to protect data moving between clients and the cluster',
-        fixAction: (config) => ({ ...config, transitEncryption: true }),
-      },
-      {
-        id: 'elasticache-at-rest-encryption',
-        severity: 'medium',
-        check: (config) => config.atRestEncryption === false ? 'ElastiCache at-rest encryption disabled' : null,
-        message: 'ElastiCache cluster does not encrypt data at rest',
-        recommendation: 'Enable at-rest encryption to protect data on disk/snapshots',
-        fixAction: (config) => ({ ...config, atRestEncryption: true }),
-      },
-      {
-        id: 'elasticache-no-failover',
-        severity: 'medium',
-        check: (config) => (Number(config.numNodes) > 1 && config.automaticFailoverEnabled === false) ? 'ElastiCache multi-node cluster without automatic failover' : null,
-        message: 'Multi-node ElastiCache cluster does not have automatic failover enabled',
-        recommendation: 'Enable automatic failover for high availability',
-        fixAction: (config) => ({ ...config, automaticFailoverEnabled: true }),
-      },
-    ],
   },
   {
     type: 'aws_sqs',
@@ -1927,23 +1587,6 @@ export const awsResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'sqs-encryption',
-        severity: 'medium',
-        check: (config) => config.encryption === false ? 'SQS queue encryption disabled' : null,
-        message: 'SQS queue does not have server-side encryption enabled',
-        recommendation: 'Enable server-side encryption (SSE-SQS or SSE-KMS) to protect message content at rest',
-        fixAction: (config) => ({ ...config, encryption: true }),
-      },
-      {
-        id: 'sqs-no-dlq',
-        severity: 'low',
-        check: (config) => !config.deadLetterTargetArn ? 'SQS queue has no dead-letter queue configured' : null,
-        message: 'SQS queue has no dead-letter queue for handling failed message processing',
-        recommendation: 'Configure a dead-letter queue to capture messages that repeatedly fail processing',
-      },
-    ],
   },
   {
     type: 'aws_cloud_boundary',
@@ -1965,6 +1608,5 @@ export const awsResources: ResourceDefinition[] = [
       { key: 'name', label: 'Boundary Label', type: 'text', defaultValue: 'Amazon Web Services', required: true },
       { key: 'region', label: 'Primary Region', type: 'text', defaultValue: 'us-east-1', required: true },
     ],
-    securityRules: [],
   },
 ];

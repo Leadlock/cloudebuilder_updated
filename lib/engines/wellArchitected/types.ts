@@ -92,6 +92,13 @@ export interface WaFinding {
   sourceLabel: string;           // Human-readable source for UI display
   detectedAt: string;            // ISO timestamp
   resourceState?: ResourceState; // Is this resource already deployed or just planned?
+  /** Evaluation status from the assessment engine (FAIL or WARNING). */
+  status?: 'FAIL' | 'WARNING';
+  /** What CloudCraft observed, in plain language. */
+  observation?: string;
+  /** Official references (title/identifier/url) supporting the finding. */
+  references?: { title: string; identifier?: string; url?: string; framework: string }[];
+  practice?: string;
 }
 
 // ─── Pillar Score ─────────────────────────────────────────────────────────────
@@ -99,10 +106,18 @@ export interface WaFinding {
 export interface WaPillarScore {
   pillar: WaPillar;
   pillarLabel: string;
-  score: number;             // 0-100
+  /** 0-100. Meaningless when `scored` is false — render "Insufficient evidence" instead. */
+  score: number;
   findingCount: number;
   criticalCount: number;
   highCount: number;
+  provider?: WaProvider;
+  /** False when no check in this pillar could be evaluated (never shown as 100%). */
+  scored?: boolean;
+  coveragePct?: number | null;
+  evaluatedChecks?: number;
+  notEvaluatedChecks?: number;
+  status?: 'No issues observed' | 'Issues found' | 'Critical issues' | 'Insufficient evidence';
 }
 
 // ─── Assessment ───────────────────────────────────────────────────────────────
@@ -124,6 +139,12 @@ export interface WaAssessment {
   isStale: boolean;              // True when canvas changed after last analysis
   awsAssessment?: WaAssessment;  // For multi-cloud, the AWS-specific assessment
   azureAssessment?: WaAssessment; // For multi-cloud, the Azure-specific assessment
+  /** False when nothing could be evaluated — `overallScore` must not be displayed as a score. */
+  overallScored?: boolean;
+  coveragePct?: number | null;
+  notEvaluatedCount?: number;
+  rulesetVersion?: string;
+  scoreMethodology?: string;
 }
 
 // ─── Analysis Input ───────────────────────────────────────────────────────────

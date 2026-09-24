@@ -333,6 +333,12 @@ export interface SecurityIssue {
   recommendation: string;
   fixable?: boolean;
   ruleId?: string;
+  /** Stable finding ID from the assessment engine (e.g. AWS-RDS-001-3F9A2C). */
+  findingId?: string;
+  status?: 'FAIL' | 'WARNING';
+  /** Engine severity incl. INFORMATIONAL (legacy `severity` maps INFORMATIONAL → low). */
+  engineSeverity?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFORMATIONAL';
+  autoFixSafety?: 'SAFE_AUTOFIX' | 'REVIEW_REQUIRED' | 'MANUAL_ONLY';
 }
 
 export interface CostItem {
@@ -419,6 +425,10 @@ export interface Project {
   edges: CanvasEdge[];
   resourceCount: number;
   securityScore: number;
+  /** False when no security check could be evaluated (score must not be shown as a number). */
+  securityScored?: boolean;
+  /** Share of applicable security checks that could be evaluated (0-100). */
+  securityCoveragePct?: number | null;
   architectureScore: number;
   estimatedMonthlyCost: number;
   currency?: string;

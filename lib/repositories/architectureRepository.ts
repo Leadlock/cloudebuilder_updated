@@ -3,7 +3,7 @@
  */
 import { db, rawTransaction } from '@/src/prisma/db';
 import { randomUUID as uuidv4 } from 'crypto';
-import type { CanvasNode, CanvasEdge, Region } from '@/types';
+import type { CanvasNode, CanvasEdge } from '@/types';
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
 
@@ -61,42 +61,10 @@ export interface DbArchitectureVersion {
 }
 
 // ─── Canvas ↔ DB mappers ──────────────────────────────────────────────────────
-
-export function toCanvas(
-  resources: DbArchitectureResource[],
-  connections: DbArchitectureConnection[],
-): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
-  const nodes: CanvasNode[] = resources.map((r) => ({
-    id: r.id,
-    type: 'cloudNode',
-    resourceType: r.resourceType,
-    provider: r.provider as 'aws' | 'azure',
-    label: r.label,
-    position: { x: r.positionX, y: r.positionY },
-    config: (() => {
-      try { return JSON.parse(r.configJson) as Record<string, unknown>; } catch { return {}; }
-    })(),
-    ...(r.region ? { region: r.region as Region } : {}),
-    ...(r.groupId ? { groupId: r.groupId } : {}),
-    importState: (() => {
-      try {
-        const c = JSON.parse(r.configJson);
-        return ((c.importState as string) ?? (c.imported ? 'imported' : undefined)) as CanvasNode['importState'];
-      } catch { return undefined; }
-    })(),
-    locked: r.locked,
-  }));
-
-  const edges: CanvasEdge[] = connections.map((c) => ({
-    id: c.id,
-    source: c.sourceId,
-    target: c.targetId,
-    ...(c.label ? { label: c.label } : {}),
-    ...(c.edgeType ? { edgeType: c.edgeType as CanvasEdge['edgeType'] } : {}),
-  }));
-
-  return { nodes, edges };
-}
+// The pure mapper lives in lib/domain/canvasMapping (importable from client code
+// and engines without pulling in the database client).
+import { toCanvas } from '@/lib/domain/canvasMapping';
+export { toCanvas };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

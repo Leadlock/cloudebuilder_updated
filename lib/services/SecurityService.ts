@@ -25,7 +25,7 @@ class MockSecurityService implements ISecurityService {
   applyFix(nodes: CanvasNode[], nodeId: string, ruleId: string): CanvasNode[] {
     return nodes.map((n) => {
       if (n.id !== nodeId) return n;
-      return { ...n, config: applyRuleRemediation(n.config, ruleId) };
+      return { ...n, config: applyRuleRemediation(n.config, ruleId, { id: n.id, label: n.label, resourceType: n.resourceType }) };
     });
   }
 }

@@ -91,6 +91,7 @@ model Project {
   exportJobs           ExportJob[]
   gitOperations        GitOperation[]
   githubConnections    GithubConnection[]
+  findingReviews       FindingReview[]
 
   @@index([orgId])
 }
@@ -266,6 +267,31 @@ model SecurityScan {
 
   @@index([projectId])
   @@index([architectureId])
+}
+
+// ─── Security finding review (risk acceptance / false positive) ──────────────
+// A review NEVER changes the technical evaluation: an accepted-risk finding
+// still evaluates to FAIL and still counts against the score. Keyed by the
+// engine's stable findingId (<ruleId>-<resource hash>) so it survives re-scans.
+
+model FindingReview {
+  id         String  @id @default(uuid())
+  projectId  String
+  findingId  String
+  ruleId     String
+  status     String  // ACCEPTED_RISK | FALSE_POSITIVE | NOT_APPLICABLE
+  reason     String
+  approvedBy String
+  approvedAt String
+  expiresAt  String?
+  revokedAt  String?
+  revokedBy  String?
+  createdAt  String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([projectId, findingId])
 }
 
 model SecurityFinding {

@@ -5,6 +5,17 @@
  */
 import { allResources } from '@/lib/resources';
 import { getResourceDefinition } from '@/lib/resources';
+import { RULES_BY_ID, resolveRuleId } from '@/lib/engines/assessment/rules';
+
+/**
+ * Security rules moved from the resource definitions into the provider-native
+ * assessment rule registry. This asserts the legacy rule ID still resolves to a
+ * current rule that evaluates this resource type.
+ */
+function hasAssessmentRule(resourceType: string, legacyId: string): boolean {
+  const id = resolveRuleId(legacyId);
+  return Boolean(id && RULES_BY_ID.get(id)?.resourceTypes?.includes(resourceType));
+}
 
 describe('Resource catalog — configSchema structural integrity', () => {
   test('no resource defines the same config key twice (silent overwrite risk)', () => {
@@ -271,7 +282,7 @@ describe('aws_lambda — deepened config schema', () => {
   });
 
   test('has a security rule for disabled X-Ray tracing', () => {
-    expect(def.securityRules!.some((r) => r.id === 'lambda-tracing-disabled')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'lambda-tracing-disabled')).toBe(true);
   });
 });
 
@@ -285,7 +296,7 @@ describe('aws_alb — deepened config schema', () => {
   });
 
   test('has a security rule catching HTTPS without a certificate', () => {
-    expect(def.securityRules!.some((r) => r.id === 'alb-https-no-cert')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'alb-https-no-cert')).toBe(true);
   });
 });
 
@@ -299,8 +310,10 @@ describe('aws_dynamodb — deepened config schema', () => {
   });
 
   test('has security rules for encryption and point-in-time recovery', () => {
-    expect(def.securityRules!.some((r) => r.id === 'dynamodb-encryption')).toBe(true);
-    expect(def.securityRules!.some((r) => r.id === 'dynamodb-pitr')).toBe(true);
+    // DynamoDB encryption at rest cannot be disabled; the old "encryption disabled"
+    // rule was incorrect and is replaced by an evidence (always-PASS) check.
+    expect(RULES_BY_ID.get('AWS-DDB-001')?.resourceTypes).toContain('aws_dynamodb');
+    expect(hasAssessmentRule(def.type, 'dynamodb-pitr')).toBe(true);
   });
 });
 
@@ -339,7 +352,7 @@ describe('aws_ecs — deepened config schema', () => {
   });
 
   test('has a security rule for public IP assignment', () => {
-    expect(def.securityRules!.some((r) => r.id === 'ecs-public-ip')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'ecs-public-ip')).toBe(true);
   });
 });
 
@@ -358,7 +371,7 @@ describe('aws_eks — deepened config schema', () => {
   });
 
   test('has a security rule for an open public endpoint', () => {
-    expect(def.securityRules!.some((r) => r.id === 'eks-public-endpoint-open')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'eks-public-endpoint-open')).toBe(true);
   });
 });
 
@@ -372,7 +385,7 @@ describe('azure_aks — deepened config schema', () => {
   });
 
   test('has a security rule for disabled Azure AD RBAC', () => {
-    expect(def.securityRules!.some((r) => r.id === 'aks-no-rbac')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'aks-no-rbac')).toBe(true);
   });
 });
 
@@ -401,7 +414,7 @@ describe('aws_waf — deepened config schema', () => {
   });
 
   test('has a security rule for no managed rule groups', () => {
-    expect(def.securityRules!.some((r) => r.id === 'waf-no-managed-rules')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'waf-no-managed-rules')).toBe(true);
   });
 });
 
@@ -430,7 +443,7 @@ describe('aws_iam — deepened config schema', () => {
   const def = getResourceDefinition('aws_iam')!;
 
   test('has a security rule flagging AdministratorAccess', () => {
-    expect(def.securityRules!.some((r) => r.id === 'iam-admin-access')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'iam-admin-access')).toBe(true);
   });
 
   test('managedPolicyArns uses the multiselect type', () => {
@@ -443,8 +456,9 @@ describe('aws_kms — deepened config schema', () => {
   const def = getResourceDefinition('aws_kms')!;
 
   test('has security rules for key rotation and deletion window', () => {
-    expect(def.securityRules!.some((r) => r.id === 'kms-key-rotation')).toBe(true);
-    expect(def.securityRules!.some((r) => r.id === 'kms-short-deletion-window')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'kms-key-rotation')).toBe(true);
+    // The "short deletion window" rule was removed: no authoritative source sets a 14-day minimum.
+    expect(resolveRuleId('kms-short-deletion-window')).toBeNull();
   });
 });
 
@@ -489,8 +503,8 @@ describe('azure_key_vault — deepened config schema', () => {
   });
 
   test('has security rules for public access and purge protection', () => {
-    expect(def.securityRules!.some((r) => r.id === 'keyvault-public-access')).toBe(true);
-    expect(def.securityRules!.some((r) => r.id === 'keyvault-no-purge-protection')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'keyvault-public-access')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'keyvault-no-purge-protection')).toBe(true);
   });
 });
 
@@ -498,8 +512,8 @@ describe('azure_redis — deepened config schema', () => {
   const def = getResourceDefinition('azure_redis')!;
 
   test('has security rules for non-SSL port and public access', () => {
-    expect(def.securityRules!.some((r) => r.id === 'redis-non-ssl-port')).toBe(true);
-    expect(def.securityRules!.some((r) => r.id === 'redis-public-access')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'redis-non-ssl-port')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'redis-public-access')).toBe(true);
   });
 });
 
@@ -517,7 +531,7 @@ describe('azure_nic — deepened config schema', () => {
   const def = getResourceDefinition('azure_nic')!;
 
   test('has a security rule for IP forwarding', () => {
-    expect(def.securityRules!.some((r) => r.id === 'nic-ip-forwarding')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'nic-ip-forwarding')).toBe(true);
   });
 });
 
@@ -541,7 +555,7 @@ describe('azure_bastion — deepened config schema', () => {
   });
 
   test('has a security rule for the shareable link', () => {
-    expect(def.securityRules!.some((r) => r.id === 'bastion-shareable-link')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'bastion-shareable-link')).toBe(true);
   });
 });
 
@@ -549,7 +563,7 @@ describe('azure_front_door — deepened config schema', () => {
   const def = getResourceDefinition('azure_front_door')!;
 
   test('has a security rule for HTTPS enforcement', () => {
-    expect(def.securityRules!.some((r) => r.id === 'frontdoor-https-only')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'frontdoor-https-only')).toBe(true);
   });
 });
 
@@ -557,7 +571,7 @@ describe('azure_waf (Azure WAF policy) — deepened config schema', () => {
   const def = getResourceDefinition('azure_waf')!;
 
   test('has a security rule for Detection-only mode', () => {
-    expect(def.securityRules!.some((r) => r.id === 'azure-waf-detection-only')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'azure-waf-detection-only')).toBe(true);
   });
 });
 
@@ -591,7 +605,7 @@ describe('azure_app_gateway — deepened config schema', () => {
   });
 
   test('has a security rule for WAF_v2 without WAF enabled', () => {
-    expect(def.securityRules!.some((r) => r.id === 'app-gateway-no-waf')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'app-gateway-no-waf')).toBe(true);
   });
 });
 
@@ -620,9 +634,9 @@ describe('azure_app_service — newly added resource', () => {
   });
 
   test('has security rules for HTTPS enforcement, FTP, and TLS version', () => {
-    expect(def.securityRules!.some((r) => r.id === 'app-service-https-only')).toBe(true);
-    expect(def.securityRules!.some((r) => r.id === 'app-service-ftp-enabled')).toBe(true);
-    expect(def.securityRules!.some((r) => r.id === 'app-service-old-tls')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'app-service-https-only')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'app-service-ftp-enabled')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'app-service-old-tls')).toBe(true);
   });
 
   test('is registered in allResources exactly once', () => {
@@ -651,7 +665,7 @@ describe('azure_storage — deepened config schema', () => {
   const def = getResourceDefinition('azure_storage')!;
 
   test('has a security rule for open network default action', () => {
-    expect(def.securityRules!.some((r) => r.id === 'storage-network-open')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'storage-network-open')).toBe(true);
   });
 
   test('blobSoftDeleteRetentionDays defaults to 0 (disabled) and is bounded', () => {
@@ -673,6 +687,6 @@ describe('azure_sql — deepened config schema', () => {
   test('transparentDataEncryptionEnabled defaults to true and has a dedicated security rule', () => {
     const field = def.configSchema.find((f) => f.key === 'transparentDataEncryptionEnabled')!;
     expect(field.defaultValue).toBe(true);
-    expect(def.securityRules!.some((r) => r.id === 'sql-tde-disabled')).toBe(true);
+    expect(hasAssessmentRule(def.type, 'sql-tde-disabled')).toBe(true);
   });
 });

@@ -1,0 +1,245 @@
+[
+  {
+    "id": "table.findingReview",
+    "label": "Create table \"findingReview\"",
+    "summary": "Creates table \"findingReview\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "findingReview"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"findingReview\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"findingReview\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"findingReview\"",
+        "sql": "CREATE TABLE \"public\".\"findingReview\" (\n  \"approvedAt\" text NOT NULL,\n  \"approvedBy\" text NOT NULL,\n  \"createdAt\" text NOT NULL,\n  \"expiresAt\" text,\n  \"findingId\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"reason\" text NOT NULL,\n  \"revokedAt\" text,\n  \"revokedBy\" text,\n  \"ruleId\" text NOT NULL,\n  \"status\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"findingReview\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"findingReview\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "column.public.architecture.revision",
+    "label": "Add column \"revision\" to \"architecture\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "revision",
+        "table": "architecture"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"revision\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "architecture",
+          "revision"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"revision\"",
+        "sql": "ALTER TABLE \"public\".\"architecture\" ADD COLUMN \"revision\" int4 DEFAULT 1 NOT NULL"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"revision\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "architecture",
+          "revision"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "column.public.discoveryRun.relationshipsJson",
+    "label": "Add column \"relationshipsJson\" to \"discoveryRun\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "relationshipsJson",
+        "table": "discoveryRun"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"relationshipsJson\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "discoveryRun",
+          "relationshipsJson"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"relationshipsJson\"",
+        "sql": "ALTER TABLE \"public\".\"discoveryRun\" ADD COLUMN \"relationshipsJson\" text DEFAULT '[]' NOT NULL"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"relationshipsJson\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "discoveryRun",
+          "relationshipsJson"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.findingReview.findingReview_projectId_findingId_idx_2df325f5",
+    "label": "Create index \"findingReview_projectId_findingId_idx_2df325f5\" on \"findingReview\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "findingReview_projectId_findingId_idx_2df325f5",
+        "table": "findingReview"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"findingReview_projectId_findingId_idx_2df325f5\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"findingReview_projectId_findingId_idx_2df325f5\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"findingReview_projectId_findingId_idx_2df325f5\"",
+        "sql": "CREATE INDEX \"findingReview_projectId_findingId_idx_2df325f5\" ON \"public\".\"findingReview\" (\"projectId\", \"findingId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"findingReview_projectId_findingId_idx_2df325f5\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"findingReview_projectId_findingId_idx_2df325f5\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.findingReview.findingReview_projectId_idx_a96e4d92",
+    "label": "Create index \"findingReview_projectId_idx_a96e4d92\" on \"findingReview\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "findingReview_projectId_idx_a96e4d92",
+        "table": "findingReview"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"findingReview_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"findingReview_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"findingReview_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"findingReview_projectId_idx_a96e4d92\" ON \"public\".\"findingReview\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"findingReview_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"findingReview_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.findingReview.findingReview_projectId_fkey",
+    "label": "Add foreign key \"findingReview_projectId_fkey\" on \"findingReview\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "findingReview_projectId_fkey",
+        "table": "findingReview"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"findingReview_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "findingReview_projectId_fkey",
+          "public",
+          "\"public\".\"findingReview\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"findingReview_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"findingReview\"\nADD CONSTRAINT \"findingReview_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"findingReview_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "findingReview_projectId_fkey",
+          "public",
+          "\"public\".\"findingReview\""
+        ]
+      }
+    ]
+  }
+]

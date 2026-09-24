@@ -72,7 +72,7 @@ describe('WellArchitectedRuleEngine — AWS Pillar Analysis', () => {
         config: {
           engine: 'postgres',
           publiclyAccessible: true,
-          storageEncrypted: false,
+          encrypted: false,
           multiAz: false,
         },
       },
@@ -90,7 +90,7 @@ describe('WellArchitectedRuleEngine — AWS Pillar Analysis', () => {
 
     // Finding for public accessibility
     const publicRdsFinding = assessment.findings.find(
-      (f) => f.ruleId === 'AWS-WAF-SEC-01' || f.title.toLowerCase().includes('public')
+      (f) => f.ruleId === 'AWS-RDS-001'
     );
     expect(publicRdsFinding).toBeDefined();
     expect(publicRdsFinding?.severity).toBe('critical');
@@ -99,11 +99,15 @@ describe('WellArchitectedRuleEngine — AWS Pillar Analysis', () => {
     expect(publicRdsFinding?.pillarRef).toContain('aws.amazon.com');
 
     // Finding for single AZ
+    // Multi-AZ is a Reliability finding; severity follows Security Hub RDS.5 (medium).
     const singleAzFinding = assessment.findings.find(
-      (f) => f.pillar === 'reliability' && f.title.toLowerCase().includes('multi-az')
+      (f) => f.pillar === 'reliability' && f.ruleId === 'AWS-RDS-006'
     );
     expect(singleAzFinding).toBeDefined();
-    expect(singleAzFinding?.severity).toBe('high');
+    expect(singleAzFinding?.severity).toBe('medium');
+    // Storage encryption disabled is its own security finding with evidence.
+    const enc = assessment.findings.find((f) => f.ruleId === 'AWS-RDS-002');
+    expect(enc?.observation).toMatch(/disabled/i);
   });
 
   test('Detects S3 bucket with public access or missing encryption', () => {
@@ -117,8 +121,11 @@ describe('WellArchitectedRuleEngine — AWS Pillar Analysis', () => {
         position: { x: 0, y: 0 },
         config: {
           bucketName: 'customer-data',
-          publicAccessBlock: false,
-          serverSideEncryption: false,
+          // Real CloudCraft S3 keys (the previous test used keys that do not exist).
+          publicAccess: true,
+          blockPublicAcls: false,
+          blockPublicPolicy: false,
+          encryption: false,
         },
       },
     ];
@@ -215,7 +222,7 @@ describe('WellArchitectedRuleEngine — Azure Pillar Analysis', () => {
         config: {
           imported: true,
           size: 'Standard_B2s',
-          publicIp: true,
+          publicIpEnabled: true,
         },
       },
     ];

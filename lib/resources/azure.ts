@@ -32,7 +32,6 @@ export const azureResources: ResourceDefinition[] = [
         ],
       },
     ],
-    securityRules: [],
   },
   {
     type: 'azure_vnet',
@@ -54,7 +53,6 @@ export const azureResources: ResourceDefinition[] = [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-vnet', required: true },
       { key: 'addressSpace', label: 'Address Space', type: 'cidr', defaultValue: '10.0.0.0/16', required: true },
     ],
-    securityRules: [],
   },
   {
     type: 'azure_subnet',
@@ -76,7 +74,6 @@ export const azureResources: ResourceDefinition[] = [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-subnet', required: true },
       { key: 'addressPrefix', label: 'Address Prefix', type: 'cidr', defaultValue: '10.0.1.0/24', required: true },
     ],
-    securityRules: [],
   },
   {
     type: 'azure_vm',
@@ -164,24 +161,6 @@ export const azureResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'vm-managed-disk',
-        severity: 'medium',
-        check: (config) => !config.useManagedDisk ? 'VM is not using a managed disk' : null,
-        message: 'VM does not use an Azure Managed Disk',
-        recommendation: 'Use Azure Managed Disks for better reliability and security',
-        fixAction: (config) => ({ ...config, useManagedDisk: true }),
-      },
-      {
-        id: 'vm-public-ip',
-        severity: 'medium',
-        check: (config) => config.publicIpEnabled === true ? 'VM has a public IP assigned' : null,
-        message: 'VM is directly reachable from the public internet',
-        recommendation: 'Remove the public IP and use a load balancer, bastion host, or Azure Bastion for access instead',
-        fixAction: (config) => ({ ...config, publicIpEnabled: false }),
-      },
-    ],
   },
   {
     type: 'azure_storage',
@@ -242,40 +221,6 @@ export const azureResources: ResourceDefinition[] = [
         description: '0 disables soft delete for blobs.',
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
-    ],
-    securityRules: [
-      {
-        id: 'storage-https',
-        severity: 'high',
-        check: (config) => !config.httpsOnly ? 'Storage account allows HTTP traffic' : null,
-        message: 'Storage account allows non-HTTPS traffic',
-        recommendation: 'Enable "Secure transfer required" to enforce HTTPS-only connections',
-        fixAction: (config) => ({ ...config, httpsOnly: true }),
-      },
-      {
-        id: 'storage-public-blob-access',
-        severity: 'critical',
-        check: (config) => config.allowBlobPublicAccess ? 'Storage account allows anonymous blob public access' : null,
-        message: 'Blob containers may be publicly readable',
-        recommendation: 'Disable "Allow Blob public access" at the storage account level',
-        fixAction: (config) => ({ ...config, allowBlobPublicAccess: false }),
-      },
-      {
-        id: 'storage-tls-version',
-        severity: 'medium',
-        check: (config) => (config.minimumTlsVersion === 'TLS1_0' || config.minimumTlsVersion === 'TLS1_1') ? 'Storage account permits outdated TLS versions' : null,
-        message: 'Storage account minimum TLS version is below 1.2',
-        recommendation: 'Set minimum TLS version to 1.2 or higher',
-        fixAction: (config) => ({ ...config, minimumTlsVersion: 'TLS1_2' }),
-      },
-      {
-        id: 'storage-network-open',
-        severity: 'medium',
-        check: (config) => config.networkDefaultAction === 'Allow' ? 'Storage account network access is open to all networks' : null,
-        message: 'Storage account firewall default action allows traffic from all networks',
-        recommendation: 'Set the network default action to Deny and allow only specific VNets/IP ranges',
-        fixAction: (config) => ({ ...config, networkDefaultAction: 'Deny' }),
-      },
     ],
   },
   {
@@ -350,32 +295,6 @@ export const azureResources: ResourceDefinition[] = [
       { key: 'auditingEnabled', label: 'Auditing to Storage/Log Analytics', type: 'boolean', defaultValue: false, section: 'Monitoring', advanced: true },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'sql-threat-detection',
-        severity: 'medium',
-        check: (config) => !config.threatDetectionEnabled ? 'Azure Defender for SQL not configured' : null,
-        message: 'Azure Defender for SQL not configured',
-        recommendation: 'Enable Azure Defender for SQL to detect anomalous activities',
-        fixAction: (config) => ({ ...config, threatDetectionEnabled: true }),
-      },
-      {
-        id: 'sql-public-access',
-        severity: 'critical',
-        check: (config) => config.publicNetworkAccess ? 'Azure SQL allows public network access' : null,
-        message: 'Azure SQL Server is exposed to the public internet',
-        recommendation: 'Disable public network access and use Private Endpoint',
-        fixAction: (config) => ({ ...config, publicNetworkAccess: false }),
-      },
-      {
-        id: 'sql-tde-disabled',
-        severity: 'high',
-        check: (config) => config.transparentDataEncryptionEnabled === false ? 'Transparent Data Encryption is disabled' : null,
-        message: 'Azure SQL database does not have Transparent Data Encryption enabled',
-        recommendation: 'Enable Transparent Data Encryption to protect data at rest',
-        fixAction: (config) => ({ ...config, transparentDataEncryptionEnabled: true }),
-      },
-    ],
   },
   {
     type: 'azure_cosmos_db',
@@ -433,16 +352,6 @@ export const azureResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'cosmos-public-access',
-        severity: 'critical',
-        check: (config) => config.publicNetworkAccess ? 'Cosmos DB allows public network access' : null,
-        message: 'Cosmos DB account is exposed to the public internet',
-        recommendation: 'Disable public network access and use Private Endpoint',
-        fixAction: (config) => ({ ...config, publicNetworkAccess: false }),
-      },
-    ],
   },
   {
     type: 'azure_lb',
@@ -480,7 +389,6 @@ export const azureResources: ResourceDefinition[] = [
       { key: 'healthProbePath', label: 'Health Probe Path', type: 'text', defaultValue: '/', section: 'Monitoring', visibleWhen: (c) => c['healthProbeProtocol'] !== 'Tcp' },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
   },
   {
     type: 'azure_app_gateway',
@@ -532,16 +440,6 @@ export const azureResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'app-gateway-no-waf',
-        severity: 'medium',
-        check: (config) => (config.sku === 'WAF_v2' && config.wafEnabled === false) ? 'WAF_v2 gateway has WAF disabled' : null,
-        message: 'Application Gateway uses the WAF_v2 SKU but WAF is not enabled',
-        recommendation: 'Enable WAF on a WAF_v2 gateway, or switch to Standard_v2 if WAF protection is not needed',
-        fixAction: (config) => ({ ...config, wafEnabled: true }),
-      },
-    ],
   },
   {
     type: 'azure_nat',
@@ -570,7 +468,6 @@ export const azureResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
   },
   {
     type: 'azure_nsg',
@@ -605,24 +502,6 @@ export const azureResources: ResourceDefinition[] = [
         description: 'Only used when "Allow All Outbound Traffic" is disabled — restricts egress to this address prefix on all ports.',
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
-    ],
-    securityRules: [
-      {
-        id: 'nsg-open-ssh',
-        severity: 'critical',
-        check: (config) => (config.allowSsh && config.sourceCidr === '*') ? 'NSG allows public SSH access' : null,
-        message: 'NSG allows inbound SSH from any source (*)',
-        recommendation: 'Restrict SSH access to specific trusted IP addresses',
-        fixAction: (config) => ({ ...config, allowSsh: false }),
-      },
-      {
-        id: 'nsg-open-rdp',
-        severity: 'critical',
-        check: (config) => (config.allowRdp && config.sourceCidr === '*') ? 'NSG allows public RDP access' : null,
-        message: 'NSG allows inbound RDP from any source (*)',
-        recommendation: 'Restrict RDP access or use Azure Bastion for secure remote access',
-        fixAction: (config) => ({ ...config, allowRdp: false }),
-      },
     ],
   },
   {
@@ -660,7 +539,6 @@ export const azureResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
   },
   {
     type: 'azure_bastion',
@@ -710,15 +588,6 @@ export const azureResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'bastion-shareable-link',
-        severity: 'medium',
-        check: (config) => config.shareableLinkEnabled === true ? 'Bastion shareable link is enabled' : null,
-        message: 'Azure Bastion shareable link allows session access via a link without direct Azure portal access',
-        recommendation: 'Disable shareable links unless required; prefer standard portal-based connections with Azure AD auth',
-      },
-    ],
   },
   {
     type: 'azure_key_vault',
@@ -759,24 +628,6 @@ export const azureResources: ResourceDefinition[] = [
       { key: 'softDeleteRetentionDays', label: 'Soft Delete Retention (days)', type: 'number', defaultValue: 90, min: 7, max: 90, section: 'Backup & Recovery', advanced: true },
       { key: 'enabledForDiskEncryption', label: 'Enable for Azure Disk Encryption', type: 'boolean', defaultValue: false, section: 'Advanced', advanced: true },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
-    ],
-    securityRules: [
-      {
-        id: 'keyvault-public-access',
-        severity: 'high',
-        check: (config) => config.publicNetworkAccessEnabled === true ? 'Key Vault allows public network access' : null,
-        message: 'Key Vault is reachable from the public internet',
-        recommendation: 'Disable public network access and use Private Endpoint, or restrict the network ACL default action to Deny',
-        fixAction: (config) => ({ ...config, publicNetworkAccessEnabled: false }),
-      },
-      {
-        id: 'keyvault-no-purge-protection',
-        severity: 'medium',
-        check: (config) => config.purgeProtectionEnabled === false ? 'Key Vault purge protection disabled' : null,
-        message: 'Key Vault does not have purge protection enabled',
-        recommendation: 'Enable purge protection to prevent permanent deletion of secrets/keys during the soft-delete retention window',
-        fixAction: (config) => ({ ...config, purgeProtectionEnabled: true }),
-      },
     ],
   },
   {
@@ -858,23 +709,6 @@ export const azureResources: ResourceDefinition[] = [
         description: 'Consumption plan only. Used only to estimate monthly cost — has no effect on the deployed app.',
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
-    ],
-    securityRules: [
-      {
-        id: 'functions-public-access',
-        severity: 'medium',
-        check: (config) => config.publicNetworkAccess === true ? 'Function App allows public network access' : null,
-        message: 'Function App is reachable from the public internet',
-        recommendation: 'Disable public network access and use Private Endpoint for internal-only functions',
-      },
-      {
-        id: 'functions-https-only',
-        severity: 'high',
-        check: (config) => config.httpsOnly === false ? 'Function App allows non-HTTPS traffic' : null,
-        message: 'Function App does not enforce HTTPS-only connections',
-        recommendation: 'Enable HTTPS Only to prevent unencrypted traffic',
-        fixAction: (config) => ({ ...config, httpsOnly: true }),
-      },
     ],
   },
   {
@@ -958,32 +792,6 @@ export const azureResources: ResourceDefinition[] = [
       { key: 'appSettings', label: 'Application Settings', type: 'keyvalue', defaultValue: {}, section: 'Advanced' },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'app-service-https-only',
-        severity: 'high',
-        check: (config) => config.httpsOnly === false ? 'App Service allows non-HTTPS traffic' : null,
-        message: 'App Service does not enforce HTTPS-only connections',
-        recommendation: 'Enable HTTPS Only to prevent unencrypted traffic',
-        fixAction: (config) => ({ ...config, httpsOnly: true }),
-      },
-      {
-        id: 'app-service-ftp-enabled',
-        severity: 'medium',
-        check: (config) => config.ftpsState === 'AllAllowed' ? 'App Service allows unencrypted FTP deployment' : null,
-        message: 'App Service permits unencrypted FTP for deployment',
-        recommendation: 'Set FTP/FTPS deployment to "FTPS Only" or "Disabled"',
-        fixAction: (config) => ({ ...config, ftpsState: 'FtpsOnly' }),
-      },
-      {
-        id: 'app-service-old-tls',
-        severity: 'medium',
-        check: (config) => (config.minimumTlsVersion === '1.0' || config.minimumTlsVersion === '1.1') ? 'App Service permits outdated TLS versions' : null,
-        message: 'App Service minimum TLS version is below 1.2',
-        recommendation: 'Set minimum TLS version to 1.2 or higher',
-        fixAction: (config) => ({ ...config, minimumTlsVersion: '1.2' }),
-      },
-    ],
   },
   {
     type: 'azure_aks',
@@ -1047,23 +855,6 @@ export const azureResources: ResourceDefinition[] = [
       { key: 'rbacEnabled', label: 'Azure AD RBAC', type: 'boolean', defaultValue: true, section: 'Security' },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'aks-no-private-cluster',
-        severity: 'medium',
-        check: (config) => config.privateClusterEnabled === false ? 'AKS API server is publicly accessible' : null,
-        message: 'AKS cluster does not use a private cluster endpoint',
-        recommendation: 'Enable Private Cluster to keep the Kubernetes API server off the public internet',
-      },
-      {
-        id: 'aks-no-rbac',
-        severity: 'high',
-        check: (config) => config.rbacEnabled === false ? 'AKS Azure AD RBAC disabled' : null,
-        message: 'AKS cluster does not have Azure AD RBAC integration enabled',
-        recommendation: 'Enable Azure AD RBAC for centralized, auditable cluster access control',
-        fixAction: (config) => ({ ...config, rbacEnabled: true }),
-      },
-    ],
   },
   {
     type: 'azure_public_ip',
@@ -1106,7 +897,6 @@ export const azureResources: ResourceDefinition[] = [
       { key: 'domainNameLabel', label: 'DNS Name Label', type: 'text', defaultValue: '', section: 'Networking', advanced: true, placeholder: 'blank = no DNS label' },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [],
   },
   {
     type: 'azure_nic',
@@ -1133,15 +923,6 @@ export const azureResources: ResourceDefinition[] = [
       { key: 'enableIpForwarding', label: 'IP Forwarding', type: 'boolean', defaultValue: false, section: 'Advanced', advanced: true },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'nic-ip-forwarding',
-        severity: 'low',
-        check: (config) => config.enableIpForwarding === true ? 'NIC has IP forwarding enabled' : null,
-        message: 'Network interface allows IP forwarding, which can enable it to act as a router/NVA',
-        recommendation: 'Disable IP forwarding unless this NIC is intentionally used as a network virtual appliance',
-      },
-    ],
   },
   {
     type: 'azure_unsupported',
@@ -1158,7 +939,6 @@ export const azureResources: ResourceDefinition[] = [
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'imported-resource', required: true },
     ],
-    securityRules: [],
   },
   {
     type: 'azure_unknown',
@@ -1175,7 +955,6 @@ export const azureResources: ResourceDefinition[] = [
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'imported-resource', required: true },
     ],
-    securityRules: [],
   },
   {
     type: 'azure_front_door',
@@ -1214,16 +993,6 @@ export const azureResources: ResourceDefinition[] = [
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'frontdoor-https-only',
-        severity: 'high',
-        check: (config) => config.httpsOnly === false ? 'Front Door allows non-HTTPS traffic' : null,
-        message: 'Front Door route does not enforce HTTPS-only redirect',
-        recommendation: 'Enable HTTPS Only to redirect all HTTP traffic to HTTPS',
-        fixAction: (config) => ({ ...config, httpsOnly: true }),
-      },
-    ],
   },
   {
     type: 'azure_waf',
@@ -1261,15 +1030,6 @@ export const azureResources: ResourceDefinition[] = [
       { key: 'fileUploadLimitMb', label: 'File Upload Limit (MB)', type: 'number', defaultValue: 100, min: 1, max: 4000, section: 'Advanced', advanced: true },
       { key: 'maxRequestBodySizeKb', label: 'Max Request Body Size (KB)', type: 'number', defaultValue: 128, min: 8, max: 2000, section: 'Advanced', advanced: true },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
-    ],
-    securityRules: [
-      {
-        id: 'azure-waf-detection-only',
-        severity: 'medium',
-        check: (config) => config.mode === 'Detection' ? 'Azure WAF policy is in Detection mode' : null,
-        message: 'WAF policy is set to Detection mode and will not block malicious requests',
-        recommendation: 'Switch to Prevention mode once rule tuning is complete to actually block matching traffic',
-      },
     ],
   },
   {
@@ -1317,23 +1077,6 @@ export const azureResources: ResourceDefinition[] = [
       },
       { key: 'redisVersion', label: 'Redis Version', type: 'select', defaultValue: '6', section: 'Compute / Capacity', advanced: true, options: [{ label: 'Redis 6', value: '6' }] },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
-    ],
-    securityRules: [
-      {
-        id: 'redis-non-ssl-port',
-        severity: 'high',
-        check: (config) => config.enableNonSslPort === true ? 'Azure Cache for Redis allows unencrypted (non-SSL) connections' : null,
-        message: 'Non-SSL port 6379 is enabled, allowing unencrypted connections',
-        recommendation: 'Disable the non-SSL port; use SSL/TLS port 6380 only',
-        fixAction: (config) => ({ ...config, enableNonSslPort: false }),
-      },
-      {
-        id: 'redis-public-access',
-        severity: 'medium',
-        check: (config) => config.publicNetworkAccessEnabled === true ? 'Azure Cache for Redis allows public network access' : null,
-        message: 'Redis cache is reachable from the public internet',
-        recommendation: 'Disable public network access and use Private Endpoint or VNet injection (Premium tier)',
-      },
     ],
   },
   {
@@ -1397,16 +1140,6 @@ export const azureResources: ResourceDefinition[] = [
       { key: 'osDiskEncryption', label: 'OS Disk Encryption', type: 'boolean', defaultValue: true, section: 'Security' },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
-    securityRules: [
-      {
-        id: 'vmss-disk-encryption',
-        severity: 'high',
-        check: (config) => !config.osDiskEncryption ? 'VMSS OS disk encryption not enabled' : null,
-        message: 'VM Scale Set OS disks are not encrypted',
-        recommendation: 'Enable Azure Disk Encryption for scale set OS/data disks',
-        fixAction: (config) => ({ ...config, osDiskEncryption: true }),
-      },
-    ],
   },
   {
     type: 'azure_cloud_boundary',
@@ -1428,6 +1161,5 @@ export const azureResources: ResourceDefinition[] = [
       { key: 'name', label: 'Boundary Label', type: 'text', defaultValue: 'Microsoft Azure', required: true },
       { key: 'region', label: 'Primary Region', type: 'text', defaultValue: 'eastus', required: true },
     ],
-    securityRules: [],
   },
 ];

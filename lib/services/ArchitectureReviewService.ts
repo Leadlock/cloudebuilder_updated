@@ -266,7 +266,7 @@ export class ArchitectureReviewService {
     }
 
     // 4. Security Gate: No critical security issues
-    const issues = runSecurityScan(nodes);
+    const issues = runSecurityScan(nodes, edges);
     const criticalIssues = issues.filter((i) => i.severity === 'critical');
     if (criticalIssues.length > 0) {
       const err: any = new Error(

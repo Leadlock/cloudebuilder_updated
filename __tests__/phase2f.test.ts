@@ -100,18 +100,22 @@ describe('Phase 2F — Security Workflow Backend Source of Truth', () => {
       architectureId: 'arch-1',
       score: 75,
       findingCount: 1,
+      // The server now returns findings already mapped from the unified
+      // assessment engine (labels resolved from the persisted architecture).
       findings: [
         {
-          id: 'find-1',
-          ruleId: 'AWS-EC2-PUBLIC-IP',
+          id: 'AWS-EC2-001-1A2B3C',
+          findingId: 'AWS-EC2-001-1A2B3C',
+          ruleId: 'AWS-EC2-001',
           severity: 'high' as const,
-          title: 'EC2 instance has public IP',
-          description: 'Web Server is publicly reachable',
-          resourceId: 'node-ec2',
-          provider: 'aws',
-          resourceType: 'aws_ec2',
-          remediation: 'Place EC2 behind ALB in private subnet',
-          meta: {},
+          engineSeverity: 'HIGH',
+          status: 'FAIL',
+          message: 'EC2 instance is assigned a public IP address',
+          nodeId: 'node-ec2',
+          nodeLabel: 'Web Server',
+          recommendation: 'Place instances in private subnets behind a load balancer.',
+          fixable: true,
+          autoFixSafety: 'REVIEW_REQUIRED',
         },
       ],
       createdAt: '2026-09-09T12:00:00.000Z',
@@ -134,10 +138,10 @@ describe('Phase 2F — Security Workflow Backend Source of Truth', () => {
     );
 
     expect(issues).toHaveLength(1);
-    expect(issues[0].id).toBe('find-1');
+    expect(issues[0].id).toBe('AWS-EC2-001-1A2B3C');
     expect(issues[0].severity).toBe('high');
     expect(issues[0].nodeLabel).toBe('Web Server');
-    expect(issues[0].message).toBe('EC2 instance has public IP');
+    expect(issues[0].message).toBe('EC2 instance is assigned a public IP address');
   });
 });
 

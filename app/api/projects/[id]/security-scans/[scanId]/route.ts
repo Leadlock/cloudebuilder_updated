@@ -8,6 +8,7 @@ import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId } from '@/lib/api/phase2d';
 import { projectRepository } from '@/lib/repositories/projectRepository';
 import { db } from '@/src/prisma/db';
+import { SNAPSHOT_SCHEMA, type AssessmentSnapshot } from '@/lib/services/AssessmentSnapshotService';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,9 +38,29 @@ export async function GET(
 
     if (!scan) return notFound('SecurityScan');
 
-    let findings: unknown[];
-    try { findings = JSON.parse(scan.findingsJson) as unknown[]; }
-    catch { findings = []; }
+    // v1 snapshots store the full immutable assessment envelope; older scans
+    // stored a bare findings array.
+    let parsed: unknown;
+    try { parsed = JSON.parse(scan.findingsJson); } catch { parsed = []; }
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && (parsed as { schema?: string }).schema === SNAPSHOT_SCHEMA) {
+      const snap = parsed as AssessmentSnapshot;
+      return ok({
+        scanId: scan.id,
+        architectureId: scan.architectureId,
+        architectureRevision: snap.architecture.revision,
+        graphHash: snap.architecture.graphHash,
+        rulesetVersion: snap.assessment.rulesetVersion,
+        status: scan.status,
+        score: snap.assessment.securityScore.score,
+        securityScore: snap.assessment.securityScore,
+        findings: snap.assessment.findings,
+        findingCount: snap.assessment.findings.length,
+        assessment: snap.assessment,
+        createdAt: scan.createdAt,
+        completedAt: scan.completedAt,
+      });
+    }
+    const findings: unknown[] = Array.isArray(parsed) ? parsed : [];
 
     return ok({
       scanId: scan.id,

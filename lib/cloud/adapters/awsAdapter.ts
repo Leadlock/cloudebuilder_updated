@@ -56,7 +56,10 @@ import {
   DescribeAutoScalingGroupsCommand,
   DescribePoliciesCommand,
 } from '@aws-sdk/client-auto-scaling';
-import { S3Client, ListBucketsCommand, GetBucketLocationCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client, ListBucketsCommand, GetBucketLocationCommand, GetBucketVersioningCommand,
+  GetPublicAccessBlockCommand, GetBucketEncryptionCommand, GetBucketOwnershipControlsCommand,
+} from '@aws-sdk/client-s3';
 import { RDSClient, DescribeDBInstancesCommand } from '@aws-sdk/client-rds';
 import {
   ElasticLoadBalancingV2Client,
@@ -1246,15 +1249,45 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         // Fallback to configured region
       }
 
-      const config = {
+      // Security-relevant settings are read from the S3 API. A setting that
+      // cannot be read (permissions, API error) is left undefined so the
+      // assessment engine reports INSUFFICIENT_DATA instead of a fabricated PASS.
+      const config: Record<string, unknown> = {
         bucketName: bucket.Name,
         region: bucketRegion,
-        versioning: true,
-        encryption: true,
-        publicAccess: false,
         source: 'aws-api',
         imported: true,
       };
+      try {
+        const v = await s3.send(new GetBucketVersioningCommand({ Bucket: bucket.Name }));
+        config.versioning = v.Status === 'Enabled';
+      } catch { /* unreadable — leave undefined */ }
+      try {
+        const pab = await s3.send(new GetPublicAccessBlockCommand({ Bucket: bucket.Name }));
+        const c = pab.PublicAccessBlockConfiguration ?? {};
+        config.blockPublicAcls = c.BlockPublicAcls === true;
+        config.blockPublicPolicy = c.BlockPublicPolicy === true;
+        config.publicAccess = !(c.BlockPublicAcls && c.BlockPublicPolicy && c.IgnorePublicAcls && c.RestrictPublicBuckets);
+      } catch (err) {
+        // No bucket-level configuration at all means Block Public Access is not applied
+        // at the bucket level (account-level settings are not visible here).
+        if ((err as { name?: string })?.name === 'NoSuchPublicAccessBlockConfiguration') {
+          config.blockPublicAcls = false;
+          config.blockPublicPolicy = false;
+          config.publicAccess = true;
+        }
+      }
+      try {
+        const enc = await s3.send(new GetBucketEncryptionCommand({ Bucket: bucket.Name }));
+        const rule = enc.ServerSideEncryptionConfiguration?.Rules?.[0]?.ApplyServerSideEncryptionByDefault;
+        config.encryption = Boolean(rule?.SSEAlgorithm);
+        if (rule?.SSEAlgorithm) config.encryptionType = rule.SSEAlgorithm === 'AES256' ? 'AES256' : 'aws:kms';
+      } catch { /* unreadable — leave undefined */ }
+      try {
+        const own = await s3.send(new GetBucketOwnershipControlsCommand({ Bucket: bucket.Name }));
+        const o = own.OwnershipControls?.Rules?.[0]?.ObjectOwnership;
+        if (o) config.objectOwnership = o;
+      } catch { /* unreadable — leave undefined */ }
 
       results.push({
         id: `s3-${bucket.Name}`,

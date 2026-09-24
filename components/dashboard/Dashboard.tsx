@@ -59,7 +59,10 @@ export default function Dashboard() {
 
   const effectiveRate = activeCurrency === 'USD' ? 1.0 : exchangeRate;
   const totalResources = projects.reduce((a, p) => a + p.resourceCount, 0);
-  const avgScore = projects.length ? Math.round(projects.reduce((a, p) => a + p.securityScore, 0) / projects.length) : 0;
+  // Only projects with an evaluated (scored) security assessment contribute; an
+  // unscored project must not be averaged in as 0 or 100.
+  const scoredProjects = projects.filter((p) => p.securityScored !== false);
+  const avgScore = scoredProjects.length ? Math.round(scoredProjects.reduce((a, p) => a + p.securityScore, 0) / scoredProjects.length) : 0;
   const totalCostUsd = projects.reduce((a, p) => a + p.estimatedMonthlyCost, 0);
   const totalCost = totalCostUsd * effectiveRate;
 
@@ -237,7 +240,9 @@ export default function Dashboard() {
                 </div>
                 <div className="text-center border-x border-gray-700">
                   <p className="text-gray-500 text-[10px] uppercase tracking-wide mb-0.5">Security</p>
-                  <p className="text-sm font-semibold"><ScoreBadge score={project.securityScore} /><span className="text-gray-600">/100</span></p>
+                  <p className="text-sm font-semibold" title={project.securityCoveragePct != null ? `Assessment coverage ${project.securityCoveragePct}%` : undefined}>
+                    {project.securityScored === false ? <span className="text-gray-500">Not scored</span> : <><ScoreBadge score={project.securityScore} /><span className="text-gray-600">/100</span></>}
+                  </p>
                 </div>
                 <div className="text-center border-r border-gray-700">
                   <p className="text-gray-500 text-[10px] uppercase tracking-wide mb-0.5">Arch.</p>
@@ -253,7 +258,7 @@ export default function Dashboard() {
               <div className="mb-3">
                 <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
                   <div className={clsx('h-full rounded-full transition-all', project.securityScore >= 80 ? 'bg-emerald-500' : project.securityScore >= 60 ? 'bg-yellow-500' : 'bg-red-500')}
-                    style={{ width: `${project.securityScore}%` }} />
+                    style={{ width: `${project.securityScored === false ? 0 : project.securityScore}%` }} />
                 </div>
               </div>
 

@@ -15,7 +15,8 @@
  */
 import type { ISecurityService } from './SecurityService';
 import type { CanvasNode, SecurityIssue } from '@/types';
-import { isRuleFixable, applyRuleRemediation } from '@/lib/engines/security/remediation';
+import { applyRuleRemediation } from '@/lib/engines/security/remediation';
+import type { AssessmentResult } from '@/lib/engines/assessment/types';
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
@@ -47,53 +48,43 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 // ─── Response types from the API ─────────────────────────────────────────────
 
-interface ApiFinding {
-  id: string;
-  ruleId: string;
-  severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
-  title: string;
-  description: string;
-  resourceId: string;
-  provider: string;
-  resourceType: string;
-  remediation: string;
-  meta: Record<string, unknown>;
-}
-
-interface ScanResponse {
+export interface PersistedScan {
   scanId: string | null;
+  persisted: boolean;
   architectureId: string;
-  score: number;
-  findingCount: number;
-  findings: ApiFinding[];
+  architectureRevision: number;
+  graphHash: string;
+  rulesetVersion: string;
+  score: number | null;
+  findings: SecurityIssue[];
+  assessment: AssessmentResult | null;
   createdAt: string;
   message?: string;
 }
 
-// ─── Mapper: API finding → SecurityIssue ─────────────────────────────────────
-
-function mapFinding(f: ApiFinding, nodes: CanvasNode[]): SecurityIssue {
-  // Find the node label from the in-memory canvas to populate nodeLabel
-  const node = nodes.find((n) => n.id === f.resourceId);
-  const nodeLabel = node?.label ?? f.resourceId;
-
-  // Map severity: API supports 'info' but SecurityIssue type does not
-  const severity = f.severity === 'info' ? 'low' : f.severity as SecurityIssue['severity'];
-
-  return {
-    id: f.id,
-    nodeId: f.resourceId,
-    nodeLabel,
-    severity,
-    message: f.title,
-    recommendation: f.remediation,
-    fixable: isFixable(f.ruleId),
-    ruleId: f.ruleId,
-  };
+export interface ScanHistoryEntry {
+  scanId: string;
+  createdAt: string;
+  architectureRevision: number | null;
+  graphHash: string | null;
+  rulesetVersion: string | null;
+  securityScore: number | null;
+  coveragePct: number | null;
+  findingCount: number;
+  legacy: boolean;
 }
 
-function isFixable(ruleId: string): boolean {
-  return isRuleFixable(ruleId);
+export interface ReviewRecord {
+  id: string;
+  findingId: string;
+  ruleId: string;
+  status: 'ACCEPTED_RISK' | 'FALSE_POSITIVE' | 'NOT_APPLICABLE';
+  reason: string;
+  approvedBy: string;
+  approvedAt: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  revokedBy: string | null;
 }
 
 // ─── Active project registry ─────────────────────────────────────────────────
@@ -118,21 +109,68 @@ export function setActiveEnvironment(env: string): void {
 
 class ApiSecurityServiceImpl implements ISecurityService {
 
-  async scan(nodes: CanvasNode[]): Promise<SecurityIssue[]> {
+  /** Runs a persisted scan and returns the flat SECURITY finding list (legacy interface). */
+  async scan(_nodes?: CanvasNode[]): Promise<SecurityIssue[]> {
+    return (await this.runPersistedScan()).findings;
+  }
+
+  /** Assess the SAVED architecture on the server and store an immutable snapshot. */
+  async runPersistedScan(): Promise<PersistedScan> {
     const projectId = _activeProjectId;
-    if (!projectId) {
-      throw new Error('No active project context');
+    if (!projectId || projectId === 'draft-project') throw new Error('No active project context');
+    return apiFetch<PersistedScan>(`/api/projects/${projectId}/security-scans`, {
+      method: 'POST',
+      body: JSON.stringify({ env: _activeEnvironment }),
+    });
+  }
+
+  async listScans(): Promise<{ scans: ScanHistoryEntry[]; currentRevision?: number }> {
+    const projectId = _activeProjectId;
+    if (!projectId || projectId === 'draft-project') return { scans: [] };
+    return apiFetch(`/api/projects/${projectId}/security-scans?env=${encodeURIComponent(_activeEnvironment)}`);
+  }
+
+  async listReviews(): Promise<ReviewRecord[]> {
+    const projectId = _activeProjectId;
+    if (!projectId || projectId === 'draft-project') return [];
+    const data = await apiFetch<{ reviews: ReviewRecord[] }>(`/api/projects/${projectId}/finding-reviews?env=${encodeURIComponent(_activeEnvironment)}`);
+    return data.reviews;
+  }
+
+  async createReview(input: { findingId: string; status: ReviewRecord['status']; reason: string; expiresAt?: string }): Promise<ReviewRecord> {
+    const projectId = _activeProjectId;
+    if (!projectId || projectId === 'draft-project') throw new Error('Save the project before recording review decisions.');
+    const data = await apiFetch<{ review: ReviewRecord }>(`/api/projects/${projectId}/finding-reviews`, {
+      method: 'POST',
+      body: JSON.stringify({ ...input, env: _activeEnvironment }),
+    });
+    return data.review;
+  }
+
+  async revokeReview(reviewId: string): Promise<void> {
+    const projectId = _activeProjectId;
+    if (!projectId) return;
+    await apiFetch(`/api/projects/${projectId}/finding-reviews/${reviewId}`, { method: 'DELETE' });
+  }
+
+  /** Download the assessment report generated server-side from a persisted snapshot. */
+  async downloadReport(format: 'pdf' | 'html' | 'json', scanId?: string): Promise<{ blob: Blob; filename: string; scanId: string | null }> {
+    const projectId = _activeProjectId;
+    if (!projectId || projectId === 'draft-project') throw new Error('Save the project before exporting a report.');
+    const res = await fetch(`${getBaseUrl()}/api/projects/${projectId}/assessment-report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(process.env.NODE_ENV === 'development' ? { 'x-user-id': 'dev-user-id' } : {}) },
+      body: JSON.stringify({ env: _activeEnvironment, format, ...(scanId ? { scanId } : {}) }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => null) as ApiError | null;
+      throw new Error(err?.error?.message ?? `Report generation failed (${res.status})`);
     }
-
-    const data = await apiFetch<ScanResponse>(
-      `/api/projects/${projectId}/security-scans`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ env: _activeEnvironment }),
-      },
-    );
-
-    return (data.findings ?? []).map((f) => mapFinding(f, nodes));
+    const cd = res.headers.get('Content-Disposition') ?? '';
+    const ext = format === 'json' ? 'json' : format;
+    const filename = /filename="([^"]+)"/.exec(cd)?.[1] ?? `cloudcraft-assessment.${ext}`;
+    const blob = format === 'json' ? new Blob([JSON.stringify(await res.json(), null, 2)], { type: 'application/json' }) : await res.blob();
+    return { blob, filename, scanId: res.headers.get('X-Assessment-Scan-Id') };
   }
 
   score(issues: SecurityIssue[]): number {
@@ -143,14 +181,13 @@ class ApiSecurityServiceImpl implements ISecurityService {
   }
 
   applyFix(nodes: CanvasNode[], nodeId: string, ruleId: string): CanvasNode[] {
-    // Client-side only: modifies local node config state
-    // The user can then save the canvas to persist the fix
+    // Compatibility helper (unverified patch). The Security view uses
+    // lib/engines/assessment/autofix.applyAutoFix, which verifies the result.
     return nodes.map((n) => {
       if (n.id !== nodeId) return n;
-      return { ...n, config: applyRuleRemediation(n.config, ruleId) };
+      return { ...n, config: applyRuleRemediation(n.config, ruleId, { id: n.id, label: n.label, resourceType: n.resourceType }) };
     });
   }
-
 }
 
-export const apiSecurityService: ISecurityService = new ApiSecurityServiceImpl();
+export const apiSecurityService = new ApiSecurityServiceImpl();

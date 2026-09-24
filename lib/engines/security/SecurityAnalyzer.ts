@@ -1,66 +1,42 @@
 /**
- * SecurityAnalyzer — real rule-based security engine for Phase 2D.
+ * SecurityAnalyzer — server-side entry point for persisted security scans.
  *
- * Source of truth: persisted ArchitectureResource/ArchitectureConnection rows.
- * Findings are deterministic: identical inputs produce identical outputs.
- * No finding is emitted when the relevant config field is absent/unknown.
+ * Converts the persisted ArchitectureResource/ArchitectureConnection rows into
+ * the canvas graph (architectureRepository.toCanvas — the same mapping used to
+ * load the canvas) and runs the unified assessment engine. The previous
+ * standalone rule set (awsRules.ts / azureRules.ts) read config keys that do not
+ * exist in CloudCraft (e.g. `transparentDataEncryption`, `diskEncryption`,
+ * `blockPublicAccess`) and fired NSG rules without checking the source address;
+ * it has been removed in favour of the shared engine.
  */
-import { createHash } from 'crypto';
-import type { SecurityAnalysisInput, SecurityScanResult, SecurityFinding } from './types';
-import { SEVERITY_WEIGHTS } from './types';
-import { awsSecurityRules } from './awsRules';
-import { azureSecurityRules } from './azureRules';
-import type { SecurityRule } from './types';
-
-// ─── All rules ───────────────────────────────────────────────────────────────
-
-const ALL_RULES: SecurityRule[] = [...awsSecurityRules, ...azureSecurityRules];
-
-// ─── Deterministic finding ID ────────────────────────────────────────────────
-
-function findingId(ruleId: string, resourceId: string): string {
-  return createHash('sha256')
-    .update(`${ruleId}:${resourceId}`)
-    .digest('hex')
-    .substring(0, 16);
-}
-
-// ─── Analyzer ────────────────────────────────────────────────────────────────
+import type { SecurityAnalysisInput, SecurityScanResult, SecurityFinding, FindingSeverity } from './types';
+import { toCanvas } from '@/lib/domain/canvasMapping';
+import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
+import type { AssessmentResult, FindingReview } from '@/lib/engines/assessment/types';
 
 export class SecurityAnalyzer {
-  analyze(input: SecurityAnalysisInput): SecurityScanResult {
-    const findings: SecurityFinding[] = [];
-
-    for (const resource of input.resources) {
-      let config: Record<string, unknown>;
-      try {
-        config = JSON.parse(resource.configJson) as Record<string, unknown>;
-      } catch {
-        config = {};
-      }
-
-      for (const rule of ALL_RULES) {
-        const raw = rule.check(resource, config, input);
-        if (raw !== null) {
-          findings.push({
-            ...raw,
-            id: findingId(rule.ruleId, resource.id),
-          });
-        }
-      }
-    }
-
-    const score = this._calculateScore(findings);
-    return { findings, score };
+  assess(input: SecurityAnalysisInput & { reviews?: FindingReview[] }): AssessmentResult {
+    const { nodes, edges } = toCanvas(input.resources, input.connections);
+    return runAssessment({ nodes, edges, reviews: input.reviews });
   }
 
-  private _calculateScore(findings: SecurityFinding[]): number {
-    if (findings.length === 0) return 100;
-    const totalDeduction = findings.reduce(
-      (acc, f) => acc + (SEVERITY_WEIGHTS[f.severity] ?? 0),
-      0,
-    );
-    return Math.max(0, 100 - totalDeduction);
+  analyze(input: SecurityAnalysisInput & { reviews?: FindingReview[] }): SecurityScanResult & { assessment: AssessmentResult } {
+    const assessment = this.assess(input);
+    const findings: SecurityFinding[] = assessment.findings
+      .filter((f) => f.domain === 'SECURITY')
+      .map((f) => ({
+        id: f.findingId,
+        ruleId: f.ruleId,
+        severity: f.severity === 'INFORMATIONAL' ? 'info' : (f.severity.toLowerCase() as FindingSeverity),
+        title: f.title,
+        description: f.description,
+        resourceId: f.resourceIds[0] ?? '',
+        provider: f.provider,
+        resourceType: f.resourceType ?? '',
+        remediation: f.recommendation,
+        meta: { status: f.status, evidence: f.evidence, observation: f.observation, autoFix: f.autoFix, references: f.references.map((r) => r.key) },
+      }));
+    return { findings, score: assessment.securityScore.score, assessment };
   }
 }
 

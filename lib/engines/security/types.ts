@@ -34,34 +34,6 @@ export interface SecurityFinding {
 
 export interface SecurityScanResult {
   findings: SecurityFinding[];
-  score: number;           // 0-100
+  /** Coverage-aware security score; null when no security check could be evaluated. */
+  score: number | null;
 }
-
-// ─── Rule ────────────────────────────────────────────────────────────────────
-
-export interface SecurityRule {
-  ruleId: string;
-  severity: FindingSeverity;
-  title: string;
-  description: string;
-  remediation: string;
-  /**
-   * Returns a finding if the rule fires, null if the resource passes.
-   * May be called for every resource of the matching resourceTypes.
-   */
-  check(
-    resource: DbArchitectureResource,
-    config: Record<string, unknown>,
-    context: SecurityAnalysisInput,
-  ): Omit<SecurityFinding, 'id'> | null;
-}
-
-// ─── Weight map for score calculation ────────────────────────────────────────
-
-export const SEVERITY_WEIGHTS: Record<FindingSeverity, number> = {
-  critical: 25,
-  high: 15,
-  medium: 8,
-  low: 3,
-  info: 0,
-};

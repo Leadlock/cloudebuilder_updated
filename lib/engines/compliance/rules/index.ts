@@ -1,636 +1,75 @@
 /**
- * CloudCraft — Compliance Rules
+ * CloudCraft — framework control mappings (SOC 2, HIPAA Security Rule, PCI DSS v4.0).
  *
- * SOC2, HIPAA, and PCI-DSS rules evaluated against actual architecture/resource configuration.
+ * These are MAPPINGS from framework control areas to CloudCraft's technical
+ * assessment rules — not independent checks. Each control's status is derived
+ * from the shared assessment evaluations, so it can never disagree with the
+ * Security view. The previous implementation re-read resource configuration
+ * with keys that do not exist in CloudCraft (e.g. `storageEncrypted`,
+ * `sseAlgorithm`, `enableHttpsTrafficOnly`) and string-matched "0.0.0.0/0" in the
+ * whole security-group config (which matched the default EGRESS rule), so it
+ * failed controls on correctly configured architectures.
  *
- * Each rule:
- *  - Inspects actual node config values (not generic assumptions)
- *  - Produces findings with: framework, controlId, title, severity, status,
- *    affectedResourceIds, evidence, recommendation, remediation, reference, provider
- *  - Never generates findings for resources not in the architecture
+ * A "technical indicators passed" status is NOT a statement of compliance.
+ * Compliance with SOC 2, HIPAA or PCI DSS can only be determined by the
+ * appropriate assessor (CPA firm, covered entity/regulator, QSA).
  */
 
-import type { CanvasNode } from '@/types';
+export type ComplianceFramework = 'SOC2' | 'HIPAA' | 'PCI-DSS';
 
 export interface ComplianceRule {
   id: string;
-  framework: 'SOC2' | 'HIPAA' | 'PCI-DSS';
+  framework: ComplianceFramework;
   controlId: string;
   title: string;
   description: string;
   severity: 'critical' | 'high' | 'medium' | 'low';
-  reference: string;  // Official control documentation URL
-  evaluate: (resources: CanvasNode[]) => ComplianceFinding;
+  reference: string;
+  /** Assessment rule IDs that provide technical evidence for this control area. */
+  assessmentRules: string[];
 }
 
-export interface ComplianceFinding {
-  passed: boolean;
-  affectedResourceIds: string[];
-  /** Actual config values/conditions that triggered this finding */
-  evidence: string[];
-  recommendation: string;
-  remediation: string;
-  /** Which cloud providers are covered by this finding */
-  providers: string[];
-}
+const SOC2_REF = 'https://www.aicpa-cima.com/resources/landing/system-and-organization-controls-soc-suite-of-services';
+const HIPAA_REF = 'https://www.hhs.gov/hipaa/for-professionals/security/laws-regulations/index.html';
+const PCI_REF = 'https://www.pcisecuritystandards.org/document_library/';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function getConfig(node: CanvasNode, key: string): unknown {
-  return (node.config as Record<string, unknown>)?.[key];
-}
-
-function nodeProvider(type: string): string {
-  if (type.startsWith('aws_')) return 'aws';
-  if (type.startsWith('azure_')) return 'azure';
-  return 'unknown';
-}
-
-// ─── SOC2 Rules ───────────────────────────────────────────────────────────────
+const ENCRYPTION_AT_REST = ['AWS-RDS-002', 'AWS-EC2-002', 'AWS-EBS-001', 'AWS-S3-002', 'AWS-EKS-002', 'AWS-ELC-002', 'AWS-SQS-001', 'AWS-DDB-001', 'AWS-KMS-001', 'AZ-SQL-002', 'AZ-VM-002', 'AZ-VMSS-001', 'AZ-KV-002'];
+const ENCRYPTION_IN_TRANSIT = ['AWS-ELB-001', 'AWS-ELB-002', 'AWS-CF-001', 'AWS-ELC-001', 'AZ-STG-001', 'AZ-STG-003', 'AZ-SQL-005', 'AZ-APP-001', 'AZ-APP-002', 'AZ-APP-003', 'AZ-FUNC-001', 'AZ-FUNC-002', 'AZ-RED-001', 'AZ-RED-003', 'AZ-AFD-001'];
+const NETWORK_BOUNDARY = ['AWS-SG-001', 'AWS-SG-002', 'AWS-NACL-001', 'AWS-RDS-001', 'AWS-S3-001', 'AWS-EC2-001', 'AWS-ECS-001', 'AWS-EKS-001', 'AWS-VPC-001', 'AZ-NSG-001', 'AZ-NSG-002', 'AZ-SQL-001', 'AZ-SQL-006', 'AZ-COS-001', 'AZ-STG-002', 'AZ-STG-004', 'AZ-KV-001', 'AZ-RED-002', 'AZ-AKS-002', 'AZ-VM-001', 'AZ-ARCH-001'];
+const LOGGING = ['AWS-ACCT-001', 'AWS-S3-003', 'AWS-RDS-004', 'AWS-EKS-003', 'AWS-VPC-002', 'AZ-SQL-003', 'AZ-ACCT-002', 'AZ-ARCH-020'];
+const MONITORING = ['AWS-ACCT-002', 'AWS-ARCH-003', 'AZ-SQL-004', 'AZ-ACCT-001'];
+const BACKUP = ['AWS-RDS-007', 'AWS-S3-005', 'AWS-DDB-002', 'AWS-EBS-002', 'AWS-ELC-004', 'AZ-STG-005', 'AZ-SQL-011', 'AZ-VM-010'];
+const PUBLIC_DATA_STORES = ['AWS-RDS-001', 'AWS-S3-001', 'AZ-SQL-001', 'AZ-COS-001', 'AZ-STG-002', 'AZ-RED-002'];
+const EDGE_PROTECTION = ['AWS-ELB-003', 'AWS-CF-002', 'AWS-WAF-001', 'AZ-AGW-001', 'AZ-AFD-002', 'AZ-WAF-001'];
+const PRIVILEGE = ['AWS-IAM-001', 'AWS-S3-004', 'AZ-AKS-001', 'AZ-KV-003'];
+const STRONG_AUTH = ['AWS-ACCT-003', 'AZ-ACCT-003'];
 
 export const soc2Rules: ComplianceRule[] = [
-  {
-    id: 'SOC2-CC6.1-ENCRYPTION-AT-REST',
-    framework: 'SOC2',
-    controlId: 'CC6.1',
-    title: 'Data at rest must be encrypted',
-    description: 'All storage services and databases must have encryption at rest enabled to protect data confidentiality.',
-    severity: 'high',
-    reference: 'https://www.aicpa.org/resources/article/soc-2-cc6-logical-and-physical-access-controls',
-    evaluate: (resources) => {
-      const affected: string[] = [];
-      const evidence: string[] = [];
-      const providers = new Set<string>();
-
-      resources.forEach(r => {
-        const p = nodeProvider(r.resourceType);
-        providers.add(p);
-        const cfg = r.config as Record<string, unknown>;
-
-        if (r.resourceType === 'aws_rds' && cfg['storageEncrypted'] !== true) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (aws_rds): storageEncrypted=${JSON.stringify(cfg['storageEncrypted'] ?? 'not set')}`);
-        }
-        if (r.resourceType === 'aws_ebs' && cfg['encrypted'] !== true) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (aws_ebs): encrypted=${JSON.stringify(cfg['encrypted'] ?? 'not set')}`);
-        }
-        if (r.resourceType === 'aws_s3' && !cfg['sseAlgorithm']) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (aws_s3): sseAlgorithm=not configured`);
-        }
-        if (r.resourceType === 'azure_sql' && cfg['transparentDataEncryption'] === false) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (azure_sql): transparentDataEncryption=false`);
-        }
-        if (r.resourceType === 'azure_storage' && cfg['enableHttpsTrafficOnly'] === false) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (azure_storage): enableHttpsTrafficOnly=false`);
-        }
-      });
-
-      return {
-        passed: affected.length === 0,
-        affectedResourceIds: [...new Set(affected)],
-        evidence,
-        recommendation: 'Enable server-side encryption on all databases, volumes, and storage buckets.',
-        remediation: 'AWS: Set storageEncrypted=true on RDS, encrypted=true on EBS, configure SSE on S3. Azure: Enable TDE on SQL, HTTPS-only on storage.',
-        providers: [...providers],
-      };
-    },
-  },
-  {
-    id: 'SOC2-CC6.6-NETWORK-ACCESS',
-    framework: 'SOC2',
-    controlId: 'CC6.6',
-    title: 'Restrict network access to authorized sources',
-    description: 'Security groups and firewall rules must not allow unrestricted ingress from any IP address (0.0.0.0/0 or ::/0) on sensitive ports.',
-    severity: 'high',
-    reference: 'https://www.aicpa.org/resources/article/soc-2-cc6-logical-and-physical-access-controls',
-    evaluate: (resources) => {
-      const affected: string[] = [];
-      const evidence: string[] = [];
-      const providers = new Set<string>();
-
-      resources.forEach(r => {
-        providers.add(nodeProvider(r.resourceType));
-        const cfgStr = JSON.stringify(r.config ?? {});
-
-        if (
-          (r.resourceType === 'aws_sg' || r.resourceType === 'aws_security_group') &&
-          (cfgStr.includes('0.0.0.0/0') || cfgStr.includes('::/0'))
-        ) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (aws_sg): ingressCidr includes 0.0.0.0/0 or ::/0`);
-        }
-        if (r.resourceType === 'azure_nsg' && cfgStr.includes('0.0.0.0/0')) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (azure_nsg): source address includes 0.0.0.0/0`);
-        }
-      });
-
-      return {
-        passed: affected.length === 0,
-        affectedResourceIds: [...new Set(affected)],
-        evidence,
-        recommendation: 'Replace 0.0.0.0/0 ingress rules with specific CIDR ranges or security group references.',
-        remediation: 'Review and update inbound rules to restrict access to known IP ranges. Use VPN or bastion host for administrative access.',
-        providers: [...providers],
-      };
-    },
-  },
-  {
-    id: 'SOC2-CC6.7-ENCRYPTION-IN-TRANSIT',
-    framework: 'SOC2',
-    controlId: 'CC6.7',
-    title: 'Encryption in transit must be enforced',
-    description: 'All HTTP listeners and database connections must enforce TLS/HTTPS to protect data in transit.',
-    severity: 'high',
-    reference: 'https://www.aicpa.org/resources/article/soc-2-cc6-logical-and-physical-access-controls',
-    evaluate: (resources) => {
-      const affected: string[] = [];
-      const evidence: string[] = [];
-      const providers = new Set<string>();
-
-      resources.forEach(r => {
-        providers.add(nodeProvider(r.resourceType));
-        const cfg = r.config as Record<string, unknown>;
-
-        if (r.resourceType === 'aws_alb' && cfg['httpRedirectEnabled'] === false) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (aws_alb): httpRedirectEnabled=false (HTTP traffic allowed without redirect)`);
-        }
-        if (r.resourceType === 'aws_rds' && cfg['sslRequired'] === false) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (aws_rds): sslRequired=false`);
-        }
-        if (r.resourceType === 'azure_storage' && cfg['enableHttpsTrafficOnly'] === false) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (azure_storage): enableHttpsTrafficOnly=false`);
-        }
-      });
-
-      return {
-        passed: affected.length === 0,
-        affectedResourceIds: [...new Set(affected)],
-        evidence,
-        recommendation: 'Enforce HTTPS/TLS on all load balancers, API endpoints, and database connections.',
-        remediation: 'Enable HTTP→HTTPS redirects on ALBs, set sslRequired on RDS, enableHttpsTrafficOnly on Azure Storage.',
-        providers: [...providers],
-      };
-    },
-  },
-  {
-    id: 'SOC2-CC7.2-LOGGING-MONITORING',
-    framework: 'SOC2',
-    controlId: 'CC7.2',
-    title: 'Logging and monitoring must be enabled',
-    description: 'CloudTrail or Azure Monitor must be present in the architecture for security event detection.',
-    severity: 'medium',
-    reference: 'https://www.aicpa.org/resources/article/soc-2-cc7-system-operations',
-    evaluate: (resources) => {
-      const providers = new Set<string>();
-      const hasLogging: Record<string, boolean> = { aws: false, azure: false };
-
-      resources.forEach(r => {
-        const p = nodeProvider(r.resourceType);
-        providers.add(p);
-        const cfg = r.config as Record<string, unknown>;
-
-        if (r.resourceType === 'aws_cloudtrail' || (cfg['enableCloudTrail'] === true)) hasLogging.aws = true;
-        if (r.resourceType === 'azure_log_analytics' || (cfg['diagnosticsEnabled'] === true)) hasLogging.azure = true;
-      });
-
-      const affected: string[] = [];
-      const evidence: string[] = [];
-
-      // Check: if there are cloud resources but no logging for that provider
-      const awsResources = resources.filter(r => r.resourceType.startsWith('aws_'));
-      const azureResources = resources.filter(r => r.resourceType.startsWith('azure_'));
-
-      if (awsResources.length > 0 && !hasLogging.aws) {
-        awsResources.forEach(r => affected.push(r.id));
-        evidence.push(`${awsResources.length} AWS resource(s) present but no CloudTrail or logging resource found in architecture`);
-      }
-      if (azureResources.length > 0 && !hasLogging.azure) {
-        azureResources.forEach(r => affected.push(r.id));
-        evidence.push(`${azureResources.length} Azure resource(s) present but no Log Analytics Workspace found in architecture`);
-      }
-
-      return {
-        passed: affected.length === 0,
-        affectedResourceIds: [...new Set(affected)],
-        evidence,
-        recommendation: 'Add CloudTrail (AWS) or Log Analytics Workspace (Azure) to your architecture.',
-        remediation: 'Enable audit logging for all API calls and data access events. Configure log retention for at least 90 days.',
-        providers: [...providers],
-      };
-    },
-  },
-  {
-    id: 'SOC2-CC9.2-BACKUP',
-    framework: 'SOC2',
-    controlId: 'CC9.2',
-    title: 'Backup and recovery must be configured',
-    description: 'Databases must have automated backups enabled with appropriate retention periods.',
-    severity: 'medium',
-    reference: 'https://www.aicpa.org/resources/article/soc-2-cc9-risk-mitigation',
-    evaluate: (resources) => {
-      const affected: string[] = [];
-      const evidence: string[] = [];
-      const providers = new Set<string>();
-
-      resources.forEach(r => {
-        providers.add(nodeProvider(r.resourceType));
-        const cfg = r.config as Record<string, unknown>;
-
-        if (r.resourceType === 'aws_rds') {
-          const retention = Number(cfg['backupRetentionPeriod'] ?? 0);
-          if (retention === 0) {
-            affected.push(r.id);
-            evidence.push(`${r.label} (aws_rds): backupRetentionPeriod=0 (automated backups disabled)`);
-          } else if (retention < 7) {
-            affected.push(r.id);
-            evidence.push(`${r.label} (aws_rds): backupRetentionPeriod=${retention} days (recommended ≥7)`);
-          }
-        }
-        if (r.resourceType === 'azure_sql') {
-          const backupEnabled = cfg['backupEnabled'];
-          if (backupEnabled === false) {
-            affected.push(r.id);
-            evidence.push(`${r.label} (azure_sql): backupEnabled=false`);
-          }
-        }
-      });
-
-      return {
-        passed: affected.length === 0,
-        affectedResourceIds: [...new Set(affected)],
-        evidence,
-        recommendation: 'Enable automated backups with a minimum 7-day retention period on all databases.',
-        remediation: 'Set backupRetentionPeriod≥7 on AWS RDS, enable Azure SQL backup.',
-        providers: [...providers],
-      };
-    },
-  },
+  { id: 'SOC2-CC6.1', framework: 'SOC2', controlId: 'CC6.1', title: 'Logical access security — protection of data at rest', description: 'Technical indicators relevant to logical access security over information assets, including encryption of stored data and least-privilege access.', severity: 'high', reference: SOC2_REF, assessmentRules: [...ENCRYPTION_AT_REST, ...PRIVILEGE] },
+  { id: 'SOC2-CC6.6', framework: 'SOC2', controlId: 'CC6.6', title: 'Boundary protection against threats from outside system boundaries', description: 'Technical indicators for restricting access from untrusted networks (security groups/NSGs, public endpoints, edge protection).', severity: 'high', reference: SOC2_REF, assessmentRules: [...NETWORK_BOUNDARY, ...EDGE_PROTECTION] },
+  { id: 'SOC2-CC6.7', framework: 'SOC2', controlId: 'CC6.7', title: 'Protection of information during transmission', description: 'Technical indicators for encryption in transit.', severity: 'high', reference: SOC2_REF, assessmentRules: ENCRYPTION_IN_TRANSIT },
+  { id: 'SOC2-CC7.2', framework: 'SOC2', controlId: 'CC7.2', title: 'Monitoring of system components for anomalies', description: 'Technical indicators for logging, monitoring and threat detection.', severity: 'medium', reference: SOC2_REF, assessmentRules: [...LOGGING, ...MONITORING] },
+  // Previously mapped to CC9.2 (vendor and business partner risk), which does not cover backups.
+  { id: 'SOC2-A1.2', framework: 'SOC2', controlId: 'A1.2', title: 'Availability — data backup and recovery infrastructure', description: 'Technical indicators for backup configuration (Availability criteria).', severity: 'medium', reference: SOC2_REF, assessmentRules: BACKUP },
 ];
-
-// ─── HIPAA Rules ──────────────────────────────────────────────────────────────
 
 export const hipaaRules: ComplianceRule[] = [
-  {
-    id: 'HIPAA-164.312-a1-ACCESS-CONTROL',
-    framework: 'HIPAA',
-    controlId: '164.312(a)(1)',
-    title: 'Strict Access Control — No Public Database Access',
-    description: 'Databases storing ePHI must not be publicly accessible. Direct internet access to databases is prohibited.',
-    severity: 'critical',
-    reference: 'https://www.hhs.gov/hipaa/for-professionals/security/laws-regulations/index.html',
-    evaluate: (resources) => {
-      const affected: string[] = [];
-      const evidence: string[] = [];
-      const providers = new Set<string>();
-
-      resources.forEach(r => {
-        providers.add(nodeProvider(r.resourceType));
-        const cfg = r.config as Record<string, unknown>;
-
-        if (r.resourceType === 'aws_rds' && cfg['publiclyAccessible'] === true) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (aws_rds): publiclyAccessible=true — database reachable from public internet`);
-        }
-        if (r.resourceType === 'azure_sql' && cfg['publicNetworkAccess'] === true) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (azure_sql): publicNetworkAccess=true`);
-        }
-      });
-
-      return {
-        passed: affected.length === 0,
-        affectedResourceIds: [...new Set(affected)],
-        evidence,
-        recommendation: 'Place databases in private subnets and disable public internet access.',
-        remediation: 'Set publiclyAccessible=false on RDS. Disable public network access on Azure SQL.',
-        providers: [...providers],
-      };
-    },
-  },
-  {
-    id: 'HIPAA-164.312-b-AUDIT-CONTROLS',
-    framework: 'HIPAA',
-    controlId: '164.312(b)',
-    title: 'Audit Controls — Activity Logging Required',
-    description: 'Hardware, software, and procedural mechanisms must record and examine activity in systems containing ePHI.',
-    severity: 'high',
-    reference: 'https://www.hhs.gov/hipaa/for-professionals/security/laws-regulations/index.html',
-    evaluate: (resources) => {
-      const affected: string[] = [];
-      const evidence: string[] = [];
-      const providers = new Set<string>();
-
-      resources.forEach(r => {
-        providers.add(nodeProvider(r.resourceType));
-        const cfg = r.config as Record<string, unknown>;
-
-        if (r.resourceType === 'aws_rds' && cfg['enableCloudwatchLogsExports'] === undefined) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (aws_rds): enableCloudwatchLogsExports not configured — database activity not logged`);
-        }
-        if (r.resourceType === 'aws_s3' && cfg['accessLogging'] === false) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (aws_s3): accessLogging=false — S3 access not logged`);
-        }
-        if (r.resourceType === 'azure_sql' && cfg['auditingEnabled'] !== true) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (azure_sql): auditingEnabled=${JSON.stringify(cfg['auditingEnabled'] ?? 'not set')}`);
-        }
-      });
-
-      return {
-        passed: affected.length === 0,
-        affectedResourceIds: [...new Set(affected)],
-        evidence,
-        recommendation: 'Enable audit logging on all data stores processing ePHI.',
-        remediation: 'Enable CloudWatch logs exports on RDS, server access logging on S3. Enable SQL auditing on Azure SQL.',
-        providers: [...providers],
-      };
-    },
-  },
-  {
-    id: 'HIPAA-164.312-c1-INTEGRITY',
-    framework: 'HIPAA',
-    controlId: '164.312(c)(1)',
-    title: 'Data Integrity — Backup and Versioning',
-    description: 'Implement policies and procedures to protect ePHI from improper alteration or destruction.',
-    severity: 'high',
-    reference: 'https://www.hhs.gov/hipaa/for-professionals/security/laws-regulations/index.html',
-    evaluate: (resources) => {
-      const affected: string[] = [];
-      const evidence: string[] = [];
-      const providers = new Set<string>();
-
-      resources.forEach(r => {
-        providers.add(nodeProvider(r.resourceType));
-        const cfg = r.config as Record<string, unknown>;
-
-        if (r.resourceType === 'aws_s3' && cfg['versioning'] !== 'Enabled') {
-          affected.push(r.id);
-          evidence.push(`${r.label} (aws_s3): versioning=${JSON.stringify(cfg['versioning'] ?? 'not set')} — objects cannot be recovered`);
-        }
-        if (r.resourceType === 'aws_rds' && cfg['deletionProtection'] !== true) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (aws_rds): deletionProtection=${JSON.stringify(cfg['deletionProtection'] ?? 'not set')}`);
-        }
-      });
-
-      return {
-        passed: affected.length === 0,
-        affectedResourceIds: [...new Set(affected)],
-        evidence,
-        recommendation: 'Enable versioning on S3 buckets and deletion protection on databases.',
-        remediation: 'Set versioning=Enabled on S3. Set deletionProtection=true on RDS.',
-        providers: [...providers],
-      };
-    },
-  },
-  {
-    id: 'HIPAA-164.312-e2ii-ENCRYPTION-TRANSIT',
-    framework: 'HIPAA',
-    controlId: '164.312(e)(2)(ii)',
-    title: 'Encryption in Transit for ePHI',
-    description: 'Implement a mechanism to encrypt ePHI in transit unless otherwise protected.',
-    severity: 'high',
-    reference: 'https://www.hhs.gov/hipaa/for-professionals/security/laws-regulations/index.html',
-    evaluate: (resources) => {
-      const affected: string[] = [];
-      const evidence: string[] = [];
-      const providers = new Set<string>();
-
-      resources.forEach(r => {
-        providers.add(nodeProvider(r.resourceType));
-        const cfg = r.config as Record<string, unknown>;
-
-        if (r.resourceType === 'aws_rds' && cfg['sslRequired'] === false) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (aws_rds): sslRequired=false — unencrypted database connections allowed`);
-        }
-        if (r.resourceType === 'azure_sql' && cfg['sslEnforcementEnabled'] === false) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (azure_sql): sslEnforcementEnabled=false`);
-        }
-      });
-
-      return {
-        passed: affected.length === 0,
-        affectedResourceIds: [...new Set(affected)],
-        evidence,
-        recommendation: 'Enforce SSL/TLS on all database connections.',
-        remediation: 'Set sslRequired=true on RDS. Enable sslEnforcementEnabled on Azure SQL.',
-        providers: [...providers],
-      };
-    },
-  },
+  { id: 'HIPAA-164.312(a)(1)', framework: 'HIPAA', controlId: '164.312(a)(1)', title: 'Access control (technical safeguard)', description: 'Technical indicators that data stores holding ePHI are not publicly reachable and access is restricted.', severity: 'critical', reference: HIPAA_REF, assessmentRules: [...PUBLIC_DATA_STORES, ...PRIVILEGE] },
+  { id: 'HIPAA-164.312(b)', framework: 'HIPAA', controlId: '164.312(b)', title: 'Audit controls', description: 'Technical indicators that activity is recorded (logging and audit trails).', severity: 'high', reference: HIPAA_REF, assessmentRules: LOGGING },
+  { id: 'HIPAA-164.312(c)(1)', framework: 'HIPAA', controlId: '164.312(c)(1)', title: 'Integrity', description: 'Technical indicators protecting data from improper alteration or destruction (backups, versioning).', severity: 'high', reference: HIPAA_REF, assessmentRules: BACKUP },
+  { id: 'HIPAA-164.312(e)(2)(ii)', framework: 'HIPAA', controlId: '164.312(e)(2)(ii)', title: 'Transmission security — encryption', description: 'Technical indicators for encryption of data in transit.', severity: 'high', reference: HIPAA_REF, assessmentRules: ENCRYPTION_IN_TRANSIT },
+  { id: 'HIPAA-164.312(a)(2)(iv)', framework: 'HIPAA', controlId: '164.312(a)(2)(iv)', title: 'Encryption and decryption (data at rest)', description: 'Technical indicators for encryption of stored data.', severity: 'high', reference: HIPAA_REF, assessmentRules: ENCRYPTION_AT_REST },
 ];
 
-// ─── PCI-DSS Rules ────────────────────────────────────────────────────────────
-
+// PCI DSS v4.0 requirement numbers. The previous mapping used 6.4.1 for public
+// databases (6.4.x covers public-facing web application protection) and 1.2.1
+// for inbound restriction (1.3.1 / 1.4.4 cover this in v4.0).
 export const pciRules: ComplianceRule[] = [
-  {
-    id: 'PCI-DSS-1.2.1-FIREWALL',
-    framework: 'PCI-DSS',
-    controlId: '1.2.1',
-    title: 'Restrict inbound and outbound traffic to cardholder data environment',
-    description: 'Firewall and security group rules must not allow unrestricted ingress or egress. Cardholder data systems must only accept necessary traffic.',
-    severity: 'critical',
-    reference: 'https://www.pcisecuritystandards.org/document_library/?document=pci_dss',
-    evaluate: (resources) => {
-      const affected: string[] = [];
-      const evidence: string[] = [];
-      const providers = new Set<string>();
-
-      resources.forEach(r => {
-        providers.add(nodeProvider(r.resourceType));
-        const cfgStr = JSON.stringify(r.config ?? {});
-
-        if (
-          (r.resourceType === 'aws_sg' || r.resourceType === 'aws_security_group') &&
-          cfgStr.includes('0.0.0.0/0')
-        ) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (aws_sg): ingress cidr 0.0.0.0/0 allows unrestricted internet access`);
-        }
-        if (r.resourceType === 'azure_nsg' && cfgStr.includes('0.0.0.0/0')) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (azure_nsg): security rule allows traffic from 0.0.0.0/0`);
-        }
-      });
-
-      return {
-        passed: affected.length === 0,
-        affectedResourceIds: [...new Set(affected)],
-        evidence,
-        recommendation: 'Replace all 0.0.0.0/0 ingress rules with specific, minimal CIDR ranges.',
-        remediation: 'Update security groups/NSGs/firewall rules to restrict source IPs. Document all necessary traffic flows in a network diagram.',
-        providers: [...providers],
-      };
-    },
-  },
-  {
-    id: 'PCI-DSS-2.2.1-UNNECESSARY-SERVICES',
-    framework: 'PCI-DSS',
-    controlId: '2.2.1',
-    title: 'Disable unnecessary services and default open ports',
-    description: 'System components must not have unnecessary or insecure services, protocols, or ports enabled.',
-    severity: 'high',
-    reference: 'https://www.pcisecuritystandards.org/document_library/?document=pci_dss',
-    evaluate: (resources) => {
-      const affected: string[] = [];
-      const evidence: string[] = [];
-      const providers = new Set<string>();
-
-      resources.forEach(r => {
-        providers.add(nodeProvider(r.resourceType));
-        const cfg = r.config as Record<string, unknown>;
-        const cfgStr = JSON.stringify(cfg);
-
-        // Check for telnet (port 23), FTP (port 21) in firewall rules
-        if (
-          (r.resourceType === 'aws_sg' || r.resourceType === 'azure_nsg') &&
-          (cfgStr.includes('"23"') || cfgStr.includes(':23') || cfgStr.includes('"21"') || cfgStr.includes(':21'))
-        ) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (${r.resourceType}): Ports 21 (FTP) or 23 (Telnet) detected in rules — insecure protocols not allowed in CDE`);
-        }
-      });
-
-      return {
-        passed: affected.length === 0,
-        affectedResourceIds: [...new Set(affected)],
-        evidence,
-        recommendation: 'Remove or disable rules allowing FTP (21), Telnet (23) and other insecure protocols.',
-        remediation: 'Review all inbound/outbound rules. Remove rules allowing Telnet, FTP, unencrypted HTTP on CDE systems.',
-        providers: [...providers],
-      };
-    },
-  },
-  {
-    id: 'PCI-DSS-6.4.1-PUBLIC-DATABASE',
-    framework: 'PCI-DSS',
-    controlId: '6.4.1',
-    title: 'Cardholder data stores must not be publicly accessible',
-    description: 'Databases that may store cardholder data must be isolated from public internet access.',
-    severity: 'critical',
-    reference: 'https://www.pcisecuritystandards.org/document_library/?document=pci_dss',
-    evaluate: (resources) => {
-      const affected: string[] = [];
-      const evidence: string[] = [];
-      const providers = new Set<string>();
-
-      resources.forEach(r => {
-        providers.add(nodeProvider(r.resourceType));
-        const cfg = r.config as Record<string, unknown>;
-
-        const isDbType = [
-          'aws_rds', 'aws_dynamodb',
-          'azure_sql', 'azure_cosmos',
-        ].includes(r.resourceType);
-
-        if (isDbType && cfg['publiclyAccessible'] === true) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (${r.resourceType}): publiclyAccessible=true — may expose cardholder data to internet`);
-        }
-        if (isDbType && cfg['publicNetworkAccess'] === true) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (${r.resourceType}): publicNetworkAccess=true`);
-        }
-      });
-
-      return {
-        passed: affected.length === 0,
-        affectedResourceIds: [...new Set(affected)],
-        evidence,
-        recommendation: 'Place all databases in private subnets. Disable all forms of public internet access.',
-        remediation: 'Set publiclyAccessible=false. Configure VPC private endpoints or service endpoints for database access.',
-        providers: [...providers],
-      };
-    },
-  },
-  {
-    id: 'PCI-DSS-8.3.1-MFA',
-    framework: 'PCI-DSS',
-    controlId: '8.3.1',
-    title: 'Multi-factor authentication on administrative access',
-    description: 'MFA must be required for all non-console administrative access to the cardholder data environment.',
-    severity: 'high',
-    reference: 'https://www.pcisecuritystandards.org/document_library/?document=pci_dss',
-    evaluate: (resources) => {
-      const affected: string[] = [];
-      const evidence: string[] = [];
-      const providers = new Set<string>();
-
-      resources.forEach(r => {
-        providers.add(nodeProvider(r.resourceType));
-        const cfg = r.config as Record<string, unknown>;
-
-        if (r.resourceType === 'aws_iam' && cfg['mfaEnabled'] === false) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (aws_iam): mfaEnabled=false — administrative accounts without MFA`);
-        }
-        if (r.resourceType === 'azure_key_vault' && cfg['enablePurgeProtection'] === false) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (azure_key_vault): enablePurgeProtection=false — admin access without purge protection`);
-        }
-      });
-
-      return {
-        passed: affected.length === 0,
-        affectedResourceIds: [...new Set(affected)],
-        evidence,
-        recommendation: 'Enforce MFA on all IAM users and service accounts with administrative access.',
-        remediation: 'Enable AWS IAM MFA enforcement policy. Use Azure Conditional Access for MFA.',
-        providers: [...providers],
-      };
-    },
-  },
-  {
-    id: 'PCI-DSS-10.2-AUDIT-LOGS',
-    framework: 'PCI-DSS',
-    controlId: '10.2',
-    title: 'Audit logs must be enabled for all system components',
-    description: 'Implement audit trails to reconstruct access, privilege changes, and security events in the CDE.',
-    severity: 'high',
-    reference: 'https://www.pcisecuritystandards.org/document_library/?document=pci_dss',
-    evaluate: (resources) => {
-      const affected: string[] = [];
-      const evidence: string[] = [];
-      const providers = new Set<string>();
-
-      resources.forEach(r => {
-        providers.add(nodeProvider(r.resourceType));
-        const cfg = r.config as Record<string, unknown>;
-
-        if (r.resourceType === 'aws_rds' && cfg['enableCloudwatchLogsExports'] === undefined) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (aws_rds): CloudWatch log exports not configured`);
-        }
-        if (r.resourceType === 'aws_s3' && cfg['serverAccessLogging'] === false) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (aws_s3): serverAccessLogging=false`);
-        }
-        if (r.resourceType === 'azure_sql' && cfg['auditingEnabled'] !== true) {
-          affected.push(r.id);
-          evidence.push(`${r.label} (azure_sql): auditingEnabled=${JSON.stringify(cfg['auditingEnabled'] ?? 'not set')}`);
-        }
-      });
-
-      return {
-        passed: affected.length === 0,
-        affectedResourceIds: [...new Set(affected)],
-        evidence,
-        recommendation: 'Enable audit logging on all databases, storage, and network components in the CDE.',
-        remediation: 'Configure CloudWatch exports on RDS, server access logging on S3. Enable SQL audit on Azure.',
-        providers: [...providers],
-      };
-    },
-  },
+  { id: 'PCI-DSS-1.3.1', framework: 'PCI-DSS', controlId: '1.3.1', title: 'Inbound traffic to the CDE is restricted', description: 'Technical indicators that inbound network access is restricted to necessary traffic.', severity: 'critical', reference: PCI_REF, assessmentRules: NETWORK_BOUNDARY },
+  { id: 'PCI-DSS-1.4.4', framework: 'PCI-DSS', controlId: '1.4.4', title: 'Stored account data is not directly accessible from untrusted networks', description: 'Technical indicators that data stores are not publicly reachable.', severity: 'critical', reference: PCI_REF, assessmentRules: PUBLIC_DATA_STORES },
+  { id: 'PCI-DSS-3.5.1', framework: 'PCI-DSS', controlId: '3.5.1', title: 'Stored account data is rendered unreadable', description: 'Technical indicators for encryption of stored data (storage-level encryption alone may not satisfy 3.5.1 — assessor determination required).', severity: 'high', reference: PCI_REF, assessmentRules: ENCRYPTION_AT_REST },
+  { id: 'PCI-DSS-4.2.1', framework: 'PCI-DSS', controlId: '4.2.1', title: 'Strong cryptography during transmission over open, public networks', description: 'Technical indicators for encryption in transit.', severity: 'high', reference: PCI_REF, assessmentRules: ENCRYPTION_IN_TRANSIT },
+  { id: 'PCI-DSS-6.4.2', framework: 'PCI-DSS', controlId: '6.4.2', title: 'Automated technical solution protects public-facing web applications', description: 'Technical indicators for web application firewall coverage.', severity: 'high', reference: PCI_REF, assessmentRules: EDGE_PROTECTION },
+  { id: 'PCI-DSS-8.4.2', framework: 'PCI-DSS', controlId: '8.4.2', title: 'MFA for all access into the CDE', description: 'Multi-factor authentication is configured in the identity provider, which an architecture design cannot show.', severity: 'high', reference: PCI_REF, assessmentRules: STRONG_AUTH },
+  { id: 'PCI-DSS-10.2.1', framework: 'PCI-DSS', controlId: '10.2.1', title: 'Audit logs are enabled and active', description: 'Technical indicators for audit logging.', severity: 'high', reference: PCI_REF, assessmentRules: LOGGING },
 ];

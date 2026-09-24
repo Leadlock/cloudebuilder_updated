@@ -15,6 +15,7 @@
  */
 
 import { ArchitectureTemplate, CanvasNode, CanvasEdge, RelationshipType, NetworkScope, TemplateGenerateOptions } from '@/types';
+import { getResourceDefinition } from '@/lib/resources';
 
 // Helper to create nodes
 function n(
@@ -47,7 +48,10 @@ function n(
     parentId: groupId,
     width,
     height,
-    config: { name: label.toLowerCase().replace(/\s+/g, '-'), ...config },
+    // Start from the resource definition defaults so the stored (canonical) config
+    // is explicit and identical to what the Properties panel shows, Terraform
+    // renders and the assessment engine evaluates.
+    config: { ...(getResourceDefinition(resourceType)?.defaultConfig ?? {}), name: label.toLowerCase().replace(/\s+/g, '-'), ...config },
   };
 }
 

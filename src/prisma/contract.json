@@ -60,6 +60,10 @@
       "model": "ExportJob",
       "namespace": "public"
     },
+    "findingReview": {
+      "model": "FindingReview",
+      "namespace": "public"
+    },
     "gitOperation": {
       "model": "GitOperation",
       "namespace": "public"
@@ -2035,6 +2039,153 @@
               "table": "exportJob"
             }
           },
+          "FindingReview": {
+            "fields": {
+              "approvedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "approvedBy": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "expiresAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "findingId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "projectId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "reason": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "revokedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "revokedBy": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "ruleId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "status": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "project": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "projectId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Project",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "approvedAt": {
+                  "column": "approvedAt"
+                },
+                "approvedBy": {
+                  "column": "approvedBy"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "expiresAt": {
+                  "column": "expiresAt"
+                },
+                "findingId": {
+                  "column": "findingId"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "projectId": {
+                  "column": "projectId"
+                },
+                "reason": {
+                  "column": "reason"
+                },
+                "revokedAt": {
+                  "column": "revokedAt"
+                },
+                "revokedBy": {
+                  "column": "revokedBy"
+                },
+                "ruleId": {
+                  "column": "ruleId"
+                },
+                "status": {
+                  "column": "status"
+                }
+              },
+              "namespaceId": "public",
+              "table": "findingReview"
+            }
+          },
           "GitOperation": {
             "fields": {
               "commitSha": {
@@ -2721,6 +2872,21 @@
                 },
                 "to": {
                   "model": "ExportJob",
+                  "namespace": "public"
+                }
+              },
+              "findingReviews": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "projectId"
+                  ]
+                },
+                "to": {
+                  "model": "FindingReview",
                   "namespace": "public"
                 }
               },
@@ -5304,6 +5470,114 @@
               },
               "uniques": []
             },
+            "findingReview": {
+              "columns": {
+                "approvedAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "approvedBy": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "createdAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "expiresAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "findingId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "projectId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "reason": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "revokedAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "revokedBy": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "ruleId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "status": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "projectId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "findingReview"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "project"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "projectId",
+                    "findingId"
+                  ],
+                  "name": "findingReview_projectId_findingId_idx_2df325f5",
+                  "prefix": "findingReview_projectId_findingId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "projectId"
+                  ],
+                  "name": "findingReview_projectId_idx_a96e4d92",
+                  "prefix": "findingReview_projectId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
             "gitOperation": {
               "columns": {
                 "commitSha": {
@@ -6538,10 +6812,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "a9f4a309c0b3e053bf48a5172aa8e2285b8d3113b2fc0b93bb01616856d0462c"
+    "storageHash": "a61af368dd73848610d6d33b031dca54c99a49efe389a9c56e1793d9ea894270"
   },
   "execution": {
-    "executionHash": "6d14434dadad9c8085c52996f653d38b39b4ebce10f92ff61e07affc8e73cf8b",
+    "executionHash": "e5e8e5bc803bc09d1e42a5ddb9c0f82aff70b2633614157d58780c098ca36443",
     "mutations": {
       "defaults": [
         {
@@ -6696,6 +6970,17 @@
             "column": "id",
             "namespace": "public",
             "table": "exportJob"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "findingReview"
           }
         },
         {

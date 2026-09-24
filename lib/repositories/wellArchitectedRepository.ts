@@ -67,7 +67,9 @@ class WellArchitectedRepository {
       // Persist individual findings for resource-level lookups
       for (const finding of assessment.findings) {
         await db.orm.public.WellArchitectedFinding.create({
-          id: finding.id || uuidv4(),
+          // Unique per assessment row: the stable finding ID repeats across re-runs and
+          // previously caused primary-key collisions on every re-analysis.
+          id: uuidv4(),
           assessmentId: id,
           ruleId: finding.ruleId,
           provider: finding.provider,

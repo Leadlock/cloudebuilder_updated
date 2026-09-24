@@ -33,9 +33,9 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'a9f4a309c0b3e053bf48a5172aa8e2285b8d3113b2fc0b93bb01616856d0462c'>;
+  StorageHashBase<'a61af368dd73848610d6d33b031dca54c99a49efe389a9c56e1793d9ea894270'>;
 export type ExecutionHash =
-  ExecutionHashBase<'6d14434dadad9c8085c52996f653d38b39b4ebce10f92ff61e07affc8e73cf8b'>;
+  ExecutionHashBase<'e5e8e5bc803bc09d1e42a5ddb9c0f82aff70b2633614157d58780c098ca36443'>;
 export type ProfileHash =
   ProfileHashBase<'3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2'>;
 
@@ -389,6 +389,20 @@ export type FieldOutputTypes = {
       readonly url: CodecTypes['pg/text@1']['output'] | null;
       readonly createdAt: CodecTypes['pg/text@1']['output'];
     };
+    readonly FindingReview: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly projectId: CodecTypes['pg/text@1']['output'];
+      readonly findingId: CodecTypes['pg/text@1']['output'];
+      readonly ruleId: CodecTypes['pg/text@1']['output'];
+      readonly status: CodecTypes['pg/text@1']['output'];
+      readonly reason: CodecTypes['pg/text@1']['output'];
+      readonly approvedBy: CodecTypes['pg/text@1']['output'];
+      readonly approvedAt: CodecTypes['pg/text@1']['output'];
+      readonly expiresAt: CodecTypes['pg/text@1']['output'] | null;
+      readonly revokedAt: CodecTypes['pg/text@1']['output'] | null;
+      readonly revokedBy: CodecTypes['pg/text@1']['output'] | null;
+      readonly createdAt: CodecTypes['pg/text@1']['output'];
+    };
     readonly GithubConnection: {
       readonly id: CodecTypes['pg/text@1']['output'];
       readonly projectId: CodecTypes['pg/text@1']['output'];
@@ -676,6 +690,20 @@ export type FieldInputTypes = {
       readonly format: CodecTypes['pg/text@1']['input'];
       readonly status: CodecTypes['pg/text@1']['input'];
       readonly url: CodecTypes['pg/text@1']['input'] | null;
+      readonly createdAt: CodecTypes['pg/text@1']['input'];
+    };
+    readonly FindingReview: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly projectId: CodecTypes['pg/text@1']['input'];
+      readonly findingId: CodecTypes['pg/text@1']['input'];
+      readonly ruleId: CodecTypes['pg/text@1']['input'];
+      readonly status: CodecTypes['pg/text@1']['input'];
+      readonly reason: CodecTypes['pg/text@1']['input'];
+      readonly approvedBy: CodecTypes['pg/text@1']['input'];
+      readonly approvedAt: CodecTypes['pg/text@1']['input'];
+      readonly expiresAt: CodecTypes['pg/text@1']['input'] | null;
+      readonly revokedAt: CodecTypes['pg/text@1']['input'] | null;
+      readonly revokedBy: CodecTypes['pg/text@1']['input'] | null;
       readonly createdAt: CodecTypes['pg/text@1']['input'];
     };
     readonly GithubConnection: {
@@ -967,6 +995,20 @@ export type StorageColumnTypes = {
       readonly status: CodecTypes['pg/text@1']['output'];
       readonly url: CodecTypes['pg/text@1']['output'] | null;
     };
+    readonly findingReview: {
+      readonly approvedAt: CodecTypes['pg/text@1']['output'];
+      readonly approvedBy: CodecTypes['pg/text@1']['output'];
+      readonly createdAt: CodecTypes['pg/text@1']['output'];
+      readonly expiresAt: CodecTypes['pg/text@1']['output'] | null;
+      readonly findingId: CodecTypes['pg/text@1']['output'];
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly projectId: CodecTypes['pg/text@1']['output'];
+      readonly reason: CodecTypes['pg/text@1']['output'];
+      readonly revokedAt: CodecTypes['pg/text@1']['output'] | null;
+      readonly revokedBy: CodecTypes['pg/text@1']['output'] | null;
+      readonly ruleId: CodecTypes['pg/text@1']['output'];
+      readonly status: CodecTypes['pg/text@1']['output'];
+    };
     readonly githubConnection: {
       readonly branch: CodecTypes['pg/text@1']['output'];
       readonly createdAt: CodecTypes['pg/text@1']['output'];
@@ -1255,6 +1297,20 @@ export type StorageColumnInputTypes = {
       readonly projectId: CodecTypes['pg/text@1']['input'];
       readonly status: CodecTypes['pg/text@1']['input'];
       readonly url: CodecTypes['pg/text@1']['input'] | null;
+    };
+    readonly findingReview: {
+      readonly approvedAt: CodecTypes['pg/text@1']['input'];
+      readonly approvedBy: CodecTypes['pg/text@1']['input'];
+      readonly createdAt: CodecTypes['pg/text@1']['input'];
+      readonly expiresAt: CodecTypes['pg/text@1']['input'] | null;
+      readonly findingId: CodecTypes['pg/text@1']['input'];
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly projectId: CodecTypes['pg/text@1']['input'];
+      readonly reason: CodecTypes['pg/text@1']['input'];
+      readonly revokedAt: CodecTypes['pg/text@1']['input'] | null;
+      readonly revokedBy: CodecTypes['pg/text@1']['input'] | null;
+      readonly ruleId: CodecTypes['pg/text@1']['input'];
+      readonly status: CodecTypes['pg/text@1']['input'];
     };
     readonly githubConnection: {
       readonly branch: CodecTypes['pg/text@1']['input'];
@@ -2647,6 +2703,100 @@ type ContractBase = Omit<
                 },
               ];
             };
+            readonly findingReview: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly projectId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly findingId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly ruleId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly status: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly reason: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly approvedBy: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly approvedAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly expiresAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly revokedAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly revokedBy: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly createdAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [];
+              indexes: readonly [
+                {
+                  readonly name: 'findingReview_projectId_idx_a96e4d92';
+                  readonly prefix: 'findingReview_projectId_idx';
+                  readonly columns: readonly ['projectId'];
+                  readonly unique: false;
+                },
+                {
+                  readonly name: 'findingReview_projectId_findingId_idx_2df325f5';
+                  readonly prefix: 'findingReview_projectId_findingId_idx';
+                  readonly columns: readonly ['projectId', 'findingId'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [
+                {
+                  readonly source: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'findingReview';
+                    readonly columns: readonly ['projectId'];
+                  };
+                  readonly target: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'project';
+                    readonly columns: readonly ['id'];
+                  };
+                },
+              ];
+            };
             readonly githubConnection: {
               columns: {
                 readonly id: {
@@ -3746,6 +3896,10 @@ type ContractBase = Omit<
     readonly securityScan: {
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'SecurityScan';
+    };
+    readonly findingReview: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'FindingReview';
     };
     readonly securityFinding: {
       readonly namespace: 'public' & NamespaceId;
@@ -4975,6 +5129,89 @@ type ContractBase = Omit<
               };
             };
           };
+          readonly FindingReview: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly projectId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly findingId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly ruleId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly status: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly reason: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly approvedBy: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly approvedAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly expiresAt: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly revokedAt: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly revokedBy: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly createdAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+            };
+            readonly relations: {
+              readonly project: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'Project';
+                };
+                readonly cardinality: 'N:1';
+                readonly on: {
+                  readonly localFields: readonly ['projectId'];
+                  readonly targetFields: readonly ['id'];
+                };
+              };
+            };
+            readonly storage: {
+              readonly table: 'findingReview';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly projectId: { readonly column: 'projectId' };
+                readonly findingId: { readonly column: 'findingId' };
+                readonly ruleId: { readonly column: 'ruleId' };
+                readonly status: { readonly column: 'status' };
+                readonly reason: { readonly column: 'reason' };
+                readonly approvedBy: { readonly column: 'approvedBy' };
+                readonly approvedAt: { readonly column: 'approvedAt' };
+                readonly expiresAt: { readonly column: 'expiresAt' };
+                readonly revokedAt: { readonly column: 'revokedAt' };
+                readonly revokedBy: { readonly column: 'revokedBy' };
+                readonly createdAt: { readonly column: 'createdAt' };
+              };
+            };
+          };
           readonly GithubConnection: {
             readonly fields: {
               readonly id: {
@@ -5399,6 +5636,17 @@ type ContractBase = Omit<
                 readonly to: {
                   readonly namespace: 'public' & NamespaceId;
                   readonly model: 'ExportJob';
+                };
+                readonly cardinality: '1:N';
+                readonly on: {
+                  readonly localFields: readonly ['id'];
+                  readonly targetFields: readonly ['projectId'];
+                };
+              };
+              readonly findingReviews: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'FindingReview';
                 };
                 readonly cardinality: '1:N';
                 readonly on: {
@@ -6198,6 +6446,14 @@ type ContractBase = Omit<
           readonly ref: {
             readonly namespace: 'public';
             readonly table: 'exportJob';
+            readonly column: 'id';
+          };
+          readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };
+        },
+        {
+          readonly ref: {
+            readonly namespace: 'public';
+            readonly table: 'findingReview';
             readonly column: 'id';
           };
           readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };

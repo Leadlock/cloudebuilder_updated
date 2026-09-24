@@ -1,30 +1,45 @@
 import { CanvasNode, CanvasEdge, SecurityIssue, CostItem } from '@/types';
 import { getResourceDefinition } from './resources';
+import { runAssessment } from './engines/assessment/AssessmentEngine';
+import type { Finding } from './engines/assessment/types';
 
-export function runSecurityScan(nodes: CanvasNode[]): SecurityIssue[] {
-  const issues: SecurityIssue[] = [];
-  for (const node of nodes) {
-    const def = getResourceDefinition(node.resourceType);
-    if (!def?.securityRules) continue;
-    for (const rule of def.securityRules) {
-      const result = rule.check(node.config, nodes);
-      if (result) {
-        issues.push({
-          id: `${node.id}-${rule.id}`,
-          nodeId: node.id,
-          nodeLabel: node.label,
-          severity: rule.severity,
-          message: rule.message,
-          recommendation: rule.recommendation,
-          fixable: !!rule.fixAction,
-          ruleId: rule.id,
-        });
-      }
-    }
-  }
-  return issues;
+/**
+ * Security findings for a canvas graph, produced by the unified assessment
+ * engine (lib/engines/assessment). Returns SECURITY-domain FAIL/WARNING
+ * findings only; reliability/operations/cost findings belong to the
+ * Well-Architected review. Kept as a compatibility wrapper for callers that
+ * only need a flat issue list — new code should call runAssessment() to also
+ * get coverage, NOT_EVALUATED controls and evidence.
+ */
+export function runSecurityScan(nodes: CanvasNode[], edges: CanvasEdge[] = []): SecurityIssue[] {
+  const assessment = runAssessment({ nodes, edges });
+  return assessment.findings.filter((f) => f.domain === 'SECURITY').map(findingToIssue);
 }
 
+export function findingToIssue(f: Finding): SecurityIssue {
+  const sev = f.severity === 'INFORMATIONAL' ? 'low' : (f.severity.toLowerCase() as SecurityIssue['severity']);
+  return {
+    id: f.findingId,
+    findingId: f.findingId,
+    nodeId: f.resourceIds[0] ?? '',
+    nodeLabel: f.resourceLabels.join(', ') || 'Architecture',
+    severity: sev,
+    engineSeverity: f.severity,
+    status: f.status as 'FAIL' | 'WARNING',
+    message: f.title,
+    recommendation: f.recommendation,
+    fixable: f.autoFix.available,
+    autoFixSafety: f.autoFix.safety,
+    ruleId: f.ruleId,
+  };
+}
+
+/**
+ * @deprecated Issue-count scoring cannot account for coverage. Use
+ * runAssessment(...).securityScore, which is coverage-aware and returns null
+ * when nothing could be evaluated. Retained for legacy callers: it now
+ * delegates to the same weighting used by the engine for failing checks.
+ */
 export function calculateSecurityScore(issues: SecurityIssue[]): number {
   if (issues.length === 0) return 100;
   const weights = { critical: 25, high: 15, medium: 8, low: 3 };

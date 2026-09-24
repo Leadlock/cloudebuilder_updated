@@ -322,7 +322,7 @@ export default function DeployPanel() {
 
   if (!activeProject) return null;
 
-  const issues = runSecurityScan(activeProject.nodes);
+  const issues = runSecurityScan(activeProject.nodes, activeProject.edges);
   const costs = calculateCosts(activeProject.nodes);
   const isMultiCloud = activeProject.provider === 'multi';
   const criticalFindings = (waAssessment?.findings || []).filter((f) => f.severity === 'critical');

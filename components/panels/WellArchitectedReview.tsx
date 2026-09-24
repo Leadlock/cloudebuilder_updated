@@ -187,6 +187,8 @@ export default function WellArchitectedReview() {
   }
 
   const overallScore = assessment?.overallScore ?? 0;
+  // Coverage-aware: when nothing could be evaluated the score is not shown as a number.
+  const overallScored = assessment?.overallScored !== false;
   const scoreColor =
     overallScore >= 80 ? 'text-emerald-400' : overallScore >= 60 ? 'text-amber-400' : 'text-rose-400';
   const scoreBorder =
@@ -267,16 +269,21 @@ export default function WellArchitectedReview() {
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className={clsx('text-4xl font-black tracking-tight', scoreColor)}>
-              {assessment ? `${overallScore}%` : '—'}
+              {assessment && overallScored ? `${overallScore}` : '—'}
             </span>
-            <span className="text-xs text-slate-400">Pillar Average</span>
+            <span className="text-xs text-slate-400">
+              {assessment && overallScored ? `/100 · coverage ${assessment.coveragePct ?? 0}%` : 'Not scored — insufficient evidence'}
+            </span>
           </div>
           <div className="mt-3 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
             <div
               className={clsx('h-full transition-all duration-700', overallScore >= 80 ? 'bg-emerald-400' : overallScore >= 60 ? 'bg-amber-400' : 'bg-rose-400')}
-              style={{ width: `${overallScore}%` }}
+              style={{ width: `${overallScored ? overallScore : 0}%` }}
             />
           </div>
+          {assessment && (assessment.notEvaluatedCount ?? 0) > 0 && (
+            <p className="mt-2 text-[11px] text-slate-400">{assessment.notEvaluatedCount} check(s) not evaluated — excluded from the score, never counted as passing.</p>
+          )}
         </div>
 
         {/* Critical Findings */}
@@ -382,9 +389,10 @@ export default function WellArchitectedReview() {
             const Icon = config.icon;
             const isSelected = selectedPillar === ps.pillar;
 
+            const scored = ps.scored !== false;
             return (
               <button
-                key={ps.pillar}
+                key={`${ps.provider ?? 'p'}-${ps.pillar}`}
                 onClick={() => setSelectedPillar(isSelected ? 'all' : ps.pillar)}
                 className={clsx(
                   'p-4 rounded-2xl text-left border transition-all relative group',
@@ -397,12 +405,13 @@ export default function WellArchitectedReview() {
                   <div className={clsx('p-2 rounded-xl border', config.bg, config.border, config.color)}>
                     <Icon className="w-4 h-4" />
                   </div>
-                  <span className={clsx('text-xl font-bold font-mono', ps.score >= 80 ? 'text-emerald-400' : ps.score >= 60 ? 'text-amber-400' : 'text-rose-400')}>
-                    {ps.score}%
+                  <span className={clsx('text-xl font-bold font-mono', !scored ? 'text-slate-500' : ps.score >= 80 ? 'text-emerald-400' : ps.score >= 60 ? 'text-amber-400' : 'text-rose-400')}>
+                    {scored ? ps.score : '—'}
                   </span>
                 </div>
 
-                <h4 className="font-bold text-xs text-white mt-3 truncate">{config.label}</h4>
+                <h4 className="font-bold text-xs text-white mt-3 truncate">{ps.provider && assessment?.provider === 'multi' ? `${ps.provider.toUpperCase()} · ` : ''}{config.label}</h4>
+                <p className="text-[10px] text-slate-500 mt-0.5">{scored ? `Coverage ${ps.coveragePct ?? 0}% · ${ps.status ?? ''}` : 'Insufficient evidence'}</p>
                 <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1">
                   <span>{ps.findingCount} finding{ps.findingCount === 1 ? '' : 's'}</span>
                   {ps.criticalCount > 0 && (
@@ -413,7 +422,7 @@ export default function WellArchitectedReview() {
                 <div className="mt-2.5 w-full bg-slate-800 rounded-full h-1 overflow-hidden">
                   <div
                     className={clsx('h-full', ps.score >= 80 ? 'bg-emerald-400' : ps.score >= 60 ? 'bg-amber-400' : 'bg-rose-400')}
-                    style={{ width: `${ps.score}%` }}
+                    style={{ width: `${scored ? ps.score : 0}%` }}
                   />
                 </div>
               </button>

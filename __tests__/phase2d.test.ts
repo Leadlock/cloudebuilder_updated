@@ -197,147 +197,140 @@ function baseSecurityInput(resources: DbArchitectureResource[], connections: DbA
 
 // ─── SECURITY ENGINE TESTS ────────────────────────────────────────────────────
 
-describe('SecurityAnalyzer — AWS rules', () => {
+describe('SecurityAnalyzer — AWS rules (unified assessment engine)', () => {
   const analyzer = new SecurityAnalyzer();
 
-  test('AWS-S3-PUBLIC: fires when publicAccess=true', () => {
-    const r = makeResource({ resourceType: 'aws_s3', provider: 'aws', configJson: JSON.stringify({ publicAccess: true }) });
+  test('AWS-S3-001: fires when publicAccess=true (Block Public Access not enforced)', () => {
+    const r = makeResource({ resourceType: 'aws_s3', provider: 'aws', configJson: JSON.stringify({ publicAccess: true, blockPublicAcls: false, blockPublicPolicy: false }) });
     const result = analyzer.analyze(baseSecurityInput([r]));
-    expect(result.findings.some((f) => f.ruleId === 'AWS-S3-PUBLIC')).toBe(true);
+    const f = result.findings.find((x) => x.ruleId === 'AWS-S3-001');
+    expect(f?.severity).toBe('critical');
+    expect(f?.resourceId).toBe(r.id);
   });
 
-  test('AWS-S3-PUBLIC: does NOT fire when publicAccess=false', () => {
+  test('AWS-S3-001: severity is HIGH (not CRITICAL) when public ACLs and policies are still blocked', () => {
+    const r = makeResource({ resourceType: 'aws_s3', provider: 'aws', configJson: JSON.stringify({ publicAccess: true, blockPublicAcls: true, blockPublicPolicy: true }) });
+    const f = analyzer.analyze(baseSecurityInput([r])).findings.find((x) => x.ruleId === 'AWS-S3-001');
+    expect(f?.severity).toBe('high');
+  });
+
+  test('AWS-S3-001: does NOT fire when publicAccess=false', () => {
     const r = makeResource({ resourceType: 'aws_s3', provider: 'aws', configJson: JSON.stringify({ publicAccess: false }) });
-    const result = analyzer.analyze(baseSecurityInput([r]));
-    expect(result.findings.some((f) => f.ruleId === 'AWS-S3-PUBLIC')).toBe(false);
+    expect(analyzer.analyze(baseSecurityInput([r])).findings.some((f) => f.ruleId === 'AWS-S3-001')).toBe(false);
   });
 
-  test('AWS-S3-PUBLIC: does NOT fire when publicAccess is absent (unknown)', () => {
+  test('AWS-S3-001: absent publicAccess is INSUFFICIENT_DATA — never a pass and never a finding', () => {
     const r = makeResource({ resourceType: 'aws_s3', provider: 'aws', configJson: '{}' });
-    const result = analyzer.analyze(baseSecurityInput([r]));
-    expect(result.findings.some((f) => f.ruleId === 'AWS-S3-PUBLIC')).toBe(false);
+    const a = analyzer.assess(baseSecurityInput([r]));
+    expect(a.findings.some((f) => f.ruleId === 'AWS-S3-001')).toBe(false);
+    expect(a.evaluations.find((e) => e.ruleId === 'AWS-S3-001')?.status).toBe('INSUFFICIENT_DATA');
   });
 
-  test('AWS-S3-NO-ENCRYPTION: fires when encryption=false', () => {
+  test('AWS-S3-002: encryption=false is a LOW warning because S3 applies SSE-S3 by default', () => {
     const r = makeResource({ resourceType: 'aws_s3', provider: 'aws', configJson: JSON.stringify({ encryption: false }) });
-    const result = analyzer.analyze(baseSecurityInput([r]));
-    expect(result.findings.some((f) => f.ruleId === 'AWS-S3-NO-ENCRYPTION')).toBe(true);
+    const f = analyzer.assess(baseSecurityInput([r])).findings.find((x) => x.ruleId === 'AWS-S3-002');
+    expect(f?.status).toBe('WARNING');
+    expect(f?.severity).toBe('LOW');
   });
 
-  test('AWS-S3-NO-ENCRYPTION: does NOT fire when encryption is absent', () => {
-    const r = makeResource({ resourceType: 'aws_s3', provider: 'aws', configJson: '{}' });
-    const result = analyzer.analyze(baseSecurityInput([r]));
-    expect(result.findings.some((f) => f.ruleId === 'AWS-S3-NO-ENCRYPTION')).toBe(false);
+  test('AWS-RDS-001 / AWS-RDS-002: public and unencrypted RDS produce critical and high findings with evidence', () => {
+    const r = makeResource({ resourceType: 'aws_rds', provider: 'aws', configJson: JSON.stringify({ publiclyAccessible: true, encrypted: false }) });
+    const a = analyzer.assess(baseSecurityInput([r]));
+    const pub = a.findings.find((f) => f.ruleId === 'AWS-RDS-001')!;
+    const enc = a.findings.find((f) => f.ruleId === 'AWS-RDS-002')!;
+    expect(pub.severity).toBe('CRITICAL');
+    expect(pub.evidence.find((e) => e.field === 'publiclyAccessible')?.observed).toBe('Enabled / Yes');
+    expect(pub.references.some((ref) => ref.identifier === 'RDS.2')).toBe(true);
+    expect(enc.severity).toBe('HIGH');
   });
 
-  test('AWS-RDS-PUBLICLY-ACCESSIBLE: fires when publiclyAccessible=true', () => {
-    const r = makeResource({ resourceType: 'aws_rds', provider: 'aws', configJson: JSON.stringify({ publiclyAccessible: true }) });
-    const result = analyzer.analyze(baseSecurityInput([r]));
-    expect(result.findings.some((f) => f.ruleId === 'AWS-RDS-PUBLICLY-ACCESSIBLE')).toBe(true);
+  test('AWS-SG-001: SSH open only fails when the source is 0.0.0.0/0', () => {
+    const open = makeResource({ resourceType: 'aws_sg', provider: 'aws', configJson: JSON.stringify({ allowSsh: true, sourceCidr: '0.0.0.0/0' }) });
+    const restricted = makeResource({ resourceType: 'aws_sg', provider: 'aws', configJson: JSON.stringify({ allowSsh: true, sourceCidr: '10.20.0.0/16' }) });
+    const a = analyzer.assess(baseSecurityInput([open, restricted]));
+    expect(a.findings.filter((f) => f.ruleId === 'AWS-SG-001').map((f) => f.resourceIds[0])).toEqual([open.id]);
+    expect(a.evaluations.find((e) => e.ruleId === 'AWS-SG-001' && e.resourceIds[0] === restricted.id)?.status).toBe('PASS');
   });
 
-  test('AWS-RDS-NO-ENCRYPTION: fires when encrypted=false', () => {
-    const r = makeResource({ resourceType: 'aws_rds', provider: 'aws', configJson: JSON.stringify({ encrypted: false }) });
-    const result = analyzer.analyze(baseSecurityInput([r]));
-    expect(result.findings.some((f) => f.ruleId === 'AWS-RDS-NO-ENCRYPTION')).toBe(true);
-  });
-
-  test('AWS-RDS-NO-ENCRYPTION: does NOT fire when encrypted=true', () => {
-    const r = makeResource({ resourceType: 'aws_rds', provider: 'aws', configJson: JSON.stringify({ encrypted: true }) });
-    const result = analyzer.analyze(baseSecurityInput([r]));
-    expect(result.findings.some((f) => f.ruleId === 'AWS-RDS-NO-ENCRYPTION')).toBe(false);
-  });
-
-  test('Severity: critical for AWS-S3-PUBLIC', () => {
-    const r = makeResource({ resourceType: 'aws_s3', provider: 'aws', configJson: JSON.stringify({ publicAccess: true }) });
-    const result = analyzer.analyze(baseSecurityInput([r]));
-    const finding = result.findings.find((f) => f.ruleId === 'AWS-S3-PUBLIC');
-    expect(finding?.severity).toBe('critical');
-  });
-
-  test('Severity: high for AWS-RDS-NO-ENCRYPTION', () => {
-    const r = makeResource({ resourceType: 'aws_rds', provider: 'aws', configJson: JSON.stringify({ encrypted: false }) });
-    const result = analyzer.analyze(baseSecurityInput([r]));
-    const finding = result.findings.find((f) => f.ruleId === 'AWS-RDS-NO-ENCRYPTION');
-    expect(finding?.severity).toBe('high');
-  });
-
-  test('Deterministic rule IDs: same input produces same finding IDs', () => {
+  test('Deterministic, stable finding IDs: same input produces same IDs across runs', () => {
     const r = makeResource({ id: 'fixed-id-1', resourceType: 'aws_s3', provider: 'aws', configJson: JSON.stringify({ publicAccess: true }) });
     const a = analyzer.analyze(baseSecurityInput([r]));
     const b = analyzer.analyze(baseSecurityInput([r]));
     expect(a.findings[0]!.id).toBe(b.findings[0]!.id);
+    expect(a.findings[0]!.id).toMatch(/^AWS-S3-001-[0-9A-F]{6}$/);
   });
 
-  test('Score: 100 with no findings', () => {
+  test('Score is NOT 100 when nothing could be evaluated (null = not scored)', () => {
     const r = makeResource({ resourceType: 'aws_s3', provider: 'aws', configJson: '{}' });
     const result = analyzer.analyze(baseSecurityInput([r]));
-    expect(result.score).toBe(100);
+    expect(result.score).toBeNull();
   });
 
-  test('Score: reduces with critical findings', () => {
-    const r = makeResource({ resourceType: 'aws_s3', provider: 'aws', configJson: JSON.stringify({ publicAccess: true }) });
+  test('Score: reduces with critical findings and is capped at 40', () => {
+    const r = makeResource({ resourceType: 'aws_s3', provider: 'aws', configJson: JSON.stringify({ publicAccess: true, encryption: true, loggingEnabled: true, objectOwnership: 'BucketOwnerEnforced' }) });
     const result = analyzer.analyze(baseSecurityInput([r]));
-    expect(result.score).toBeLessThan(100);
-    expect(result.score).toBeGreaterThanOrEqual(0);
+    expect(result.score).not.toBeNull();
+    expect(result.score!).toBeLessThanOrEqual(40);
   });
 });
 
-describe('SecurityAnalyzer — Azure rules', () => {
+describe('SecurityAnalyzer — Azure rules (provider-native, MCSB-mapped)', () => {
   const analyzer = new SecurityAnalyzer();
 
-  test('AZ-STORAGE-NO-HTTPS: fires when httpsOnly=false', () => {
-    const r = makeResource({ resourceType: 'azure_storage', provider: 'azure', configJson: JSON.stringify({ httpsOnly: false }) });
-    const result = analyzer.analyze(baseSecurityInput([r]));
-    expect(result.findings.some((f) => f.ruleId === 'AZ-STORAGE-NO-HTTPS')).toBe(true);
+  test('AZ-STG-001: fires when httpsOnly=false; not when true; INSUFFICIENT_DATA when absent', () => {
+    const bad = makeResource({ resourceType: 'azure_storage', provider: 'azure', configJson: JSON.stringify({ httpsOnly: false }) });
+    const good = makeResource({ resourceType: 'azure_storage', provider: 'azure', configJson: JSON.stringify({ httpsOnly: true }) });
+    const unknown = makeResource({ resourceType: 'azure_storage', provider: 'azure', configJson: '{}' });
+    const a = analyzer.assess(baseSecurityInput([bad, good, unknown]));
+    const byRes = (id: string) => a.evaluations.find((e) => e.ruleId === 'AZ-STG-001' && e.resourceIds[0] === id)?.status;
+    expect(byRes(bad.id)).toBe('FAIL');
+    expect(byRes(good.id)).toBe('PASS');
+    expect(byRes(unknown.id)).toBe('INSUFFICIENT_DATA');
+    expect(a.findings.find((f) => f.ruleId === 'AZ-STG-001')?.references.some((r) => r.identifier === 'DP-3')).toBe(true);
   });
 
-  test('AZ-STORAGE-NO-HTTPS: does NOT fire when httpsOnly=true', () => {
-    const r = makeResource({ resourceType: 'azure_storage', provider: 'azure', configJson: JSON.stringify({ httpsOnly: true }) });
-    const result = analyzer.analyze(baseSecurityInput([r]));
-    expect(result.findings.some((f) => f.ruleId === 'AZ-STORAGE-NO-HTTPS')).toBe(false);
+  test('AZ-NSG-002: RDP from "*" is HIGH; RDP from a specific range passes (previous rule ignored the source)', () => {
+    const open = makeResource({ resourceType: 'azure_nsg', provider: 'azure', configJson: JSON.stringify({ allowRdp: true, sourceCidr: '*' }) });
+    const restricted = makeResource({ resourceType: 'azure_nsg', provider: 'azure', configJson: JSON.stringify({ allowRdp: true, sourceCidr: '203.0.113.0/24' }) });
+    const a = analyzer.assess(baseSecurityInput([open, restricted]));
+    const f = a.findings.filter((x) => x.ruleId === 'AZ-NSG-002');
+    expect(f).toHaveLength(1);
+    expect(f[0].resourceIds[0]).toBe(open.id);
+    expect(f[0].severity).toBe('HIGH');
   });
 
-  test('AZ-STORAGE-NO-HTTPS: does NOT fire when httpsOnly is absent', () => {
-    const r = makeResource({ resourceType: 'azure_storage', provider: 'azure', configJson: '{}' });
-    const result = analyzer.analyze(baseSecurityInput([r]));
-    expect(result.findings.some((f) => f.ruleId === 'AZ-STORAGE-NO-HTTPS')).toBe(false);
-  });
-
-  test('AZ-NSG-OPEN-RDP: fires when allowRdp=true, severity critical', () => {
-    const r = makeResource({ resourceType: 'azure_nsg', provider: 'azure', configJson: JSON.stringify({ allowRdp: true }) });
-    const result = analyzer.analyze(baseSecurityInput([r]));
-    const finding = result.findings.find((f) => f.ruleId === 'AZ-NSG-OPEN-RDP');
-    expect(finding?.severity).toBe('critical');
-  });
-
-  test('AZ-NSG-OPEN-SSH: fires when allowSsh=true, severity high', () => {
-    const r = makeResource({ resourceType: 'azure_nsg', provider: 'azure', configJson: JSON.stringify({ allowSsh: true }) });
-    const result = analyzer.analyze(baseSecurityInput([r]));
-    const finding = result.findings.find((f) => f.ruleId === 'AZ-NSG-OPEN-SSH');
-    expect(finding?.severity).toBe('high');
+  test('AZ-SQL-002: reads the real transparentDataEncryptionEnabled key (previous rule read a non-existent key)', () => {
+    const r = makeResource({ resourceType: 'azure_sql', provider: 'azure', configJson: JSON.stringify({ transparentDataEncryptionEnabled: false }) });
+    expect(analyzer.assess(baseSecurityInput([r])).findings.some((f) => f.ruleId === 'AZ-SQL-002')).toBe(true);
   });
 });
 
-describe('SecurityAnalyzer — no false positives with unknown config', () => {
+describe('SecurityAnalyzer — no false positives / no false passes', () => {
   const analyzer = new SecurityAnalyzer();
 
-  test('No findings for vpc with empty config', () => {
+  test('No high/critical findings for a VPC with empty config', () => {
     const r = makeResource({ resourceType: 'aws_vpc', provider: 'aws', configJson: '{}' });
     const result = analyzer.analyze(baseSecurityInput([r]));
-    // Only vpc-dns rule could fire but needs enableDnsSupport=false
     expect(result.findings.filter((f) => f.severity === 'critical' || f.severity === 'high')).toHaveLength(0);
   });
 
   test('No findings for azure_resource_group', () => {
     const r = makeResource({ resourceType: 'azure_resource_group', provider: 'azure', configJson: '{}' });
-    const result = analyzer.analyze(baseSecurityInput([r]));
-    expect(result.findings).toHaveLength(0);
+    const a = analyzer.assess(baseSecurityInput([r]));
+    expect(a.findings.filter((f) => f.resourceIds.includes(r.id))).toHaveLength(0);
   });
 
-  test('Empty architecture produces score 100', () => {
+  test('Account-level AWS controls are NOT_EVALUATED, never PASS', () => {
+    const r = makeResource({ resourceType: 'aws_vpc', provider: 'aws', configJson: JSON.stringify({ enableDnsSupport: true }) });
+    const a = analyzer.assess(baseSecurityInput([r]));
+    for (const id of ['AWS-ACCT-001', 'AWS-ACCT-002', 'AWS-ACCT-003', 'AWS-ACCT-004']) {
+      expect(a.evaluations.find((e) => e.ruleId === id)?.status).toBe('NOT_EVALUATED');
+    }
+  });
+
+  test('Empty architecture is not scored (no default 100)', () => {
     const result = analyzer.analyze(baseSecurityInput([]));
-    expect(result.score).toBe(100);
+    expect(result.score).toBeNull();
     expect(result.findings).toHaveLength(0);
   });
 });
@@ -2337,82 +2330,39 @@ describe('API — organization isolation', () => {
 describe('Security Remediation & Rule-ID Matching', () => {
   const analyzer = new SecurityAnalyzer();
 
-  test('All Phase 2D security rule IDs are fixable and remediations resolve findings', () => {
-    const cases: Array<{
-      ruleId: string;
-      resourceType: string;
-      provider: string;
-      insecureConfig: Record<string, unknown>;
-      extraContextResources?: DbArchitectureResource[];
-    }> = [
-      { ruleId: 'AWS-S3-PUBLIC', resourceType: 'aws_s3', provider: 'aws', insecureConfig: { publicAccess: true } },
-      { ruleId: 'AWS-S3-NO-ENCRYPTION', resourceType: 'aws_s3', provider: 'aws', insecureConfig: { encryption: false } },
-      { ruleId: 'AWS-S3-NO-PUBLIC-BLOCK', resourceType: 'aws_s3', provider: 'aws', insecureConfig: { blockPublicAccess: false } },
-      { ruleId: 'AWS-RDS-NO-ENCRYPTION', resourceType: 'aws_rds', provider: 'aws', insecureConfig: { encrypted: false } },
-      { ruleId: 'AWS-RDS-PUBLICLY-ACCESSIBLE', resourceType: 'aws_rds', provider: 'aws', insecureConfig: { publiclyAccessible: true } },
-      { ruleId: 'AWS-RDS-NO-MULTI-AZ', resourceType: 'aws_rds', provider: 'aws', insecureConfig: { multiAz: false } },
-      { ruleId: 'AWS-SG-OPEN-SSH', resourceType: 'aws_sg', provider: 'aws', insecureConfig: { allowSsh: true } },
-      {
-        ruleId: 'AWS-EC2-PUBLIC-SUBNET',
-        resourceType: 'aws_subnet',
-        provider: 'aws',
-        insecureConfig: { mapPublicIpOnLaunch: true },
-        extraContextResources: [makeResource({ resourceType: 'aws_ec2', provider: 'aws' })],
-      },
-      { ruleId: 'AWS-VPC-NO-DNS', resourceType: 'aws_vpc', provider: 'aws', insecureConfig: { enableDnsSupport: false } },
-      { ruleId: 'AZ-STORAGE-NO-HTTPS', resourceType: 'azure_storage', provider: 'azure', insecureConfig: { httpsOnly: false } },
-      { ruleId: 'AZ-STORAGE-PUBLIC-BLOB', resourceType: 'azure_storage', provider: 'azure', insecureConfig: { allowBlobPublicAccess: true } },
-      { ruleId: 'AZ-SQL-PUBLIC-ACCESS', resourceType: 'azure_sql', provider: 'azure', insecureConfig: { publicNetworkAccess: true } },
-      { ruleId: 'AZ-SQL-NO-TDE', resourceType: 'azure_sql', provider: 'azure', insecureConfig: { transparentDataEncryption: false } },
-      { ruleId: 'AZ-NSG-OPEN-SSH', resourceType: 'azure_nsg', provider: 'azure', insecureConfig: { allowSsh: true } },
-      { ruleId: 'AZ-NSG-OPEN-RDP', resourceType: 'azure_nsg', provider: 'azure', insecureConfig: { allowRdp: true } },
-      { ruleId: 'AZ-VM-NO-DISK-ENCRYPTION', resourceType: 'azure_vm', provider: 'azure', insecureConfig: { diskEncryption: false } },
+  test('Legacy SecurityAnalyzer rule IDs resolve to current rules and their remediation resolves the finding', () => {
+    const cases: Array<{ legacyId: string; ruleId: string; resourceType: string; provider: string; insecureConfig: Record<string, unknown> }> = [
+      { legacyId: 'AWS-S3-PUBLIC', ruleId: 'AWS-S3-001', resourceType: 'aws_s3', provider: 'aws', insecureConfig: { publicAccess: true } },
+      { legacyId: 'AWS-S3-NO-ENCRYPTION', ruleId: 'AWS-S3-002', resourceType: 'aws_s3', provider: 'aws', insecureConfig: { encryption: false } },
+      { legacyId: 'AWS-RDS-NO-ENCRYPTION', ruleId: 'AWS-RDS-002', resourceType: 'aws_rds', provider: 'aws', insecureConfig: { encrypted: false } },
+      { legacyId: 'AWS-RDS-PUBLICLY-ACCESSIBLE', ruleId: 'AWS-RDS-001', resourceType: 'aws_rds', provider: 'aws', insecureConfig: { publiclyAccessible: true } },
+      { legacyId: 'AWS-RDS-NO-MULTI-AZ', ruleId: 'AWS-RDS-006', resourceType: 'aws_rds', provider: 'aws', insecureConfig: { multiAz: false } },
+      { legacyId: 'AWS-SG-OPEN-SSH', ruleId: 'AWS-SG-001', resourceType: 'aws_sg', provider: 'aws', insecureConfig: { allowSsh: true, sourceCidr: '0.0.0.0/0' } },
+      { legacyId: 'AWS-EC2-PUBLIC-SUBNET', ruleId: 'AWS-VPC-001', resourceType: 'aws_subnet', provider: 'aws', insecureConfig: { mapPublicIpOnLaunch: true } },
+      { legacyId: 'AWS-VPC-NO-DNS', ruleId: 'AWS-VPC-003', resourceType: 'aws_vpc', provider: 'aws', insecureConfig: { enableDnsSupport: false } },
+      { legacyId: 'AZ-STORAGE-NO-HTTPS', ruleId: 'AZ-STG-001', resourceType: 'azure_storage', provider: 'azure', insecureConfig: { httpsOnly: false } },
+      { legacyId: 'AZ-STORAGE-PUBLIC-BLOB', ruleId: 'AZ-STG-002', resourceType: 'azure_storage', provider: 'azure', insecureConfig: { allowBlobPublicAccess: true } },
+      { legacyId: 'AZ-SQL-PUBLIC-ACCESS', ruleId: 'AZ-SQL-001', resourceType: 'azure_sql', provider: 'azure', insecureConfig: { publicNetworkAccess: true } },
+      { legacyId: 'AZ-SQL-NO-TDE', ruleId: 'AZ-SQL-002', resourceType: 'azure_sql', provider: 'azure', insecureConfig: { transparentDataEncryptionEnabled: false } },
+      { legacyId: 'AZ-NSG-OPEN-SSH', ruleId: 'AZ-NSG-001', resourceType: 'azure_nsg', provider: 'azure', insecureConfig: { allowSsh: true, sourceCidr: '*' } },
+      { legacyId: 'AZ-NSG-OPEN-RDP', ruleId: 'AZ-NSG-002', resourceType: 'azure_nsg', provider: 'azure', insecureConfig: { allowRdp: true, sourceCidr: '*' } },
+      { legacyId: 'AZ-VM-NO-DISK-ENCRYPTION', ruleId: 'AZ-VM-002', resourceType: 'azure_vm', provider: 'azure', insecureConfig: { encryptionAtHostEnabled: false } },
     ];
 
     for (const c of cases) {
-      expect(isRuleFixable(c.ruleId)).toBe(true);
-
-      const targetResource = makeResource({
-        id: `res-${c.ruleId}`,
-        resourceType: c.resourceType,
-        provider: c.provider,
-        configJson: JSON.stringify(c.insecureConfig),
-      });
-
-      const initialInput: SecurityAnalysisInput = {
-        architectureId: 'arch-test',
-        projectId: 'proj-test',
-        resources: [targetResource, ...(c.extraContextResources ?? [])],
-        connections: [],
-      };
-
-      // Ensure finding triggers before fix
-      const beforeResult = analyzer.analyze(initialInput);
-      const targetFindingBefore = beforeResult.findings.find((f) => f.ruleId === c.ruleId);
-      expect(targetFindingBefore).toBeDefined();
-
-      // Apply remediation
-      const remediatedConfig = applyRuleRemediation(c.insecureConfig, c.ruleId);
-
-      // Verify with fixed resource
-      const fixedResource = {
-        ...targetResource,
-        configJson: JSON.stringify(remediatedConfig),
-      };
-
-      const afterResult = analyzer.analyze({
-        ...initialInput,
-        resources: [fixedResource, ...(c.extraContextResources ?? [])],
-      });
-
-      const targetFindingAfter = afterResult.findings.find((f) => f.ruleId === c.ruleId);
-      expect(targetFindingAfter).toBeUndefined();
+      expect(isRuleFixable(c.legacyId)).toBe(true);
+      const target = makeResource({ id: `res-${c.ruleId}`, resourceType: c.resourceType, provider: c.provider, configJson: JSON.stringify(c.insecureConfig) });
+      const input: SecurityAnalysisInput = { architectureId: 'arch-test', projectId: 'proj-test', resources: [target], connections: [] };
+      const before = analyzer.assess(input);
+      expect(before.findings.some((f) => f.ruleId === c.ruleId)).toBe(true);
+      const fixed = applyRuleRemediation(c.insecureConfig, c.legacyId);
+      const after = analyzer.assess({ ...input, resources: [{ ...target, configJson: JSON.stringify(fixed) }] });
+      expect(after.findings.some((f) => f.ruleId === c.ruleId)).toBe(false);
     }
   });
 
-  test('Backwards compatibility: legacy rule IDs are fixable and remediate correctly', () => {
+  test('Legacy RDE rule IDs remain resolvable and apply the same remediation', () => {
     const legacyRules = [
-      { legacyId: 's3-encryption', config: { encryption: false }, expectedKey: 'encryption', expectedVal: true },
       { legacyId: 's3-public', config: { publicAccess: true }, expectedKey: 'publicAccess', expectedVal: false },
       { legacyId: 'rds-encryption', config: { encrypted: false }, expectedKey: 'encrypted', expectedVal: true },
       { legacyId: 'rds-multi-az', config: { multiAz: false }, expectedKey: 'multiAz', expectedVal: true },
@@ -2421,12 +2371,15 @@ describe('Security Remediation & Rule-ID Matching', () => {
       { legacyId: 'nsg-open-rdp', config: { allowRdp: true }, expectedKey: 'allowRdp', expectedVal: false },
       { legacyId: 'storage-https', config: { httpsOnly: false }, expectedKey: 'httpsOnly', expectedVal: true },
     ];
-
     for (const lr of legacyRules) {
       expect(isRuleFixable(lr.legacyId)).toBe(true);
-      const fixed = applyRuleRemediation(lr.config, lr.legacyId);
-      expect(fixed[lr.expectedKey]).toBe(lr.expectedVal);
+      expect(applyRuleRemediation(lr.config, lr.legacyId)[lr.expectedKey]).toBe(lr.expectedVal);
     }
+  });
+
+  test('Rules removed as incorrect are not fixable (e.g. "EC2 has no key pair")', () => {
+    expect(isRuleFixable('ec2-key-pair')).toBe(false);
+    expect(isRuleFixable('waf-default-allow')).toBe(false);
   });
 
   test('ApiSecurityService and SecurityService applyFix apply the remediation properly', () => {
@@ -2442,7 +2395,7 @@ describe('Security Remediation & Rule-ID Matching', () => {
       },
     ];
 
-    const fixedNodes1 = apiSecurityService.applyFix(nodes, 'node-s3', 'AWS-S3-NO-ENCRYPTION');
+    const fixedNodes1 = apiSecurityService.applyFix(nodes, 'node-s3', 'AWS-S3-002');
     expect(fixedNodes1[0].config['encryption']).toBe(true);
 
     const fixedNodes2 = securityService.applyFix(nodes, 'node-s3', 'AWS-S3-PUBLIC');

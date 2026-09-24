@@ -1,70 +1,80 @@
 /**
  * WellArchitectedRuleEngine
  *
- * Deterministic rule engine for AWS and Azure WAF analysis.
- * Same inputs → same outputs.
- * No live API calls — all analysis is design-time.
- * Every finding carries full source attribution.
+ * Presents the unified assessment engine's evaluations
+ * (lib/engines/assessment) through the provider-specific Well-Architected
+ * lens: six AWS pillars, five Azure pillars. It no longer owns a separate rule
+ * set — the former awsWaRules/azureWaRules duplicated security checks with
+ * different config keys and contained incorrect rules (e.g. flagging every RDS
+ * instance for "on-demand pricing" with no evidence, recommending NAT gateway
+ * consolidation that conflicts with Multi-AZ resilience, and Azure rules that
+ * looked for resource types that do not exist in CloudCraft).
+ *
+ * Scores are coverage-aware: a pillar with no evaluable checks reports
+ * `scored: false` ("Insufficient evidence") instead of a default 100.
  */
-import { createHash } from 'crypto';
 import type {
-  WaRule, WaFinding, WaAssessment, WaPillarScore, WaAnalysisInput,
-  WaSeverity, WaPillar, WaProvider,
+  WaFinding, WaAssessment, WaPillarScore, WaAnalysisInput, WaSeverity, WaPillar, WaProvider,
 } from './types';
-import { SEVERITY_WEIGHTS } from './types';
-import { awsWaRules } from './rules/awsWaRules';
-import { azureWaRules } from './rules/azureWaRules';
-import {
-  AWS_PILLARS, AZURE_PILLARS, getFramework,
-  type PillarDefinition,
-} from './frameworkDefinitions';
+import { getFramework } from './frameworkDefinitions';
 import type { CanvasNode, CanvasEdge } from '@/types';
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
+import { toCanvas } from '@/lib/domain/canvasMapping';
+import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
+import { scoreOf, SCORE_METHODOLOGY } from '@/lib/engines/assessment/scoring';
+import type { AssessmentResult, Finding } from '@/lib/engines/assessment/types';
 
-// ─── Deterministic Finding ID ─────────────────────────────────────────────────
-
-function findingId(ruleId: string, resourceId: string): string {
-  return createHash('sha256')
-    .update(`waf:${ruleId}:${resourceId}`)
-    .digest('hex')
-    .substring(0, 16);
+function toWaSeverity(s: Finding['severity']): WaSeverity {
+  return s === 'INFORMATIONAL' ? 'info' : (s.toLowerCase() as WaSeverity);
 }
 
-// ─── Pillar Score Calculator ──────────────────────────────────────────────────
-
-function scorePillars(
-  findings: WaFinding[],
-  pillars: PillarDefinition[],
-): WaPillarScore[] {
-  return pillars.map((p) => {
-    const pillarFindings = findings.filter((f) => f.pillar === p.id);
-    const criticalCount = pillarFindings.filter((f) => f.severity === 'critical').length;
-    const highCount = pillarFindings.filter((f) => f.severity === 'high').length;
-    const totalDeduction = pillarFindings.reduce(
-      (acc, f) => acc + (SEVERITY_WEIGHTS[f.severity] ?? 0),
-      0,
-    );
-    const score = Math.max(0, Math.round(100 - totalDeduction));
-    return {
-      pillar: p.id as WaPillar,
-      pillarLabel: p.label,
-      score,
-      findingCount: pillarFindings.length,
-      criticalCount,
-      highCount,
-    };
-  });
+function toWaFinding(f: Finding, importStates: Map<string, string | undefined>): WaFinding {
+  const pillarRef = f.references.find((r) => r.key.startsWith('AWS-WA-') || r.key.startsWith('AZ-WA-'))?.url ?? '';
+  const frameworkName = f.provider === 'aws' ? 'AWS Well-Architected Framework' : 'Microsoft Azure Well-Architected Framework';
+  return {
+    id: f.findingId,
+    ruleId: f.ruleId,
+    provider: f.provider,
+    pillar: f.pillar as WaPillar,
+    pillarLabel: labelOf(f.provider, f.pillar),
+    pillarRef,
+    severity: toWaSeverity(f.severity),
+    title: f.title,
+    description: f.description,
+    affectedResourceIds: f.resourceIds,
+    affectedResourceLabels: f.resourceLabels,
+    evidence: Object.fromEntries(f.evidence.map((e) => [e.label, e.observed])),
+    recommendation: f.recommendation,
+    remediation: f.manualSteps.join(' '),
+    frameworkReference: `${frameworkName} — ${labelOf(f.provider, f.pillar)}${f.practice ? ` (${f.practice})` : ''}`,
+    source: 'DESIGN_TIME',
+    sourceLabel: f.provenance === 'DISCOVERED_CONFIGURATION' ? 'Design-time assessment (discovered configuration)' : 'Design-time assessment',
+    detectedAt: f.evaluatedAt,
+    resourceState: (importStates.get(f.resourceIds[0] ?? '') as WaFinding['resourceState']) ?? 'new',
+    status: f.status as 'FAIL' | 'WARNING',
+    observation: f.observation,
+    references: f.references.map((r) => ({ title: r.title, identifier: r.identifier, url: r.url, framework: r.framework })),
+    practice: f.practice,
+  };
 }
 
-function calculateOverall(pillarScores: WaPillarScore[]): number {
-  if (pillarScores.length === 0) return 100;
-  const total = pillarScores.reduce((acc, p) => acc + p.score, 0);
-  return Math.round(total / pillarScores.length);
+function labelOf(provider: WaProvider, pillar: string): string {
+  return getFramework(provider).pillars.find((p) => p.id === pillar)?.label ?? pillar;
 }
 
-// ─── Rule Engine ─────────────────────────────────────────────────────────────
+function nodesFrom(input: {
+  architectureId: string;
+  nodes?: CanvasNode[];
+  edges?: CanvasEdge[];
+  resources?: DbArchitectureResource[];
+  connections?: DbArchitectureConnection[];
+}): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
+  if (input.resources) return toCanvas(input.resources, input.connections ?? []);
+  return { nodes: input.nodes ?? [], edges: input.edges ?? [] };
+}
 
 export class WellArchitectedRuleEngine {
+  private _importStates = new Map<string, string | undefined>();
 
   analyze(input: {
     architectureId: string;
@@ -75,213 +85,115 @@ export class WellArchitectedRuleEngine {
     resources?: DbArchitectureResource[];
     connections?: DbArchitectureConnection[];
   }): WaAssessment {
-    const resources: DbArchitectureResource[] = input.resources ?? (input.nodes ?? []).map((n) => ({
-      id: n.id,
-      architectureId: input.architectureId,
-      resourceType: n.resourceType,
-      provider: n.provider ?? (n.resourceType.startsWith('azure_') ? 'azure' : 'aws'),
-      label: n.label,
-      positionX: n.position.x,
-      positionY: n.position.y,
-      region: (n.config?.region as string) ?? null,
-      groupId: n.groupId ?? null,
-      locked: false,
-      configJson: JSON.stringify({
-        ...(n.config ?? {}),
-        ...(n.importState ? { importState: n.importState } : {}),
-      }),
-    }));
-
-    const connections: DbArchitectureConnection[] = input.connections ?? (input.edges ?? []).map((e) => ({
-      id: e.id,
-      architectureId: input.architectureId,
-      sourceId: e.source,
-      targetId: e.target,
-      edgeType: e.edgeType ?? 'traffic',
-      label: e.label ?? null,
-    }));
-
-    const fullInput: WaAnalysisInput = {
-      architectureId: input.architectureId,
-      projectId: input.projectId ?? 'proj-default',
-      resources,
-      connections,
-    };
-
-    const prov = input.provider ?? (resources.some((r) => r.provider === 'azure') && resources.some((r) => r.provider === 'aws') ? 'multi' : resources[0]?.provider ?? 'aws');
-    if (prov === 'azure') return this.analyzeAzure(fullInput);
-    if (prov === 'multi') return this.analyzeMultiCloud(fullInput);
-    return this.analyzeAws(fullInput);
-  }
-
-  runRules(
-    rules: WaRule[],
-    input: WaAnalysisInput,
-  ): WaFinding[] {
-    const findings: WaFinding[] = [];
-    const now = new Date().toISOString();
-
-    for (const resource of input.resources) {
-      let config: Record<string, unknown>;
-      try {
-        config = JSON.parse(resource.configJson) as Record<string, unknown>;
-      } catch {
-        config = {};
-      }
-
-      for (const rule of rules) {
-        const raw = rule.check(resource, config, input.resources, input.connections);
-        if (raw !== null) {
-          // Deduplicate: each (ruleId, resource[0]) pair produces only one finding
-          const primaryId = raw.affectedResourceIds[0] ?? resource.id;
-          const id = findingId(rule.ruleId, primaryId);
-          if (!findings.some((f) => f.id === id)) {
-            findings.push({
-              ...raw,
-              id,
-              resourceState: raw.resourceState ?? (config.importState as any) ?? ((resource as any).importState) ?? (config.imported ? 'imported' : 'new'),
-              detectedAt: now,
-            });
-          }
-        }
-      }
-    }
-
-    return findings;
+    const { nodes, edges } = nodesFrom(input);
+    this._rememberStates(nodes);
+    const assessment = runAssessment({ nodes, edges });
+    const projectId = input.projectId ?? 'proj-default';
+    const prov = input.provider
+      ?? (assessment.providers.length > 1 ? 'multi' : (assessment.providers[0] ?? 'aws'));
+    if (prov === 'multi') return this._multi(assessment, input.architectureId, projectId);
+    return this._forProvider(assessment, prov, input.architectureId, projectId);
   }
 
   analyzeAws(input: WaAnalysisInput): WaAssessment {
-    const awsResources = input.resources.filter((r) => r.provider === 'aws');
-    if (awsResources.length === 0) {
-      return this._emptyAssessment(input, 'aws');
-    }
-
-    const awsInput: WaAnalysisInput = { ...input, resources: awsResources };
-    const findings = this.runRules(awsWaRules, awsInput);
-    const pillarScores = scorePillars(findings, AWS_PILLARS);
-    const overallScore = calculateOverall(pillarScores);
-    const framework = getFramework('aws');
-
-    return {
-      architectureId: input.architectureId,
-      projectId: input.projectId,
-      provider: 'aws',
-      framework: framework.framework,
-      frameworkVersion: framework.frameworkVersion,
-      frameworkSource: framework.documentationUrl,
-      overallScore,
-      pillarScores,
-      findings,
-      evaluatedAt: new Date().toISOString(),
-      source: 'DESIGN_TIME',
-      sourceLabel: 'Design-time assessment',
-      confidence: 'design-time',
-      isStale: false,
-    };
+    const { nodes, edges } = toCanvas(input.resources, input.connections);
+    this._rememberStates(nodes);
+    return this._forProvider(runAssessment({ nodes, edges }), 'aws', input.architectureId, input.projectId);
   }
 
   analyzeAzure(input: WaAnalysisInput): WaAssessment {
-    const azureResources = input.resources.filter((r) => r.provider === 'azure');
-    if (azureResources.length === 0) {
-      return this._emptyAssessment(input, 'azure');
-    }
+    const { nodes, edges } = toCanvas(input.resources, input.connections);
+    this._rememberStates(nodes);
+    return this._forProvider(runAssessment({ nodes, edges }), 'azure', input.architectureId, input.projectId);
+  }
 
-    const azureInput: WaAnalysisInput = { ...input, resources: azureResources };
-    const findings = this.runRules(azureWaRules, azureInput);
-    const pillarScores = scorePillars(findings, AZURE_PILLARS);
-    const overallScore = calculateOverall(pillarScores);
-    const framework = getFramework('azure');
+  analyzeMultiCloud(input: WaAnalysisInput): WaAssessment {
+    const { nodes, edges } = toCanvas(input.resources, input.connections);
+    this._rememberStates(nodes);
+    return this._multi(runAssessment({ nodes, edges }), input.architectureId, input.projectId);
+  }
 
+  private _rememberStates(nodes: CanvasNode[]) {
+    this._importStates = new Map(nodes.map((n) => [n.id, n.importState ?? (n.config?.imported ? 'imported' : undefined)]));
+  }
+
+  /** Assessment for one provider; empty architectures are reported as not scored. */
+  _forProvider(a: AssessmentResult, provider: WaProvider, architectureId: string, projectId: string): WaAssessment {
+    const framework = getFramework(provider);
+    const evals = a.evaluations.filter((e) => e.provider === provider);
+    const findings = a.findings.filter((f) => f.provider === provider).map((f) => toWaFinding(f, this._importStates));
+    const overall = scoreOf(evals);
+    const pillarScores: WaPillarScore[] = framework.pillars.map((p) => {
+      const pr = a.pillarResults.find((x) => x.provider === provider && x.pillar === p.id);
+      const pf = findings.filter((f) => f.pillar === p.id);
+      return {
+        pillar: p.id as WaPillar,
+        pillarLabel: p.label,
+        provider,
+        score: pr?.score.score ?? 0,
+        scored: pr ? pr.score.score !== null : false,
+        coveragePct: pr?.score.coverage.coveragePct ?? null,
+        evaluatedChecks: pr?.score.coverage.evaluated ?? 0,
+        notEvaluatedChecks: pr ? pr.score.coverage.notEvaluated + pr.score.coverage.insufficientData : 0,
+        status: pr?.status ?? 'Insufficient evidence',
+        findingCount: pf.length,
+        criticalCount: pf.filter((f) => f.severity === 'critical').length,
+        highCount: pf.filter((f) => f.severity === 'high').length,
+      };
+    });
+    const hasResources = evals.length > 0;
     return {
-      architectureId: input.architectureId,
-      projectId: input.projectId,
-      provider: 'azure',
+      architectureId,
+      projectId,
+      provider,
       framework: framework.framework,
       frameworkVersion: framework.frameworkVersion,
       frameworkSource: framework.documentationUrl,
-      overallScore,
+      overallScore: overall.score ?? 0,
+      overallScored: overall.score !== null,
+      coveragePct: overall.coverage.coveragePct,
+      notEvaluatedCount: overall.coverage.notEvaluated + overall.coverage.insufficientData,
       pillarScores,
       findings,
-      evaluatedAt: new Date().toISOString(),
+      evaluatedAt: a.evaluatedAt,
       source: 'DESIGN_TIME',
-      sourceLabel: 'Design-time assessment',
+      sourceLabel: hasResources
+        ? (a.analysisMode === 'DESIGN_TIME' ? 'Design-time assessment' : 'Design-time assessment (includes discovered configuration)')
+        : 'Design-time assessment (no resources)',
       confidence: 'design-time',
       isStale: false,
+      rulesetVersion: a.rulesetVersion,
+      scoreMethodology: SCORE_METHODOLOGY,
     };
   }
 
-  /**
-   * Analyze a multi-cloud architecture.
-   * Returns a combined assessment with both AWS and Azure sub-assessments.
-   */
-  analyzeMultiCloud(input: WaAnalysisInput): WaAssessment {
-    const awsAssessment = this.analyzeAws(input);
-    const azureAssessment = this.analyzeAzure(input);
-
-    // Merge findings and compute combined score
-    const allFindings = [...awsAssessment.findings, ...azureAssessment.findings];
-
-    // For multi-cloud, use the average of both overall scores (if both have resources)
-    const hasAws = input.resources.some((r) => r.provider === 'aws');
-    const hasAzure = input.resources.some((r) => r.provider === 'azure');
-
-    let combinedScore = 100;
-    if (hasAws && hasAzure) {
-      combinedScore = Math.round((awsAssessment.overallScore + azureAssessment.overallScore) / 2);
-    } else if (hasAws) {
-      combinedScore = awsAssessment.overallScore;
-    } else {
-      combinedScore = azureAssessment.overallScore;
-    }
-
-    // Combined pillar scores = AWS scores + Azure scores (separate sections)
-    const combinedPillarScores = [...awsAssessment.pillarScores, ...azureAssessment.pillarScores];
-
+  _multi(a: AssessmentResult, architectureId: string, projectId: string): WaAssessment {
+    const awsAssessment = this._forProvider(a, 'aws', architectureId, projectId);
+    const azureAssessment = this._forProvider(a, 'azure', architectureId, projectId);
+    const overall = scoreOf(a.evaluations);
     return {
-      architectureId: input.architectureId,
-      projectId: input.projectId,
+      architectureId,
+      projectId,
       provider: 'multi',
       framework: 'AWS + Azure Well-Architected Frameworks',
-      frameworkVersion: '2024',
+      frameworkVersion: `${awsAssessment.frameworkVersion} / ${azureAssessment.frameworkVersion}`,
       frameworkSource: 'https://docs.aws.amazon.com/wellarchitected/ | https://learn.microsoft.com/azure/well-architected/',
-      overallScore: combinedScore,
-      pillarScores: combinedPillarScores,
-      findings: allFindings,
-      evaluatedAt: new Date().toISOString(),
+      overallScore: overall.score ?? 0,
+      overallScored: overall.score !== null,
+      coveragePct: overall.coverage.coveragePct,
+      notEvaluatedCount: overall.coverage.notEvaluated + overall.coverage.insufficientData,
+      // Provider-specific pillars are kept separate (AWS 6 + Azure 5), never merged.
+      pillarScores: [...awsAssessment.pillarScores, ...azureAssessment.pillarScores],
+      findings: [...awsAssessment.findings, ...azureAssessment.findings],
+      evaluatedAt: a.evaluatedAt,
       source: 'DESIGN_TIME',
       sourceLabel: 'Design-time assessment (multi-cloud)',
       confidence: 'design-time',
       isStale: false,
       awsAssessment,
       azureAssessment,
-    };
-  }
-
-  private _emptyAssessment(input: WaAnalysisInput, provider: WaProvider): WaAssessment {
-    const framework = getFramework(provider);
-    const pillars = provider === 'aws' ? AWS_PILLARS : AZURE_PILLARS;
-    return {
-      architectureId: input.architectureId,
-      projectId: input.projectId,
-      provider,
-      framework: framework.framework,
-      frameworkVersion: framework.frameworkVersion,
-      frameworkSource: framework.documentationUrl,
-      overallScore: 100,
-      pillarScores: pillars.map((p) => ({
-        pillar: p.id as WaPillar,
-        pillarLabel: p.label,
-        score: 100,
-        findingCount: 0,
-        criticalCount: 0,
-        highCount: 0,
-      })),
-      findings: [],
-      evaluatedAt: new Date().toISOString(),
-      source: 'DESIGN_TIME',
-      sourceLabel: 'Design-time assessment (no resources)',
-      confidence: 'design-time',
-      isStale: false,
+      rulesetVersion: a.rulesetVersion,
+      scoreMethodology: SCORE_METHODOLOGY,
     };
   }
 }
