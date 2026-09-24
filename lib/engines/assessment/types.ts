@@ -340,7 +340,8 @@ export interface CoverageSummary {
 export interface ScoreResult {
   /** null when nothing could be evaluated — never a default 100. */
   score: number | null;
-  rating: 'Strong' | 'Good' | 'Needs improvement' | 'Weak' | 'Not scored';
+  /** 'Limited evidence' replaces Strong/Good when coverage is below LOW_COVERAGE_THRESHOLD. */
+  rating: 'Strong' | 'Good' | 'Needs improvement' | 'Weak' | 'Limited evidence' | 'Not scored';
   coverage: CoverageSummary;
   capApplied?: string;
   lowCoverage: boolean;

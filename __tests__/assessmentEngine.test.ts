@@ -833,3 +833,293 @@ describe('Controls that cannot be evaluated are classified and explained', () =>
     expect(EVIDENCE_AVAILABILITY['AWS-EC2-003']).toBeUndefined();
   });
 });
+
+// ─── Production hardening: scoring stress ────────────────────────────────────
+
+describe('Score stress tests (score and coverage are independent)', () => {
+  const ev = (status: Evaluation['status'], severity: Evaluation['severity'] = 'MEDIUM', provider: 'aws' | 'azure' = 'aws'): Evaluation => ({
+    findingId: `x-${Math.random()}`, ruleId: 'X', ruleVersion: '1.0.0', provider, resourceIds: [], resourceLabels: [], status, severity,
+    observation: '', evidence: [], provenance: 'DESIGN_TIME',
+  });
+  const many = (n: number, status: Evaluation['status'], sev: Evaluation['severity'] = 'MEDIUM') => Array.from({ length: n }, () => ev(status, sev));
+
+  test('0 evaluated → Not scored (never 100), coverage null or 0', () => {
+    expect(scoreOf([])).toMatchObject({ score: null, rating: 'Not scored' });
+    expect(scoreOf([]).coverage.coveragePct).toBeNull();
+    const onlyUnknown = scoreOf(many(5, 'NOT_EVALUATED'));
+    expect(onlyUnknown).toMatchObject({ score: null, rating: 'Not scored' });
+    expect(onlyUnknown.coverage.coveragePct).toBe(0);
+  });
+
+  test('1 evaluated (pass) of 1 applicable → 100, Strong, full coverage', () => {
+    expect(scoreOf([ev('PASS')])).toMatchObject({ score: 100, rating: 'Strong', lowCoverage: false });
+  });
+
+  test('all pass → 100 Strong; all fail → 0 Weak', () => {
+    expect(scoreOf(many(10, 'PASS'))).toMatchObject({ score: 100, rating: 'Strong' });
+    expect(scoreOf(many(10, 'FAIL'))).toMatchObject({ score: 0, rating: 'Weak' });
+  });
+
+  test('one failing CRITICAL caps at 40 even when everything else passes', () => {
+    const r = scoreOf([...many(50, 'PASS', 'HIGH'), ev('FAIL', 'CRITICAL')]);
+    expect(r.score).toBe(40);
+    expect(r.capApplied).toMatch(/CRITICAL/);
+  });
+
+  test('one failing HIGH caps at 70', () => {
+    const r = scoreOf([...many(50, 'PASS', 'HIGH'), ev('FAIL', 'HIGH')]);
+    expect(r.score).toBe(70);
+    expect(r.capApplied).toMatch(/HIGH/);
+  });
+
+  test('mostly NOT_EVALUATED: passing checks never read as a strong posture', () => {
+    const r = scoreOf([...many(2, 'PASS'), ...many(18, 'NOT_EVALUATED')]);
+    expect(r.score).toBe(100); // the score describes only what was evaluated …
+    expect(r.coverage.coveragePct).toBe(10); // … coverage is reported separately …
+    expect(r.lowCoverage).toBe(true);
+    expect(r.rating).toBe('Limited evidence'); // … and the rating is not "Strong"
+  });
+
+  test('mostly INSUFFICIENT_DATA behaves the same as NOT_EVALUATED (never a pass)', () => {
+    const r = scoreOf([...many(3, 'PASS'), ...many(17, 'INSUFFICIENT_DATA')]);
+    expect(r.coverage.insufficientData).toBe(17);
+    expect(r.rating).toBe('Limited evidence');
+  });
+
+  test('low coverage does not hide poor results', () => {
+    const r = scoreOf([ev('FAIL', 'HIGH'), ...many(18, 'NOT_EVALUATED')]);
+    expect(r.rating).toBe('Weak');
+  });
+
+  test('informational-only failures do not move the score; informational-only evaluations are Not scored', () => {
+    expect(scoreOf([...many(4, 'FAIL', 'INFORMATIONAL')])).toMatchObject({ score: null, rating: 'Not scored' });
+    expect(scoreOf([...many(4, 'PASS'), ...many(4, 'FAIL', 'INFORMATIONAL')]).score).toBe(100);
+  });
+
+  test('warnings count as half a failure', () => {
+    expect(scoreOf([ev('PASS'), ev('WARNING')]).score).toBe(75);
+  });
+
+  test('coverage exactly at the threshold is not low coverage', () => {
+    const r = scoreOf([...many(6, 'PASS'), ...many(4, 'NOT_EVALUATED')]);
+    expect(r.coverage.coveragePct).toBe(60);
+    expect(r.lowCoverage).toBe(false);
+    expect(r.rating).toBe('Strong');
+  });
+
+  test('mixed AWS/Azure: combined score equals scoring the union; per-provider pillars are separate', () => {
+    const a = runAssessment({ nodes: [...insecureAws().nodes, ...insecureAzure().nodes], edges: [] });
+    const sec = a.evaluations.filter((e) => RULES_BY_ID.get(e.ruleId)!.domain === 'SECURITY');
+    expect(a.securityScore.score).toBe(scoreOf(sec).score);
+    expect(a.pillarResults.filter((p) => p.provider === 'aws')).toHaveLength(6);
+    expect(a.pillarResults.filter((p) => p.provider === 'azure')).toHaveLength(5);
+  });
+
+  test('a real sparse design is flagged and not rated Strong', () => {
+    // An imported bucket with only one discovered setting: most checks lack data.
+    const values = { publicAccess: false, blockPublicAcls: true, blockPublicPolicy: true };
+    const s3: CanvasNode = { id: 's3', type: 'cloudNode', resourceType: 'aws_s3', provider: 'aws', label: 'b', position: { x: 0, y: 0 }, importState: 'imported',
+      config: { ...values, _discovery: { source: 'aws-api', discoveredAt: '2026-09-24T00:00:00Z', values } } } as CanvasNode;
+    const a = runAssessment({ nodes: [s3], edges: [] });
+    expect(a.securityScore.lowCoverage).toBe(true);
+    expect(['Strong', 'Good']).not.toContain(a.securityScore.rating);
+  });
+});
+
+// ─── Production hardening: multi-cloud isolation ─────────────────────────────
+
+describe('Multi-cloud isolation', () => {
+  test('AWS resources are only evaluated by AWS rules and Azure resources only by Azure rules', () => {
+    const a = runAssessment({ nodes: [...insecureAws().nodes, ...insecureAzure().nodes], edges: [] });
+    const byId = new Map([...insecureAws().nodes, ...insecureAzure().nodes].map((n) => [n.id, n]));
+    for (const e of a.evaluations) {
+      const rule = RULES_BY_ID.get(e.ruleId)!;
+      expect(e.provider).toBe(rule.provider);
+      for (const id of e.resourceIds) {
+        const n = a.evaluations.length && byId.get(id);
+        if (n) expect(n.provider).toBe(rule.provider);
+      }
+    }
+  });
+
+  test('cross-cloud edges never make an AWS rule read Azure configuration (or vice versa)', () => {
+    const rds = node('aws_rds', { publiclyAccessible: false, encrypted: true });
+    const sql = node('azure_sql', { publicNetworkAccess: true });
+    const rg = node('azure_resource_group');
+    const a = runAssessment({ nodes: [rds, sql, rg], edges: [edge(rds, sql)] });
+    const awsEvals = a.evaluations.filter((e) => e.provider === 'aws');
+    expect(awsEvals.every((e) => e.resourceIds.every((id) => id !== sql.id))).toBe(true);
+    // Azure SQL public access is reported by the Azure rule only
+    expect(a.findings.filter((f) => f.resourceIds.includes(sql.id)).every((f) => f.ruleId.startsWith('AZ-'))).toBe(true);
+  });
+
+  test('a single-provider design gets no rules from the other provider', () => {
+    expect(runAssessment({ nodes: insecureAws().nodes, edges: [] }).evaluations.some((e) => e.provider === 'azure')).toBe(false);
+    expect(runAssessment({ nodes: insecureAzure().nodes, edges: [] }).evaluations.some((e) => e.provider === 'aws')).toBe(false);
+  });
+});
+
+// ─── Production hardening: Auto-Fix full sequence, idempotency and rollback ──
+
+describe('SAFE_AUTOFIX full sequence', () => {
+  // A failing design-time fixture per rule. AWS-ASG-001 is relationship-based (needs a load balancer edge).
+  const fixture = (ruleId: string): { nodes: CanvasNode[]; edges: CanvasEdge[]; target: CanvasNode } => {
+    if (ruleId === 'AWS-ASG-001') {
+      const target = node('aws_auto_scaling', { healthCheckType: 'EC2' }, { id: 'safe-AWS-ASG-001' });
+      const alb = node('aws_alb');
+      return { nodes: [target, alb], edges: [edge(alb, target)], target };
+    }
+    const [type, cfg] = FAILING[ruleId];
+    const rg = type.startsWith('azure') ? [node('azure_resource_group')] : [];
+    const target = node(type, cfg, { id: `safe-${ruleId}` });
+    return { nodes: [...rg, target], edges: [], target };
+  };
+  // Rules whose fix is SAFE on a design-time resource (static SAFE, or dynamic safety resolving to SAFE).
+  const safeRules = ALL_RULES.filter((r) => r.autoFix && r.scope === 'resource' && (FAILING[r.id] || r.id === 'AWS-ASG-001')).filter((r) => {
+    const f = fixture(r.id);
+    const plan = planAutoFix(f.nodes, f.edges, findingIdFor(r.id, f.target.id));
+    return !('error' in plan) && plan.safety === 'SAFE_AUTOFIX';
+  });
+
+  test('covers every rule whose fix is SAFE_AUTOFIX on a design resource', () => {
+    const staticSafe = ALL_RULES.filter((r) => r.autoFix && r.autoFix.safety === 'SAFE_AUTOFIX' && r.scope === 'resource').map((r) => r.id);
+    expect(staticSafe.filter((id) => !safeRules.some((r) => r.id === id))).toEqual([]);
+    expect(safeRules.length).toBeGreaterThanOrEqual(staticSafe.length);
+  });
+
+  test.each(safeRules.map((r) => [r.id]))('%s: finding → preview → apply → graph → security + WA rerun → Terraform → cost → persist → reload → still resolved → apply twice', (ruleId) => {
+    const { nodes, edges, target } = fixture(ruleId);
+    const fid = findingIdFor(ruleId, target.id);
+    const pillar = RULES_BY_ID.get(ruleId)!.wellArchitected.pillar;
+
+    // finding exists (security engine and Well-Architected view)
+    expect(runAssessment({ nodes, edges }).findings.some((f) => f.findingId === fid)).toBe(true);
+    const waBefore = new WellArchitectedRuleEngine().analyze({ architectureId: 'a', nodes, edges });
+    expect(waBefore.findings.some((f) => f.ruleId === ruleId)).toBe(true);
+
+    // preview
+    const plan = planAutoFix(nodes, edges, fid);
+    if ('error' in plan) throw new Error(plan.error);
+    expect(plan.safety).toBe('SAFE_AUTOFIX'); // design-time resource
+    expect(plan.changes.length).toBeGreaterThan(0);
+    expect(plan.terraform.added.length + plan.terraform.removed.length).toBeGreaterThan(0);
+
+    // apply
+    const r = applyAutoFix(nodes, edges, fid, { confirmed: false }); // SAFE needs no confirmation
+    expect(r.status).toBe('RESOLVED');
+    // canonical graph changed on the target only
+    expect(r.nodes.find((n) => n.id === target.id)!.config).not.toEqual(target.config);
+    // security + WA rerun
+    expect(runAssessment({ nodes: r.nodes, edges }).findings.some((f) => f.findingId === fid)).toBe(false);
+    const waAfter = new WellArchitectedRuleEngine().analyze({ architectureId: 'a', nodes: r.nodes, edges });
+    expect(waAfter.findings.some((f) => f.ruleId === ruleId)).toBe(false);
+    expect(waAfter.pillarScores.find((p) => p.pillar === pillar)).toBeDefined();
+    // cost impact matches the declared impact
+    if (plan.cost.impact === 'NONE') expect(plan.cost.deltaMonthly).toBe(0);
+    if (plan.cost.impact === 'POSSIBLE_DECREASE') expect(plan.cost.deltaMonthly).toBeLessThanOrEqual(0);
+    if (plan.cost.impact === 'POSSIBLE_INCREASE') expect(plan.cost.deltaMonthly).toBeGreaterThanOrEqual(0);
+    // persistence + reload
+    const reloaded = persistRoundTrip(r.nodes, edges);
+    expect(runAssessment(reloaded).findings.some((f) => f.findingId === fid)).toBe(false);
+    // apply twice (idempotent) — also after reload
+    expect(applyAutoFix(r.nodes, edges, fid).status).toBe('ALREADY_RESOLVED');
+    expect(applyAutoFix(reloaded.nodes, reloaded.edges, fid).status).toBe('ALREADY_RESOLVED');
+  });
+
+});
+
+describe('REVIEW_REQUIRED fixes show their full impact and never apply silently', () => {
+  const reviewRules = ALL_RULES.filter((r) => r.autoFix && r.autoFix.safety === 'REVIEW_REQUIRED' && r.scope === 'resource' && FAILING[r.id]);
+  test.each(reviewRules.map((r) => [r.id]))('%s', (ruleId) => {
+    const [type, cfg] = FAILING[ruleId];
+    const rg = type.startsWith('azure') ? [node('azure_resource_group')] : [];
+    const target = node(type, cfg, { id: `rev-${ruleId}` });
+    const nodes = [...rg, target];
+    const fid = findingIdFor(ruleId, target.id);
+    const plan = planAutoFix(nodes, [], fid);
+    if ('error' in plan) throw new Error(plan.error);
+    // current state, proposed state, affected resources, security / architecture / cost / Terraform impact
+    expect(plan.changes.every((c) => c.current !== undefined && c.proposed !== undefined && c.label)).toBe(true);
+    expect(plan.affectedResources.length).toBeGreaterThan(0);
+    expect(plan.securityImprovement.length).toBeGreaterThan(10);
+    expect(plan.architectureImpact.length).toBeGreaterThan(5);
+    expect(plan.cost).toEqual(expect.objectContaining({ impact: expect.any(String), deltaMonthly: expect.any(Number) }));
+    expect(plan.terraform.added.length + plan.terraform.removed.length).toBeGreaterThan(0);
+    expect(plan.safetyReason.length).toBeGreaterThan(10);
+    // without confirmation nothing changes
+    const r = applyAutoFix(nodes, [], fid);
+    expect(r.status).toBe('REJECTED');
+    expect(r.nodes).toBe(nodes);
+    // bulk "fix all safe" never includes it
+    expect(safeFixCandidates(runAssessment({ nodes, edges: [] }).findings).some((f) => f.findingId === fid)).toBe(false);
+  });
+});
+
+describe('Auto-Fix rollback (forced post-fix verification failures)', () => {
+  const target = () => node('aws_ec2', { detailedMonitoring: false }, { id: 'rollback-ec2' });
+  const fid = findingIdFor('AWS-EC2-010', 'rollback-ec2');
+  const expectRestored = (r: ReturnType<typeof applyAutoFix>, nodes: CanvasNode[], snapshot: string) => {
+    expect(r.status).toBe('AUTO_FIX_FAILED');
+    expect(r.reason).toMatch(/left unchanged/);
+    expect(r.nodes).toBe(nodes); // the original graph is returned …
+    expect(JSON.stringify(r.nodes)).toBe(snapshot); // … and was not mutated
+    expect(runAssessment({ nodes: r.nodes, edges: [] }).findings.some((f) => f.findingId === fid)).toBe(true);
+  };
+
+  test('canonical validation failure after the change', () => {
+    const nodes = [target()]; const snap = JSON.stringify(nodes);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const canonical = require('@/lib/domain/canonicalArchitecture');
+    const real = canonical.validateCanonicalArchitecture;
+    let call = 0;
+    const spy = jest.spyOn(canonical, 'validateCanonicalArchitecture').mockImplementation((...args: unknown[]) => {
+      const res = real(...args);
+      call += 1;
+      return call === 2 ? { ...res, issues: [...res.issues, { code: 'FORCED', severity: 'critical', message: 'forced failure', affectedResourceIds: ['rollback-ec2'] }] } : res;
+    });
+    try { expectRestored(applyAutoFix(nodes, [], fid), nodes, snap); } finally { spy.mockRestore(); }
+  });
+
+  test('rule re-run still failing (patch does not fix it)', () => {
+    const nodes = [target()]; const snap = JSON.stringify(nodes);
+    const rule = RULES_BY_ID.get('AWS-EC2-010')!;
+    const orig = rule.autoFix!.patch;
+    rule.autoFix!.patch = () => ({ detailedMonitoring: false, name: 'changed' });
+    try { expectRestored(applyAutoFix(nodes, [], fid), nodes, snap); } finally { rule.autoFix!.patch = orig; }
+  });
+
+  test('change introduces a new HIGH finding', () => {
+    const nodes = [target()]; const snap = JSON.stringify(nodes);
+    const rule = RULES_BY_ID.get('AWS-EC2-010')!;
+    const orig = rule.autoFix!.patch;
+    rule.autoFix!.patch = () => ({ detailedMonitoring: true, metadataHttpTokens: 'optional' }); // fixes the rule, breaks IMDSv2 (HIGH)
+    try {
+      const r = applyAutoFix(nodes, [], fid);
+      expectRestored(r, nodes, snap);
+      expect(r.reason).toMatch(/AWS-EC2-003/);
+    } finally { rule.autoFix!.patch = orig; }
+  });
+
+  test('Terraform does not reflect the change', () => {
+    const nodes = [target()]; const snap = JSON.stringify(nodes);
+    const rule = RULES_BY_ID.get('AWS-EC2-010')!;
+    const orig = rule.autoFix!.terraformExpect;
+    rule.autoFix!.terraformExpect = /this_line_never_appears/;
+    try { expectRestored(applyAutoFix(nodes, [], fid), nodes, snap); } finally { rule.autoFix!.terraformExpect = orig; }
+  });
+
+  test('bulk safe fixes: one failing fix is rolled back, the others still apply', () => {
+    const ec2 = target();
+    const s3 = node('aws_s3', { versioning: false }, { id: 'bulk-s3' });
+    const nodes = [ec2, s3];
+    const rule = RULES_BY_ID.get('AWS-EC2-010')!;
+    const orig = rule.autoFix!.terraformExpect;
+    rule.autoFix!.terraformExpect = /this_line_never_appears/;
+    try {
+      const summary = applySafeFixes(nodes, [], safeFixCandidates(runAssessment({ nodes, edges: [] }).findings).map((f) => f.findingId));
+      expect(summary.results.find((x) => x.findingId === fid)!.status).toBe('AUTO_FIX_FAILED');
+      expect(summary.nodes.find((n) => n.id === ec2.id)!.config).toEqual(ec2.config);
+      expect(summary.resolved).toBeGreaterThan(0);
+    } finally { rule.autoFix!.terraformExpect = orig; }
+  });
+});

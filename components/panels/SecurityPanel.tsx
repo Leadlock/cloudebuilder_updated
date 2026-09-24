@@ -16,7 +16,7 @@ import { useApp, useActiveProject } from '@/context/AppContext';
 import { apiSecurityService, type ReviewRecord, type ScanHistoryEntry, type PersistedScan } from '@/lib/services/ApiSecurityService';
 import { apiArchitectureService } from '@/lib/services/ApiArchitectureService';
 import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
-import { planAutoFix, applyAutoFix, applySafeFixes, safeFixCandidates, type AutoFixPlan } from '@/lib/engines/assessment/autofix';
+import { planAutoFix, applyAutoFix, applySafeFixes, safeFixCandidates, autoFixCostDelta, type AutoFixPlan } from '@/lib/engines/assessment/autofix';
 import { RULES_BY_ID } from '@/lib/engines/assessment/rules';
 import { SCORE_METHODOLOGY } from '@/lib/engines/assessment/scoring';
 import type { Finding, FindingReview, Severity } from '@/lib/engines/assessment/types';
@@ -157,8 +157,8 @@ export default function SecurityPanel() {
 
   const bulkCost = useMemo(() => {
     if (!bulkOpen) return 0;
-    return safeFixes.reduce((s, f) => { const p = planAutoFix(nodes, edges, f.findingId); return s + ('error' in p ? 0 : p.cost.deltaMonthly); }, 0);
-  }, [bulkOpen, safeFixes, nodes, edges]);
+    return safeFixes.reduce((s, f) => s + autoFixCostDelta(nodes, f), 0);
+  }, [bulkOpen, safeFixes, nodes]);
 
   function applyBulk() {
     setBusy(true);
