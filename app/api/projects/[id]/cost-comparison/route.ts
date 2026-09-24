@@ -11,10 +11,23 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
+const LiveResourceSchema = z.object({
+  id:           z.string(),
+  resourceType: z.string(),
+  provider:     z.string(),
+  label:        z.string(),
+  region:       z.string().nullable().optional(),
+  config:       z.record(z.string(), z.unknown()).optional(),
+});
+
 const RequestSchema = z.object({
   env:       z.string().optional().default('production'),
   versionId: z.string().optional(),
   currency:  z.string().optional(),
+  // See cost-estimates/route.ts's RequestSchema.resources — same reasoning:
+  // use the live canvas snapshot when the client has one instead of racing
+  // the debounced autosave.
+  resources: z.array(LiveResourceSchema).optional(),
 });
 
 export async function POST(
@@ -53,19 +66,37 @@ export async function POST(
 
     const { arch, project } = ctx;
 
+    // Prefer the live canvas snapshot the client sent over the persisted
+    // architecture — see RequestSchema.resources above.
+    const resources = body.resources && body.resources.length > 0
+      ? body.resources.map((r) => ({
+          id: r.id,
+          resourceType: r.resourceType,
+          provider: r.provider,
+          label: r.label,
+          positionX: 0,
+          positionY: 0,
+          configJson: JSON.stringify(r.config ?? {}),
+          region: r.region ?? null,
+          groupId: null,
+          locked: false,
+          architectureId: arch.id,
+        }))
+      : arch.resources;
+
     // Determine current provider from the first resource, defaulting to aws
-    const currentProvider = arch.resources.length > 0 ? arch.resources[0].provider : 'aws';
+    const currentProvider = resources.length > 0 ? resources[0].provider : 'aws';
     const targetProvider = currentProvider === 'aws' ? 'azure' : 'aws';
 
     // Translate resources
-    const translatedResources = CloudCostComparisonService.translateResources(arch.resources, targetProvider);
+    const translatedResources = CloudCostComparisonService.translateResources(resources, targetProvider);
 
     // Run real estimation for current provider
     const currentResult = await costEstimator.estimateAsync({
       architectureId: arch.id,
       projectId,
       versionId: body.versionId,
-      resources: arch.resources,
+      resources,
       defaultRegion: project.region,
       targetCurrency,
     }, 'REAL');

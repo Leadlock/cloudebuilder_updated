@@ -108,7 +108,22 @@ const DB_ENGINE_MAP: Record<string, string> = {
   sqlserver: 'SQL Server',
 };
 
-// ─── AWS On-Demand Linux Base Hourly, static fallback (us-east-1) ────────
+/**
+ * AWS On-Demand Linux Base Hourly, static fallback (us-east-1). This is the
+ * table that actually runs whenever no AWS_PRICING_ACCESS_KEY_ID is
+ * configured (getPricingClient() returns null, so queryOnDemandPrice always
+ * resolves to null, so _getEc2Price falls straight to this table) — i.e.
+ * the table this project's own dev/test environment hits on every request.
+ * It had zero c6g.* (Graviton, compute-optimized) entries even though
+ * AdaptiveScaleEngine.ts assigns c6g.xlarge/2xlarge/4xlarge at every scale
+ * tier above "Production Small", and the aws_ec2 resource's own
+ * instanceType dropdown (lib/resources/aws.ts) offers exactly those three
+ * values. `?? EC2_BASE_HOURLY['t3.medium']` silently priced every one of
+ * them as a t3.medium, so scaling up never changed the shown EC2 cost.
+ * c6g.* verified against instances.vantage.sh (sourced from AWS's own
+ * Price List API) on 2026-09-24: c6g.xlarge $0.136/hr, c6g.2xlarge
+ * $0.272/hr, c6g.4xlarge $0.544/hr.
+ */
 const EC2_BASE_HOURLY: Record<string, number> = {
   // T3 (burstable)
   't3.nano':     0.0052,
@@ -135,6 +150,10 @@ const EC2_BASE_HOURLY: Record<string, number> = {
   'c5.xlarge':   0.170,
   'c5.2xlarge':  0.340,
   'c5.4xlarge':  0.680,
+  // C6g (Graviton2, compute optimized)
+  'c6g.xlarge':  0.136,
+  'c6g.2xlarge': 0.272,
+  'c6g.4xlarge': 0.544,
   // R5 (memory optimized)
   'r5.large':    0.126,
   'r5.xlarge':   0.252,
@@ -142,22 +161,37 @@ const EC2_BASE_HOURLY: Record<string, number> = {
   'r5.4xlarge':  1.008,
 };
 
-// ─── AWS RDS Single-AZ Base Hourly, static fallback (us-east-1) ──────────
+/**
+ * AWS RDS Single-AZ Base Hourly, static fallback (us-east-1) — same
+ * no-credentials code path as EC2_BASE_HOURLY above. Had zero db.r6g.*
+ * entries even though AdaptiveScaleEngine.ts assigns db.r6g.xlarge/
+ * 2xlarge/4xlarge at every scale tier above "Production Small", and the
+ * aws_rds resource's own instanceClass dropdown offers exactly those three
+ * values plus db.t4g.micro/medium. `?? RDS_BASE_HOURLY['db.t3.micro']`
+ * silently priced every one of them as a db.t3.micro. Verified against
+ * instances.vantage.sh on 2026-09-24: db.t4g.micro $0.016/hr, db.t4g.medium
+ * $0.065/hr, db.r6g.xlarge $0.450/hr, db.r6g.2xlarge $0.899/hr,
+ * db.r6g.4xlarge $1.798/hr (the db.t4g.* rows below were previously stale —
+ * 0.015/0.058 vs the now-verified 0.016/0.065 — corrected at the same time).
+ */
 const RDS_BASE_HOURLY: Record<string, number> = {
   'db.t3.micro':    0.017,
   'db.t3.small':    0.034,
   'db.t3.medium':   0.068,
   'db.t3.large':    0.136,
   'db.t3.xlarge':   0.272,
-  'db.t4g.micro':   0.015,
+  'db.t4g.micro':   0.016,
   'db.t4g.small':   0.029,
-  'db.t4g.medium':  0.058,
+  'db.t4g.medium':  0.065,
   'db.m5.large':    0.240,
   'db.m5.xlarge':   0.480,
   'db.m5.2xlarge':  0.960,
   'db.r5.large':    0.300,
   'db.r5.xlarge':   0.600,
   'db.r5.2xlarge':  1.200,
+  'db.r6g.xlarge':  0.450,
+  'db.r6g.2xlarge': 0.899,
+  'db.r6g.4xlarge': 1.798,
 };
 
 function getRegionFactor(region: string): number {

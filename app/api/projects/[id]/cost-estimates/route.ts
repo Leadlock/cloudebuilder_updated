@@ -14,10 +14,27 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
+const LiveResourceSchema = z.object({
+  id:           z.string(),
+  resourceType: z.string(),
+  provider:     z.string(),
+  label:        z.string(),
+  region:       z.string().nullable().optional(),
+  config:       z.record(z.string(), z.unknown()).optional(),
+});
+
 const RequestSchema = z.object({
   env:       z.string().optional().default('production'),
   versionId: z.string().optional(),
   currency:  z.string().optional(),
+  // Optional live snapshot of the canvas's current nodes. When present, cost
+  // is computed from THIS instead of the persisted architecture — the canvas
+  // (e.g. a scale-profile change from AdaptiveScaleEngine) can be edited and
+  // not yet autosaved, and the estimate must reflect what's on screen right
+  // now, not race the debounced autosave for whichever lands first. Without
+  // this, "change expected users, cost doesn't change" was reproducible any
+  // time the cost re-fetch beat the 800ms autosave to the server.
+  resources: z.array(LiveResourceSchema).optional(),
 });
 
 export async function POST(
@@ -58,12 +75,31 @@ export async function POST(
 
     const { arch, project } = ctx;
 
+    // Prefer the live canvas snapshot the client sent (current, possibly
+    // unsaved, node configs) over the persisted architecture — see
+    // RequestSchema.resources above for why.
+    const resources = body.resources && body.resources.length > 0
+      ? body.resources.map((r) => ({
+          id: r.id,
+          resourceType: r.resourceType,
+          provider: r.provider,
+          label: r.label,
+          positionX: 0,
+          positionY: 0,
+          configJson: JSON.stringify(r.config ?? {}),
+          region: r.region ?? null,
+          groupId: null,
+          locked: false,
+          architectureId: arch.id,
+        }))
+      : arch.resources;
+
     // Run real estimation with currency conversion
     const result = await costEstimator.estimateAsync({
       architectureId: arch.id,
       projectId,
       versionId: body.versionId,
-      resources: arch.resources,
+      resources,
       defaultRegion: project.region,
       targetCurrency,
     }, 'REAL');

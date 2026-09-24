@@ -30,7 +30,20 @@ import type { DbArchitectureResource } from '@/lib/repositories/architectureRepo
 
 // ─── Static price tables (USD/hour, on-demand, Linux, us-east-1 base) ────────
 
-/** EC2 on-demand hourly prices (Linux, us-east-1) — AWS public list price */
+/**
+ * EC2 on-demand hourly prices (Linux, us-east-1) — AWS public list price.
+ * The t4g/c6g (Graviton) rows were added after an audit found
+ * AdaptiveScaleEngine.ts recommends exactly these instance types at every
+ * scale tier above "Entry/Dev" — and the aws_ec2 resource's own
+ * instanceType dropdown (lib/resources/aws.ts) offers exactly these same
+ * five values — but none of them existed in this table. The
+ * `?? EC2_HOURLY_USD['t3.medium']` fallback below silently priced a
+ * c6g.4xlarge as if it were a t3.medium, so scaling up never changed the
+ * displayed cost even though the (correct) instance type label did.
+ * Verified against instances.vantage.sh (sourced from AWS's own Price List
+ * API) on 2026-09-24: t4g.small $0.0168/hr, t4g.medium $0.0336/hr,
+ * c6g.xlarge $0.136/hr, c6g.2xlarge $0.272/hr, c6g.4xlarge $0.544/hr.
+ */
 const EC2_HOURLY_USD: Record<string, number> = {
   // General purpose
   't3.nano':     0.0052,
@@ -40,6 +53,9 @@ const EC2_HOURLY_USD: Record<string, number> = {
   't3.large':    0.0832,
   't3.xlarge':   0.1664,
   't3.2xlarge':  0.3328,
+  // T4g (Graviton, burstable) — only the sizes the RDE dropdown offers
+  't4g.small':   0.0168,
+  't4g.medium':  0.0336,
   // M5
   'm5.large':    0.096,
   'm5.xlarge':   0.192,
@@ -49,22 +65,40 @@ const EC2_HOURLY_USD: Record<string, number> = {
   'c5.large':    0.085,
   'c5.xlarge':   0.170,
   'c5.2xlarge':  0.340,
+  // C6g (Graviton, compute optimized) — only the sizes the RDE dropdown offers
+  'c6g.xlarge':  0.136,
+  'c6g.2xlarge': 0.272,
+  'c6g.4xlarge': 0.544,
   // R5
   'r5.large':    0.126,
   'r5.xlarge':   0.252,
   'r5.2xlarge':  0.504,
 };
 
-/** RDS on-demand hourly prices (Single-AZ, db instance class, us-east-1) */
+/**
+ * RDS on-demand hourly prices (Single-AZ, db instance class, us-east-1).
+ * db.t4g.* / db.r6g.* added for the same reason as EC2's Graviton rows
+ * above — AdaptiveScaleEngine recommends db.t4g.micro/medium and
+ * db.r6g.xlarge/2xlarge/4xlarge at every scale tier, and the aws_rds
+ * resource's own instanceClass dropdown offers exactly these five values,
+ * but none of them existed here. Verified against instances.vantage.sh on
+ * 2026-09-24: db.t4g.micro $0.016/hr, db.t4g.medium $0.065/hr,
+ * db.r6g.xlarge $0.450/hr, db.r6g.2xlarge $0.899/hr, db.r6g.4xlarge $1.798/hr.
+ */
 const RDS_HOURLY_USD: Record<string, number> = {
   'db.t3.micro':    0.017,
   'db.t3.small':    0.034,
   'db.t3.medium':   0.068,
   'db.t3.large':    0.136,
+  'db.t4g.micro':   0.016,
+  'db.t4g.medium':  0.065,
   'db.m5.large':    0.240,
   'db.m5.xlarge':   0.480,
   'db.r5.large':    0.300,
   'db.r5.xlarge':   0.600,
+  'db.r6g.xlarge':  0.450,
+  'db.r6g.2xlarge': 0.899,
+  'db.r6g.4xlarge': 1.798,
 };
 
 /** ElastiCache (Redis) on-demand hourly node prices — AWS public list price, us-east-1 */

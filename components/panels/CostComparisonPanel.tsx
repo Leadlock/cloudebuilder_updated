@@ -20,6 +20,12 @@ export default function CostComparisonPanel() {
 
   const nodeCount = activeProject?.nodes.length ?? 0;
   const activeProjectId = activeProject?.id ?? null;
+  // Scaling the architecture (e.g. changing "Expected Users") changes each
+  // resource's config, not the number of resources — nodeCount alone never
+  // changes, so without these two the panel silently kept showing the
+  // pre-scale comparison forever. Mirrors CostPanel's dependency list.
+  const architectureVersion = state.architectureVersion;
+  const updatedAt = activeProject?.updatedAt;
 
   useEffect(() => {
     if (!activeProject || nodeCount === 0) return;
@@ -58,7 +64,7 @@ export default function CostComparisonPanel() {
       });
 
     return () => { cancelled = true; };
-  }, [activeProjectId, nodeCount, displayCurrency]);
+  }, [activeProjectId, nodeCount, architectureVersion, updatedAt, displayCurrency]);
 
   if (!activeProject) return null;
 

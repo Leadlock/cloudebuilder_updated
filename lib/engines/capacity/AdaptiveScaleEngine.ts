@@ -391,7 +391,12 @@ export class AdaptiveScaleEngine {
             groupId: dbSub.id,
             parentId: dbSub.id,
             position: { x: dbSub.position.x + 220, y: dbSub.position.y + 30 },
-            config: { nodeType: effectiveRps > 1500 ? 'cache.m5.large' : 'cache.t3.medium', numNodes: 2 },
+            // 'cache.m5.large' isn't a real option in the aws_elasticache
+            // resource's own nodeType dropdown (lib/resources/aws.ts) — the
+            // catalog only offers t3.*/r6g.* — so it not only mispriced (no
+            // matching CACHE_HOURLY_USD entry either) but would also render
+            // as a blank/mismatched select in the Properties panel.
+            config: { nodeType: effectiveRps > 1500 ? 'cache.r6g.xlarge' : 'cache.t3.medium', numNodes: 2 },
           };
           nodes.push(redisNode);
           appliedChanges.push('Introduced ElastiCache Redis cluster to offload database query load');

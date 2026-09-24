@@ -219,6 +219,28 @@ export function setActiveCurrency(currency: string): void {
 
 // ─── ApiCostService ───────────────────────────────────────────────────────────
 
+/**
+ * Convert the canvas's live CanvasNode[] into the wire shape the
+ * cost-estimates/cost-comparison routes accept as an optional `resources`
+ * override. Sending this (rather than relying on the server to re-read the
+ * persisted architecture) is what makes a scale-profile change, or any other
+ * unsaved edit, show up in the cost estimate immediately — previously the
+ * `nodes` parameter here was accepted but never actually sent, so the
+ * estimate always reflected whatever was last autosaved (800ms debounced),
+ * not what's currently on screen. "Change expected users, cost stays the
+ * same" was this: the estimate request fired before the autosave landed.
+ */
+function nodesToResourcePayload(nodes: CanvasNode[]) {
+  return nodes.map((n) => ({
+    id: n.id,
+    resourceType: n.resourceType,
+    provider: n.provider,
+    label: n.label,
+    region: n.region ?? null,
+    config: n.config ?? {},
+  }));
+}
+
 class ApiCostServiceImpl implements ICostService {
 
   async calculateCosts(nodes: CanvasNode[], currency?: string): Promise<CostItem[]> {
@@ -229,9 +251,12 @@ class ApiCostServiceImpl implements ICostService {
 
     const targetCurr = (currency || _activeCurrency || 'USD').toUpperCase();
     const query = targetCurr !== 'USD' ? `?currency=${targetCurr}` : '';
-    const bodyPayload: Record<string, string> = { env: _activeEnvironment };
+    const bodyPayload: Record<string, unknown> = { env: _activeEnvironment };
     if (currency && currency.toUpperCase() !== 'USD') {
       bodyPayload.currency = currency.toUpperCase();
+    }
+    if (nodes.length > 0) {
+      bodyPayload.resources = nodesToResourcePayload(nodes);
     }
 
     const data = await apiFetch<CostEstimateResponse>(
@@ -255,9 +280,12 @@ class ApiCostServiceImpl implements ICostService {
 
     const targetCurr = (currency || _activeCurrency || 'USD').toUpperCase();
     const query = targetCurr !== 'USD' ? `?currency=${targetCurr}` : '';
-    const bodyPayload: Record<string, string> = { env: _activeEnvironment };
+    const bodyPayload: Record<string, unknown> = { env: _activeEnvironment };
     if (currency && currency.toUpperCase() !== 'USD') {
       bodyPayload.currency = currency.toUpperCase();
+    }
+    if (nodes.length > 0) {
+      bodyPayload.resources = nodesToResourcePayload(nodes);
     }
 
     const data = await apiFetch<ApiCostComparisonResponse>(

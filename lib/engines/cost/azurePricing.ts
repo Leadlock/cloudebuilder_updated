@@ -41,13 +41,31 @@ const VM_HOURLY_USD: Record<string, number> = {
   'Standard_F4s_v2': 0.169,
 };
 
-/** Azure SQL Database pricing (General Purpose, per vCore hour) */
+/**
+ * Azure SQL Database pricing (per vCore hour for Gen5 vCore-model tiers,
+ * per DTU hour for the legacy Standard/Premium DTU-model tiers).
+ * GP_Gen5/BC_Gen5 verified against the live Azure Retail Prices API
+ * (prices.azure.com, armRegionName=eastus) on 2026-09-24:
+ * armSkuName=SQLDB_GP_Compute_Gen5_2 -> $0.304434/hr / 2 vCores = $0.152217/vCore/hr;
+ * armSkuName=SQLDB_BC_Compute_Gen5_16 -> $4.87096/hr / 16 vCores = $0.304435/vCore/hr
+ * (exactly 2x General Purpose, per vCore). The previous 0.1230/0.5560
+ * values were stale and, more importantly, were never actually read by
+ * _sql() below — every tier fell through to the DTU 'Standard' rate.
+ */
 const SQL_HOURLY_PER_VCORE: Record<string, number> = {
-  'GP_Gen5':    0.1230, // General Purpose Gen 5 per vCore
-  'BC_Gen5':    0.5560, // Business Critical Gen 5 per vCore
+  'GP_Gen5':    0.152217, // General Purpose Gen 5 per vCore
+  'BC_Gen5':    0.304435, // Business Critical Gen 5 per vCore
   'Standard':   0.002,  // DTU Standard per DTU
   'Premium':    0.0125, // DTU Premium per DTU
 };
+
+/**
+ * Azure SQL Database Single "Basic" tier — a single fixed-price product
+ * (5 DTU, not user-scalable), not a per-DTU rate. Verified against the live
+ * Azure Retail Prices API on 2026-09-24: armSkuName=B (SQL Database Single
+ * Basic) -> $0.161/day = $0.0067/hr.
+ */
+const SQL_BASIC_HOURLY = 0.161 / 24;
 
 /** Regional multipliers for Azure relative to eastus */
 const REGION_MULTIPLIER: Record<string, number> = {
@@ -151,14 +169,55 @@ export class AzurePricingProvider implements PricingProvider {
     region: string,
     mult: number,
   ): CostLineItem {
-    const tier = (config['tier'] as string) ?? 'S0';
+    const tier = (config['tier'] as string) ?? 'Standard';
     const maxSizeGb = (config['maxSizeGb'] as number) ?? 250;
-    // Standard tier: DTU-based pricing
-    const dtu = this._dtuFromTier(tier);
-    const dtuHourly = (SQL_HOURLY_PER_VCORE['Standard'] ?? 0.002) * dtu;
-    const hourly = dtuHourly * mult;
-    const monthly = toMonthly(hourly);
     const storageMonthly = (maxSizeGb * 0.122) * mult; // ~$0.122/GB/mo included in max
+
+    // Azure SQL has two unrelated pricing models depending on which family
+    // `tier` belongs to — the vCore model (GeneralPurpose/BusinessCritical/
+    // GP_Gen5_N/BC_Gen5_N, priced per vCore) and the legacy DTU model
+    // (Basic/Standard/Premium/S0-S4/P1-P11, priced per DTU or, for Basic, a
+    // single fixed price). Every one of the RDE's real tier dropdown values
+    // (lib/resources/azure.ts) previously fell through _dtuFromTier's
+    // S0-S4/P1-P11-only map to its default 10-DTU Standard price — so
+    // scaling Azure SQL through this static fallback path (used when the
+    // live Azure Retail Prices API is unavailable) never changed the shown
+    // cost no matter which tier was actually selected.
+    const gen5Match = /^(GP|BC)_Gen5_(\d+)$/.exec(tier);
+    let hourly: number;
+    let sourceLabel: string;
+    let assumption: string;
+
+    if (gen5Match) {
+      const family = gen5Match[1] === 'BC' ? 'BusinessCritical' : 'GeneralPurpose';
+      const vcores = Number(gen5Match[2]);
+      const perVcore = SQL_HOURLY_PER_VCORE[gen5Match[1] === 'BC' ? 'BC_Gen5' : 'GP_Gen5']!;
+      hourly = perVcore * vcores;
+      sourceLabel = `Azure SQL ${family} ${tier} (${vcores} vCores)`;
+      assumption = `${family} tier, ${tier} (${vcores} vCores)`;
+    } else if (tier === 'GeneralPurpose' || tier === 'BusinessCritical') {
+      // Selected without a specific Gen5_N size — price at the smallest
+      // real Gen5 size the RDE itself offers for this family (2 vCores).
+      const vcores = 2;
+      const perVcore = SQL_HOURLY_PER_VCORE[tier === 'BusinessCritical' ? 'BC_Gen5' : 'GP_Gen5']!;
+      hourly = perVcore * vcores;
+      sourceLabel = `Azure SQL ${tier} (${vcores} vCores, default size)`;
+      assumption = `${tier} tier, default ${vcores}-vCore size`;
+    } else if (tier === 'Basic') {
+      hourly = SQL_BASIC_HOURLY;
+      sourceLabel = 'Azure SQL Basic (5 DTU, fixed)';
+      assumption = 'Basic tier (fixed 5 DTU, not scalable)';
+    } else {
+      // Standard/Premium/S0-S4/P1-P11 DTU model
+      const dtu = this._dtuFromTier(tier);
+      const perDtu = SQL_HOURLY_PER_VCORE[tier === 'Premium' ? 'Premium' : 'Standard']!;
+      hourly = perDtu * dtu;
+      sourceLabel = `Azure SQL ${tier} (${dtu} DTUs)`;
+      assumption = `${tier} tier, ${dtu} DTUs`;
+    }
+
+    hourly *= mult;
+    const monthly = toMonthly(hourly);
 
     return {
       resourceId: resource.id,
@@ -169,11 +228,11 @@ export class AzurePricingProvider implements PricingProvider {
       hourlyUsd: hourly,
       monthlyUsd: monthly + storageMonthly,
       breakdown: [
-        { label: `Azure SQL Standard ${tier} (${dtu} DTUs)`, monthlyUsd: monthly },
+        { label: sourceLabel, monthlyUsd: monthly },
         { label: `Max storage (${maxSizeGb}GB)`, monthlyUsd: storageMonthly },
       ],
       assumptions: [
-        `Standard tier, ${tier} (${dtu} DTUs)`,
+        assumption,
         `${maxSizeGb}GB max storage`,
         'Backup storage not included',
         `Region: ${region}`,

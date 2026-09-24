@@ -232,3 +232,58 @@ describe('CloudCostComparisonService.translateResources (server path)', () => {
     expect(size1).not.toBe(size2);
   });
 });
+
+describe('CloudCostComparisonService — label translation (no AWS brand names leaking into Azure-side labels, or vice versa)', () => {
+  it('replaces "AWS WAF" with "Azure WAF" in a translated label', () => {
+    const [translated] = CloudCostComparisonService.translateNodes(
+      [makeNode({ resourceType: 'aws_waf', label: 'AWS WAF WebACL' })], 'azure',
+    );
+    expect(translated.label).not.toContain('AWS WAF');
+    expect(translated.label).toBe('Azure WAF');
+  });
+
+  it('replaces "RDS" with "Azure SQL" in a translated label', () => {
+    const [translated] = CloudCostComparisonService.translateNodes(
+      [makeNode({ resourceType: 'aws_rds', label: 'RDS PostgreSQL (Multi-AZ)' })], 'azure',
+    );
+    expect(translated.label).not.toMatch(/\bRDS\b/);
+    expect(translated.label).toContain('Azure SQL');
+  });
+
+  it('replaces "ElastiCache" with "Azure Redis" in a translated label', () => {
+    const [translated] = CloudCostComparisonService.translateNodes(
+      [makeNode({ resourceType: 'aws_elasticache', label: 'ElastiCache Redis HA' })], 'azure',
+    );
+    expect(translated.label).not.toContain('ElastiCache');
+    expect(translated.label).toContain('Azure Redis');
+  });
+
+  it('replaces "CloudFront" with "Front Door" in a translated label', () => {
+    const [translated] = CloudCostComparisonService.translateNodes(
+      [makeNode({ resourceType: 'aws_cloudfront', label: 'CloudFront CDN' })], 'azure',
+    );
+    expect(translated.label).not.toContain('CloudFront');
+    expect(translated.label).toContain('Front Door');
+  });
+
+  it('round-trips Azure -> AWS: "Azure SQL" becomes "RDS"', () => {
+    const [translated] = CloudCostComparisonService.translateNodes(
+      [makeNode({ resourceType: 'azure_sql', provider: 'azure', label: 'Azure SQL Primary' })], 'aws',
+    );
+    expect(translated.label).not.toContain('Azure SQL');
+    expect(translated.label).toContain('RDS');
+  });
+
+  it('leaves a fully generic label (no brand term) unchanged', () => {
+    const [translated] = CloudCostComparisonService.translateNodes(
+      [makeNode({ resourceType: 'aws_ec2', label: 'App Server AZ-A' })], 'azure',
+    );
+    expect(translated.label).toBe('App Server AZ-A');
+  });
+
+  it('applies the same label translation on the server (translateResources) path', () => {
+    const resources = [{ id: 'r1', resourceType: 'aws_waf', provider: 'aws', label: 'AWS WAF WebACL', configJson: '{}' }];
+    const [translated] = CloudCostComparisonService.translateResources(resources, 'azure');
+    expect(translated.label).toBe('Azure WAF');
+  });
+});

@@ -239,11 +239,18 @@ describe('Phase 2F — Cost Workflow Backend Source of Truth', () => {
 
     const costItems = await apiCostService.calculateCosts(testNodes);
 
+    // The request body carries a live `resources` snapshot of testNodes —
+    // this is what lets the estimate reflect the canvas's current (possibly
+    // unsaved) state, e.g. a just-applied scale-profile change, instead of
+    // racing the debounced autosave to whichever lands first at the server.
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining('/api/projects/proj-cost-ok/cost-estimates'),
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ env: 'staging' }),
+        body: JSON.stringify({
+          env: 'staging',
+          resources: [{ id: 'node-nat', resourceType: 'aws_nat', provider: 'aws', label: 'NAT Gateway', region: null, config: {} }],
+        }),
       }),
     );
 

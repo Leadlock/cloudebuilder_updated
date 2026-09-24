@@ -419,6 +419,43 @@ describe('AzurePricingProvider', () => {
     expect(item!.assumptions.some((a) => a.toLowerCase().includes('dtu') || a.toLowerCase().includes('storage'))).toBe(true);
   });
 
+  // Regression tests for a second instance of the "scale up/down, cost
+  // stays the same" bug class, this time in the static Azure SQL fallback
+  // (used when the live Azure Retail Prices API is unavailable): none of
+  // the real tier dropdown values from lib/resources/azure.ts — Basic,
+  // GeneralPurpose, BusinessCritical, GP_Gen5_2, GP_Gen5_8, BC_Gen5_16 —
+  // matched _dtuFromTier's S0-S4/P1-P11-only map, so every one of them
+  // fell through to the same default 10-DTU Standard price.
+  test('Azure SQL: GP_Gen5_2/GP_Gen5_8/BC_Gen5_16 each price distinctly by vCore count', () => {
+    const cfg2 = { tier: 'GP_Gen5_2' };
+    const cfg8 = { tier: 'GP_Gen5_8' };
+    const cfgBc = { tier: 'BC_Gen5_16' };
+    const r2 = makeResource({ resourceType: 'azure_sql', provider: 'azure', configJson: JSON.stringify(cfg2) });
+    const r8 = makeResource({ resourceType: 'azure_sql', provider: 'azure', configJson: JSON.stringify(cfg8) });
+    const rBc = makeResource({ resourceType: 'azure_sql', provider: 'azure', configJson: JSON.stringify(cfgBc) });
+    const item2 = provider.estimateResource(r2, cfg2, 'eastus')!;
+    const item8 = provider.estimateResource(r8, cfg8, 'eastus')!;
+    const itemBc = provider.estimateResource(rBc, cfgBc, 'eastus')!;
+
+    expect(new Set([item2.monthlyUsd, item8.monthlyUsd, itemBc.monthlyUsd]).size).toBe(3);
+    // GP_Gen5_8 has 4x the vCores of GP_Gen5_2 -> ~4x the compute cost (storage is identical/flat here, so allow some tolerance)
+    expect(item8.monthlyUsd).toBeGreaterThan(item2.monthlyUsd * 3.5);
+    // BC_Gen5_16 is priced at 2x per-vCore vs GP, at 8x the vCores of GP_Gen5_2 -> ~16x
+    expect(itemBc.monthlyUsd).toBeGreaterThan(item2.monthlyUsd * 14);
+  });
+
+  test('Azure SQL: Basic tier prices far below GeneralPurpose/BusinessCritical, not the same 10-DTU default', () => {
+    const cfgBasic = { tier: 'Basic', maxSizeGb: 2 };
+    const cfgGp = { tier: 'GeneralPurpose', maxSizeGb: 2 };
+    const rBasic = makeResource({ resourceType: 'azure_sql', provider: 'azure', configJson: JSON.stringify(cfgBasic) });
+    const rGp = makeResource({ resourceType: 'azure_sql', provider: 'azure', configJson: JSON.stringify(cfgGp) });
+    const itemBasic = provider.estimateResource(rBasic, cfgBasic, 'eastus')!;
+    const itemGp = provider.estimateResource(rGp, cfgGp, 'eastus')!;
+
+    expect(itemBasic.monthlyUsd).toBeLessThan(itemGp.monthlyUsd);
+    expect(itemBasic.monthlyUsd).toBeGreaterThan(0);
+  });
+
   test('Azure resource group returns null (no charge)', () => {
     const r = makeResource({ resourceType: 'azure_resource_group', provider: 'azure', configJson: '{}' });
     expect(provider.estimateResource(r, {}, 'eastus')).toBeNull();
@@ -2218,6 +2255,80 @@ describe('API — organization isolation', () => {
     expect(body).not.toContain('credentialsJson');
     expect(body).not.toContain('AKIA');
     expect(body).not.toContain('ARM_CLIENT_SECRET');
+  });
+
+  // Regression tests for the "scale up/down the user count, cost stays the
+  // same" bug: the client always computed cost from the PERSISTED
+  // architecture, and the persisted architecture only updates via a
+  // debounced (800ms) autosave that a fresh cost-estimate request routinely
+  // outran. The fix lets the request body carry a live `resources` snapshot
+  // that overrides the persisted read entirely, so cost always reflects
+  // exactly what's on the canvas right now.
+  test('Cost estimate uses the request body\'s live `resources` override instead of the persisted (stale) architecture', async () => {
+    seedDevContext();
+    const now = new Date().toISOString();
+    mockDb._stores['Project'].set('proj-scale', { id: 'proj-scale', name: 'Scale', orgId: 'dev-org-id', ownerId: 'dev-user-id', provider: 'aws', region: 'us-east-1', description: '', tags: '[]', createdAt: now, updatedAt: now });
+    mockDb._stores['Environment'].set('env-scale', { id: 'env-scale', envKey: 'production', label: 'Prod', region: 'us-east-1', projectId: 'proj-scale', createdAt: now, updatedAt: now });
+    mockDb._stores['Architecture'].set('arch-scale', { id: 'arch-scale', environmentId: 'env-scale', createdAt: now, updatedAt: now });
+    // Persisted (stale) state: a small instance — simulates the DB not
+    // having caught up yet with a scale-up the user just made on the canvas.
+    mockDb._stores['ArchitectureResource'].set('res-scale-1', {
+      id: 'res-scale-1', architectureId: 'arch-scale', resourceType: 'aws_ec2', provider: 'aws',
+      label: 'Web Server', positionX: 0, positionY: 0, configJson: JSON.stringify({ instanceType: 't3.micro' }), region: 'us-east-1', groupId: null, locked: false,
+    });
+
+    const reqNoOverride = new NextRequest('http://localhost:3000/api/projects/proj-scale/cost-estimates?orgId=dev-org-id', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-user-id': 'dev-user-id' },
+      body: JSON.stringify({ env: 'production' }),
+    });
+    const resNoOverride = await costEstimatePost(reqNoOverride, { params: Promise.resolve({ id: 'proj-scale' }) });
+    const bodyNoOverride = await resNoOverride.json() as { data: { items: Array<{ resourceType: string; monthlyUsd: number }> } };
+    const staleMonthly = bodyNoOverride.data.items.find((i) => i.resourceType === 'aws_ec2')?.monthlyUsd ?? 0;
+
+    // Live override: same resource, scaled up to a much larger instance —
+    // as AdaptiveScaleEngine would write into the canvas node immediately,
+    // well before autosave has persisted it.
+    const reqWithOverride = new NextRequest('http://localhost:3000/api/projects/proj-scale/cost-estimates?orgId=dev-org-id', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-user-id': 'dev-user-id' },
+      body: JSON.stringify({
+        env: 'production',
+        resources: [{
+          id: 'res-scale-1', resourceType: 'aws_ec2', provider: 'aws', label: 'Web Server',
+          region: 'us-east-1', config: { instanceType: 'c6g.4xlarge' },
+        }],
+      }),
+    });
+    const resWithOverride = await costEstimatePost(reqWithOverride, { params: Promise.resolve({ id: 'proj-scale' }) });
+    const bodyWithOverride = await resWithOverride.json() as { data: { items: Array<{ resourceType: string; monthlyUsd: number }> } };
+    const scaledMonthly = bodyWithOverride.data.items.find((i) => i.resourceType === 'aws_ec2')?.monthlyUsd ?? 0;
+
+    // The persisted resource never changed — if the override were ignored
+    // (the bug), both numbers would be identical.
+    expect(scaledMonthly).toBeGreaterThan(staleMonthly);
+  });
+
+  test('Cost estimate falls back to the persisted architecture when no `resources` override is sent (backward compatible)', async () => {
+    seedDevContext();
+    const now = new Date().toISOString();
+    mockDb._stores['Project'].set('proj-nooverride', { id: 'proj-nooverride', name: 'NoOverride', orgId: 'dev-org-id', ownerId: 'dev-user-id', provider: 'aws', region: 'us-east-1', description: '', tags: '[]', createdAt: now, updatedAt: now });
+    mockDb._stores['Environment'].set('env-nooverride', { id: 'env-nooverride', envKey: 'production', label: 'Prod', region: 'us-east-1', projectId: 'proj-nooverride', createdAt: now, updatedAt: now });
+    mockDb._stores['Architecture'].set('arch-nooverride', { id: 'arch-nooverride', environmentId: 'env-nooverride', createdAt: now, updatedAt: now });
+    mockDb._stores['ArchitectureResource'].set('res-nooverride-1', {
+      id: 'res-nooverride-1', architectureId: 'arch-nooverride', resourceType: 'aws_s3', provider: 'aws',
+      label: 'Bucket', positionX: 0, positionY: 0, configJson: JSON.stringify({ estimatedStorageGb: 10 }), region: 'us-east-1', groupId: null, locked: false,
+    });
+
+    const req = new NextRequest('http://localhost:3000/api/projects/proj-nooverride/cost-estimates?orgId=dev-org-id', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-user-id': 'dev-user-id' },
+      body: JSON.stringify({ env: 'production' }),
+    });
+    const res = await costEstimatePost(req, { params: Promise.resolve({ id: 'proj-nooverride' }) });
+    const body = await res.json() as { ok: boolean; data: { items: Array<{ resourceType: string }> } };
+    expect(body.ok).toBe(true);
+    expect(body.data.items.some((i) => i.resourceType === 'aws_s3')).toBe(true);
   });
 });
 

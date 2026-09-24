@@ -63,6 +63,68 @@ describe('AwsPricingProvider — live AWS Price List Query API', () => {
     expect(mockSend).not.toHaveBeenCalled();
   });
 
+  // Regression tests for the "scale up/down the user count, cost stays the
+  // same" bug: AdaptiveScaleEngine.ts assigns c6g.xlarge/2xlarge/4xlarge
+  // (EC2) and db.r6g.xlarge/2xlarge/4xlarge (RDS) at every scale tier above
+  // "Production Small", but EC2_BASE_HOURLY/RDS_BASE_HOURLY — the tables
+  // that actually run in this project's dev/test environment, since no
+  // AWS_PRICING_ACCESS_KEY_ID is configured — had zero entries for any of
+  // them, so they silently fell back to t3.medium/db.t3.micro pricing and
+  // the displayed cost never changed no matter how far up the scale went.
+  test('EC2: c6g.4xlarge prices differently from (and higher than) t3.medium under the static fallback', async () => {
+    const { AwsPricingProvider } = await import('@/lib/cloud/pricing/AwsPricingProvider');
+    const provider = new AwsPricingProvider();
+    const small = await provider.getPrice({
+      provider: 'aws', resourceType: 'aws_ec2', region: 'us-east-1', configuration: { instanceType: 't3.medium' },
+    });
+    const scaled = await provider.getPrice({
+      provider: 'aws', resourceType: 'aws_ec2', region: 'us-east-1', configuration: { instanceType: 'c6g.4xlarge' },
+    });
+    expect(scaled!.source).toBe('aws-static-rate-table');
+    expect(scaled!.unitPrice).toBeCloseTo(0.544, 3);
+    expect(scaled!.unitPrice).toBeGreaterThan(small!.unitPrice * 5);
+  });
+
+  test('EC2: c6g.xlarge and c6g.2xlarge price distinctly from each other (not all Graviton tiers collapsing to one price)', async () => {
+    const { AwsPricingProvider } = await import('@/lib/cloud/pricing/AwsPricingProvider');
+    const provider = new AwsPricingProvider();
+    const xlarge = await provider.getPrice({
+      provider: 'aws', resourceType: 'aws_ec2', region: 'us-east-1', configuration: { instanceType: 'c6g.xlarge' },
+    });
+    const twoXlarge = await provider.getPrice({
+      provider: 'aws', resourceType: 'aws_ec2', region: 'us-east-1', configuration: { instanceType: 'c6g.2xlarge' },
+    });
+    expect(xlarge!.unitPrice).toBeCloseTo(0.136, 3);
+    expect(twoXlarge!.unitPrice).toBeCloseTo(0.272, 3);
+    expect(twoXlarge!.unitPrice).toBeCloseTo(xlarge!.unitPrice * 2, 3);
+  });
+
+  test('RDS: db.r6g.4xlarge prices differently from (and higher than) db.t3.micro under the static fallback', async () => {
+    const { AwsPricingProvider } = await import('@/lib/cloud/pricing/AwsPricingProvider');
+    const provider = new AwsPricingProvider();
+    const small = await provider.getPrice({
+      provider: 'aws', resourceType: 'aws_rds', region: 'us-east-1', configuration: { instanceClass: 'db.t3.micro' },
+    });
+    const scaled = await provider.getPrice({
+      provider: 'aws', resourceType: 'aws_rds', region: 'us-east-1', configuration: { instanceClass: 'db.r6g.4xlarge' },
+    });
+    expect(scaled!.source).toBe('aws-static-rate-table');
+    expect(scaled!.unitPrice).toBeCloseTo(1.798, 3);
+    expect(scaled!.unitPrice).toBeGreaterThan(small!.unitPrice * 50);
+  });
+
+  test('RDS: db.r6g.xlarge/2xlarge/4xlarge each price distinctly (not all collapsing to one price)', async () => {
+    const { AwsPricingProvider } = await import('@/lib/cloud/pricing/AwsPricingProvider');
+    const provider = new AwsPricingProvider();
+    const x1 = await provider.getPrice({ provider: 'aws', resourceType: 'aws_rds', region: 'us-east-1', configuration: { instanceClass: 'db.r6g.xlarge' } });
+    const x2 = await provider.getPrice({ provider: 'aws', resourceType: 'aws_rds', region: 'us-east-1', configuration: { instanceClass: 'db.r6g.2xlarge' } });
+    const x4 = await provider.getPrice({ provider: 'aws', resourceType: 'aws_rds', region: 'us-east-1', configuration: { instanceClass: 'db.r6g.4xlarge' } });
+    expect(x1!.unitPrice).toBeCloseTo(0.450, 3);
+    expect(x2!.unitPrice).toBeCloseTo(0.899, 3);
+    expect(x4!.unitPrice).toBeCloseTo(1.798, 3);
+    expect(new Set([x1!.unitPrice, x2!.unitPrice, x4!.unitPrice]).size).toBe(3);
+  });
+
   test('EC2: uses the live price and source when credentials are configured and a product matches', async () => {
     process.env['AWS_PRICING_ACCESS_KEY_ID'] = 'AKIATEST';
     process.env['AWS_PRICING_SECRET_ACCESS_KEY'] = 'secrettest';

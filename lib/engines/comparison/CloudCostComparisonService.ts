@@ -285,6 +285,64 @@ const CONFIG_TRANSLATORS: Partial<Record<string, ConfigTranslator>> = {
   azure_redis: translateCache,
 };
 
+/**
+ * Brand-specific terms that must never leak into a translated resource's
+ * display label. Found during live QA: the comparison panel translated
+ * resourceType/config correctly, but never touched the user-authored label,
+ * so an Azure-side line item priced as Azure WAF / Azure SQL / Front Door
+ * still displayed as "AWS WAF WebACL" / "RDS PostgreSQL" / "CloudFront CDN"
+ * — i.e. Azure resources visibly wearing AWS product names. `match` is
+ * ordered longest-phrase-first so a multi-word brand name is caught before
+ * a shorter substring of itself; `replacement` is that resource's real
+ * product name, taken from its own resource definition (lib/resources/*.ts),
+ * never invented. Only literal cloud-brand terms are listed here — generic,
+ * provider-neutral words a user might type ("Load Balancer", "Cache", "DB",
+ * "Multi-AZ") are deliberately left out and pass through unchanged, since
+ * they aren't misleading about which provider a resource belongs to.
+ */
+const BRAND_LABEL: Partial<Record<string, { match: string[]; replacement: string }>> = {
+  aws_ec2:           { match: ['EC2 Instance', 'EC2'], replacement: 'EC2' },
+  azure_vm:          { match: ['Virtual Machine', 'VM'], replacement: 'VM' },
+  aws_rds:           { match: ['RDS Instance', 'RDS'], replacement: 'RDS' },
+  azure_sql:         { match: ['Azure SQL Database', 'Azure SQL'], replacement: 'Azure SQL' },
+  aws_s3:            { match: ['S3 Bucket', 'S3'], replacement: 'S3' },
+  azure_storage:     { match: ['Storage Account'], replacement: 'Storage Account' },
+  aws_alb:           { match: ['Application Load Balancer', 'ALB'], replacement: 'ALB' },
+  azure_app_gateway: { match: ['Application Gateway', 'App Gateway'], replacement: 'App Gateway' },
+  aws_nat:           { match: ['NAT Gateway'], replacement: 'NAT Gateway' },
+  azure_nat:         { match: ['NAT Gateway'], replacement: 'NAT Gateway' },
+  aws_igw:           { match: ['Internet Gateway'], replacement: 'Internet Gateway' },
+  azure_public_ip:   { match: ['Public IP'], replacement: 'Public IP' },
+  aws_lambda:        { match: ['Lambda'], replacement: 'Lambda' },
+  azure_functions:   { match: ['Azure Functions', 'Functions'], replacement: 'Functions' },
+  aws_dynamodb:      { match: ['DynamoDB'], replacement: 'DynamoDB' },
+  azure_cosmos_db:   { match: ['Cosmos DB'], replacement: 'Cosmos DB' },
+  aws_elasticache:   { match: ['ElastiCache Redis', 'ElastiCache'], replacement: 'ElastiCache' },
+  azure_redis:       { match: ['Azure Cache for Redis', 'Azure Redis'], replacement: 'Azure Redis' },
+  aws_cloudfront:    { match: ['CloudFront'], replacement: 'CloudFront' },
+  azure_front_door:  { match: ['Front Door'], replacement: 'Front Door' },
+  aws_waf:           { match: ['AWS WAF WebACL', 'AWS WAF'], replacement: 'AWS WAF' },
+  azure_waf:         { match: ['Azure WAF Policy', 'Azure WAF'], replacement: 'Azure WAF' },
+};
+
+function translateLabel(originalLabel: string, sourceType: string, targetType: string): string {
+  const target = BRAND_LABEL[targetType];
+  const source = BRAND_LABEL[sourceType];
+  if (!target || !source || !originalLabel) return originalLabel;
+
+  for (const term of source.match) {
+    const idx = originalLabel.toLowerCase().indexOf(term.toLowerCase());
+    if (idx !== -1) {
+      return (originalLabel.slice(0, idx) + target.replacement + originalLabel.slice(idx + term.length))
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+  }
+  // The original label never mentioned the source's brand term (it was
+  // already generic, e.g. "App Server AZ-A") — leave it untouched.
+  return originalLabel;
+}
+
 export class CloudCostComparisonService {
   /**
    * Translate a set of CanvasNodes to their nearest provider-native
@@ -299,12 +357,14 @@ export class CloudCostComparisonService {
       const translatedType = typeMap[node.resourceType] || node.resourceType;
       const translator = CONFIG_TRANSLATORS[node.resourceType];
       const config = translator ? translator({ ...node.config }, targetProvider) : { ...node.config };
+      const label = translateLabel(node.label, node.resourceType, translatedType);
 
       return {
         ...node,
         provider: targetProvider,
         resourceType: translatedType,
         config,
+        label,
       };
     });
   }
@@ -317,7 +377,7 @@ export class CloudCostComparisonService {
    * of two independently-maintained ones drifting apart (which is how the
    * server path previously ended up doing NO config translation at all).
    */
-  static translateResources<T extends { resourceType: string; provider: string; configJson?: string }>(
+  static translateResources<T extends { resourceType: string; provider: string; configJson?: string; label?: string }>(
     resources: T[],
     targetProvider: Provider,
   ): T[] {
@@ -338,11 +398,14 @@ export class CloudCostComparisonService {
         }
       }
 
+      const label = typeof res.label === 'string' ? translateLabel(res.label, res.resourceType, translatedType) : res.label;
+
       return {
         ...res,
         provider: targetProvider,
         resourceType: translatedType,
         configJson,
+        label,
       };
     });
   }
