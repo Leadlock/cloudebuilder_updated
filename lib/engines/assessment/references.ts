@@ -5,7 +5,11 @@
  * short CloudCraft interpretation in the rules themselves — never copied
  * documentation text.
  *
- * Verification (see ReferenceVerification in ./types):
+ * Verification (see ReferenceVerification in ./types). Re-run on 2026-09-24: the build
+ * environment's egress policy blocks docs.aws.amazon.com, learn.microsoft.com, aka.ms,
+ * azure.microsoft.com, aicpa-cima.com and github.com (HTTP 403 at the proxy); only
+ * raw.githubusercontent.com is reachable, so only machine-readable sources hosted there
+ * could be checked.
  *  - AWS Security Hub (AWS Foundational Security Best Practices) control IDs,
  *    titles and official severities were cross-checked on 2026-09-24 against a
  *    maintained machine-readable mapping of the FSBP standard
@@ -24,7 +28,7 @@
 import type { SourceReference } from './types';
 
 const SH_PAGE = (svc: string) => `https://docs.aws.amazon.com/securityhub/latest/userguide/${svc}-controls.html`;
-const SH_NOTE = 'Control ID, title and severity cross-checked against a machine-readable FSBP mapping on 2026-09-24; official page not reachable from the build environment — re-verify URL.';
+const SH_NOTE = 'Control ID, title and official severity re-checked on 2026-09-24 against the machine-readable FSBP mapping in prowler-cloud/prowler (all 49 CloudCraft controls match). docs.aws.amazon.com is blocked by the build environment\'s network policy, so the AWS Security Hub user guide itself was not consulted — primary reference verification is still required.';
 
 /** AWS Foundational Security Best Practices controls used by CloudCraft rules. */
 const AWS_FSBP: Array<[string, string, string, string]> = [
@@ -89,7 +93,7 @@ const MCSB_PAGES: Record<string, string> = {
   BR: 'https://learn.microsoft.com/security/benchmark/azure/mcsb-backup-recovery',
   PV: 'https://learn.microsoft.com/security/benchmark/azure/mcsb-posture-vulnerability-management',
 };
-const MCSB_NOTE = 'Control ID and Azure Policy definition mapping verified in Microsoft\'s built-in "Microsoft cloud security benchmark" initiative (v57.58.0). Control title/URL recorded from MCSB naming; page not reachable from the build environment — re-verify URL.';
+const MCSB_NOTE = 'Control ID and Azure Policy definition mapping re-verified on 2026-09-24 in Microsoft\'s built-in "Microsoft cloud security benchmark" initiative (Azure/azure-policy, v57.58.0; all 41 CloudCraft MCSB/Policy references present). The Microsoft Learn page (learn.microsoft.com) is blocked by the build environment\'s network policy, so the control title and URL were not checked against it.';
 
 /** [MCSB control, title, Azure Policy definition GUID (from the MCSB initiative), policy reference id] */
 const AZURE_MCSB: Array<[string, string, string?, string?]> = [
@@ -143,7 +147,7 @@ const AZURE_POLICIES: Array<[string, string, string, string]> = [
 
 const AWS_WA_BASE = 'https://docs.aws.amazon.com/wellarchitected/latest';
 const AZ_WA_BASE = 'https://learn.microsoft.com/azure/well-architected';
-const WA_NOTE = 'Pillar URL carried over from CloudCraft framework definitions; not fetched during this build.';
+const WA_NOTE = 'Pillar URL carried over from CloudCraft framework definitions. docs.aws.amazon.com and learn.microsoft.com are blocked by the build environment\'s network policy, so it has not been verified against the published framework — reference verification required.';
 
 function build(): Record<string, SourceReference> {
   const refs: Record<string, SourceReference> = {};
@@ -181,9 +185,11 @@ function build(): Record<string, SourceReference> {
       organization: 'Microsoft',
       framework: 'Azure Policy built-in definition (Microsoft cloud security benchmark initiative)',
       identifier: guid,
-      title: `Azure Policy ${refId} → MCSB ${control}`,
+      // Reader-facing title: the MCSB control this built-in policy is grouped under. The
+      // initiative's internal reference ID stays in the verification note.
+      title: `Built-in policy for MCSB ${control} — ${AZURE_MCSB.find(([id]) => id === control)?.[1] ?? 'Microsoft cloud security benchmark'}`,
       verification: 'VERIFIED_OFFICIAL_SOURCE',
-      verificationNote: 'Definition GUID, initiative reference ID and MCSB group verified in the official MCSB initiative (Azure/azure-policy, v57.58.0).',
+      verificationNote: `Definition GUID, initiative reference ID (${refId}) and MCSB group re-verified on 2026-09-24 in the official MCSB initiative (Azure/azure-policy, v57.58.0).`,
     };
   }
 
@@ -235,13 +241,20 @@ function build(): Record<string, SourceReference> {
     title: 'Reporting on an Examination of Controls at a Service Organization Relevant to User Entities\' Internal Control Over Financial Reporting',
     url: 'https://www.aicpa-cima.com/topic/audit-assurance/audit-and-assurance-greater-than-soc-1',
     verification: 'NOT_VERIFIED_IN_BUILD',
-    verificationNote: 'Used only to describe the scope of SOC 1 reporting. CloudCraft does not perform SOC 1 examinations.',
+    verificationNote: 'Used only to describe the scope of SOC 1 reporting. aicpa-cima.com is blocked by the build environment\'s network policy, so the page was not verified. CloudCraft does not perform SOC 1 examinations.',
   };
 
   return refs;
 }
 
 export const REFERENCES: Record<string, SourceReference> = build();
+
+/** Reader-facing description of how a reference was verified (reports, Appendix B). */
+export const VERIFICATION_LABEL: Record<SourceReference['verification'], string> = {
+  VERIFIED_OFFICIAL_SOURCE: 'Identifier verified against an official machine-readable source',
+  CROSS_CHECKED_SECONDARY: 'Cross-checked against a secondary source; primary verification pending',
+  NOT_VERIFIED_IN_BUILD: 'Not verified; reference verification pending',
+};
 
 export function resolveReferences(keys: string[]): SourceReference[] {
   return keys.map((k) => REFERENCES[k]).filter((r): r is SourceReference => Boolean(r));

@@ -8,6 +8,7 @@ import type { AssessmentReport, RecommendationGroup } from '@/lib/engines/assess
 import type { Finding, Severity } from '@/lib/engines/assessment/types';
 import type { CanvasNode } from '@/types';
 import { getResourceDefinition } from '@/lib/resources';
+import { VERIFICATION_LABEL } from '@/lib/engines/assessment/references';
 
 type Doc = PDFKit.PDFDocument;
 
@@ -48,7 +49,8 @@ class Writer {
     d.y += 14;
   }
   h2(title: string, record = false) {
-    this.ensure(40);
+    // Keep a heading with at least the start of what follows (avoids orphaned headings).
+    this.ensure(90);
     if (record) this.sections.push({ title, page: this.pageIndex(), level: 2 });
     this.doc.moveDown(0.4).font('Helvetica-Bold').fontSize(12.5).fillColor(C.navy).text(pdfSafe(title), PAGE.m, this.doc.y, { width: CONTENT_W });
     this.doc.moveDown(0.3);
@@ -157,7 +159,8 @@ const human = (s: string) => s.replace(/_/g, ' ').toLowerCase().replace(/^./, (c
 
 // ─── Architecture diagram ─────────────────────────────────────────────────────
 
-function drawDiagram(w: Writer, nodes: CanvasNode[], edges: { source: string; target: string }[], x0: number, y0: number, W: number, H: number) {
+function drawDiagram(w: Writer, nodes: CanvasNode[], edges: { source: string; target: string }[], x0: number, y0: number, W: number, maxH: number) {
+  let H = maxH;
   const d = w.doc;
   const byId = new Map(nodes.map((n) => [n.id, n]));
   // Mirrors InfraCanvas: positions are absolute canvas coordinates and sizes fall
@@ -177,6 +180,8 @@ function drawDiagram(w: Writer, nodes: CanvasNode[], edges: { source: string; ta
   let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
   for (const n of nodes) { const p = abs(n); const s = size(n); minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x + s.w); maxY = Math.max(maxY, p.y + s.h); }
   const scale = Math.min(W / Math.max(1, maxX - minX), H / Math.max(1, maxY - minY), 0.6);
+  // Frame height follows the content (no large empty band under a wide, shallow diagram).
+  H = Math.max(120, Math.min(H, (maxY - minY) * scale));
   const tx = (x: number) => x0 + (x - minX) * scale + (W - (maxX - minX) * scale) / 2;
   const ty = (y: number) => y0 + (y - minY) * scale;
   d.rect(x0 - 6, y0 - 6, W + 12, H + 12).lineWidth(0.5).strokeColor(C.rule).stroke();
@@ -333,16 +338,16 @@ export async function renderReportPdf(report: AssessmentReport): Promise<Buffer>
   }
   w.h3('SOC 1 readiness summary');
   w.p(`${ex.soc1.observed} control area(s) with technical evidence observed, ${ex.soc1.gaps} with technical gaps, ${ex.soc1.partial} partially evaluated and ${ex.soc1.notEvaluated} not evaluated. All areas also require organizational evidence and independent auditor assessment.`, { size: 9 });
-  w.h3('Major strengths'); w.bullets(ex.strengths, { empty: 'No high-impact security checks passed that could be highlighted.' });
-  w.h3('Major risks'); w.bullets(ex.majorRisks, { empty: 'No critical or high severity failures were identified in the evaluated checks.' });
+  w.h3('High-impact checks passed'); w.bullets(ex.strengths, { empty: 'No critical- or high-severity security checks passed in the evaluated configuration.' });
+  w.h3('Major risks'); w.bullets(ex.majorRisks, { empty: 'No critical- or high-severity failures were identified in the checks that could be evaluated.' });
   w.h3('Immediate priorities'); w.bullets(ex.immediatePriorities, { empty: 'No immediate (critical/high required) remediation items.' });
 
   // ── 3 Architecture overview ──
   w.h1('3', 'Architecture Overview');
   w.kv([['Providers', m.providers.join(', ') || '—'], ['Regions', m.regions.join(', ') || 'Not specified'], ['Resources', String(report.architecture.resourceCount)], ['Connections', String(report.architecture.edges.length)]], 120);
   w.h2('Architecture diagram');
-  w.ensure(330);
-  drawDiagram(w, report.architecture.nodes, report.architecture.edges, PAGE.m + 6, doc.y + 6, CONTENT_W - 12, 300);
+  w.ensure(470);
+  drawDiagram(w, report.architecture.nodes, report.architecture.edges, PAGE.m + 6, doc.y + 6, CONTENT_W - 12, 440);
   w.h2('Resource summary');
   w.table([{ header: 'Provider', width: 15 }, { header: 'Resource type', width: 60 }, { header: 'Count', width: 15, align: 'right' }], report.architecture.resourceSummary.map((r) => [r.provider, r.type, String(r.count)]));
   w.h2('Data flow summary');
@@ -427,9 +432,9 @@ export async function renderReportPdf(report: AssessmentReport): Promise<Buffer>
   // ── 10 Auto-Fix ──
   w.h1('10', 'Auto-Fix Summary');
   w.table([{ header: 'Category', width: 60 }, { header: 'Open findings', width: 20, align: 'right' }], [
-    ['Eligible for safe Auto-Fix (SAFE_AUTOFIX)', String(report.autoFix.safe.length)],
-    ['Auto-Fix available after review (REVIEW_REQUIRED)', String(report.autoFix.reviewRequired.length)],
-    ['Manual remediation only (MANUAL_ONLY or no deterministic fix)', String(report.autoFix.manual.length)],
+    ['Eligible for safe Auto-Fix', String(report.autoFix.safe.length)],
+    ['Auto-Fix available after review and confirmation', String(report.autoFix.reviewRequired.length)],
+    ['Manual remediation only', String(report.autoFix.manual.length)],
     ['Resolved since previous assessment', report.comparison ? String(report.autoFix.resolvedSincePrevious.length) : 'No previous assessment'],
   ]);
   const afRows = [...report.autoFix.safe, ...report.autoFix.reviewRequired].map((f) => [f.findingId, f.autoFix.safety === 'SAFE_AUTOFIX' ? 'Safe' : 'Review required', f.autoFix.description ?? '', f.resourceLabels.join(', ')]);
@@ -478,7 +483,7 @@ export async function renderReportPdf(report: AssessmentReport): Promise<Buffer>
   w.h1('Appendix B', 'Official References');
   w.p('Reference metadata only; CloudCraft does not reproduce documentation text. Verification describes how each reference was checked when the ruleset was built.', { size: 8.5, color: C.muted });
   w.table([{ header: 'Framework', width: 30 }, { header: 'Identifier', width: 18 }, { header: 'Title', width: 42 }, { header: 'Verification', width: 18 }],
-    report.appendix.references.map((r) => [r.framework, r.identifier ?? '—', `${r.title}${r.url ? `\n${r.url}` : ''}`, human(r.verification)]), { size: 7 });
+    report.appendix.references.map((r) => [r.framework, r.identifier ?? '—', `${r.title}${r.url ? `\n${r.url}` : ''}`, VERIFICATION_LABEL[r.verification]]), { size: 7 });
   w.h1('Appendix C', 'Methodology & Definitions');
   w.bullets(report.appendix.methodology, { size: 8.5 });
   w.table([{ header: 'Term', width: 25 }, { header: 'Definition', width: 75 }], report.appendix.definitions.map((d) => [d.term, d.definition]), { size: 8 });

@@ -5,6 +5,7 @@
  */
 import type { AssessmentReport, RecommendationGroup } from '@/lib/engines/assessment/report/buildReport';
 import type { Finding, Severity } from '@/lib/engines/assessment/types';
+import { VERIFICATION_LABEL } from '@/lib/engines/assessment/references';
 
 const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const SEV: Record<Severity, string> = { CRITICAL: '#9F1239', HIGH: '#C2410C', MEDIUM: '#A16207', LOW: '#1D4ED8', INFORMATIONAL: '#475569' };
@@ -76,7 +77,7 @@ export function renderReportHtml(r: AssessmentReport): string {
   <h3>Open findings by severity</h3>${counts(ex.counts)}
   <h3>Well-Architected summary</h3>${ex.wellArchitected.map((p) => `<p><b>${esc(p.framework)}</b></p>${table(['Pillar', 'Status', 'Score', 'Coverage'], p.pillars.map((x) => [esc(x.label), `<span class="${statusClass(x.status)}">${esc(x.status)}</span>`, score(x.score), x.coverage === null ? '—' : `${x.coverage}%`]))}`).join('')}
   <h3>SOC 1 readiness summary</h3><p>${ex.soc1.observed} area(s) with technical evidence observed, ${ex.soc1.gaps} with gaps, ${ex.soc1.partial} partially evaluated, ${ex.soc1.notEvaluated} not evaluated. All areas require organizational evidence and independent auditor assessment.</p>
-  <h3>Major strengths</h3>${list(ex.strengths, 'No high-impact security checks passed that could be highlighted.')}
+  <h3>High-impact checks passed</h3>${list(ex.strengths, 'No critical- or high-severity security checks passed in the evaluated configuration.')}
   <h3>Major risks</h3>${list(ex.majorRisks, 'No critical or high severity failures in the evaluated checks.')}
   <h3>Immediate priorities</h3>${list(ex.immediatePriorities, 'No immediate remediation items.')}</section>`);
 
@@ -129,7 +130,7 @@ export function renderReportHtml(r: AssessmentReport): string {
     <h3>Resolved findings</h3>${table(['Finding ID', 'Severity', 'Title'], c.resolvedFindings.map((f) => [`<code>${esc(f.findingId)}</code>`, sevBadge(f.severity), esc(f.title)]))}</section>`);
   }
   sections.push(`<section><h2>Appendix A — Rule Reference</h2>${table(['Rule ID', 'Provider', 'Service', 'Check', 'Severity', 'Control refs'], r.appendix.rules.map((x) => [esc(x.id), esc(x.provider), esc(x.service), esc(x.title), sevBadge(x.severity), esc(x.references)]))}</section>`);
-  sections.push(`<section><h2>Appendix B — Official References</h2>${table(['Framework', 'Identifier', 'Title', 'Verification'], r.appendix.references.map((x) => [esc(x.framework), esc(x.identifier ?? '—'), x.url ? `<a href="${esc(x.url)}">${esc(x.title)}</a>` : esc(x.title), esc(human(x.verification))]))}</section>`);
+  sections.push(`<section><h2>Appendix B — Official References</h2>${table(['Framework', 'Identifier', 'Title', 'Verification'], r.appendix.references.map((x) => [esc(x.framework), esc(x.identifier ?? '—'), x.url ? `<a href="${esc(x.url)}">${esc(x.title)}</a>` : esc(x.title), esc(VERIFICATION_LABEL[x.verification])]))}</section>`);
   sections.push(`<section><h2>Appendix C — Methodology &amp; Definitions</h2>${list(r.appendix.methodology)}${table(['Term', 'Definition'], r.appendix.definitions.map((d) => [esc(d.term), esc(d.definition)]))}</section>`);
   sections.push(`<section><h2>Appendix D — Controls Not Evaluated</h2>${table(['ID', 'Control', 'Resources', 'Why not evaluated / evidence needed'], r.appendix.notEvaluated.map((x) => [`<code>${esc(x.id)}</code>`, esc(x.control), esc(x.resources), `${esc(x.availability)}<br>${esc(x.requiredData)}`]), 'All applicable checks were evaluated.')}</section>`);
   sections.push(`<section><h2>Appendix E — Limitations</h2>${list(r.appendix.limitations)}</section>`);

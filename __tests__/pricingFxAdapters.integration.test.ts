@@ -323,4 +323,13 @@ describe('CostEstimator tiers and currency honesty', () => {
     expect(items[0].exchangeRateTier).toBe('UNAVAILABLE');
     expect(items[0].pricingTier).toBe('FALLBACK_ESTIMATE');
   });
+
+  test('resources with no direct charge are not reported as "price unavailable"; layout boundaries are not priced', async () => {
+    silence();
+    const est = new CostEstimator({ pricing: new CloudProviderPricingService(new MemCache(), [fakeProvider([null])]), currency: { getExchangeRate: async () => null } });
+    const r = await est.estimateAsync({ architectureId: 'a', projectId: 'p', resources: [
+      res('asg', 'aws_auto_scaling', 'aws', {}, 'us-east-1'), res('b1', 'aws_cloud_boundary', 'aws', {}, 'us-east-1'), res('b2', 'azure_cloud_boundary', 'azure', {}, 'eastus'),
+    ] }, 'REAL');
+    expect(r.items).toEqual([]);
+  });
 });

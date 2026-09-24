@@ -10,7 +10,7 @@ import { getResourceDefinition } from '@/lib/resources';
 import { EVIDENCE_AVAILABILITY, EVIDENCE_CLASS_LABEL } from '../evidenceAvailability';
 import { RULES_BY_ID } from '../rules';
 import { REFERENCES } from '../references';
-import { SCORE_METHODOLOGY, coverageOf } from '../scoring';
+import { SCORE_METHODOLOGY, LOW_COVERAGE_THRESHOLD, coverageOf } from '../scoring';
 import { SOC1_DISCLAIMER, SOC1_ORGANIZATIONAL_CONTROLS } from '../soc1';
 import type {
   AssessmentResult, Evaluation, Finding, PillarResult, ScoreResult, Severity, SourceReference, Soc1AreaResult, AssessmentProvider,
@@ -186,17 +186,21 @@ export function buildReport(snap: ReportSnapshotInput, opts: { comparison?: Comp
   const majorRisks = groupRecommendations(critHigh).slice(0, 6).map((g) => `${g.title} (${g.ruleId}; ${g.resources.slice(0, 3).join(', ')}${g.resources.length > 3 ? ` and ${g.resources.length - 3} more` : ''}).`);
   const strengths = Array.from(new Set(a.evaluations
     .filter((e) => e.status === 'PASS' && RULES_BY_ID.get(e.ruleId)?.domain === 'SECURITY' && ['CRITICAL', 'HIGH'].includes(e.severity))
-    .map((e) => `${RULES_BY_ID.get(e.ruleId)!.service}: ${e.observation}`))).slice(0, 6);
+    .map((e) => `${RULES_BY_ID.get(e.ruleId)!.service}${e.resourceLabels[0] ? ` (${e.resourceLabels[0]})` : ''}: ${e.observation.replace(/\.$/, '')} (${e.provenance === 'DESIGN_TIME' ? 'design-time configuration' : e.provenance === 'LIVE_VERIFIED' ? 'live-verified' : 'discovered configuration'}).`))).slice(0, 6);
   const immediatePriorities = groupRecommendations(openFindings.filter((f) => f.priority === 'REQUIRED_REMEDIATION' && (f.severity === 'CRITICAL' || f.severity === 'HIGH')))
     .slice(0, 5).map((g) => `${g.recommendation} [${g.ruleId}]`);
   const providersLabel = a.providers.map((p) => PROVIDER_LABEL[p] ?? p).join(' and ') || 'no cloud provider';
   const sec = a.securityScore;
+  const discoveredChecks = a.evaluations.filter((e) => e.provenance === 'DISCOVERED_CONFIGURATION' || e.provenance === 'LIVE_VERIFIED').length;
   const overview =
-    `This design-time assessment evaluated ${a.resourceCount} resource${a.resourceCount === 1 ? '' : 's'} on ${providersLabel}` +
+    `Based on the architecture configuration available to CloudCraft${discoveredChecks > 0 ? ' (design-time configuration, plus configuration discovered from the cloud provider for some resources)' : ' (design-time configuration only; no live cloud evidence)'}, ` +
+    `this assessment evaluated ${a.resourceCount} resource${a.resourceCount === 1 ? '' : 's'} on ${providersLabel}` +
     `${a.regions.length ? ` in ${a.regions.join(', ')}` : ''} (architecture revision ${snap.architecture.revision}). ` +
     `${sec.coverage.evaluated} applicable security check${sec.coverage.evaluated === 1 ? ' was' : 's were'} evaluated; ` +
     `${sec.coverage.notEvaluated + sec.coverage.insufficientData} could not be evaluated from the available architecture data (security assessment coverage ${sec.coverage.coveragePct ?? 0}%). ` +
-    `${counts.CRITICAL} critical, ${counts.HIGH} high, ${counts.MEDIUM} medium and ${counts.LOW} low severity findings are open across security and Well-Architected checks.`;
+    `${counts.CRITICAL} critical, ${counts.HIGH} high, ${counts.MEDIUM} medium and ${counts.LOW} low severity findings are open across security and Well-Architected checks.` +
+    (sec.lowCoverage ? ` Coverage is below ${LOW_COVERAGE_THRESHOLD}%, so the score describes only part of the architecture and is rated "Limited evidence" rather than as a strong posture.` : '') +
+    ' A passed check means the evaluated configuration met that check; it does not provide assurance about the security of the deployed environment.';
 
   const waSummary = a.providers.map((p) => ({
     provider: PROVIDER_LABEL[p] ?? p,
@@ -220,7 +224,7 @@ export function buildReport(snap: ReportSnapshotInput, opts: { comparison?: Comp
   const evaluatedServices = Array.from(new Set(a.evaluations.filter((e) => ['PASS', 'FAIL', 'WARNING'].includes(e.status)).map((e) => RULES_BY_ID.get(e.ruleId)!.service))).sort();
   const scope = {
     evaluated: [
-      `Resource configuration of ${a.resourceCount} resources as designed in CloudCraft (revision ${snap.architecture.revision}).`,
+      `Resource configuration of ${a.resourceCount} resources as modelled in CloudCraft (revision ${snap.architecture.revision})${discoveredChecks > 0 ? ', including configuration discovered from the cloud provider where recorded' : ''}.`,
       `Relationships and topology in the architecture diagram (${snap.architecture.edges.length} connections).`,
       `Services with evaluated checks: ${evaluatedServices.join(', ') || 'none'}.`,
       `Provider-native rules: ${a.providers.map((p) => p.toUpperCase()).join(', ')} (ruleset ${a.rulesetVersion}).`,
@@ -374,7 +378,7 @@ export function buildReport(snap: ReportSnapshotInput, opts: { comparison?: Comp
         'Well-Architected pillar scores use the same formula restricted to the checks mapped to that pillar; a pillar with no evaluable checks is reported as "Insufficient evidence" rather than scored.',
         `Assessment coverage (all checks): ${cov.evaluated} of ${cov.applicable} applicable checks evaluated (${cov.coveragePct ?? 0}%); ${cov.notApplicable} checks were not applicable to the resources present.`,
         'Each finding has a stable ID of the form <RULE-ID>-<resource hash> that is identical in the CloudCraft UI, Auto-Fix, this report and later assessments of the same resource.',
-        'Auto-Fix safety: SAFE_AUTOFIX changes are deterministic, non-destructive configuration changes; REVIEW_REQUIRED changes may affect connectivity, cost or require replacement and need explicit confirmation; MANUAL_ONLY findings require human design decisions. Every applied fix is verified by re-running the rule and regenerating Terraform; failed verification leaves the architecture unchanged.',
+        'Auto-Fix safety: safe fixes are deterministic, non-destructive configuration changes; fixes that need review may affect connectivity or cost, or require resource replacement, and are applied only after explicit confirmation; manual-only findings require human design decisions. Every applied fix is verified by re-running the rule and regenerating Terraform; failed verification leaves the architecture unchanged.',
       ],
       definitions: [
         { term: 'PASS', definition: 'The modelled configuration satisfies the check.' },

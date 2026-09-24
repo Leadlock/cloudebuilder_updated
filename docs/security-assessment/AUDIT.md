@@ -106,3 +106,36 @@ observations to control areas as input for control owners and auditors.
 - Discovery adapters map provider APIs to canvas fields. None of this has been exercised against a live account in this
   change.
 - `functions-public-access` could be reintroduced as a context-aware check once trigger type and fronting are modelled.
+
+## 7. Production hardening pass (2026-09-24)
+
+- **References.** docs.aws.amazon.com, learn.microsoft.com, aka.ms, azure.microsoft.com,
+  aicpa-cima.com and github.com are blocked by the build environment's network policy.
+  Only raw.githubusercontent.com is reachable, so primary verification could be done only
+  for Microsoft's machine-readable sources:
+  - All 41 MCSB control and Azure Policy references were re-verified in Azure/azure-policy
+    (MCSB initiative v57.58.0).
+  - All 49 FSBP IDs, titles and severities were re-cross-checked against the secondary mapping.
+  - AWS FSBP, the AWS/Azure Well-Architected URLs and the AICPA reference are still
+    unverified against primary documentation. The affected rules stay at
+    IMPLEMENTED — LIVE/REFERENCE VERIFICATION REQUIRED.
+- **Discovery integrity.** Adapters replaced missing API values with literals that read as
+  discovered facts. All of these were removed; a missing value is now unknown. RDS discovery
+  now maps the security settings that DescribeDBInstances returns. Field-level provenance
+  (`_discovery`) separates DESIGN, DISCOVERED and LIVE evidence per field. LIVE_VERIFIED can
+  only come from a fresh provider read supplied to the assessment; nothing in production
+  supplies one.
+- **Not evaluated.** AWS-EC2-003 (IMDSv2) is now evaluated from design, discovery and
+  Terraform. The 11 remaining controls are classified in `evidenceAvailability.ts`.
+- **SOC 1.** The section is renamed "SOC 1 Readiness Analysis". Evidence is separated by
+  source, and every area is "not concluded".
+- **Pricing and FX.** Every price and exchange rate is tiered: live, cached live, fallback
+  estimate or unavailable. Azure fallback prices labelled as live were fixed. The offline UI
+  no longer invents exchange rates.
+- **Scores.** Coverage below 60% can no longer rate Strong or Good; those ratings become
+  "Limited evidence".
+- **Auto-Fix.** Full SAFE sequence tests, REVIEW preview completeness tests, forced-rollback
+  tests at each verification gate, and batch verification for bulk fixes (22 s → 0.1 s at
+  500 resources).
+- **Platform.** Template instances get unique IDs. The migration MARKER_MISMATCH was fixed
+  without resetting data (see `docs/database/MIGRATION_MARKER_MISMATCH.md`).

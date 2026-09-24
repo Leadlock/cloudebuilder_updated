@@ -100,7 +100,8 @@ export class CostEstimator {
         resource.resourceType === 'azure_resource_group' ||
         resource.resourceType === 'azure_vnet' ||
         resource.resourceType === 'azure_subnet' ||
-        resource.resourceType === 'azure_nsg'
+        resource.resourceType === 'azure_nsg' ||
+        resource.resourceType.endsWith('_cloud_boundary')
       ) {
         continue;
       }
@@ -143,11 +144,14 @@ export class CostEstimator {
         } else {
           // Fallback to provider sync estimation if available
           const syncProvider = PROVIDERS[providerKey];
-          const syncItem = syncProvider ? syncProvider.estimateResource(resource, config, region) : null;
+          const syncItem = syncProvider ? syncProvider.estimateResource(resource, config, region) : undefined;
+          // null from the static table means "no direct charge" (e.g. an Auto Scaling group,
+          // whose instances are priced separately) — not "price unavailable".
+          if (syncItem === null) continue;
           if (syncItem) {
             items.push({
               ...syncItem,
-              pricingTier: 'FALLBACK_ESTIMATE',
+              pricingTier: syncItem.pricingSource === 'none' ? 'UNAVAILABLE' : 'FALLBACK_ESTIMATE',
               providerPrice: {
                 unitPrice: syncItem.hourlyUsd,
                 monthlyPrice: syncItem.monthlyUsd,
@@ -185,7 +189,7 @@ export class CostEstimator {
         if (syncItem) {
           items.push({
             ...syncItem,
-            pricingTier: 'FALLBACK_ESTIMATE',
+            pricingTier: syncItem.pricingSource === 'none' ? 'UNAVAILABLE' : 'FALLBACK_ESTIMATE',
             providerPrice: {
               unitPrice: syncItem.hourlyUsd,
               monthlyPrice: syncItem.monthlyUsd,
@@ -210,6 +214,7 @@ export class CostEstimator {
     const items: CostLineItem[] = [];
 
     for (const resource of input.resources) {
+      if (resource.resourceType.endsWith('_cloud_boundary')) continue; // layout helper, not a resource
       const provider = PROVIDERS[resource.provider];
       if (!provider) {
         items.push({
