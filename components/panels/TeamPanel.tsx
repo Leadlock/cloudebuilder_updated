@@ -62,12 +62,15 @@ export default function TeamPanel() {
     refresh();
   }, [refresh]);
 
+  const [lastEmailSent, setLastEmailSent] = useState<boolean | null>(null);
+
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteEmail.trim()) return;
     setInviting(true);
     setError(null);
     setLastAcceptUrl(null);
+    setLastEmailSent(null);
     try {
       const res = await fetch('/api/auth/invite', {
         method: 'POST',
@@ -78,6 +81,7 @@ export default function TeamPanel() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message ?? 'Failed to send invite');
       setLastAcceptUrl(data.data.acceptUrl);
+      setLastEmailSent(data.data.emailSent ?? false);
       setInviteEmail('');
       refresh();
     } catch (err: any) {
@@ -111,10 +115,15 @@ export default function TeamPanel() {
 
         {isAdmin && (
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-            <h2 className="text-sm font-semibold text-white flex items-center gap-2 mb-3">
-              <UserPlus className="w-4 h-4 text-blue-400" />
-              Invite a teammate
-            </h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+                <UserPlus className="w-4 h-4 text-blue-400" />
+                Invite a teammate
+              </h2>
+              <span className="text-[10px] bg-blue-950 text-blue-400 border border-blue-800/60 px-2 py-0.5 rounded font-mono">
+                AWS SES Outbound
+              </span>
+            </div>
             <form onSubmit={handleInvite} className="flex flex-wrap items-end gap-3">
               <div className="flex-1 min-w-[220px]">
                 <label className="text-xs text-gray-400 block mb-1">Email</label>
@@ -149,8 +158,15 @@ export default function TeamPanel() {
             </form>
 
             {lastAcceptUrl && (
-              <div className="mt-4 p-3 rounded-xl bg-blue-950/30 border border-blue-500/30 text-xs text-blue-200">
-                <p className="mb-2">No email sending is wired up yet — share this link with them directly:</p>
+              <div className="mt-4 p-4 rounded-xl bg-blue-950/30 border border-blue-500/30 text-xs text-blue-200 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="font-semibold text-white">
+                    {lastEmailSent
+                      ? 'Invitation email delivered via AWS SES!'
+                      : 'Invite created. Share this link directly with your teammate:'}
+                  </span>
+                </div>
                 <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2">
                   <span className="truncate flex-1 font-mono text-gray-300">{lastAcceptUrl}</span>
                   <button onClick={() => copyLink(lastAcceptUrl)} className="text-gray-400 hover:text-white shrink-0">
