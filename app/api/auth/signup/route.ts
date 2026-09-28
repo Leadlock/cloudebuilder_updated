@@ -10,6 +10,7 @@ import { apiError, badRequest, internalError, parseBody } from '@/lib/api/respon
 import { AuthService } from '@/lib/api/authService';
 import { orgRepository } from '@/lib/repositories/orgRepository';
 import { isPasswordStrongEnough } from '@/lib/crypto/password';
+import { CognitoService } from '@/lib/auth/cognitoService';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,37 +32,92 @@ export async function POST(req: NextRequest) {
       return badRequest('Password must be at least 8 characters');
     }
 
-    const existing = await orgRepository.findUserByEmailForAuth(email);
-    if (existing) {
-      return apiError('CONFLICT', 'An account with this email already exists', 409);
+    // 1. Try registering with AWS Cognito
+    try {
+      const cognitoRes = await CognitoService.signUp({ email, password, name });
+
+      if (!cognitoRes.isConfirmed) {
+        return NextResponse.json({
+          success: true,
+          requiresConfirmation: true,
+          email,
+          name,
+          orgName,
+          message: 'Verification code sent to your email address.',
+        });
+      }
+
+      // If automatically confirmed:
+      const user = await AuthService.syncCognitoUser({
+        id: cognitoRes.userSub,
+        email,
+        name,
+        orgName,
+      });
+
+      const session = AuthService.createSession(user);
+
+      const response = NextResponse.json({
+        success: true,
+        user,
+        token: session.token,
+        expiresAt: session.expiresAt,
+      });
+
+      response.cookies.set({
+        name: 'cloudcraft_session',
+        value: session.token,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 24 * 60 * 60,
+      });
+
+      return response;
+    } catch (cognitoErr: any) {
+      if (cognitoErr.name === 'UsernameExistsException') {
+        return apiError('CONFLICT', 'An account with this email already exists in Cognito', 409);
+      }
+      if (cognitoErr.name === 'InvalidPasswordException') {
+        return badRequest(cognitoErr.message || 'Password does not meet Cognito complexity requirements');
+      }
+
+      console.error('[POST /api/auth/signup] Cognito error, falling back to local:', cognitoErr);
+
+      // Local fallback if Cognito fails
+      const existing = await orgRepository.findUserByEmailForAuth(email);
+      if (existing) {
+        return apiError('CONFLICT', 'An account with this email already exists', 409);
+      }
+
+      const passwordHash = await AuthService.hashPassword(password);
+      const dbUser = await orgRepository.createUserWithPassword({ email, name, passwordHash });
+      const org = await orgRepository.createOrgForSignup(orgName);
+      await orgRepository.addMember(org.id, dbUser.id, 'owner');
+
+      const user = { id: dbUser.id, email: dbUser.email, name, role: 'admin' as const, orgId: org.id };
+      const session = AuthService.createSession(user);
+
+      const response = NextResponse.json({
+        success: true,
+        user,
+        token: session.token,
+        expiresAt: session.expiresAt,
+      });
+
+      response.cookies.set({
+        name: 'cloudcraft_session',
+        value: session.token,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 24 * 60 * 60,
+      });
+
+      return response;
     }
-
-    const passwordHash = await AuthService.hashPassword(password);
-    const dbUser = await orgRepository.createUserWithPassword({ email, name, passwordHash });
-    const org = await orgRepository.createOrgForSignup(orgName);
-    await orgRepository.addMember(org.id, dbUser.id, 'owner');
-
-    const user = { id: dbUser.id, email: dbUser.email, name, role: 'admin' as const, orgId: org.id };
-    const session = AuthService.createSession(user);
-
-    const response = NextResponse.json({
-      success: true,
-      user,
-      token: session.token,
-      expiresAt: session.expiresAt,
-    });
-
-    response.cookies.set({
-      name: 'cloudcraft_session',
-      value: session.token,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 24 * 60 * 60,
-    });
-
-    return response;
   } catch (err) {
     console.error('[POST /api/auth/signup]', err);
     return internalError();

@@ -82,6 +82,9 @@ describe('No product code persists master template IDs', () => {
       }
     };
     for (const d of ['components', 'context', 'app', 'lib']) walk(d);
-    expect(offenders.filter((o) => !o.startsWith('lib/templates') && !o.startsWith('lib/domain/instantiateTemplate.ts'))).toEqual([]);
+    expect(offenders.filter((o) => {
+      const normalized = o.replace(/\\/g, '/');
+      return !normalized.startsWith('lib/templates') && !normalized.startsWith('lib/domain/instantiateTemplate.ts');
+    })).toEqual([]);
   });
 });

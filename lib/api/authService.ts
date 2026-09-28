@@ -132,6 +132,14 @@ export class AuthService {
   }
 
   /**
+   * Sync a Cognito authenticated user into the local database and return the AuthUser profile.
+   */
+  static async syncCognitoUser(input: { id?: string; email: string; name?: string; orgName?: string }): Promise<AuthUser> {
+    const dbUser = await orgRepository.syncCognitoUser(input);
+    return toAuthUser(dbUser);
+  }
+
+  /**
    * Hash a new password for signup / invite-acceptance.
    */
   static async hashPassword(password: string): Promise<string> {

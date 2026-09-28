@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { ok, badRequest, unauthorized, internalError, parseBody } from '@/lib/api/response';
 import { AuthService } from '@/lib/api/authService';
+import { CognitoService } from '@/lib/auth/cognitoService';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,33 +17,79 @@ export async function POST(req: NextRequest) {
     if (!parsed.ok) return parsed.response;
 
     const { email, password } = parsed.data;
-    const user = await AuthService.authenticate(email, password);
 
-    if (!user) {
-      return unauthorized('Invalid email or password');
+    // 1. Try AWS Cognito first
+    try {
+      const cognitoAuth = await CognitoService.signIn(email, password);
+      const user = await AuthService.syncCognitoUser({
+        id: cognitoAuth.sub,
+        email: cognitoAuth.email,
+        name: cognitoAuth.name,
+      });
+
+      const session = AuthService.createSession(user);
+
+      const response = NextResponse.json({
+        success: true,
+        user,
+        token: session.token,
+        idToken: cognitoAuth.idToken,
+        accessToken: cognitoAuth.accessToken,
+        expiresAt: session.expiresAt,
+      });
+
+      response.cookies.set({
+        name: 'cloudcraft_session',
+        value: session.token,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 24 * 60 * 60,
+      });
+
+      return response;
+    } catch (cognitoErr: any) {
+      if (cognitoErr.name === 'UserNotConfirmedException') {
+        return NextResponse.json({
+          success: false,
+          requiresConfirmation: true,
+          email,
+          message: 'Your email is not verified yet. Please enter the verification code sent to your email.',
+        }, { status: 200 });
+      }
+
+      // If user not in Cognito or bad password, check if they exist in local DB (backward-compatibility)
+      const user = await AuthService.authenticate(email, password);
+      if (user) {
+        const session = AuthService.createSession(user);
+        const response = NextResponse.json({
+          success: true,
+          user,
+          token: session.token,
+          expiresAt: session.expiresAt,
+        });
+
+        response.cookies.set({
+          name: 'cloudcraft_session',
+          value: session.token,
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          path: '/',
+          maxAge: 24 * 60 * 60,
+        });
+
+        return response;
+      }
+
+      if (cognitoErr.name === 'NotAuthorizedException' || cognitoErr.name === 'UserNotFoundException') {
+        return unauthorized('Invalid email or password');
+      }
+
+      console.error('[POST /api/auth/login] Cognito sign-in error:', cognitoErr);
+      return unauthorized(cognitoErr.message || 'Invalid email or password');
     }
-
-    const session = AuthService.createSession(user);
-
-    const response = NextResponse.json({
-      success: true,
-      user,
-      token: session.token,
-      expiresAt: session.expiresAt,
-    });
-
-    // Set HTTP-only session cookie
-    response.cookies.set({
-      name: 'cloudcraft_session',
-      value: session.token,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 24 * 60 * 60, // 24 hours
-    });
-
-    return response;
   } catch (err) {
     console.error('[POST /api/auth/login]', err);
     return internalError();
