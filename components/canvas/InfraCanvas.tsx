@@ -55,7 +55,8 @@ import { architectureAutoFixEngine } from '@/lib/engines/autofix/ArchitectureAut
 import { scaleAdvisorEngine } from '@/lib/engines/ai/ScaleAdvisorEngine';
 import { toCanonicalGraph, validateCanonicalArchitecture } from '@/lib/domain/canonicalArchitecture';
 import { CloudProvider, ProviderMode, ScaleProfile, Region, providerModeToCloudProvider, cloudProviderToProviderMode, isNodeCompatibleWithProviderMode, inferNodeProvider } from '@/types';
-import { AlertTriangle, Check, X, Sparkles, Bot, ShieldCheck, GitMerge, Download, Loader2, Wrench, Search } from 'lucide-react';
+import { AlertTriangle, Check, X, Sparkles, Bot, ShieldCheck, GitMerge, Download, Loader2, Wrench, Search, Plus, Trash2 } from 'lucide-react';
+import clsx from 'clsx';
 
 const nodeTypes = {
   cloudNode: CloudNode,
@@ -567,6 +568,58 @@ export default function InfraCanvas() {
   const [isFixing, setIsFixing] = useState(false);
   const [bannerMessage, setBannerMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
 
+  // ── History helpers ──────────────────────────────────────────────────────────
+  const pushHistory = useCallback((n: Node[], e: Edge[]) => {
+    undoStack.current.push({ nodes: n, edges: e });
+    if (undoStack.current.length > 50) undoStack.current.shift();
+    redoStack.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+  }, []);
+
+  // ── Canvas sync helpers ──────────────────────────────────────────────────────
+  const getCanvasNodes = useCallback((): CanvasNode[] => {
+    if (!activeProject) return [];
+    return nodes.map((n) => {
+      const existing = activeProject.nodes.find((cn) => cn.id === n.id);
+      return {
+        id: n.id,
+        type: n.type ?? 'cloudNode',
+        resourceType: n.data.resourceType,
+        provider: (existing?.provider ?? (activeProject.provider === 'multi' ? 'aws' : activeProject.provider)) as 'aws' | 'azure',
+        label: n.data.label,
+        position: n.position,
+        config: existing?.config ?? {},
+        selected: n.selected,
+        groupId: n.data.groupId ?? existing?.groupId,
+        width: n.data.width ?? existing?.width,
+        height: n.data.height ?? existing?.height,
+      };
+    });
+  }, [nodes, activeProject]);
+
+  const getCanvasEdges = useCallback((): CanvasEdge[] => {
+    return edges.map((e) => {
+      const existing = activeProject?.edges.find((ce) => ce.id === e.id);
+      const data = (e.data || {}) as Record<string, unknown>;
+      return {
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        label: e.label as string | undefined,
+        edgeType: (e.type as CanvasEdge['edgeType']) || existing?.edgeType || 'network',
+        relationshipType: (data.relationshipType as RelationshipType) || existing?.relationshipType,
+        protocol: (data.protocol as string) || existing?.protocol,
+        port: (data.port as string | number) || existing?.port,
+        networkScope: (data.networkScope as any) || existing?.networkScope,
+        direction: (data.direction as any) || existing?.direction || 'unidirectional',
+        inferred: (data.inferred as boolean) ?? existing?.inferred ?? false,
+        validationStatus: (data.validationStatus as any) || existing?.validationStatus || 'valid',
+        reason: (data.reason as string) || existing?.reason,
+      };
+    });
+  }, [edges, activeProject]);
+
   // Save as Project Modal & Discard Modal States
   const [showSaveProjectModal, setShowSaveProjectModal] = useState(false);
   const [saveProjectName, setSaveProjectName] = useState('');
@@ -724,15 +777,6 @@ export default function InfraCanvas() {
       }
     }
   }, [activeProject, state.activeEnvironment, state.canvasKey, setNodes, setEdges, nodes.length]);
-
-  // ── History helpers ──────────────────────────────────────────────────────────
-  const pushHistory = useCallback((n: Node[], e: Edge[]) => {
-    undoStack.current.push({ nodes: n, edges: e });
-    if (undoStack.current.length > 50) undoStack.current.shift();
-    redoStack.current = [];
-    setCanUndo(true);
-    setCanRedo(false);
-  }, []);
 
   // ── Canvas Start Modal Callback ─────────────────────────────────────────────
   const handleStartModalComplete = useCallback((options: {
@@ -950,49 +994,6 @@ export default function InfraCanvas() {
     });
     setTimeout(() => setBannerMessage(null), 3500);
   }, [activeProject, dispatch]);
-
-  // ── Canvas sync ──────────────────────────────────────────────────────────────
-  const getCanvasNodes = useCallback((): CanvasNode[] => {
-    if (!activeProject) return [];
-    return nodes.map((n) => {
-      const existing = activeProject.nodes.find((cn) => cn.id === n.id);
-      return {
-        id: n.id,
-        type: n.type ?? 'cloudNode',
-        resourceType: n.data.resourceType,
-        provider: (existing?.provider ?? (activeProject.provider === 'multi' ? 'aws' : activeProject.provider)) as 'aws' | 'azure',
-        label: n.data.label,
-        position: n.position,
-        config: existing?.config ?? {},
-        selected: n.selected,
-        groupId: n.data.groupId ?? existing?.groupId,
-        width: n.data.width ?? existing?.width,
-        height: n.data.height ?? existing?.height,
-      };
-    });
-  }, [nodes, activeProject]);
-
-  const getCanvasEdges = useCallback((): CanvasEdge[] => {
-    return edges.map((e) => {
-      const existing = activeProject?.edges.find((ce) => ce.id === e.id);
-      const data = (e.data || {}) as Record<string, unknown>;
-      return {
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        label: e.label as string | undefined,
-        edgeType: (e.type as CanvasEdge['edgeType']) || existing?.edgeType || 'network',
-        relationshipType: (data.relationshipType as RelationshipType) || existing?.relationshipType,
-        protocol: (data.protocol as string) || existing?.protocol,
-        port: (data.port as string | number) || existing?.port,
-        networkScope: (data.networkScope as any) || existing?.networkScope,
-        direction: (data.direction as any) || existing?.direction || 'unidirectional',
-        inferred: (data.inferred as boolean) ?? existing?.inferred ?? false,
-        validationStatus: (data.validationStatus as any) || existing?.validationStatus || 'valid',
-        reason: (data.reason as string) || existing?.reason,
-      };
-    });
-  }, [edges, activeProject]);
 
   const syncToStore = useCallback((newNodes?: Node[], newEdges?: Edge[]) => {
     const resolvedNodes = newNodes ?? nodes;
