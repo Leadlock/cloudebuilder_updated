@@ -5,6 +5,7 @@
  * via SMTP (Nodemailer) or AWS SES SDK.
  */
 import nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 
 export interface SendInviteEmailParams {
@@ -17,8 +18,8 @@ export interface SendInviteEmailParams {
 }
 
 // Lazy SMTP transporter
-let _transporter: nodemailer.Transporter | null = null;
-function getTransporter(): nodemailer.Transporter | null {
+let _transporter: Transporter | null = null;
+function getTransporter(): Transporter | null {
   const host = process.env.SMTP_HOST;
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;

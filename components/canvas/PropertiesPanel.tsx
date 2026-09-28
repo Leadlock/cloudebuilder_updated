@@ -293,7 +293,7 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
   const cloudSource = (node.config?.source as string) || (provider === 'azure' ? 'azure-arm' : 'aws-api');
 
   return (
-    <div className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col shrink-0 select-none shadow-2xl z-20">
+    <div className="w-full sm:w-80 sm:relative fixed inset-y-0 right-0 z-40 sm:z-20 bg-slate-900 border-l border-slate-800 flex flex-col shrink-0 select-none shadow-2xl animate-in slide-in-from-right duration-150">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-800 bg-slate-950/60">
         <div className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 shrink-0">

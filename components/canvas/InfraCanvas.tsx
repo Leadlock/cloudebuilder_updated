@@ -54,7 +54,7 @@ import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedServ
 import { architectureAutoFixEngine } from '@/lib/engines/autofix/ArchitectureAutoFixEngine';
 import { scaleAdvisorEngine } from '@/lib/engines/ai/ScaleAdvisorEngine';
 import { toCanonicalGraph, validateCanonicalArchitecture } from '@/lib/domain/canonicalArchitecture';
-import { ProviderMode, ScaleProfile, Region, providerModeToCloudProvider, cloudProviderToProviderMode, isNodeCompatibleWithProviderMode, inferNodeProvider } from '@/types';
+import { CloudProvider, ProviderMode, ScaleProfile, Region, providerModeToCloudProvider, cloudProviderToProviderMode, isNodeCompatibleWithProviderMode, inferNodeProvider } from '@/types';
 import { AlertTriangle, Check, X, Sparkles, Bot, ShieldCheck, GitMerge, Download, Loader2, Wrench, Search } from 'lucide-react';
 
 const nodeTypes = {
@@ -566,6 +566,92 @@ export default function InfraCanvas() {
   // Auto-Fix execution state & banner notification
   const [isFixing, setIsFixing] = useState(false);
   const [bannerMessage, setBannerMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  // Save as Project Modal & Discard Modal States
+  const [showSaveProjectModal, setShowSaveProjectModal] = useState(false);
+  const [saveProjectName, setSaveProjectName] = useState('');
+  const [saveProjectProvider, setSaveProjectProvider] = useState<CloudProvider>('aws');
+  const [showDiscardModal, setShowDiscardModal] = useState(false);
+
+  const handleSaveClick = useCallback(() => {
+    const isDraft = !state.activeProjectId || state.activeProjectId === 'draft-project';
+    if (isDraft) {
+      const currentProvider = activeProject?.provider || 'aws';
+      setSaveProjectProvider(currentProvider);
+      setSaveProjectName(
+        activeProject?.name && activeProject.name !== 'Untitled Draft' && activeProject.name !== 'Draft Architecture'
+          ? activeProject.name
+          : 'My Cloud Infrastructure'
+      );
+      setShowSaveProjectModal(true);
+    } else {
+      dispatch({ type: 'SAVE_NOW' });
+      setBannerMessage({
+        text: `Saved all changes to "${activeProject?.name || 'Project'}"!`,
+        type: 'success',
+      });
+      setTimeout(() => setBannerMessage(null), 3000);
+    }
+  }, [state.activeProjectId, activeProject, dispatch]);
+
+  const handleConfirmSaveProject = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    const name = saveProjectName.trim() || 'My Cloud Infrastructure';
+    const provider = saveProjectProvider;
+    const currentCanvasNodes = getCanvasNodes();
+    const currentCanvasEdges = getCanvasEdges();
+
+    dispatch({
+      type: 'CREATE_PROJECT',
+      name,
+      provider,
+      nodes: currentCanvasNodes,
+      edges: currentCanvasEdges,
+    });
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('cloudcraft_draft_project');
+        localStorage.removeItem('cloudcraft_draft_timestamp');
+      } catch {}
+    }
+
+    setShowSaveProjectModal(false);
+    setBannerMessage({
+      text: `Project "${name}" saved to your CloudCraft account!`,
+      type: 'success',
+    });
+    setTimeout(() => setBannerMessage(null), 3500);
+  }, [saveProjectName, saveProjectProvider, getCanvasNodes, getCanvasEdges, dispatch]);
+
+  const handleConfirmDiscard = useCallback(() => {
+    const isDraft = !state.activeProjectId || state.activeProjectId === 'draft-project';
+    pushHistory(nodes, edges);
+    setNodes([]);
+    setEdges([]);
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+
+    if (isDraft) {
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.removeItem('cloudcraft_draft_project');
+          localStorage.removeItem('cloudcraft_draft_timestamp');
+        } catch {}
+      }
+      dispatch({ type: 'INIT_BLANK_ARCHITECTURE', provider: 'aws', nodes: [], edges: [] });
+    } else {
+      dispatch({ type: 'UPDATE_CANVAS', nodes: [], edges: [] });
+      dispatch({ type: 'SAVE_NOW' });
+    }
+
+    setShowDiscardModal(false);
+    setBannerMessage({
+      text: 'Visual builder architecture discarded and canvas reset.',
+      type: 'info',
+    });
+    setTimeout(() => setBannerMessage(null), 3000);
+  }, [state.activeProjectId, nodes, edges, pushHistory, setNodes, setEdges, dispatch]);
 
   useEffect(() => {
     if (!showFindings || !activeProject) return;
@@ -1762,15 +1848,15 @@ export default function InfraCanvas() {
           onDeleteSelected={handleDeleteSelected}
           onCopy={handleCopy}
           onOpenAddModal={() => setIsAddModalOpen(true)}
-          showFindings={showFindings}
-          onToggleFindings={() => setShowFindings((v) => !v)}
+          onDiscard={() => setShowDiscardModal(true)}
           providerMode={activeProject?.providerMode || (activeProject ? cloudProviderToProviderMode(activeProject.provider) : 'AWS')}
           onSelectProviderMode={handleRequestProviderModeChange}
           expectedUsers={activeProject?.scaleProfile?.expectedUsers || 10000}
           onSelectExpectedUsers={handleScaleChange}
           autoSaveStatus={state.autoSaveStatus}
           lastSavedTime={state.lastSavedTime}
-          onSaveNow={() => dispatch({ type: 'SAVE_NOW' })}
+          onSaveNow={handleSaveClick}
+          isDraft={!state.activeProjectId || state.activeProjectId === 'draft-project'}
         />
 
         {/* Resource search — filters/dims canvas nodes by label or resource type,
@@ -2105,6 +2191,118 @@ export default function InfraCanvas() {
                 className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-semibold transition-colors shadow-md shadow-amber-600/20"
               >
                 Continue & Remove Incompatible
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Architecture as Project Modal */}
+      {showSaveProjectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
+                <Plus className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Save as Project</h3>
+                <p className="text-xs text-slate-400">Save this visual architecture into your CloudCraft account</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleConfirmSaveProject} className="space-y-4">
+              <div>
+                <label className="text-xs text-slate-300 font-medium block mb-1">Project Name</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={saveProjectName}
+                  onChange={(e) => setSaveProjectName(e.target.value)}
+                  placeholder="e.g. Production E-Commerce Platform"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-300 font-medium block mb-1">Primary Cloud Provider</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['aws', 'azure', 'multi'] as const).map((p) => (
+                    <button
+                      type="button"
+                      key={p}
+                      onClick={() => setSaveProjectProvider(p)}
+                      className={clsx(
+                        'py-2 px-3 rounded-xl border text-xs font-semibold transition-all text-center',
+                        saveProjectProvider === p
+                          ? 'bg-cyan-600/20 border-cyan-500 text-cyan-300 shadow-md shadow-cyan-500/10'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                      )}
+                    >
+                      {p === 'aws' ? 'AWS' : p === 'azure' ? 'Azure' : 'Multi-Cloud'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 text-slate-400 text-xs flex items-center justify-between">
+                <span>Total Canvas Resources:</span>
+                <span className="font-semibold text-white">{nodes.length} nodes</span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSaveProjectModal(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl text-xs font-semibold transition-all shadow-lg shadow-cyan-600/20"
+                >
+                  Save Project
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Discard Confirmation Modal */}
+      {showDiscardModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-rose-500/50 rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 mb-3 text-rose-400">
+              <div className="w-10 h-10 rounded-xl bg-rose-950/80 border border-rose-500/40 flex items-center justify-center text-rose-400">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Discard Architecture?</h3>
+                <p className="text-xs text-rose-300/80">This action will clear the entire visual builder canvas</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 mb-5 leading-relaxed">
+              Are you sure you want to discard your changes? All <strong className="text-white">{nodes.length} cloud resources</strong> and their connections will be removed.
+            </p>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDiscardModal(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-colors"
+              >
+                Keep Editing
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDiscard}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-semibold transition-colors shadow-lg shadow-rose-600/20"
+              >
+                Yes, Discard All
               </button>
             </div>
           </div>
