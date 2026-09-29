@@ -29,7 +29,7 @@ export default function ConnectionInspector({ edge, sourceNode, targetNode, onCl
   const isUnverified = !edge.protocol && !edge.port;
 
   return (
-    <div className="w-80 shrink-0 bg-slate-900 border-l border-slate-800 flex flex-col h-full overflow-y-auto">
+    <div className="w-full sm:w-80 sm:relative fixed inset-y-0 right-0 z-40 sm:z-20 bg-slate-900 border-l border-slate-800 flex flex-col h-full overflow-y-auto shadow-2xl animate-in slide-in-from-right duration-150">
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
         <div className="flex items-center gap-2">
           <Network className="w-4 h-4 text-cyan-400" />

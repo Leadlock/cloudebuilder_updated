@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { ok, created, badRequest, unauthorized, forbidden, internalError, parseBody } from '@/lib/api/response';
 import { extractIdentity } from '@/lib/api/auth';
 import { orgRepository } from '@/lib/repositories/orgRepository';
+import { EmailService } from '@/lib/email/emailService';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +52,11 @@ export async function POST(req: NextRequest) {
     const parsed = await parseBody(req, InviteSchema);
     if (!parsed.ok) return parsed.response;
 
+    const [org, inviter] = await Promise.all([
+      orgRepository.findOrg(orgId),
+      orgRepository.findUser(identity.userId),
+    ]);
+
     const invite = await orgRepository.createInvite({
       orgId,
       email: parsed.data.email,
@@ -58,12 +64,26 @@ export async function POST(req: NextRequest) {
       invitedByUserId: identity.userId,
     });
 
+    const url = acceptUrl(req, invite.token);
+
+    // Send invitation email via AWS SES / SMTP
+    const emailResult = await EmailService.sendTeamInvite({
+      toEmail: invite.email,
+      inviterName: inviter?.name || identity.email || 'A team administrator',
+      orgName: org?.name || 'CloudCraft Organization',
+      role: invite.role,
+      acceptUrl: url,
+      expiresInDays: 7,
+    });
+
     return created({
       id: invite.id,
       email: invite.email,
       role: invite.role,
       expiresAt: invite.expiresAt,
-      acceptUrl: acceptUrl(req, invite.token),
+      acceptUrl: url,
+      emailSent: emailResult.sent,
+      emailError: emailResult.error,
     });
   } catch (err) {
     console.error('[POST /api/auth/invite]', err);

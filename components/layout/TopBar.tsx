@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
-import { Bell, Globe, Coins, ShieldCheck, UserCheck, LogOut, User, FileCheck } from 'lucide-react';
+import { Bell, Globe, Coins, ShieldCheck, UserCheck, LogOut, User, FileCheck, Menu } from 'lucide-react';
 import clsx from 'clsx';
 import { AppView, Environment } from '@/types';
 import { cloudRegionService } from '@/lib/cloud/regions/CloudRegionService';
@@ -24,6 +24,7 @@ const VIEW_LABELS: Partial<Record<AppView, string>> = {
   history: 'Version History',
   environments: 'Environments',
   review: 'Architecture Review',
+  team: 'Team Management',
 };
 
 const ENV_COLORS: Record<Environment, string> = {
@@ -65,15 +66,27 @@ export default function TopBar() {
   const isAdmin = currentUser?.role === 'admin';
 
   return (
-    <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center px-4 gap-3 shrink-0 select-none">
+    <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center px-2.5 sm:px-4 gap-2 sm:gap-3 shrink-0 select-none overflow-x-auto no-scrollbar">
+      {/* Mobile Sidebar Hamburger Toggle */}
+      <button
+        onClick={() => dispatch({ type: 'TOGGLE_MOBILE_SIDEBAR' })}
+        className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0 focus:outline-none"
+        title="Open Navigation Menu"
+        aria-label="Open Navigation Menu"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
+
       {/* Breadcrumb with responsive truncation */}
-      <div className="flex items-center gap-2 text-sm flex-1 min-w-0 mr-2 overflow-hidden">
-        <span className="text-gray-500 text-xs shrink-0">CloudCraft</span>
-        <span className="text-gray-700 text-xs shrink-0">/</span>
+      <div className="flex items-center gap-1.5 sm:gap-2 text-sm flex-1 min-w-0 mr-1 sm:mr-2 overflow-hidden">
+        <span className="text-gray-500 text-xs shrink-0 hidden xs:inline">CloudCraft</span>
+        <span className="text-gray-700 text-xs shrink-0 hidden xs:inline">/</span>
         {activeProject && (
           <>
-            <button className="text-gray-400 hover:text-white flex items-center gap-1.5 truncate text-xs shrink-0 max-w-[140px]"
-              onClick={() => dispatch({ type: 'SET_VIEW', view: 'canvas' })}>
+            <button
+              className="text-gray-400 hover:text-white flex items-center gap-1.5 truncate text-xs shrink-0 max-w-[90px] sm:max-w-[140px]"
+              onClick={() => dispatch({ type: 'SET_VIEW', view: 'canvas' })}
+            >
               <span className={clsx('w-2 h-2 rounded-full shrink-0', activeProject.provider === 'aws' ? 'bg-orange-400' : activeProject.provider === 'azure' ? 'bg-blue-400' : 'bg-purple-400')} />
               <span className="truncate">{activeProject.name}</span>
             </button>
@@ -83,16 +96,16 @@ export default function TopBar() {
         <span className="text-white font-medium text-xs truncate">{VIEW_LABELS[activeView]}</span>
       </div>
 
-      {/* Region Selector */}
+      {/* Region Selector (Desktop / Tablet) */}
       {activeProject && (
-        <div className="flex items-center gap-1.5 shrink-0" title={`Cloud Region: ${activeRegion}`}>
-          <div className="flex items-center bg-gray-800/90 border border-gray-700 rounded-md px-2 py-1 gap-1.5 text-xs text-gray-300">
+        <div className="hidden md:flex items-center gap-1.5 shrink-0" title={`Cloud Region: ${activeRegion}`}>
+          <div className="flex items-center bg-gray-800/90 border border-gray-700 rounded-lg px-2 py-1 gap-1.5 text-xs text-gray-300">
             <Globe className="w-3.5 h-3.5 text-blue-400 shrink-0" aria-hidden="true" />
             <select
               aria-label="Cloud Region"
               value={activeRegion}
               onChange={(e) => dispatch({ type: 'SET_REGION', region: e.target.value })}
-              className="bg-transparent text-gray-200 text-xs font-medium focus:outline-none cursor-pointer pr-1"
+              className="bg-transparent text-gray-200 text-xs font-medium focus:outline-none cursor-pointer pr-1 max-w-[110px] truncate"
             >
               {cloudRegionService.getRegions(activeProject.provider === 'azure' ? 'azure' : 'aws').map((r) => (
                 <option key={r.id} value={r.id} className="bg-gray-900 text-gray-200">
@@ -105,8 +118,8 @@ export default function TopBar() {
       )}
 
       {/* Currency Selector */}
-      <div className="flex items-center gap-1.5 shrink-0" title={`Display Currency: ${state.displayCurrency}`}>
-        <div className="flex items-center bg-gray-800/90 border border-gray-700 rounded-md px-2 py-1 gap-1.5 text-xs text-gray-300">
+      <div className="hidden sm:flex items-center gap-1.5 shrink-0" title={`Display Currency: ${state.displayCurrency}`}>
+        <div className="flex items-center bg-gray-800/90 border border-gray-700 rounded-lg px-2 py-1 gap-1.5 text-xs text-gray-300">
           <Coins className="w-3.5 h-3.5 text-emerald-400 shrink-0" aria-hidden="true" />
           <select
             aria-label="Display Currency"
@@ -125,7 +138,7 @@ export default function TopBar() {
 
       {/* Env switcher (only when project is active) */}
       {activeProject && (
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="hidden sm:flex items-center gap-1 shrink-0">
           {(['development', 'staging', 'production'] as Environment[]).map((env) => (
             <button
               key={env}
@@ -146,14 +159,14 @@ export default function TopBar() {
         <button
           onClick={() => dispatch({ type: 'SET_VIEW', view: 'review' })}
           className={clsx(
-            "flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md border transition-colors shrink-0",
+            "flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors shrink-0",
             activeView === 'review'
               ? "bg-indigo-600 border-indigo-500 text-white"
               : "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
           )}
         >
           <FileCheck className="w-3.5 h-3.5 text-indigo-400" />
-          Review
+          <span className="hidden sm:inline">Review</span>
         </button>
       )}
 
@@ -161,7 +174,7 @@ export default function TopBar() {
       {activeProject && !['dashboard', 'wizard', 'templates', 'ai-generator', 'import', 'disaster-recovery'].includes(activeView) && (
         <button
           onClick={() => dispatch({ type: 'SET_VIEW', view: 'deploy' })}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-md transition-colors shrink-0 shadow-sm"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors shrink-0 shadow-sm"
         >
           Deploy
         </button>
@@ -171,7 +184,7 @@ export default function TopBar() {
       <div className="relative shrink-0" ref={userMenuRef}>
         <button
           onClick={() => setUserMenuOpen((v) => !v)}
-          className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors focus:outline-none"
+          className="flex items-center gap-1.5 sm:gap-2 px-1.5 sm:px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors focus:outline-none"
           title={`Signed in as ${currentUser?.name || 'Guest'} (${currentUser?.role || 'user'})`}
         >
           <div className={clsx(
@@ -181,7 +194,7 @@ export default function TopBar() {
             {currentUser?.name?.[0] || 'U'}
           </div>
           <span className={clsx(
-            "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase",
+            "hidden sm:inline-block text-[10px] font-bold px-1.5 py-0.5 rounded uppercase",
             isAdmin ? "bg-cyan-950 text-cyan-300 border border-cyan-500/40" : "bg-indigo-950 text-indigo-300 border border-indigo-500/40"
           )}>
             {currentUser?.role || 'user'}

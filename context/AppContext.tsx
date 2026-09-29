@@ -36,6 +36,7 @@ export interface AppState {
   activeCanvasMode: CanvasViewMode;
   activeEnvironment: Environment;
   sidebarCollapsed: boolean;
+  mobileSidebarOpen: boolean;
   providerFilter: 'all' | 'aws' | 'azure';
   architectureVersion: number;
   lastSavedVersion: number;
@@ -60,6 +61,8 @@ type Action =
   | { type: 'SET_ENVIRONMENT'; env: Environment }
   | { type: 'SET_CURRENCY'; currency: string }
   | { type: 'TOGGLE_SIDEBAR' }
+  | { type: 'SET_MOBILE_SIDEBAR'; open: boolean }
+  | { type: 'TOGGLE_MOBILE_SIDEBAR' }
   | { type: 'CREATE_PROJECT'; name: string; provider: CloudProvider; nodes?: CanvasNode[]; edges?: CanvasEdge[] }
   | { type: 'DELETE_PROJECT'; id: string }
   | { type: 'UPDATE_CANVAS'; nodes: CanvasNode[]; edges: CanvasEdge[] }
@@ -230,13 +233,17 @@ export function createDefaultDraftProject(
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_VIEW':
-      return { ...state, activeView: action.view };
+      return { ...state, activeView: action.view, mobileSidebarOpen: false };
     case 'SET_CANVAS_MODE':
       return { ...state, activeCanvasMode: action.mode };
     case 'SET_ACTIVE_PROJECT':
-      return { ...state, activeProjectId: action.id };
+      return { ...state, activeProjectId: action.id, mobileSidebarOpen: false };
     case 'TOGGLE_SIDEBAR':
       return { ...state, sidebarCollapsed: !state.sidebarCollapsed };
+    case 'SET_MOBILE_SIDEBAR':
+      return { ...state, mobileSidebarOpen: action.open };
+    case 'TOGGLE_MOBILE_SIDEBAR':
+      return { ...state, mobileSidebarOpen: !state.mobileSidebarOpen };
     case 'SET_PROVIDER_FILTER':
       return { ...state, providerFilter: action.filter };
     case 'SET_USER': {
@@ -893,6 +900,7 @@ const initialState: AppState = {
   activeCanvasMode: 'architecture',
   activeEnvironment: 'production',
   sidebarCollapsed: false,
+  mobileSidebarOpen: false,
   providerFilter: 'all',
   architectureVersion: 0,
   lastSavedVersion: 0,

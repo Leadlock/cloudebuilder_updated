@@ -4,7 +4,7 @@ import { CloudProvider, ResourceCategory, ResourceDefinition } from '@/types';
 import { CloudServiceIcon } from '@/components/icons/cloud/CloudServiceIcon';
 import clsx from 'clsx';
 import { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronRight, Layers, GripVertical, Sparkles } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight, Layers, GripVertical, Sparkles, ChevronLeft, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 const categoryLabels: Record<ResourceCategory, { title: string; order: number }> = {
   compute:       { title: 'Compute', order: 1 },
@@ -28,6 +28,7 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | 'all'>('all');
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
+  const [isPaletteCollapsed, setIsPaletteCollapsed] = useState(false);
 
   const resources = useMemo(() => {
     return getResourcesByProvider(provider);
@@ -65,8 +66,31 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
     setCollapsedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
   };
 
+  if (isPaletteCollapsed) {
+    return (
+      <div className="w-11 bg-slate-950/95 border-r border-slate-800/80 flex flex-col items-center py-3 shrink-0 select-none z-10 transition-all duration-200">
+        <button
+          id="btn-expand-palette"
+          onClick={() => setIsPaletteCollapsed(false)}
+          title="Expand Resource Palette"
+          className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-cyan-400 hover:text-white border border-slate-800 transition-colors shadow-lg"
+        >
+          <PanelLeftOpen className="w-4 h-4" />
+        </button>
+        <div className="my-3 w-4 h-px bg-slate-800" />
+        <span
+          style={{ writingMode: 'vertical-rl' }}
+          className="text-[11px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-300 cursor-pointer transform rotate-180"
+          onClick={() => setIsPaletteCollapsed(false)}
+        >
+          Resources ({resources.length})
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-64 bg-slate-950 border-r border-slate-800/80 flex flex-col shrink-0 select-none z-10">
+    <div className="w-64 bg-slate-950 border-r border-slate-800/80 flex flex-col shrink-0 select-none z-10 transition-all duration-200">
       {/* Header & Search */}
       <div className="p-3 border-b border-slate-800/80 bg-slate-900/40">
         <div className="flex items-center justify-between mb-2">
@@ -76,9 +100,19 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
               {provider === 'aws' ? 'AWS Services' : provider === 'azure' ? 'Azure Services' : 'Cloud Services'}
             </span>
           </div>
-          <span className="text-[10px] font-mono text-slate-500 bg-slate-800/60 px-1.5 py-0.5 rounded">
-            {resources.length}
-          </span>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] font-mono text-slate-500 bg-slate-800/60 px-1.5 py-0.5 rounded">
+              {resources.length}
+            </span>
+            <button
+              id="btn-collapse-palette"
+              onClick={() => setIsPaletteCollapsed(true)}
+              className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-800 transition-colors ml-1"
+              title="Collapse resource palette"
+            >
+              <PanelLeftClose className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* Search input */}
@@ -229,9 +263,11 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
       </div>
 
       {/* Palette Footer Tip */}
-      <div className="p-2.5 border-t border-slate-800/80 bg-slate-900/40 text-[11px] text-slate-400 flex items-center gap-2">
-        <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-        <span className="truncate">Drag services onto canvas or containers</span>
+      <div className="p-2.5 border-t border-slate-800/80 bg-slate-900/40 text-[11px] text-slate-400 flex items-center justify-between">
+        <div className="flex items-center gap-2 truncate">
+          <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+          <span className="truncate">Drag services onto canvas</span>
+        </div>
       </div>
     </div>
   );
