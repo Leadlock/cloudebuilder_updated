@@ -231,6 +231,27 @@ describe('CloudCostComparisonService.translateResources (server path)', () => {
     const size2 = (JSON.parse(translated[1]!.configJson!) as Record<string, unknown>).size;
     expect(size1).not.toBe(size2);
   });
+
+  it('translates the region to a real Azure region instead of leaving the AWS region string unchanged', () => {
+    const resources = [{ id: 'r1', resourceType: 'aws_ec2', provider: 'aws', region: 'us-east-1', configJson: '{}' }];
+    const [translated] = CloudCostComparisonService.translateResources(resources, 'azure');
+    expect(translated.region).toBe('eastus');
+    expect(translated.region).not.toBe('us-east-1');
+  });
+
+  it('translates the region back from Azure to a real AWS region', () => {
+    // "North Europe" is Azure's Dublin datacenter — the real-world reverse
+    // pairing for AWS eu-west-1 (Ireland).
+    const resources = [{ id: 'r1', resourceType: 'azure_vm', provider: 'azure', region: 'northeurope', configJson: '{}' }];
+    const [translated] = CloudCostComparisonService.translateResources(resources, 'aws');
+    expect(translated.region).toBe('eu-west-1');
+  });
+
+  it('falls back to the target provider default region for an unrecognized source region, rather than an invalid string', () => {
+    const resources = [{ id: 'r1', resourceType: 'aws_ec2', provider: 'aws', region: 'not-a-real-region', configJson: '{}' }];
+    const [translated] = CloudCostComparisonService.translateResources(resources, 'azure');
+    expect(translated.region).toBe('eastus');
+  });
 });
 
 describe('CloudCostComparisonService — label translation (no AWS brand names leaking into Azure-side labels, or vice versa)', () => {

@@ -78,8 +78,12 @@ export async function POST(
         scoreJson: JSON.stringify(result.score),
         createdAt: now,
       });
-    } catch {
-      // Continue gracefully in offline/in-memory mode
+    } catch (err) {
+      // The live-computed recommendations below are still correct and still
+      // returned — but losing this row means it silently disappears from
+      // the GET history list, so at minimum log it rather than swallowing
+      // it entirely.
+      console.warn('[POST /api/projects/:id/optimizations] Failed to persist optimization record:', err instanceof Error ? err.message : String(err));
     }
 
     return created({

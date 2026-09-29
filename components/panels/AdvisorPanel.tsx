@@ -7,7 +7,6 @@ import type { WaAssessment } from '@/lib/engines/wellArchitected/types';
 import type { AdvisorResult } from '@/lib/services/ApiAdvisorService';
 import { Brain, TrendingUp, Shield, Zap, DollarSign, Scale, AlertTriangle, ShieldCheck, ArrowRight, RefreshCw } from 'lucide-react';
 import clsx from 'clsx';
-import { scoreArchitecture, generateRecommendations } from '@/lib/generator';
 
 const CATEGORY_CONFIG = {
   reliability:  { icon: TrendingUp, color: 'text-blue-400',   bg: 'bg-blue-900/30',   border: 'border-blue-800',   label: 'Reliability' },
@@ -69,28 +68,23 @@ export default function AdvisorPanel() {
       return;
     }
     let cancelled = false;
+    setLoading(true);
     apiAdvisorService.analyze(activeProject.nodes, activeProject.scaleProfile?.expectedUsers).then((r) => {
       if (!cancelled) {
         setResult(r);
         setError(null);
         setLoading(false);
       }
-    }).catch(() => {
+    }).catch((err) => {
       if (!cancelled) {
-        const score = scoreArchitecture(activeProject.nodes);
-        const recs = generateRecommendations(activeProject.nodes).map((r) => ({
-          id: r.id,
-          category: r.category as any,
-          severity: r.severity as any,
-          title: r.title,
-          description: r.description,
-          affectedResourceIds: [],
-          affectedResourceLabels: r.affectedResources,
-          rationale: r.description,
-          suggestedAction: r.action,
-        }));
-        setResult({ score, recommendations: recs, fromApi: false });
-        setError(null);
+        // A failed analysis must surface as an error, not silently swap in a
+        // different (legacy, less rigorous) local scoring engine — showing
+        // plausible-looking numbers from a different source than the one the
+        // user thinks they're looking at is exactly the "wrong data" this
+        // panel must never produce. See ArchitectureAdvisor.ts for the real
+        // engine this should have used.
+        setResult(null);
+        setError(err instanceof Error ? err.message : 'Failed to analyse this architecture. Check your connection and retry.');
         setLoading(false);
       }
     });

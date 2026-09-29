@@ -54,8 +54,12 @@
           "valueFrom": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:cloudcraft/database-url"
         },
         {
-          "name": "NEXTAUTH_SECRET",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:cloudcraft/nextauth-secret"
+          "name": "ENCRYPTION_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:cloudcraft/encryption-key"
+        },
+        {
+          "name": "SESSION_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:cloudcraft/session-secret"
         },
         {
           "name": "COGNITO_USER_POOL_ID",
@@ -64,6 +68,22 @@
         {
           "name": "COGNITO_CLIENT_ID",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:cloudcraft/cognito-client-id"
+        },
+        {
+          "name": "COGNITO_CLIENT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:cloudcraft/cognito-client-secret"
+        },
+        {
+          "name": "AZURE_AI_FOUNDRY_ENDPOINT",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:cloudcraft/azure-ai-foundry-endpoint"
+        },
+        {
+          "name": "AZURE_AI_FOUNDRY_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:cloudcraft/azure-ai-foundry-api-key"
+        },
+        {
+          "name": "AZURE_AI_FOUNDRY_DEPLOYMENT",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:cloudcraft/azure-ai-foundry-deployment"
         }
       ],
       "readonlyRootFilesystem": true,

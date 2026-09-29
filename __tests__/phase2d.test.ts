@@ -534,7 +534,35 @@ describe('ArchitectureAdvisor', () => {
     const nat1 = makeResource({ resourceType: 'aws_nat', provider: 'aws', configJson: '{}' });
     const nat2 = makeResource({ resourceType: 'aws_nat', provider: 'aws', configJson: '{}' });
     const result = advisor.analyze(baseInput([nat1, nat2]));
-    expect(result.recommendations.some((r) => r.id === 'C-02')).toBe(true);
+    const rec = result.recommendations.find((r) => r.id === 'C-02');
+    expect(rec).toBeDefined();
+    // Real per-gateway static-list price (us-east-1) × 1 extra gateway — not
+    // a flat "$32" constant regardless of what a NAT gateway actually costs.
+    expect(rec!.estimatedMonthlySavingsUsd).toBeGreaterThan(0);
+  });
+
+  test('C-01: EC2 right-sizing savings scale with real instance cost, not a flat per-instance constant', () => {
+    const small = makeResource({ resourceType: 'aws_ec2', provider: 'aws', configJson: JSON.stringify({ instanceType: 'm5.xlarge' }), region: 'us-east-1' });
+    const huge = makeResource({ resourceType: 'aws_ec2', provider: 'aws', configJson: JSON.stringify({ instanceType: 'm5.4xlarge' }), region: 'us-east-1' });
+
+    const smallSavings = advisor.analyze(baseInput([small])).recommendations.find((r) => r.id === 'C-01')!.estimatedMonthlySavingsUsd!;
+    const hugeSavings = advisor.analyze(baseInput([huge])).recommendations.find((r) => r.id === 'C-01')!.estimatedMonthlySavingsUsd!;
+
+    expect(smallSavings).toBeGreaterThan(0);
+    // An m5.4xlarge costs 4x an m5.xlarge — its right-sizing savings must
+    // reflect that, not report the same number for both sizes.
+    expect(hugeSavings).toBeGreaterThan(smallSavings * 2);
+  });
+
+  test('C-04: RDS reserved-instance savings scale with real instance cost', () => {
+    const small = makeResource({ resourceType: 'aws_rds', provider: 'aws', configJson: JSON.stringify({ instanceClass: 'db.t3.micro' }), region: 'us-east-1' });
+    const large = makeResource({ resourceType: 'aws_rds', provider: 'aws', configJson: JSON.stringify({ instanceClass: 'db.r6g.4xlarge' }), region: 'us-east-1' });
+
+    const smallSavings = advisor.analyze(baseInput([small])).recommendations.find((r) => r.id === 'C-04')!.estimatedMonthlySavingsUsd!;
+    const largeSavings = advisor.analyze(baseInput([large])).recommendations.find((r) => r.id === 'C-04')!.estimatedMonthlySavingsUsd!;
+
+    expect(smallSavings).toBeGreaterThan(0);
+    expect(largeSavings).toBeGreaterThan(smallSavings * 10);
   });
 
   test('Deterministic results: same input produces same recommendation IDs', () => {
@@ -554,6 +582,35 @@ describe('ArchitectureAdvisor', () => {
     expect(result.score).toHaveProperty('performance');
     expect(result.score).toHaveProperty('cost');
     expect(result.score).toHaveProperty('scalability');
+  });
+
+  test('Advisor security/reliability/performance/cost scores match the shared assessment engine (Security tab parity)', async () => {
+    // A security group with SSH open to the world is exactly the kind of
+    // finding that used to show up on the Security tab (score capped well
+    // below 100) while Advisor's own narrow rule set reported a clean 100.
+    const sg = makeResource({
+      resourceType: 'aws_sg', provider: 'aws',
+      configJson: JSON.stringify({ allowSsh: true, sourceCidr: '0.0.0.0/0' }),
+    });
+    const ec2 = makeResource({
+      resourceType: 'aws_ec2', provider: 'aws',
+      configJson: JSON.stringify({ instanceType: 't3.medium' }),
+    });
+
+    const result = advisor.analyze(baseInput([sg, ec2]));
+
+    const { toCanvas } = await import('@/lib/domain/canvasMapping');
+    const { runAssessment } = await import('@/lib/engines/assessment/AssessmentEngine');
+    const { nodes, edges } = toCanvas([sg, ec2], []);
+    const assessment = runAssessment({ nodes, edges });
+
+    expect(result.score.security).toBe(assessment.securityScore.score ?? 100);
+    expect(result.score.reliability).toBe(assessment.reliabilityScore.score ?? 100);
+    expect(result.score.performance).toBe(assessment.performanceScore.score ?? 100);
+    expect(result.score.cost).toBe(assessment.costScore.score ?? 100);
+    // The bug this locks in: Advisor must NOT report a clean security score
+    // when the shared engine found a real, serious issue.
+    expect(result.score.security).toBeLessThan(100);
   });
 
   test('HA recommendation for Azure VM without LB', () => {

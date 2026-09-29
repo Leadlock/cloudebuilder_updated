@@ -266,6 +266,9 @@ export function runAssessment(input: AssessInput): AssessmentResult {
 
   const ruleOf = (e: Evaluation) => RULES_BY_ID.get(e.ruleId)!;
   const securityEvals = evaluations.filter((e) => ruleOf(e).domain === 'SECURITY');
+  const reliabilityEvals = evaluations.filter((e) => ruleOf(e).domain === 'RELIABILITY');
+  const performanceEvals = evaluations.filter((e) => ruleOf(e).domain === 'PERFORMANCE_EFFICIENCY');
+  const costEvals = evaluations.filter((e) => ruleOf(e).domain === 'COST_OPTIMIZATION');
 
   const pillarResults: PillarResult[] = [];
   for (const provider of ctx.providers) {
@@ -302,6 +305,9 @@ export function runAssessment(input: AssessInput): AssessmentResult {
     evaluations,
     findings,
     securityScore: scoreOf(securityEvals),
+    reliabilityScore: scoreOf(reliabilityEvals),
+    performanceScore: scoreOf(performanceEvals),
+    costScore: scoreOf(costEvals),
     overallScore: scoreOf(evaluations),
     pillarResults,
     soc1,

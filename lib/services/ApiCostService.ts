@@ -10,6 +10,7 @@
  */
 import type { ICostService } from './CostService';
 import type { CanvasNode, CostItem, CostOptimization } from '@/types';
+import { calculateCosts } from '@/lib/analysis';
 
 /**
  * One side (current or translated) of a comparison. `items` are full
@@ -334,20 +335,29 @@ class ApiCostServiceImpl implements ICostService {
 
   generateOptimizations(nodes: CanvasNode[]): CostOptimization[] {
     // Client-side optimization suggestions based on node config
-    // These are computed locally from the in-memory nodes for immediate UI feedback
+    // These are computed locally from the in-memory nodes for immediate UI feedback.
+    // Savings are percentages of each node's REAL current monthly cost (from
+    // calculateCosts — the same engine the rest of the UI uses to show
+    // "Est. Monthly Cost"), never a flat dollar constant: a t3.large and an
+    // m5.xlarge do not cost the same to right-size, so they must not report
+    // the same savings figure.
     const opts: CostOptimization[] = [];
+    const costByNodeId = new Map(calculateCosts(nodes).map((c) => [c.nodeId, c.monthlyCost]));
 
     for (const node of nodes) {
+      const currentMonthly = costByNodeId.get(node.id) ?? 0;
+
       if (node.resourceType === 'aws_ec2') {
         const instanceType = node.config['instanceType'] as string | undefined;
         if (instanceType && (instanceType.includes('xlarge') || instanceType.includes('2xlarge'))) {
+          const savings = Math.round(currentMonthly * 0.4);
           opts.push({
             id: `opt-${node.id}`,
             nodeId: node.id,
             nodeLabel: node.label,
             title: 'Right-size EC2 instance',
-            description: `${node.label} uses ${instanceType}. Switching to the next smaller type could save ~$88-175/month based on typical utilization.`,
-            potentialSavings: 88,
+            description: `${node.label} uses ${instanceType} (~$${Math.round(currentMonthly)}/mo). Switching to the next smaller type could save roughly 40% based on typical utilization.`,
+            potentialSavings: savings,
             effort: 'low',
           });
         }
@@ -360,8 +370,8 @@ class ApiCostServiceImpl implements ICostService {
             nodeId: node.id,
             nodeLabel: node.label,
             title: 'Consolidate NAT Gateways',
-            description: 'Multiple NAT Gateways detected. Consolidating to a single gateway in non-HA environments saves ~$32/month per removed gateway.',
-            potentialSavings: 32,
+            description: `Multiple NAT Gateways detected. Consolidating to a single gateway in non-HA environments saves this gateway's ~$${Math.round(currentMonthly)}/month.`,
+            potentialSavings: Math.round(currentMonthly),
             effort: 'medium',
           });
         }
@@ -369,25 +379,27 @@ class ApiCostServiceImpl implements ICostService {
       if (node.resourceType === 'aws_rds') {
         const instanceClass = node.config['instanceClass'] as string | undefined;
         if (instanceClass && (instanceClass.includes('r5') || instanceClass.includes('m5'))) {
+          const savings = Math.round(currentMonthly * 0.3);
           opts.push({
             id: `opt-rds-${node.id}`,
             nodeId: node.id,
             nodeLabel: node.label,
             title: 'Use RDS Reserved Instance pricing',
-            description: `${node.label} is on on-demand pricing. A 1-year Reserved Instance can save up to 42%.`,
-            potentialSavings: 55,
+            description: `${node.label} is on on-demand pricing (~$${Math.round(currentMonthly)}/mo). A 1-year Reserved Instance can save up to 42%; ~30% is a typical no-upfront outcome.`,
+            potentialSavings: savings,
             effort: 'low',
           });
         }
       }
       if (node.resourceType === 'aws_s3') {
+        const savings = Math.round(currentMonthly * 0.2);
         opts.push({
           id: `opt-s3-${node.id}`,
           nodeId: node.id,
           nodeLabel: node.label,
           title: 'Enable S3 Intelligent-Tiering',
-          description: 'Automatically moves objects to cheaper tiers. Can save 40-68% on infrequently accessed objects.',
-          potentialSavings: 12,
+          description: `Automatically moves objects to cheaper tiers. Can save up to 68% on infrequently accessed objects; ~20% of this bucket's ~$${Math.round(currentMonthly)}/mo is a conservative typical estimate.`,
+          potentialSavings: savings,
           effort: 'low',
         });
       }

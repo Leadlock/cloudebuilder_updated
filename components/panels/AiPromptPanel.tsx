@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Bot, Loader2, Sparkles, X } from 'lucide-react';
 import { CloudProvider, CanvasNode, CanvasEdge } from '@/types';
+import { mapAiGraphToCanvas } from '@/lib/ai/mapAiGraphToCanvas';
 
 interface AiPromptPanelProps {
   projectId: string;
@@ -45,26 +46,7 @@ export default function AiPromptPanel({
 
       // The backend returns architectureJson matching our prompt.
       // E.g., { resources: [], connections: [] }
-      const graph = data.data;
-
-      // Map to CanvasNode format
-      const newNodes: CanvasNode[] = (graph.resources || []).map((r: any, index: number) => ({
-        id: r.id || `ai-node-${Date.now()}-${index}`,
-        type: 'cloud_node', // React Flow node type
-        resourceType: r.resourceType,
-        provider: provider,
-        label: r.config?.name || r.resourceType,
-        position: { x: (index % 4) * 200, y: Math.floor(index / 4) * 200 }, // basic grid layout
-        config: r.config || {},
-        parentId: r.parentId
-      }));
-
-      const newEdges: CanvasEdge[] = (graph.connections || []).map((c: any, index: number) => ({
-        id: `ai-edge-${Date.now()}-${index}`,
-        source: c.sourceId,
-        target: c.targetId,
-        provider: provider,
-      }));
+      const { nodes: newNodes, edges: newEdges } = mapAiGraphToCanvas(data.data, provider);
 
       onApplyGraph(newNodes, newEdges);
       onClose();

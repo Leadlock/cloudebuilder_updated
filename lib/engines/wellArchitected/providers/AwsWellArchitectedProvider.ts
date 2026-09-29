@@ -110,7 +110,16 @@ export class AwsWellArchitectedProvider {
       'sustainability': 'sustainability',
     };
 
-    // Build pillar scores from RiskCounts
+    // NOT YET WIRED UP (no API route calls fetchAwsLiveAssessment/
+    // mergeAssessments as of this writing — verify that's still true before
+    // relying on this). `workload.RiskCounts` is a WORKLOAD-WIDE total, not
+    // broken down per pillar — the AWS API only exposes that via a separate
+    // GetLensReview/ListAnswers call per pillar, which this does not make.
+    // Applying the same global count to every pillar below means every
+    // pillar reports an identical score/findingCount, which is never
+    // actually true. Do NOT wire this into a route (or trust its
+    // `source: 'LIVE_AWS_WAF'` label, the highest-trust tier in the system)
+    // until it calls the per-pillar API and reports pillar-specific counts.
     const riskCounts = workload.RiskCounts ?? {};
     const pillarScores: WaPillarScore[] = AWS_PILLARS.map((p) => {
       const highRisk = riskCounts['HIGH'] ?? 0;

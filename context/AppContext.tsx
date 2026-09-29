@@ -95,6 +95,16 @@ type Action =
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Local draft cache keys are scoped per-account so a shared browser never
+// hands one user's unsaved local draft to a different user who signs in
+// afterwards — each account's "brand new" first login starts empty.
+function draftStorageKey(userId: string | undefined | null): string {
+  return `cloudcraft_draft_project_${userId ?? 'anon'}`;
+}
+function draftTimestampKey(userId: string | undefined | null): string {
+  return `cloudcraft_draft_timestamp_${userId ?? 'anon'}`;
+}
+
 function computeProject(p: Project, nodes: CanvasNode[], edges: CanvasEdge[]): Project {
   // Coverage-aware security score from the unified assessment engine. It is
   // null when no security check could be evaluated — surfaced as "not scored"
@@ -229,8 +239,31 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, sidebarCollapsed: !state.sidebarCollapsed };
     case 'SET_PROVIDER_FILTER':
       return { ...state, providerFilter: action.filter };
-    case 'SET_USER':
-      return { ...state, currentUser: action.user };
+    case 'SET_USER': {
+      const prevId = state.currentUser?.id ?? null;
+      const nextId = action.user?.id ?? null;
+      if (prevId === nextId) {
+        return { ...state, currentUser: action.user };
+      }
+      // Login, logout, or switching accounts on the same tab: wipe every
+      // slice of state scoped to "whoever is currently signed in" so the
+      // next account starts on a genuinely brand-new CloudCraft instead of
+      // inheriting the previous session's projects/canvas/draft. Real data
+      // for the new account is re-fetched by the API-load effects below,
+      // keyed off currentUser.
+      return {
+        ...state,
+        currentUser: action.user,
+        projects: [],
+        activeProjectId: null,
+        draftProject: createDefaultDraftProject('aws', 10000),
+        activeView: 'dashboard',
+        autoSaveStatus: 'saved',
+        saveConflict: null,
+        apiLoaded: false,
+        canvasKey: state.canvasKey + 1,
+      };
+    }
     case 'SET_LOGIN_MODAL':
       return { ...state, isLoginModalOpen: action.open };
     case 'SET_SESSION_CHECKED':
@@ -847,10 +880,13 @@ function reducer(state: AppState, action: Action): AppState {
 }
 
 // ─── Initial state ────────────────────────────────────────────────────────────
-// mockProjects seed the UI immediately; they are replaced by API data on mount.
+// Starts empty, not seeded with mockProjects: the app is gated behind
+// AuthGate, so nothing renders this before a real account's projects load.
+// mockProjects is still used as a last-resort fallback if the API load
+// itself fails after login (see the getProjects().catch() below).
 
 const initialState: AppState = {
-  projects: mockProjects,
+  projects: [],
   activeProjectId: null,
   draftProject: createDefaultDraftProject('aws', 10000),
   activeView: 'dashboard',
@@ -942,24 +978,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
   }, []);
 
-  // ── On mount: load projects from the API ────────────────────────────────────
+  // ── After login: load this account's projects from the API ─────────────────
+  // Gated on currentUser (not just mount) and keyed off their id: runs again
+  // whenever someone logs in, logs out, or a different account signs in on
+  // the same tab, so a fresh account never inherits a stale fetch that ran
+  // before authentication resolved.
   useEffect(() => {
+    if (!state.currentUser) return;
     let cancelled = false;
     _activeService.getProjects().then((projects) => {
       if (!cancelled) {
         dispatch({ type: '_LOAD_PROJECTS', projects });
       }
     }).catch(() => {
-      // API unavailable — keep mockProjects already in state, mark loaded
+      // API unavailable — fall back to demo data so the UI isn't empty,
+      // mark loaded
       if (!cancelled) {
         dispatch({ type: '_LOAD_PROJECTS', projects: mockProjects });
       }
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [state.currentUser?.id]);
 
-  // ── On mount: restore draft project from backend or localStorage ──────────
+  // ── After login: restore this account's draft from backend or localStorage ─
   useEffect(() => {
+    if (!state.currentUser) return;
+    const userId = state.currentUser.id;
     let cancelled = false;
     async function initDraft() {
       let loadedFromBackend = false;
@@ -976,10 +1020,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         } catch {}
       }
 
-      // If backend didn't have draft, check localStorage cache
+      // If the backend has no draft for this account, fall back to this
+      // account's own local cache — never another account's cached key.
       if (!loadedFromBackend && typeof window !== 'undefined') {
         try {
-          const cachedDraft = localStorage.getItem('cloudcraft_draft_project');
+          const cachedDraft = localStorage.getItem(draftStorageKey(userId));
           if (cachedDraft) {
             const parsed = JSON.parse(cachedDraft);
             if (!cancelled && parsed && Array.isArray(parsed.nodes) && parsed.nodes.length > 0) {
@@ -994,7 +1039,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     initDraft();
     return () => { cancelled = true; };
-  }, []);
+  }, [state.currentUser?.id]);
 
   // ── Mirror mutations to the API (fire-and-forget) ───────────────────────────
   // We use a ref to the previous action so we can react after state settles.
@@ -1039,8 +1084,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // 1. Persist draft to local storage as offline cache
           if (typeof window !== 'undefined') {
             try {
-              localStorage.setItem('cloudcraft_draft_project', JSON.stringify(currentState.draftProject));
-              localStorage.setItem('cloudcraft_draft_timestamp', Date.now().toString());
+              localStorage.setItem(draftStorageKey(currentState.currentUser?.id), JSON.stringify(currentState.draftProject));
+              localStorage.setItem(draftTimestampKey(currentState.currentUser?.id), Date.now().toString());
             } catch (err) {
               console.warn('LocalStorage draft save error:', err);
             }
@@ -1167,7 +1212,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }).catch(() => {});
           }
         } catch {}
-      } else if (e.key === 'cloudcraft_draft_project' && (!stateRef.current.activeProjectId || stateRef.current.activeProjectId === 'draft-project')) {
+      } else if (e.key === draftStorageKey(stateRef.current.currentUser?.id) && (!stateRef.current.activeProjectId || stateRef.current.activeProjectId === 'draft-project')) {
         try {
           if (e.newValue) {
             const parsed = JSON.parse(e.newValue);
@@ -1292,7 +1337,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           _activeService.clearDraft().catch(() => {});
         }
         if (typeof window !== 'undefined') {
-          try { localStorage.removeItem('cloudcraft_draft_project'); } catch {}
+          try { localStorage.removeItem(draftStorageKey(currentState.currentUser?.id)); } catch {}
         }
         break;
       }

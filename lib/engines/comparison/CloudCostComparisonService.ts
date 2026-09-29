@@ -1,4 +1,5 @@
 import { CanvasNode } from '@/types';
+import { translateRegion } from '@/lib/cloud/regions/regionEquivalence';
 
 type Provider = 'aws' | 'azure';
 
@@ -377,7 +378,7 @@ export class CloudCostComparisonService {
    * of two independently-maintained ones drifting apart (which is how the
    * server path previously ended up doing NO config translation at all).
    */
-  static translateResources<T extends { resourceType: string; provider: string; configJson?: string; label?: string }>(
+  static translateResources<T extends { resourceType: string; provider: string; configJson?: string; label?: string; region?: string | null }>(
     resources: T[],
     targetProvider: Provider,
   ): T[] {
@@ -400,12 +401,20 @@ export class CloudCostComparisonService {
 
       const label = typeof res.label === 'string' ? translateLabel(res.label, res.resourceType, translatedType) : res.label;
 
+      // The source region string is only valid for the source provider (e.g.
+      // "us-east-1" means nothing to Azure) — translate it to the nearest
+      // real region of targetProvider rather than leaving it verbatim, which
+      // previously made AzurePricingProvider's region filter match nothing
+      // and showed a nonexistent region label in the UI.
+      const region = translateRegion(res.region, res.provider as Provider, targetProvider);
+
       return {
         ...res,
         provider: targetProvider,
         resourceType: translatedType,
         configJson,
         label,
+        region,
       };
     });
   }

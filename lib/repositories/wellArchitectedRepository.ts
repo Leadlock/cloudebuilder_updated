@@ -5,7 +5,7 @@
  */
 import { db } from '@/src/prisma/db';
 import { randomUUID as uuidv4 } from 'crypto';
-import type { WaAssessment, WaFinding, WaProvider, WaPillar, WaSeverity, AnalysisSource, ResourceState } from '@/lib/engines/wellArchitected/types';
+import type { WaAssessment, WaFinding, WaPillarScore, WaProvider, WaPillar, WaSeverity, AnalysisSource, ResourceState } from '@/lib/engines/wellArchitected/types';
 
 // ─── DB Types ─────────────────────────────────────────────────────────────────
 
@@ -59,7 +59,7 @@ class WellArchitectedRepository {
         source: assessment.source,
         sourceLabel: assessment.sourceLabel,
         confidence: assessment.confidence,
-        isStale: false,
+        isStale: assessment.isStale ?? false,
         createdAt: now,
         completedAt: now,
       });
@@ -177,10 +177,21 @@ class WellArchitectedRepository {
   }
 
   private _rowToAssessment(row: DbWaAssessment, architectureId: string): WaAssessment {
-    let pillarScores = [];
+    let pillarScores: WaPillarScore[] = [];
     let findings = [];
     try { pillarScores = JSON.parse(row.pillarScoresJson); } catch {}
     try { findings = JSON.parse(row.findingsJson); } catch {}
+
+    // coveragePct/overallScored/notEvaluatedCount have no DB columns of
+    // their own (see the WellArchitectedAssessment model) — only
+    // pillarScoresJson is persisted, so a freshly-computed assessment (with
+    // real coverage, e.g. 87%) previously came back from the DB reporting
+    // "coverage 0%" after every save+reload, even though each pillar's own
+    // coveragePct (embedded in pillarScoresJson) was correct all along.
+    // Recompute the aggregate from what IS persisted instead of losing it.
+    const totalEvaluated = pillarScores.reduce((sum, p) => sum + (p.evaluatedChecks ?? 0), 0);
+    const totalNotEvaluated = pillarScores.reduce((sum, p) => sum + (p.notEvaluatedChecks ?? 0), 0);
+    const totalChecks = totalEvaluated + totalNotEvaluated;
 
     return {
       architectureId,
@@ -190,6 +201,9 @@ class WellArchitectedRepository {
       frameworkVersion: row.frameworkVersion,
       frameworkSource: '',
       overallScore: row.overallScore,
+      overallScored: pillarScores.length === 0 || pillarScores.some((p) => p.scored),
+      coveragePct: totalChecks > 0 ? Math.round((totalEvaluated / totalChecks) * 100) : null,
+      notEvaluatedCount: totalNotEvaluated,
       pillarScores,
       findings,
       evaluatedAt: row.createdAt,
