@@ -96,6 +96,14 @@ export class WellArchitectedFrameworkService {
    * If live data is available, it takes precedence for findings.
    * Design-time findings supplement live data where live coverage is incomplete.
    */
+  // NOT YET WIRED UP (no API route calls this as of this writing — verify
+  // that's still true before relying on it). KNOWN GAP: overallScore and
+  // pillarScores below are carried over from `live` unchanged even though
+  // supplementalFindings are appended to the merged findings list — so the
+  // displayed score never reflects the added design-time findings. Do not
+  // wire this into a route until the score is recomputed from
+  // mergedFindings (or the supplemental findings are excluded from being
+  // silently "free" of any score impact).
   mergeAssessments(designTime: WaAssessment, live: WaAssessment | null): WaAssessment {
     if (!live) return designTime;
 

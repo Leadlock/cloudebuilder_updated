@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.agents
+.cursor
+.claude
+.devin
+*.log
+scratch
+__tests__
+coverage
+.env
+.env.local

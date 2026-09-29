@@ -5,6 +5,7 @@ import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId, resolveArchitecture } from '@/lib/api/phase2d';
 import { costEstimator } from '@/lib/engines/cost/CostEstimator';
 import { CloudCostComparisonService } from '@/lib/engines/comparison/CloudCostComparisonService';
+import { translateRegion } from '@/lib/cloud/regions/regionEquivalence';
 import { db } from '@/src/prisma/db';
 import { randomUUID } from 'crypto';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
@@ -107,7 +108,12 @@ export async function POST(
       projectId,
       versionId: body.versionId,
       resources: translatedResources,
-      defaultRegion: targetProvider === 'aws' ? 'us-east-1' : 'eastus', // Default fallback region mapping
+      // The translated side's default region must be the geographic
+      // equivalent of THIS project's own region — not an unconditional
+      // us-east-1/eastus — otherwise the two sides of the comparison can
+      // silently price against different geographies even before any
+      // per-resource region is considered.
+      defaultRegion: translateRegion(project.region, currentProvider as 'aws' | 'azure', targetProvider),
       targetCurrency,
     }, 'REAL');
 

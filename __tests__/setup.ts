@@ -11,6 +11,12 @@ process.env['DATABASE_URL'] = 'postgresql://test:test@localhost:5432/cloudcraft_
 // this test suite is exactly that sanctioned automation consumer.
 process.env['CLOUDCRAFT_ALLOW_TEST_AUTH_HEADERS'] = '1';
 
+// A fixed (not random) test-only value: lib/crypto/sessionToken.ts refuses to
+// sign/verify without one, and any future test that exercises a real
+// login/signup route (rather than the x-user-id bypass above) would otherwise
+// fail on missing config unrelated to what it's actually testing.
+process.env['SESSION_SECRET'] = 'test-session-secret-not-for-real-use-0000000000000000';
+
 // ─── Deterministic suite: no external network ────────────────────────────────
 // Unit and integration tests must never depend on third-party APIs (pricing, FX,
 // cloud providers). Any real outbound request fails loudly here, so a test that

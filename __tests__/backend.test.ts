@@ -189,6 +189,8 @@ function buildMockDb() {
     ArchitectureResource: new Map(),
     ArchitectureConnection: new Map(),
     ArchitectureVersion: new Map(),
+    WellArchitectedAssessment: new Map(),
+    WellArchitectedFinding: new Map(),
   };
 
   const tables: Record<string, ReturnType<typeof makeTable>> = {};
@@ -372,6 +374,63 @@ describe('Environment creation', () => {
 // ── 5. Architecture save ──────────────────────────────────────────────────────
 
 describe('Architecture save', () => {
+  test('re-saving the canvas marks any prior Well-Architected assessment stale', async () => {
+    const { orgId } = await seedOrg();
+    const project = await projectRepository.create({
+      name: 'WA Staleness Project', provider: 'aws', region: 'us-east-1', orgId, ownerId: 'dev-user-id',
+    });
+    const env = await environmentRepository.findByKey(project.id, 'production');
+
+    // First save creates the architecture (revision 1) — no prior assessment
+    // exists yet, so nothing to mark stale.
+    const arch = await architectureRepository.saveCanvas(env!.id, [makeNode('n1')], []);
+
+    // Seed a fresh (not stale) assessment for this architecture, exactly as
+    // wellArchitectedRepository.createAssessment would have left it.
+    mockDb._stores['WellArchitectedAssessment'].set('assess-1', {
+      id: 'assess-1', projectId: project.id, architectureId: arch.id, provider: 'aws',
+      framework: 'AWS Well-Architected Framework', frameworkVersion: '2024', overallScore: 90,
+      pillarScoresJson: '[]', findingsJson: '[]', source: 'DESIGN_TIME', sourceLabel: 'Design-time assessment',
+      confidence: 'design-time', isStale: false, createdAt: new Date().toISOString(), completedAt: new Date().toISOString(),
+    });
+
+    // Re-saving the same environment's canvas is an UPDATE (revision 2) —
+    // the architecture changed, so the prior assessment must flip stale.
+    await architectureRepository.saveCanvas(env!.id, [makeNode('n1'), makeNode('n2')], []);
+
+    const { wellArchitectedRepository } = await import('@/lib/repositories/wellArchitectedRepository');
+    const assessment = await wellArchitectedRepository.findLatestByArchitecture(arch.id);
+    expect(assessment?.isStale).toBe(true);
+  });
+
+  test('a persisted Well-Architected assessment reports its real coverage after reload, not 0%', async () => {
+    // The WellArchitectedAssessment table has no coveragePct column — only
+    // pillarScoresJson is persisted. findLatestByArchitecture used to return
+    // coveragePct: undefined (displayed as "coverage 0%" in the UI) for
+    // every assessment read back from the DB, even one computed with real
+    // 87% coverage, because nothing recomputed it from what WAS persisted.
+    const { wellArchitectedRepository } = await import('@/lib/repositories/wellArchitectedRepository');
+    const architectureId = 'wa-coverage-test-arch';
+
+    await wellArchitectedRepository.createAssessment({
+      architectureId, projectId: 'proj-1', provider: 'aws',
+      framework: 'AWS Well-Architected Framework', frameworkVersion: '2024', frameworkSource: '',
+      overallScore: 70, findings: [], evaluatedAt: new Date().toISOString(),
+      source: 'DESIGN_TIME', sourceLabel: 'Design-time assessment', confidence: 'design-time', isStale: false,
+      pillarScores: [
+        { pillar: 'security', pillarLabel: 'Security', score: 70, findingCount: 7, criticalCount: 0, highCount: 1, scored: true, coveragePct: 80, evaluatedChecks: 8, notEvaluatedChecks: 2 },
+        { pillar: 'reliability', pillarLabel: 'Reliability', score: 65, findingCount: 2, criticalCount: 0, highCount: 0, scored: true, coveragePct: 100, evaluatedChecks: 5, notEvaluatedChecks: 0 },
+      ] as any,
+    } as any);
+
+    const assessment = await wellArchitectedRepository.findLatestByArchitecture(architectureId);
+    expect(assessment).not.toBeNull();
+    // (8 + 5) evaluated out of (8 + 5 + 2 + 0) total = 13/15 ≈ 87%
+    expect(assessment!.coveragePct).toBe(87);
+    expect(assessment!.coveragePct).not.toBe(0);
+    expect(assessment!.overallScored).toBe(true);
+  });
+
   test('saves canvas and returns nodes + edges', async () => {
     const { orgId } = await seedOrg();
     const project = await projectRepository.create({

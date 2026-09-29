@@ -246,6 +246,20 @@ export const architectureRepository = {
       }
     });
 
+    // Any prior Well-Architected assessment for this architecture no longer
+    // reflects what's on the canvas — mark it stale so the UI's "Stale"
+    // badge (WellArchitectedReview.tsx / AdvisorPanel.tsx) actually fires.
+    // Previously nothing called markStale, so isStale was permanently false
+    // for every persisted assessment regardless of later edits. Only on an
+    // update (newRevision > 1), not the initial save of a brand-new
+    // architecture, which has no prior assessment to invalidate. Dynamic
+    // import avoids a static cross-repository import cycle; markStale
+    // already swallows its own errors, so this can't fail the canvas save.
+    if (newRevision > 1) {
+      const { wellArchitectedRepository } = await import('./wellArchitectedRepository');
+      await wellArchitectedRepository.markStale(archId);
+    }
+
     return this._loadFull(archId, environmentId, createdAt, ts, newRevision);
   },
 

@@ -532,7 +532,8 @@ export interface AIGeneratorResult {
   summary: string;
   suggestedResources: string[];
   estimatedCost: number;
-  securityScore: number;
+  /** null means "not scored" (no evaluable security checks yet) — never substitute another metric for this. */
+  securityScore: number | null;
 }
 
 export interface DisasterRecoveryStrategy {

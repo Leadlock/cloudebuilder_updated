@@ -413,6 +413,13 @@ export interface AssessmentResult {
   evaluations: Evaluation[];
   findings: Finding[];
   securityScore: ScoreResult;
+  /** Same coverage-aware scoring as securityScore, scoped to each domain — added so
+   * consumers that need a "reliability"/"performance"/"cost" number (e.g. the
+   * Architecture Advisor) read it from here instead of re-implementing their own,
+   * inevitably-drifting rule set. See ArchitectureAdvisor.ts. */
+  reliabilityScore: ScoreResult;
+  performanceScore: ScoreResult;
+  costScore: ScoreResult;
   overallScore: ScoreResult;
   pillarResults: PillarResult[];
   soc1: Soc1AreaResult[];

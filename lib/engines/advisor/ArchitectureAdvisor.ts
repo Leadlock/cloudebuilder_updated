@@ -7,6 +7,9 @@
  */
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
 import { SECURITY_SEVERITY } from '@/lib/domain/securitySeverity';
+import { awsPricingProvider } from '@/lib/engines/cost/awsPricing';
+import { toCanvas } from '@/lib/domain/canvasMapping';
+import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,6 +75,33 @@ export class ArchitectureAdvisor {
     const recommendations = this._generateRecommendations(input);
     const score = this._calculateScore(input, recommendations);
     return { recommendations, score };
+  }
+
+  /**
+   * The Security tab and Well-Architected review both score an architecture
+   * via lib/engines/assessment (the real, dozens-of-rules RDE engine).
+   * Advisor previously scored the SAME four dimensions itself from its own
+   * ~20-rule catalog plus an unconditional "+10 resource floor" bonus — so
+   * the same architecture could show security 70 on the Security tab and
+   * security 100 on the Advisor tab. Reusing the shared engine's per-domain
+   * scores here is what keeps all three in sync; only "scalability" (which
+   * neither of the other two tabs covers) stays Advisor-native.
+   */
+  private _sharedDomainScores(input: OptimizationInput): { reliability: number; security: number; performance: number; cost: number } {
+    const { nodes, edges } = toCanvas(input.resources, input.connections);
+    const assessment = runAssessment({ nodes, edges });
+    // null ("not scored" / insufficient evidence) reads as a neutral 100
+    // here rather than 0 — Advisor's overall/category scores have always
+    // been "how many issues did we find" (100 = none found), and coverage
+    // gaps are surfaced explicitly on the Security/Well-Architected tabs,
+    // not silently tanking Advisor's number for resource types that engine
+    // simply has no checks for yet.
+    return {
+      reliability: assessment.reliabilityScore.score ?? 100,
+      security: assessment.securityScore.score ?? 100,
+      performance: assessment.performanceScore.score ?? 100,
+      cost: assessment.costScore.score ?? 100,
+    };
   }
 
   // ── Recommendation rules ──────────────────────────────────────────────────
@@ -241,68 +271,85 @@ export class ArchitectureAdvisor {
       return instanceType.includes('xlarge') || instanceType.includes('2xlarge') || instanceType.includes('4xlarge');
     });
     if (largeEc2.length > 0) {
+      // Savings estimated as a percentage of these instances' REAL current
+      // monthly cost (from the static price table), not a flat per-instance
+      // dollar figure — an m5.4xlarge and a t3.xlarge do not cost the same
+      // amount to right-size, so they must not report the same savings.
+      const currentMonthly = this._sumMonthlyCost(largeEc2);
       recs.push({
         id: 'C-01',
         category: 'cost',
         severity: 'low',
         title: 'Large EC2 instance(s) — consider right-sizing',
-        description: `${largeEc2.length} EC2 instance(s) use xlarge or larger types. Without performance profiling, these may be over-provisioned.`,
+        description: `${largeEc2.length} EC2 instance(s) use xlarge or larger types, costing ~$${Math.round(currentMonthly)}/mo total at current sizing. Without performance profiling, these may be over-provisioned.`,
         affectedResourceIds: largeEc2.map((r) => r.id),
         affectedResourceLabels: largeEc2.map((r) => r.label),
         rationale: 'AWS Compute Optimizer and Cost Explorer can identify over-provisioned instances. Right-sizing to the next smaller type often saves 40-50% on EC2 costs.',
         suggestedAction: 'Enable AWS Cost Explorer and Compute Optimizer. If average CPU utilization is below 40%, downsize by one instance type.',
-        estimatedMonthlySavingsUsd: largeEc2.length * 88, // ~$88/mo per m5.xlarge → m5.large
+        estimatedMonthlySavingsUsd: currentMonthly > 0 ? Math.round(currentMonthly * 0.4) : undefined,
       });
     }
 
     // C-02: Multiple NAT Gateways (consolidation opportunity)
     const natResources = byType['aws_nat'] ?? [];
     if (natResources.length > 1) {
+      // Real per-gateway hourly cost (data-processing charges are usage-
+      // dependent and deliberately excluded — the estimate stays a lower
+      // bound rather than a guess).
+      const perGatewayMonthly = this._realMonthlyCost(natResources[0]!);
       recs.push({
         id: 'C-02',
         category: 'cost',
         severity: 'medium',
         title: 'Multiple NAT Gateways — consolidation may reduce cost',
-        description: `${natResources.length} NAT Gateways are defined. Each costs ~$32/month plus data processing. For non-production or single-AZ workloads, consolidation reduces cost.`,
+        description: `${natResources.length} NAT Gateways are defined, at ~$${perGatewayMonthly.toFixed(0)}/month each plus data processing. For non-production or single-AZ workloads, consolidation reduces cost.`,
         affectedResourceIds: natResources.map((r) => r.id),
         affectedResourceLabels: natResources.map((r) => r.label),
         rationale: 'NAT Gateways are priced per hour plus data processing. Multiple gateways are needed for Multi-AZ HA, but may be unnecessary for dev/staging environments.',
         suggestedAction: 'For dev/test environments, consolidate to a single NAT Gateway. For production Multi-AZ, keep per-AZ gateways to avoid cross-AZ data transfer charges.',
-        estimatedMonthlySavingsUsd: (natResources.length - 1) * 32,
+        estimatedMonthlySavingsUsd: perGatewayMonthly > 0 ? Math.round((natResources.length - 1) * perGatewayMonthly) : undefined,
       });
     }
 
     // C-03: S3 intelligent tiering opportunity
     const s3Resources = byType['aws_s3'] ?? [];
     if (s3Resources.length > 0) {
+      // Conservative 20% of real current storage cost — the rationale's "up
+      // to 68%" is a ceiling for cold, rarely-accessed data, not a typical
+      // outcome, so the headline estimate stays deliberately conservative.
+      const currentMonthly = this._sumMonthlyCost(s3Resources);
       recs.push({
         id: 'C-03',
         category: 'cost',
         severity: 'low',
         title: 'Enable S3 Intelligent-Tiering for automatic cost optimization',
-        description: `${s3Resources.length} S3 bucket(s) could benefit from Intelligent-Tiering to automatically move infrequently accessed objects to cheaper storage classes.`,
+        description: `${s3Resources.length} S3 bucket(s) (~$${currentMonthly.toFixed(0)}/mo total storage cost) could benefit from Intelligent-Tiering to automatically move infrequently accessed objects to cheaper storage classes.`,
         affectedResourceIds: s3Resources.map((r) => r.id),
         affectedResourceLabels: s3Resources.map((r) => r.label),
-        rationale: 'S3 Intelligent-Tiering automatically moves objects between access tiers. For buckets with unpredictable access patterns, this can save up to 68%.',
+        rationale: 'S3 Intelligent-Tiering automatically moves objects between access tiers. For buckets with unpredictable access patterns, this can save up to 68%; the estimate below is a conservative typical case.',
         suggestedAction: 'Configure S3 Intelligent-Tiering lifecycle policy on buckets with objects larger than 128KB that are not accessed frequently.',
-        estimatedMonthlySavingsUsd: s3Resources.length * 12,
+        estimatedMonthlySavingsUsd: currentMonthly > 0 ? Math.round(currentMonthly * 0.2) : undefined,
       });
     }
 
     // C-04: RDS reserved instance opportunity
     const rdsOnDemand = rdsResources.filter((r) => this._config(r)['reservedInstance'] !== true);
     if (rdsOnDemand.length > 0) {
+      // 30% of real current on-demand cost — the typical 1-year no-upfront
+      // RI discount; the rationale's 42%/65% figures are longer-commitment
+      // ceilings, not the headline estimate.
+      const currentMonthly = this._sumMonthlyCost(rdsOnDemand);
       recs.push({
         id: 'C-04',
         category: 'cost',
         severity: 'low',
         title: 'RDS instances on on-demand pricing — consider Reserved Instances',
-        description: `${rdsOnDemand.length} RDS instance(s) appear to be on on-demand pricing. Reserved Instances offer up to 42% savings for predictable workloads.`,
+        description: `${rdsOnDemand.length} RDS instance(s) (~$${currentMonthly.toFixed(0)}/mo on-demand) appear to be on on-demand pricing. Reserved Instances offer up to 42% savings for predictable workloads.`,
         affectedResourceIds: rdsOnDemand.map((r) => r.id),
         affectedResourceLabels: rdsOnDemand.map((r) => r.label),
         rationale: '1-year Reserved Instances for RDS save up to 42% over on-demand. 3-year up to 65%. For stable production databases, this is reliable cost reduction.',
         suggestedAction: 'Purchase RDS Reserved Instances for production databases that run 24/7. Use the 1-year no-upfront option for flexibility.',
-        estimatedMonthlySavingsUsd: rdsOnDemand.length * 55,
+        estimatedMonthlySavingsUsd: currentMonthly > 0 ? Math.round(currentMonthly * 0.3) : undefined,
       });
     }
 
@@ -380,23 +427,25 @@ export class ArchitectureAdvisor {
       return Math.max(0, 100 - deduction);
     }
 
-    const reliability  = categoryScore(byCategory.get('reliability') ?? []);
-    const security     = categoryScore(byCategory.get('security') ?? []);
-    const performance  = categoryScore(byCategory.get('performance') ?? []);
-    const cost         = categoryScore(byCategory.get('cost') ?? []);
-    const scalability  = categoryScore(byCategory.get('scalability') ?? []);
-    const overall      = Math.round((reliability + security + performance + cost + scalability) / 5);
-
-    // Bonus: architectures with resources get a floor to avoid zero scores for simple ones
+    // reliability/security/performance/cost come from the shared assessment
+    // engine (see _sharedDomainScores) so they match the Security and
+    // Well-Architected tabs exactly — no artificial floor/bonus is applied
+    // to them, since that would just reintroduce the same kind of drift
+    // this change fixes. Only scalability is still scored from Advisor's
+    // own recommendation list (neither other tab covers it), so it keeps
+    // the resource floor that dimension always had.
+    const shared = this._sharedDomainScores(input);
     const resourceFloor = input.resources.length > 0 ? 10 : 0;
+    const scalability = Math.min(100, categoryScore(byCategory.get('scalability') ?? []) + resourceFloor);
+    const overall = Math.round((shared.reliability + shared.security + shared.performance + shared.cost + scalability) / 5);
 
     return {
-      overall:     Math.min(100, overall + resourceFloor),
-      reliability: Math.min(100, reliability + resourceFloor),
-      security:    Math.min(100, security + resourceFloor),
-      performance: Math.min(100, performance + resourceFloor),
-      cost:        Math.min(100, cost + resourceFloor),
-      scalability: Math.min(100, scalability + resourceFloor),
+      overall,
+      reliability: shared.reliability,
+      security:    shared.security,
+      performance: shared.performance,
+      cost:        shared.cost,
+      scalability,
     };
   }
 
@@ -414,6 +463,23 @@ export class ArchitectureAdvisor {
   private _config(resource: DbArchitectureResource): Record<string, unknown> {
     try { return JSON.parse(resource.configJson) as Record<string, unknown>; }
     catch { return {}; }
+  }
+
+  /**
+   * Real static-list-price monthly cost for one resource (same pricing
+   * source the Cost Estimate feature falls back to — see awsPricing.ts).
+   * Cost recommendations below multiply/percentage this instead of using a
+   * flat per-resource dollar constant, so a t3.large and an m5.4xlarge no
+   * longer report the identical "savings" figure.
+   */
+  private _realMonthlyCost(resource: DbArchitectureResource): number {
+    const region = resource.region ?? 'us-east-1';
+    const item = awsPricingProvider.estimateResource(resource, this._config(resource), region);
+    return item?.monthlyUsd ?? 0;
+  }
+
+  private _sumMonthlyCost(resources: DbArchitectureResource[]): number {
+    return resources.reduce((sum, r) => sum + this._realMonthlyCost(r), 0);
   }
 }
 

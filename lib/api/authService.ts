@@ -1,22 +1,24 @@
 /**
  * CloudCraft Authentication & Session Service
  *
- * Accounts are real, DB-backed rows (see orgRepository) with scrypt-hashed
- * passwords — see lib/crypto/password.ts. Sessions are opaque random tokens
- * held in an in-memory registry (attached to globalThis so they survive
- * Next.js dev rebuilds); they do not survive a process restart, which is an
- * accepted tradeoff at this stage — see lib/repositories/orgRepository.ts
- * for the durable data these sessions merely authenticate access to.
+ * Accounts are real, DB-backed rows (see orgRepository) — either a local
+ * scrypt-hashed password (lib/crypto/password.ts) or an AWS Cognito
+ * identity synced in via syncCognitoUser, see lib/auth/cognitoService.ts.
  *
- * Session tokens are cryptographically random (32 bytes) and are never
- * derivable from a user id — unlike an earlier version of this file, a
- * cache-miss on a token does NOT reconstruct a session from the token's own
- * bytes, since that made sessions forgeable by anyone who could guess or
- * enumerate a user id.
+ * Sessions are stateless, HMAC-signed tokens (lib/crypto/sessionToken.ts) —
+ * NOT a server-side store. Previously this held active sessions in an
+ * in-memory Map, which only works for a single long-running process; this
+ * app now ships a production ECS/Docker deployment target (see
+ * Dockerfile), and a Map-backed session doesn't survive across multiple
+ * task instances or a restart — it "works" in dev (one process) and then
+ * randomly logs users out in production the moment there's more than one
+ * instance. A signed, self-contained token needs no shared state at all:
+ * any instance holding the same SESSION_SECRET can verify a token no
+ * matter which instance minted it.
  */
-import { randomBytes } from 'crypto';
 import { orgRepository } from '@/lib/repositories/orgRepository';
 import { hashPassword, verifyPassword } from '@/lib/crypto/password';
+import { encodeSessionToken, decodeSessionToken } from '@/lib/crypto/sessionToken';
 
 export interface AuthUser {
   id: string;
@@ -34,15 +36,19 @@ export interface UserSession {
   expiresAt: number;
 }
 
-// In-memory active session registry (attached to globalThis to survive Next.js dev rebuilds)
-const globalForAuth = globalThis as unknown as {
-  __cloudcraft_sessions?: Map<string, UserSession>;
-};
-const SESSIONS = globalForAuth.__cloudcraft_sessions ?? new Map<string, UserSession>();
-if (process.env.NODE_ENV !== 'production') {
-  globalForAuth.__cloudcraft_sessions = SESSIONS;
-}
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+/** The shape actually encoded into the signed token — kept minimal and flat. */
+interface SessionTokenPayload {
+  sub: string;
+  email: string;
+  name: string;
+  role: AuthUser['role'];
+  orgId: string;
+  avatarUrl?: string;
+  iat: number;
+  exp: number;
+}
 
 /** Org-member roles that grant "admin" in this app's simpler admin/user model. */
 const ADMIN_ORG_ROLES = new Set(['owner', 'admin']);
@@ -77,49 +83,69 @@ export class AuthService {
   }
 
   /**
-   * Create a new session for an authenticated user.
+   * Create a new session for an authenticated user — a signed, stateless
+   * token; nothing is written to a store, so this never fails or blocks
+   * on I/O.
    */
   static createSession(user: AuthUser): UserSession {
-    const token = `cc_sess_${randomBytes(32).toString('base64url')}`;
     const now = Date.now();
-    const session: UserSession = {
-      token,
-      user,
-      createdAt: now,
-      expiresAt: now + SESSION_TTL_MS,
+    const expiresAt = now + SESSION_TTL_MS;
+    const payload: SessionTokenPayload = {
+      sub: user.id, email: user.email, name: user.name, role: user.role,
+      orgId: user.orgId, avatarUrl: user.avatarUrl,
+      iat: now, exp: expiresAt,
     };
-    SESSIONS.set(token, session);
-    return session;
+    const token = encodeSessionToken(payload as unknown as Record<string, unknown>);
+    return { token, user, createdAt: now, expiresAt };
   }
 
   /**
-   * Resolve session by token, validating expiration. Unknown tokens
-   * (including forged ones) simply miss — no fallback reconstruction.
+   * Resolve session by token — verifies the HMAC signature and expiry.
+   * Unknown/tampered/expired tokens simply miss; no store to consult, so
+   * this is synchronous and needs no shared state across instances.
    */
   static getSession(token: string): UserSession | null {
-    const session = SESSIONS.get(token);
-    if (!session) return null;
-    if (Date.now() > session.expiresAt) {
-      SESSIONS.delete(token);
-      return null;
-    }
-    return session;
+    const payload = decodeSessionToken<SessionTokenPayload>(token);
+    if (!payload) return null;
+    if (typeof payload.exp !== 'number' || Date.now() > payload.exp) return null;
+    if (!payload.sub || !payload.email) return null;
+
+    return {
+      token,
+      user: {
+        id: payload.sub, email: payload.email, name: payload.name,
+        role: payload.role, orgId: payload.orgId, avatarUrl: payload.avatarUrl,
+      },
+      createdAt: payload.iat,
+      expiresAt: payload.exp,
+    };
   }
 
   /**
-   * Revoke an existing session.
+   * Stateless tokens can't be individually revoked server-side — there is
+   * no store to remove an entry from, only the token's own expiry. This
+   * matches how the Cognito ID tokens layered on top of this already
+   * behave (see lib/auth/cognitoService.ts): both are bearer credentials
+   * valid until they expire, not until something revokes them. Logout's
+   * real effect is clearing the cookie so the browser stops sending it
+   * (see app/api/auth/logout/route.ts) — a copied/stolen token would still
+   * verify elsewhere until it naturally expires (≤24h), the standard
+   * tradeoff for any stateless-token design without a revocation list.
+   * Returns true unconditionally so existing call sites don't need to
+   * change behavior on the return value.
    */
-  static revokeSession(token: string): boolean {
-    return SESSIONS.delete(token);
+  static revokeSession(_token: string): boolean {
+    return true;
   }
 
   /**
-   * Revoke every active session belonging to a user (e.g. on password change).
+   * Same stateless-token caveat as revokeSession — there is no per-user
+   * session set to walk and delete from. Not currently called anywhere;
+   * kept as a documented no-op rather than removed, so a future caller
+   * gets a clear explanation instead of a missing method.
    */
-  static revokeAllSessionsForUser(userId: string): void {
-    for (const [token, session] of SESSIONS) {
-      if (session.user.id === userId) SESSIONS.delete(token);
-    }
+  static revokeAllSessionsForUser(_userId: string): void {
+    // No-op — see revokeSession's doc comment for why.
   }
 
   /**
@@ -129,6 +155,14 @@ export class AuthService {
     const user = await orgRepository.findUser(id);
     if (!user) return null;
     return toAuthUser(user);
+  }
+
+  /**
+   * Sync a Cognito authenticated user into the local database and return the AuthUser profile.
+   */
+  static async syncCognitoUser(input: { id?: string; email: string; name?: string; orgName?: string }): Promise<AuthUser> {
+    const dbUser = await orgRepository.syncCognitoUser(input);
+    return toAuthUser(dbUser);
   }
 
   /**

@@ -146,6 +146,50 @@ export const orgRepository = {
     return { id, email, name: input.name, avatarUrl: null, createdAt: ts, updatedAt: ts };
   },
 
+  async findUserByEmail(email: string): Promise<DbUser | null> {
+    const row = await db.orm.public.User
+      .where({ email: email.trim().toLowerCase() })
+      .select('id', 'email', 'name', 'avatarUrl', 'createdAt', 'updatedAt')
+      .first();
+    if (!row) return null;
+    return { ...row, name: row.name ?? null, avatarUrl: row.avatarUrl ?? null };
+  },
+
+  async syncCognitoUser(input: { id?: string; email: string; name?: string; orgName?: string }): Promise<DbUser> {
+    const email = input.email.trim().toLowerCase();
+    let user = await this.findUserByEmail(email);
+    if (!user && input.id) {
+      user = await this.findUser(input.id);
+    }
+
+    if (!user) {
+      const ts = now();
+      const id = input.id || uuidv4();
+      await db.orm.public.User.create({
+        id,
+        email,
+        name: input.name ?? null,
+        avatarUrl: null,
+        passwordHash: null,
+        createdAt: ts,
+        updatedAt: ts,
+      });
+      user = { id, email, name: input.name ?? null, avatarUrl: null, createdAt: ts, updatedAt: ts };
+
+      const orgName = input.orgName || (input.name ? `${input.name}'s Workspace` : 'My Organization');
+      const org = await this.createOrgForSignup(orgName);
+      await this.addMember(org.id, user.id, 'owner');
+    } else {
+      const members = await db.orm.public.OrgMember.where({ userId: user.id }).first();
+      if (!members) {
+        const orgName = input.orgName || (input.name ? `${input.name}'s Workspace` : 'My Organization');
+        const org = await this.createOrgForSignup(orgName);
+        await this.addMember(org.id, user.id, 'owner');
+      }
+    }
+    return user;
+  },
+
   /** Creates a fresh org with a generated unique slug — the signup path (vs. `createOrg`, used when the caller already has a slug). */
   async createOrgForSignup(name: string): Promise<DbOrganization> {
     return this.createOrg({ name, slug: slugify(name) });
