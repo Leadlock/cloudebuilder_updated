@@ -11,6 +11,7 @@ import { calculateCosts } from '@/lib/analysis';
 import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
 import { scoreArchitecture } from '@/lib/generator';
 import { v4 as uuidv4 } from 'uuid';
+import { rekeyGraph } from '@/lib/domain/instantiateTemplate';
 import { applyAutoFix } from '@/lib/engines/assessment/autofix';
 import { adaptiveScaleEngine } from '@/lib/engines/capacity/AdaptiveScaleEngine';
 import { apiArchitectureService } from '@/lib/services/ApiArchitectureService';
@@ -620,8 +621,9 @@ function reducer(state: AppState, action: Action): AppState {
     }
 
     case 'CREATE_PROJECT': {
-      const nodes = action.nodes ?? [];
-      const edges = action.edges ?? [];
+      const rawNodes = action.nodes ?? [];
+      const rawEdges = action.edges ?? [];
+      const { nodes, edges } = rawNodes.length > 0 ? rekeyGraph(rawNodes, rawEdges) : { nodes: [], edges: [] };
       const providerKey = action.provider === 'multi' ? 'aws' : action.provider;
       const region: Region = providerKey === 'aws' ? 'us-east-1' : 'eastus';
       const emptyEnvs: Record<Environment, EnvironmentState> = {
@@ -1279,8 +1281,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const created = currentState.projects[currentState.projects.length - 1];
         if (!created) break;
         const localId = created.id;
-        const initialNodes = action.nodes ?? created.nodes ?? [];
-        const initialEdges = action.edges ?? created.edges ?? [];
+        const initialNodes = created.nodes ?? action.nodes ?? [];
+        const initialEdges = created.edges ?? action.edges ?? [];
         _activeService.createProject(action.name, action.provider).then(async (apiProject) => {
           // Persist the canvas to backend if initial nodes or edges exist
           if (initialNodes.length > 0 || initialEdges.length > 0) {

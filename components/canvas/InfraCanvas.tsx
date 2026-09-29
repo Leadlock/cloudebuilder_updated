@@ -990,6 +990,8 @@ export default function InfraCanvas() {
         edges: laidOut.edges,
       });
 
+      setTimeout(() => reactFlowInstance.current?.fitView({ padding: 0.25, maxZoom: 0.85, duration: 250 }), 60);
+
       const fixCount = fixResult.changesApplied.length;
       setBannerMessage({
         text: `✓ Architecture fixed (${fixCount} repair${fixCount === 1 ? '' : 's'} applied) — Changes saved`,
@@ -1018,6 +1020,7 @@ export default function InfraCanvas() {
     setNodes(toReactFlowNodes(laidOut.nodes));
     setEdges(toReactFlowEdges(laidOut.edges, laidOut.nodes));
     dispatch({ type: 'UPDATE_CANVAS', nodes: laidOut.nodes, edges: laidOut.edges });
+    setTimeout(() => reactFlowInstance.current?.fitView({ padding: 0.25, maxZoom: 0.85, duration: 250 }), 60);
 
     setBannerMessage({
       text: `✓ AI added ${newNodes.length} resource${newNodes.length === 1 ? '' : 's'} to the architecture`,
@@ -1584,12 +1587,12 @@ export default function InfraCanvas() {
     setNodes(rfNodes);
     setEdges(rfEdges);
     syncToStore(rfNodes, rfEdges);
-    setTimeout(() => reactFlowInstance.current?.fitView({ padding: 0.15 }), 60);
+    setTimeout(() => reactFlowInstance.current?.fitView({ padding: 0.25, maxZoom: 0.85, duration: 250 }), 60);
   }, [nodes, edges, setNodes, setEdges, syncToStore, pushHistory, getCanvasNodes, getCanvasEdges]);
 
   // ── Toolbar Controls ─────────────────────────────────────────────────────────
   const handleFitView = useCallback(() => {
-    reactFlowInstance.current?.fitView({ padding: 0.15 });
+    reactFlowInstance.current?.fitView({ padding: 0.25, maxZoom: 0.85, duration: 250 });
   }, []);
 
   const handleZoomIn = useCallback(() => {
