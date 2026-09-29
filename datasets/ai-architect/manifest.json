@@ -1,0 +1,85 @@
+{
+  "seed": 20260929,
+  "examples": {
+    "train": 640,
+    "validation": 66,
+    "designs": 530,
+    "repairs": 176,
+    "heldOutEvalPrompts": 40
+  },
+  "byProvider": {
+    "aws": 331,
+    "azure": 267,
+    "multi": 108
+  },
+  "byPattern": {
+    "aws-three-tier": 102,
+    "aws-ecs": 92,
+    "aws-eks": 83,
+    "aws-serverless": 54,
+    "azure-three-tier": 95,
+    "azure-app-service": 69,
+    "azure-serverless": 37,
+    "azure-aks": 66,
+    "multi-aws-azure-dr": 58,
+    "multi-active-active": 50
+  },
+  "byScale": {
+    "medium": 177,
+    "large": 184,
+    "small": 169
+  },
+  "byPrimaryRegion": {
+    "us-west-2": 54,
+    "ap-south-1": 61,
+    "eu-central-1": 61,
+    "ap-southeast-1": 40,
+    "us-east-1": 66,
+    "eu-west-1": 48,
+    "northeurope": 37,
+    "eastus": 40,
+    "westus2": 45,
+    "westeurope": 41,
+    "southeastasia": 37
+  },
+  "byDatabase": {
+    "nosql": 206,
+    "mysql": 51,
+    "none": 141,
+    "postgres": 132
+  },
+  "regulated": {
+    "false": 272,
+    "true": 258
+  },
+  "repairMutations": {
+    "reversed-connection": 17,
+    "orphan-resource": 18,
+    "single-az": 6,
+    "overlapping-cidr": 11,
+    "public-database": 10,
+    "unknown-setting": 25,
+    "public-storage": 11,
+    "drop-security-group": 13,
+    "drop-certificate": 13,
+    "dangling-connection": 29,
+    "invalid-setting": 5,
+    "drop-waf": 16,
+    "unencrypted-database": 1,
+    "wrong-parent": 1
+  },
+  "tokensEstimate": {
+    "train": 1329664,
+    "validation": 134397,
+    "perEpochTrainNote": "Estimated at 4 characters per token; billing uses the real tokenizer.",
+    "systemPrompt": 683
+  },
+  "designsWithDeploymentPlaceholders": 290,
+  "catalogTypes": 51,
+  "generation": {
+    "candidatesEvaluated": 570,
+    "rejectedByGates": 0,
+    "duplicatesSkipped": 0
+  },
+  "guarantees": "Every assistant design in train.jsonl and validation.jsonl passed all deploy-readiness gates in lib/ai/architectureSpec.ts. Repair examples target the gate-passing design."
+}
