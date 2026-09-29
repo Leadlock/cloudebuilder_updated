@@ -1018,12 +1018,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (_activeService.loadDraft) {
         try {
           const backendDraft = await _activeService.loadDraft();
-          if (!cancelled && backendDraft && Array.isArray(backendDraft.nodes) && backendDraft.nodes.length > 0) {
-            dispatch({
-              type: 'LOAD_DURABLE_DRAFT',
-              draft: backendDraft,
-            });
-            loadedFromBackend = true;
+          if (!cancelled && backendDraft) {
+            if (Array.isArray(backendDraft.nodes) && backendDraft.nodes.length > 0) {
+              dispatch({
+                type: 'LOAD_DURABLE_DRAFT',
+                draft: backendDraft,
+              });
+              loadedFromBackend = true;
+            } else if (backendDraft.revision) {
+              dispatch({ type: 'UPDATE_DRAFT_REVISION', revision: backendDraft.revision });
+            }
           }
         } catch {}
       }
@@ -1162,8 +1166,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       } catch (error: any) {
         if (seq !== saveSeqRef.current) return;
+        const isConflict = error?.status === 409 || error?.code === 'CONFLICT' || error?.message?.includes('conflict') || error?.message?.includes('CONFLICT');
+
+        // For draft mode, if there is a draft revision desync on server (e.g. after refresh or multi-edit),
+        // automatically adopt the server's revision and retry save cleanly
+        if (isDraft && isConflict && error?.serverRevision) {
+          dispatch({ type: 'UPDATE_DRAFT_REVISION', revision: error.serverRevision });
+          pendingSaveRef.current = true;
+          return;
+        }
+
         console.error('AutoSave failed:', error);
-        const isConflict = error?.status === 409 || error?.code === 'CONFLICT' || error?.message?.includes('conflict');
         dispatch({
           type: 'SET_AUTO_SAVE_STATUS',
           status: 'error',

@@ -1,4 +1,5 @@
 import { CanvasNode, CanvasEdge, CloudProvider } from '@/types';
+import { rekeyGraph } from '@/lib/domain/instantiateTemplate';
 
 /** Shape returned by POST /api/ai/generate's `data` field. */
 export interface AiRawResource {
@@ -27,8 +28,8 @@ export interface AiRawGraph {
  * drift into different node shapes.
  */
 export function mapAiGraphToCanvas(graph: AiRawGraph, provider: CloudProvider): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
-  const nodes: CanvasNode[] = (graph.resources ?? []).map((r, index) => ({
-    id: r.id || `ai-node-${Date.now()}-${index}`,
+  const rawNodes: CanvasNode[] = (graph.resources ?? []).map((r, index) => ({
+    id: r.id || `ai-node-${index}`,
     type: 'cloud_node',
     resourceType: r.resourceType,
     provider,
@@ -38,13 +39,14 @@ export function mapAiGraphToCanvas(graph: AiRawGraph, provider: CloudProvider): 
     parentId: r.parentId ?? undefined,
   }));
 
-  const edges: CanvasEdge[] = (graph.connections ?? []).map((c, index) => ({
-    id: `ai-edge-${Date.now()}-${index}`,
+  const rawEdges: CanvasEdge[] = (graph.connections ?? []).map((c, index) => ({
+    id: `ai-edge-${index}`,
     source: c.sourceId,
     target: c.targetId,
     label: c.label,
     provider,
   }));
 
+  const { nodes, edges } = rekeyGraph(rawNodes, rawEdges);
   return { nodes, edges };
 }
