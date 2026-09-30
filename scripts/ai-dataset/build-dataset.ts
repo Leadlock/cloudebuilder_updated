@@ -13,12 +13,13 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ARCHITECT_SYSTEM_PROMPT, CATALOG_TYPES, evaluateSpec, type ArchitectureSpec } from '@/lib/ai/architectureSpec';
 import { buildRepairPrompt } from '@/lib/ai/architectRepair';
+import { withHints } from '@/lib/ai/repairHints';
 import { hardenSpec } from './harden';
 import { awsThreeTier, awsEcs, awsEks, awsServerless } from './awsPatterns';
 import { azureThreeTier, azureAppService, azureServerless, azureAks } from './azurePatterns';
 import { multiAwsAzureDr, multiActiveActive } from './multiPatterns';
 import { AWS_REGIONS, AZURE_REGIONS } from './builder';
-import { APP_NAMES, PROMPT_STYLES, promptFor, type Database, type Requirements, type Scale } from './requirements';
+import { APP_NAMES, PROMPT_STYLES, promptFor, vagueRequirements, type Database, type PromptStyle, type Requirements, type Scale } from './requirements';
 
 type Blueprint = (r: Requirements) => ArchitectureSpec;
 interface PatternDef { id: string; provider: Requirements['provider']; fn: Blueprint; target: number; dims: (keyof Requirements)[]; fixed?: Partial<Requirements> }
@@ -75,6 +76,8 @@ const tokens = (s: string) => Math.ceil(s.length / 4); // rough: ~4 characters p
 
 type Mutation = { id: string; apply: (s: ArchitectureSpec) => ArchitectureSpec | null };
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
+/** First candidate that CloudCraft actually rejects — a mutation that leaves the design valid teaches nothing. */
+const firstBroken = (candidates: ArchitectureSpec[]): ArchitectureSpec | null => candidates.find((c) => !evaluateSpec(c).ok) ?? null;
 const byType = (s: ArchitectureSpec, type: string) => s.resources.find((r) => r.type === type);
 const MUTATIONS: Mutation[] = [
   { id: 'drop-certificate', apply: (s) => { const c = clone(s); const r = byType(c, 'aws_alb'); if (!r?.config?.certificateArn) return null; delete r.config.certificateArn; return c; } },
@@ -91,11 +94,72 @@ const MUTATIONS: Mutation[] = [
   { id: 'wrong-parent', apply: (s) => { const c = clone(s); const a = c.resources.find((r) => r.type === 'aws_rds' || r.type === 'azure_sql'); const pub = c.resources.find((r) => /(^|-)public-a$|(^|-)web-subnet$/.test(r.id)); if (!a || !pub || a.parent === pub.id) return null; a.parent = pub.id; return c; } },
   { id: 'overlapping-cidr', apply: (s) => { const c = clone(s); const subs = c.resources.filter((r) => r.type === 'aws_subnet'); if (subs.length < 2) return null; subs[1].config = { ...(subs[1].config ?? {}), cidrBlock: String(subs[0].config?.cidrBlock ?? '10.0.0.0/24') }; return c; } },
   { id: 'dangling-connection', apply: (s) => { const c = clone(s); if (!c.connections.length) return null; c.connections.push({ from: c.connections[0].from, to: 'does-not-exist' }); return c; } },
+
+  // Mistakes an untuned model was observed making against CloudCraft's rules (see the evaluation in README).
+  // snake_case setting names: the real names are camelCase, e.g. cidr_block instead of cidrBlock.
+  { id: 'snake-case-setting', apply: (s) => {
+    const c = clone(s);
+    const r = c.resources.find((x) => x.config && Object.keys(x.config).some((k) => /[A-Z]/.test(k)));
+    if (!r) return null;
+    const key = Object.keys(r.config!).find((k) => /[A-Z]/.test(k))!;
+    const { [key]: value, ...rest } = r.config!;
+    r.config = { ...rest, [key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`)]: value };
+    return c;
+  } },
+  // Ids must be lower-case-and-hyphen; models write Web_Server. References are renamed consistently so BAD_ID is the only problem.
+  { id: 'bad-id', apply: (s) => {
+    const c = clone(s);
+    const r = c.resources.find((x) => x.parent && x.id.includes('-'));
+    if (!r) return null;
+    const oldId = r.id; const newId = oldId.replace(/-/g, '_').toUpperCase();
+    r.id = newId;
+    for (const x of c.resources) if (x.parent === oldId) x.parent = newId;
+    for (const x of c.connections) { if (x.from === oldId) x.from = newId; if (x.to === oldId) x.to = newId; }
+    return c;
+  } },
+  // Workload placed straight in the VPC/VNet instead of its subnet.
+  { id: 'wrong-parent-vpc', apply: (s) => {
+    const byId = new Map(s.resources.map((x) => [x.id, x]));
+    return firstBroken(s.resources.filter((x) => { const p = x.parent ? byId.get(x.parent) : undefined; return p?.type.endsWith('subnet') && p.parent; }).map((r) => {
+      const c = clone(s); c.resources.find((x) => x.id === r.id)!.parent = byId.get(r.parent!)!.parent; return c;
+    }));
+  } },
+  // A WAF (or any leaf) used as if it were a container.
+  { id: 'parent-not-container', apply: (s) => {
+    const c = clone(s);
+    const waf = c.resources.find((x) => x.type.endsWith('_waf') && x.parent);
+    const lb = c.resources.find((x) => x.type === 'aws_alb' || x.type === 'azure_app_gateway');
+    if (!waf || !lb) return null;
+    waf.parent = lb.id;
+    return c;
+  } },
+  // A connection drawn from a subnet (a container) to a data store.
+  { id: 'subnet-connection', apply: (s) => {
+    const data = s.resources.find((x) => x.type === 'aws_rds' || x.type === 'azure_sql');
+    if (!data) return null;
+    return firstBroken(s.resources.filter((x) => x.type.endsWith('subnet')).map((sub) => { const c = clone(s); c.connections.push({ from: sub.id, to: data.id }); return c; }));
+  } },
+  // Parent that does not exist.
+  { id: 'unknown-parent', apply: (s) => {
+    const c = clone(s);
+    const r = c.resources.find((x) => x.parent && x.type !== 'aws_subnet' && x.type !== 'azure_subnet');
+    if (!r) return null;
+    r.parent = `${r.parent}-tier`;
+    return c;
+  } },
 ];
+
+/** Apply one mutation, or two different ones at once (models rarely make just one mistake). */
+function mutate(spec: ArchitectureSpec, first: Mutation, second?: Mutation): ArchitectureSpec | null {
+  const a = first.apply(spec);
+  if (!a || !second) return a;
+  return second.apply(a);
+}
 
 // ─── Build ────────────────────────────────────────────────────────────────────────────────
 
-interface Row { pattern: string; provider: string; kind: 'design' | 'repair'; req: Requirements; line: string; tokens: number; inputs: number; mutation?: string }
+/** `group` is the hash of the underlying design: every row about the same design (its paraphrases and its repairs) shares one train/validation side, so validation never contains a design the model trained on. */
+interface Row { pattern: string; provider: string; kind: 'design' | 'repair'; req: Requirements; line: string; tokens: number; inputs: number; mutation?: string; style: string; group: string }
 
 function main() {
   const outDir = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : 'datasets/ai-architect';
@@ -104,7 +168,7 @@ function main() {
   const seenGraphs = new Set<string>();
   const design: Row[] = [];
   const evalSet: { id: string; requirements: Requirements; prompt: string }[] = [];
-  const repairPool: { req: Requirements; prompt: string; spec: ArchitectureSpec; pattern: string }[] = [];
+  const repairPool: { req: Requirements; prompt: string; spec: ArchitectureSpec; pattern: string; style: string; group: string }[] = [];
   let appCursor = 0; let styleCursor = 0; let dupes = 0; let evaluated = 0;
 
   for (const p of PATTERNS) {
@@ -113,7 +177,10 @@ function main() {
     for (const req0 of pool) {
       if (kept >= p.target && held >= EVAL_PER_PATTERN) break;
       const isEval = kept >= p.target;
-      const req: Requirements = { ...req0, app: APP_NAMES[appCursor++ % APP_NAMES.length] };
+      const style: PromptStyle = PROMPT_STYLES[styleCursor++ % PROMPT_STYLES.length]!;
+      const named: Requirements = { ...req0, app: APP_NAMES[appCursor++ % APP_NAMES.length] };
+      // A vague prompt says less, so the design must be the sensible default for everything it leaves out.
+      const req = style === 'vague' ? vagueRequirements(named, p.fixed) : named;
       evaluated++;
       let spec: ArchitectureSpec;
       try { spec = hardenSpec(p.fn(req)).spec; } catch (e) { rejected.push({ pattern: p.id, requirements: JSON.stringify(req), stage: 'build', issues: [(e as Error).message] }); continue; }
@@ -122,42 +189,54 @@ function main() {
       const h = hashOf(spec);
       if (seenGraphs.has(h)) { dupes++; continue; }
       seenGraphs.add(h);
-      const prompt = promptFor(req, PROMPT_STYLES[styleCursor++ % PROMPT_STYLES.length], Math.floor(rand() * 1000));
+      const prompt = promptFor(req, style, Math.floor(rand() * 1000));
       if (isEval) { evalSet.push({ id: `eval-${evalSet.length + 1}`, requirements: req, prompt }); held++; continue; }
       const json = JSON.stringify(spec);
-      design.push({ pattern: p.id, provider: p.provider, kind: 'design', req, line: JSON.stringify(chat(prompt, json)), tokens: tokens(ARCHITECT_SYSTEM_PROMPT) + tokens(prompt) + tokens(json), inputs: ev.deploymentInputs?.length ?? 0 });
-      repairPool.push({ req, prompt, spec, pattern: p.id });
+      design.push({ pattern: p.id, provider: p.provider, kind: 'design', req, line: JSON.stringify(chat(prompt, json)), tokens: tokens(ARCHITECT_SYSTEM_PROMPT) + tokens(prompt) + tokens(json), inputs: ev.deploymentInputs?.length ?? 0, style, group: h });
+      repairPool.push({ req, prompt, spec, pattern: p.id, style, group: h });
       kept++;
+      // ~30% of designs also appear with a differently worded request, so the model learns that
+      // phrasing changes the words, not the architecture.
+      if (rand() < 0.3) {
+        const alts = PROMPT_STYLES.filter((x) => x !== 'vague' && x !== style);
+        const altStyle = alts[Math.floor(rand() * alts.length)]!;
+        const altPrompt = promptFor(req, altStyle, Math.floor(rand() * 1000));
+        design.push({ pattern: p.id, provider: p.provider, kind: 'design', req, line: JSON.stringify(chat(altPrompt, json)), tokens: tokens(ARCHITECT_SYSTEM_PROMPT) + tokens(altPrompt) + tokens(json), inputs: ev.deploymentInputs?.length ?? 0, style: altStyle, group: h });
+      }
     }
   }
 
   // Repair examples: one per ~7 designs, using a mutation that genuinely fails a gate.
   const repairs: Row[] = [];
   const mutationCounts: Record<string, number> = {};
-  const picks = shuffle(repairPool, rng(SEED + 1)).slice(0, Math.floor(repairPool.length / 3));
+  const picks = shuffle(repairPool, rng(SEED + 1)).slice(0, Math.floor(repairPool.length / 2.5));
   for (const item of picks) {
     const order = shuffle(MUTATIONS, rand);
     for (const m of order) {
-      const broken = m.apply(item.spec);
+      // ~45% of repairs try to break the design in two different ways at once; the validator reports the
+      // earliest failing stage first, and the model must still return the fully corrected design.
+      const second = rand() < 0.45 ? order.find((o) => o.id !== m.id) : undefined;
+      let broken = mutate(item.spec, m, second);
+      let pair = second;
+      if (!broken && second) { broken = mutate(item.spec, m); pair = undefined; }
       if (!broken) continue;
       const ev = evaluateSpec(broken);
       if (ev.ok || !ev.issues.length) continue;
-      const user = buildRepairPrompt(item.prompt, JSON.stringify(broken), ev.stage, ev.issues);
+      // Same message format the app sends on a retry (withHints adds the valid setting names / allowed parents).
+      const user = buildRepairPrompt(item.prompt, JSON.stringify(broken), ev.stage, withHints(ev.issues));
       const json = JSON.stringify(item.spec);
-      repairs.push({ pattern: item.pattern, provider: item.req.provider, kind: 'repair', req: item.req, mutation: m.id, line: JSON.stringify(chat(user, json)), tokens: tokens(ARCHITECT_SYSTEM_PROMPT) + tokens(user) + tokens(json), inputs: 0 });
-      mutationCounts[m.id] = (mutationCounts[m.id] ?? 0) + 1;
+      const label = pair ? `${m.id}+${pair.id}` : m.id;
+      repairs.push({ pattern: item.pattern, provider: item.req.provider, kind: 'repair', req: item.req, mutation: label, line: JSON.stringify(chat(user, json)), tokens: tokens(ARCHITECT_SYSTEM_PROMPT) + tokens(user) + tokens(json), inputs: 0, style: item.style, group: item.group });
+      mutationCounts[label] = (mutationCounts[label] ?? 0) + 1;
       break;
     }
   }
 
-  // Train / validation split: every 10th row of each kind goes to validation.
+  // Train / validation split by DESIGN (~10% of designs): a design's paraphrases and its repair examples all
+  // land on the same side, so validation loss is measured on architectures the model never trained on.
   const all = [...design, ...repairs];
   const train: Row[] = []; const val: Row[] = [];
-  const counters: Record<string, number> = {};
-  for (const r of shuffle(all, rng(SEED + 2))) {
-    const k = `${r.kind}:${r.pattern}`; counters[k] = (counters[k] ?? 0) + 1;
-    (counters[k] % 10 === 0 ? val : train).push(r);
-  }
+  for (const r of shuffle(all, rng(SEED + 2))) (parseInt(r.group.slice(0, 6), 16) % 10 === 0 ? val : train).push(r);
 
   mkdirSync(outDir, { recursive: true });
   writeFileSync(join(outDir, 'train.jsonl'), train.map((r) => r.line).join('\n') + '\n');
@@ -172,6 +251,7 @@ function main() {
     examples: { train: train.length, validation: val.length, designs: design.length, repairs: repairs.length, heldOutEvalPrompts: evalSet.length },
     byProvider: count(all, (r) => r.provider),
     byPattern: count(all, (r) => r.pattern),
+    byPromptStyle: count(design, (r) => r.style),
     byScale: count(design, (r) => r.req.scale),
     byPrimaryRegion: count(design, (r) => r.req.region),
     byDatabase: count(design, (r) => r.req.db),

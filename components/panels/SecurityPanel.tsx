@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { ShieldCheck, AlertTriangle, CheckCircle2, Download, RefreshCw, Wrench, History, HelpCircle, Info } from 'lucide-react';
 import { useApp, useActiveProject } from '@/context/AppContext';
+import AiReviewCard from './AiReviewCard';
 import { apiSecurityService, type ReviewRecord, type ScanHistoryEntry, type PersistedScan } from '@/lib/services/ApiSecurityService';
 import { apiArchitectureService } from '@/lib/services/ApiArchitectureService';
 import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
@@ -277,6 +278,8 @@ export default function SecurityPanel() {
             </div>
           </div>
         </div>
+
+        <AiReviewCard nodes={nodes} edges={project.edges} mode="security" />
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-gray-800 text-xs">

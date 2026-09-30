@@ -115,7 +115,11 @@ function checkConfigValue(field: ConfigField, value: unknown): string | null {
     }
     case 'select': {
       const allowed = (field.options ?? []).map((o) => o.value);
-      return typeof value === 'string' && (allowed.length === 0 || allowed.includes(value)) ? null : `must be one of: ${allowed.join(', ')}`;
+      // Numeric options are stored as text ("300") yet the catalog's own defaults use numbers (periodSeconds: 300),
+      // so a number that matches an option is correct, not an error. Without this a model that answers 300 repeats the
+      // same "must be one of: 10, 30, 60, 300" rejection forever, because the message never shows the quotes.
+      const ok = typeof value === 'string' ? (allowed.length === 0 || allowed.includes(value)) : typeof value === 'number' && allowed.includes(String(value));
+      return ok ? null : `must be one of: ${allowed.join(', ')}`;
     }
     case 'multiselect': {
       const allowed = (field.options ?? []).map((o) => o.value);

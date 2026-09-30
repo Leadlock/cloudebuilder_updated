@@ -1,35 +1,14 @@
-import OpenAI from 'openai';
+import { foundryClient, FOUNDRY_MODEL } from '../ai/foundryClient';
+import { buildGenerationContext } from '../ai/knowledgeBase';
+import { detectServiceNotices, type ServiceNotices } from '../ai/serviceCoverage';
+import { sanitizeSpecInput, type SanitizeReport } from '../ai/specSanitizer';
 import { awsResources } from '../resources/aws';
 import { azureResources } from '../resources/azure';
 import { db } from '../../src/prisma/db';
+import { generateWithRepair, type RepairAttempt } from '../ai/architectRepair';
+import type { DeploymentInput } from '../ai/architectureSpec';
+import type { CanvasNode, CanvasEdge } from '@/types';
 
-// Azure AI Foundry's "v1" API is OpenAI-SDK-compatible: point the standard
-// client at "<endpoint>/openai/v1" with the resource's API key and call
-// client.responses.create(...) exactly as against OpenAI itself — no
-// Azure-specific client class or api-version query param needed. The env var
-// holds the full deployment URL as copied from the Foundry portal (ending in
-// "/responses"); strip that suffix to get the SDK's base URL.
-function foundryBaseURL(): string {
-  const endpoint = process.env.AZURE_AI_FOUNDRY_ENDPOINT ?? '';
-  return endpoint.replace(/\/responses\/?$/, '');
-}
-
-let _client: OpenAI | null = null;
-function foundryClient(): OpenAI {
-  if (!_client) {
-    const baseURL = foundryBaseURL();
-    const apiKey = process.env.AZURE_AI_FOUNDRY_API_KEY;
-    if (!baseURL || !apiKey) {
-      throw new Error(
-        'Azure AI Foundry is not configured — set AZURE_AI_FOUNDRY_ENDPOINT and AZURE_AI_FOUNDRY_API_KEY.'
-      );
-    }
-    _client = new OpenAI({ baseURL, apiKey });
-  }
-  return _client;
-}
-
-const FOUNDRY_MODEL = process.env.AZURE_AI_FOUNDRY_DEPLOYMENT || 'gpt-4o';
 
 /** Shape of the JSON graph the LLM is prompted to emit — unverified until validateAgainstRde runs. */
 interface RawAiResource {
@@ -116,7 +95,100 @@ function validateAgainstRde(
   return { resources: validResources, connections: validConnections, rejected };
 }
 
+export { withHints, withSettingHints, withContainmentHints } from '../ai/repairHints';
+import { withHints } from '../ai/repairHints';
+
+export interface ValidatedGeneration {
+  ok: boolean;
+  /** Compiled, laid-out canvas graph — present only when every deploy-readiness gate passed. */
+  graph?: { nodes: CanvasNode[]; edges: CanvasEdge[] };
+  /** Account-specific values (ACM certificate ARN, container image…) the user must supply before deploying. */
+  deploymentInputs: DeploymentInput[];
+  attempts: RepairAttempt[];
+  /** Services the request named that CloudCraft cannot model, or that are missing from the design. */
+  notices: ServiceNotices;
+  /** Setting names the AI got wrong in the accepted design: `renamed` were fixed losslessly, `dropped` fell back to defaults. */
+  sanitized: SanitizeReport;
+  /** Remaining validation problems when ok is false. */
+  issues: string[];
+  stage: string;
+  historyId: string;
+}
+
 export class AiGeneratorService {
+  /**
+   * Generates an architecture the way the fine-tuning dataset was built: the model emits a compact
+   * ArchitectureSpec, which is compiled and must pass every deploy-readiness gate (assessment,
+   * hardening, validator, connectivity, layout, addressing, Terraform render). A design that fails is
+   * sent back to the model with the exact issues, up to `maxAttempts` times. Nothing that fails a gate
+   * is ever returned — on failure the caller gets the remaining issues instead.
+   */
+  static async generateValidatedArchitecture(
+    prompt: string,
+    projectId: string,
+    environmentId: string,
+    provider: 'aws' | 'azure' = 'aws',
+    // Each pass usually clears one stage (settings, then containment, then the gates), so an untuned
+    // model needs more rounds than a tuned one, which should pass first time.
+    maxAttempts = 5,
+  ): Promise<ValidatedGeneration> {
+    // Only add a provider hint when the request doesn't already name a cloud, so prompts that do
+    // (e.g. "AWS primary with Azure DR") reach the model exactly as written.
+    const namesCloud = /\b(aws|azure|multi-?cloud)\b/i.test(prompt);
+    const request = namesCloud ? prompt : `${prompt}\n\nTarget cloud: ${provider === 'azure' ? 'Azure' : 'AWS'}.`;
+    // Ground the model in the knowledge base: closest verified example plus exact settings and placement
+    // rules. Empty when the knowledge base is disabled or unavailable — generation works without it.
+    const context = await buildGenerationContext(prompt, provider);
+    const userPrompt = context ? `${request}\n\n${context}` : request;
+
+    let sanitized: SanitizeReport = { renamed: [], dropped: [] };
+    const outcome = await generateWithRepair(async (messages) => {
+      const response = await foundryClient().responses.create({
+        model: FOUNDRY_MODEL,
+        input: messages,
+        text: { format: { type: 'json_object' } },
+      });
+      return response.output_text || '';
+    }, userPrompt, maxAttempts, withHints, (json) => {
+      // Rename near-miss setting names and drop invented ones before validating; the last call is the accepted attempt.
+      const cleaned = sanitizeSpecInput(json);
+      sanitized = cleaned.report;
+      return cleaned.value;
+    });
+
+    const last = outcome.attempts[outcome.attempts.length - 1]!;
+    let historyId = '';
+    if (outcome.ok) {
+      try {
+        const { architectureRepository } = await import('../repositories/architectureRepository');
+        const architecture = await architectureRepository.findByEnvironment(environmentId);
+        if (architecture) {
+          const record = await db.orm.public.AIGenerationHistory.create({
+            id: crypto.randomUUID(), projectId, architectureId: architecture.id, prompt, provider,
+            model: FOUNDRY_MODEL, architectureJson: JSON.stringify(outcome.spec), createdAt: new Date().toISOString(),
+          });
+          historyId = record.id;
+        }
+      } catch (err) {
+        console.warn('[AiGeneratorService] Failed to record generation history:', (err as Error)?.message);
+      }
+    }
+
+    return {
+      ok: outcome.ok,
+      graph: outcome.graph,
+      deploymentInputs: outcome.deploymentInputs ?? [],
+      attempts: outcome.attempts,
+      // Judged against what the user asked for, not what the model produced: an unsupported service the model
+      // silently swapped for another one must still be reported.
+      notices: detectServiceNotices(prompt, outcome.graph?.nodes.map((n) => n.resourceType)),
+      sanitized,
+      issues: outcome.ok ? [] : last.issues.map((i) => i.message),
+      stage: last.stage,
+      historyId,
+    };
+  }
+
   /**
    * Generates a cloud architecture from a prompt using the Azure AI Foundry
    * deployment configured via AZURE_AI_FOUNDRY_*. The AI is constrained to

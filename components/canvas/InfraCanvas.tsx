@@ -1011,7 +1011,7 @@ export default function InfraCanvas() {
   }, [activeProject, dispatch, setNodes, setEdges]);
 
   // ── AI Prompt Panel: merge generated graph into the canvas ──────────────────
-  const handleApplyAiGraph = useCallback((newNodes: CanvasNode[], newEdges: CanvasEdge[]) => {
+  const handleApplyAiGraph = useCallback((newNodes: CanvasNode[], newEdges: CanvasEdge[], notice?: string) => {
     if (!activeProject) return;
     const mergedNodes = [...activeProject.nodes, ...newNodes];
     const mergedEdges = [...activeProject.edges, ...newEdges];
@@ -1022,11 +1022,12 @@ export default function InfraCanvas() {
     dispatch({ type: 'UPDATE_CANVAS', nodes: laidOut.nodes, edges: laidOut.edges });
     setTimeout(() => reactFlowInstance.current?.fitView({ padding: 0.25, maxZoom: 0.85, duration: 250 }), 60);
 
-    setBannerMessage({
-      text: `✓ AI added ${newNodes.length} resource${newNodes.length === 1 ? '' : 's'} to the architecture`,
-      type: 'success',
-    });
-    setTimeout(() => setBannerMessage(null), 3500);
+    const added = `AI added ${newNodes.length} resource${newNodes.length === 1 ? '' : 's'} to the architecture`;
+    // Something the user needs to know (a service CloudCraft can't model, values still to fill in) stays up longer.
+    setBannerMessage(notice
+      ? { text: `${added}. Note: ${notice.split('\n').join(' ')}`, type: 'info' }
+      : { text: `✓ ${added}`, type: 'success' });
+    setTimeout(() => setBannerMessage(null), notice ? 12000 : 3500);
   }, [activeProject, dispatch, setNodes, setEdges]);
 
   // ── Export: download a real SVG/PNG/PDF of the architecture ─────────────────

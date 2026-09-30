@@ -1,0 +1,24 @@
+{"id":"free-1","requirements":{"pattern":"aws-three-tier","provider":"aws"},"prompt":"We run a small online shop and need something on AWS that survives Black Friday traffic. Postgres for orders, Redis for sessions. us-east-1."}
+{"id":"free-2","requirements":{"pattern":"aws-three-tier","provider":"aws"},"prompt":"Need a highly available web app on EC2 behind a load balancer with MySQL, in the Mumbai region."}
+{"id":"free-3","requirements":{"pattern":"aws-ecs","provider":"aws"},"prompt":"our team ships docker containers, want them on Fargate on AWS with a postgres db and a CDN. maybe 10k users. Ireland."}
+{"id":"free-4","requirements":{"pattern":"aws-ecs","provider":"aws"},"prompt":"Move our containerised API to ECS in us-west-2. We handle health records so nothing database-related can be public."}
+{"id":"free-5","requirements":{"pattern":"aws-eks","provider":"aws"},"prompt":"Kubernetes on AWS for around 30 microservices, private cluster, Frankfurt."}
+{"id":"free-6","requirements":{"pattern":"aws-eks","provider":"aws"},"prompt":"Set up EKS for our platform team, production grade, with a managed database and a cache."}
+{"id":"free-7","requirements":{"pattern":"aws-serverless","provider":"aws"},"prompt":"Serverless backend on AWS: API + DynamoDB + a static front end. Startup, low traffic, us-east-1."}
+{"id":"free-8","requirements":{"pattern":"aws-serverless","provider":"aws"},"prompt":"Event-driven Lambda API with a queue for background jobs and a CDN in front."}
+{"id":"free-9","requirements":{"pattern":"azure-three-tier","provider":"azure"},"prompt":"We are an Azure shop and need a classic web app on VMs with a load balancer and SQL, West Europe, about 5k users."}
+{"id":"free-10","requirements":{"pattern":"azure-three-tier","provider":"azure"},"prompt":"Azure IaaS web tier that scales automatically, the database must be redundant across zones."}
+{"id":"free-11","requirements":{"pattern":"azure-app-service","provider":"azure"},"prompt":"Simple company website with a database on Azure App Service, North Europe."}
+{"id":"free-12","requirements":{"pattern":"azure-app-service","provider":"azure"},"prompt":"PaaS web app on Azure with Azure SQL and caching, Southeast Asia, roughly 20k users."}
+{"id":"free-13","requirements":{"pattern":"azure-serverless","provider":"azure"},"prompt":"Azure Functions backend with Cosmos DB and a static site, as cheap as possible, North Europe."}
+{"id":"free-14","requirements":{"pattern":"azure-serverless","provider":"azure"},"prompt":"event driven api on azure functions, cdn in front, east us"}
+{"id":"free-15","requirements":{"pattern":"azure-aks","provider":"azure"},"prompt":"AKS cluster for our microservices on Azure, private, West US 2, with SQL."}
+{"id":"free-16","requirements":{"pattern":"azure-aks","provider":"azure"},"prompt":"Azure Kubernetes platform for regulated healthcare data. It needs to pass an audit."}
+{"id":"free-17","requirements":{"pattern":"multi-aws-azure-dr","provider":"multi"},"prompt":"Run production on AWS in us-east-1 and keep a warm standby on Azure in West Europe for disaster recovery. Postgres."}
+{"id":"free-18","requirements":{"pattern":"multi-active-active","provider":"multi"},"prompt":"Our board wants no single-vendor risk: the same app live on both AWS and Azure with one global entry point."}
+{"id":"free-19","requirements":{"pattern":"multi-aws-azure-dr","provider":"multi"},"prompt":"AWS primary in Singapore, Azure disaster recovery in Southeast Asia, payments workload, must be compliant."}
+{"id":"free-20","requirements":{"pattern":"aws-three-tier","provider":"aws"},"prompt":"web app on aws"}
+{"id":"free-21","requirements":{"pattern":"azure-aks","provider":"azure"},"prompt":"kubernetes on azure"}
+{"id":"free-22","requirements":{"pattern":"aws-ecs","provider":"aws"},"prompt":"I need something for ~50k users on AWS, containers."}
+{"id":"free-23","requirements":{"pattern":"azure-app-service","provider":"azure"},"prompt":"azure web app with a database"}
+{"id":"free-24","requirements":{"pattern":"aws-three-tier","provider":"aws"},"prompt":"Give me a production-ready AWS architecture for a booking platform, 100k users, eu-central-1, with cache and a queue."}

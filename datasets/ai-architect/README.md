@@ -6,18 +6,25 @@ multi-cloud architecture that CloudCraft can lay out, assess and export to Terra
 | File | Purpose |
 |---|---|
 | `train.jsonl`, `validation.jsonl` | OpenAI chat fine-tuning files (system / user / assistant). |
-| `eval-prompts.jsonl` | 40 held-out prompts (never in train/validation) for scoring a tuned model. |
+| `eval-prompts.jsonl` | 40 held-out prompts (same generator as training, never in train/validation). |
+| `eval-freeform.jsonl` | 24 hand-written, differently phrased prompts (vague, casual, jargon, one-liners). The honest test of real-world use. |
 | `manifest.json` | Counts by provider / pattern / scale / region, token estimate, generation stats. |
 | `rejected.json` | Candidates dropped by the gates during generation (empty = none). |
 | `knowledge-base/` | Markdown + `knowledge-base.jsonl` chunks for file search / RAG (see below). |
 
 ## What is in the dataset
 
-706 examples (see `manifest.json` for exact numbers): 530 design examples across 10 patterns — AWS three-tier (EC2 Auto Scaling),
+905 examples (see `manifest.json` for exact numbers): 693 design examples across 10 patterns — AWS three-tier (EC2 Auto Scaling),
 ECS Fargate, EKS, serverless; Azure three-tier (VMSS), App Service, Functions, AKS; AWS-primary/Azure-DR and
 active-active multi-cloud — varied over region, scale, database, cache, CDN, queue (AWS) and regulated workloads.
-The remaining 176 are **repair examples**: a design broken in one realistic way (missing WAF, public database,
-overlapping CIDR, reversed connection, …), the *real* validator output for it, and the corrected design.
+The remaining 212 are **repair examples**: a design broken in a realistic way (missing WAF, public database, overlapping CIDR,
+reversed connection, snake_case setting names, `Web_Server`-style ids, a workload placed in the VPC instead of a subnet, a WAF used as a
+container, …; ~1 in 4 break it in two ways at once), the *real* validator output for it in the same hinted format the app sends on a
+retry (`lib/ai/repairHints.ts`), and the corrected design. Those mistakes are the ones an untuned model was measured making.
+
+Requests come in **9 phrasings** (terse, detailed, business, constraints, casual, minimal, technical, question, and *vague* — only cloud,
+kind of app and scale, so the design must use sensible defaults for everything unsaid). About 30% of designs also appear under a second
+phrasing. The train/validation split is **by design**, so validation never contains an architecture the model trained on.
 
 The assistant answer is a compact `ArchitectureSpec` JSON (resources with `id/type/label/parent/config`, and
 `connections`). It contains **no coordinates**: `lib/ai/architectureSpec.ts` compiles it into the canvas graph and
@@ -46,8 +53,8 @@ Nothing is hand-written prose. Every design is produced by code (`scripts/ai-dat
   security posture and that Terraform *renders*. Nothing was applied to a real account.
 - **Placeholders.** Account-specific values are written as `REPLACE-WITH-YOUR-*` (ACM certificate ARN, container
   image). They are surfaced by `collectDeploymentInputs()`. A design that needs them is *not* deployable until supplied — by design, we don't invent ARNs.
-- **Prompts are templated** (4 phrasing styles over structured requirements). The model will follow those shapes best;
-  free-form or unusual requests will generalise less well. Add real user prompts (with an engine-verified design) to improve this.
+- **Prompts are still generated** (9 phrasing styles over structured requirements). `eval-freeform.jsonl` exists to measure how far that
+  generalises to real wording — trust its score over `eval-prompts.jsonl`. Add real user prompts (with an engine-verified design) to improve this.
 - **Designs within a pattern are structurally similar.** That is what makes the output consistent, but the model
   learns 10 patterns plus their variations, not arbitrary topologies. Requests outside them (e.g. API Gateway, Kinesis,
   Service Bus — not in the resource catalog) will not be served; `design-guidelines.md` tells the model not to invent types.
@@ -55,6 +62,25 @@ Nothing is hand-written prose. Every design is produced by code (`scripts/ai-dat
 - Rule references (FSBP, MCSB, Well-Architected URLs) inherit the verification status documented in
   `docs/security-assessment/AUDIT.md`; some remain "reference verification required".
 - Nothing here is a compliance certification.
+
+## Fine-tuning on Azure AI Foundry
+
+```bash
+npm run ai:finetune -- start              # uploads train/validation, creates a GlobalStandard job on gpt-4o-mini-2024-07-18
+npm run ai:finetune -- status <jobId>     # queued → running → succeeded (prints the fine_tuned_model id)
+npm run ai:finetune -- events <jobId>
+```
+Azure requires the **ARM control plane** (an Entra token) to deploy the finished model, so deploy it from the Foundry portal and set
+`AZURE_AI_FOUNDRY_DEPLOYMENT` to the deployment name. Then score it (same command works for the untuned base model):
+```bash
+npx tsx --env-file=.env --tsconfig tsconfig.json scripts/ai-dataset/evaluate-model.ts --foundry --model <deployment> --production
+npx tsx --env-file=.env --tsconfig tsconfig.json scripts/ai-dataset/evaluate-model.ts --foundry --model <deployment> --production --prompts datasets/ai-architect/eval-freeform.jsonl
+```
+`--production` mirrors the app (knowledge-base context + repair hints); drop it to measure the raw model. `--every N` / `--limit N` sample.
+Once a tuned model passes on its own, set `AI_KB_GENERATION=false` (see `.env.example`) so generation stops sending the context.
+
+Measured on the **untuned** `gpt-4o-mini` (the number to beat): 0/40 on `eval-prompts.jsonl` (plain, 3 attempts); 4/10 first try and 6/10
+with repair on a 10-prompt sample once the knowledge base and repair hints were added.
 
 ## Fine-tuning steps (OpenAI)
 

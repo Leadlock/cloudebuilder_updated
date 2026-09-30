@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { Bot, Loader2, Sparkles, X } from 'lucide-react';
 import { CloudProvider, CanvasNode, CanvasEdge } from '@/types';
-import { mapAiGraphToCanvas } from '@/lib/ai/mapAiGraphToCanvas';
+import { rekeyGraph } from '@/lib/domain/instantiateTemplate';
 
 interface AiPromptPanelProps {
   projectId: string;
   environmentId: string;
   provider: CloudProvider;
   onClose: () => void;
-  onApplyGraph: (nodes: CanvasNode[], edges: CanvasEdge[]) => void;
+  /** `notice` carries anything the user should know about the result (unsupported services, values to fill in). */
+  onApplyGraph: (nodes: CanvasNode[], edges: CanvasEdge[], notice?: string) => void;
 }
 
 export default function AiPromptPanel({
@@ -42,13 +43,15 @@ export default function AiPromptPanel({
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to generate architecture');
+      if (!res.ok) throw new Error([data.error || 'Failed to generate architecture', ...(data.issues ?? []).slice(0, 3)].join(' • '));
 
       // The backend returns architectureJson matching our prompt.
       // E.g., { resources: [], connections: [] }
-      const { nodes: newNodes, edges: newEdges } = mapAiGraphToCanvas(data.data, provider);
+      // The server already compiled, laid out and validated this graph; re-key it so its ids never
+      // collide with resources already on this canvas.
+      const { nodes: newNodes, edges: newEdges } = rekeyGraph(data.graph.nodes, data.graph.edges);
 
-      onApplyGraph(newNodes, newEdges);
+      onApplyGraph(newNodes, newEdges, data.warning);
       onClose();
     } catch (err: any) {
       setError(err.message);

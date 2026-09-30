@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
+import AiReviewCard from './AiReviewCard';
 import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedService';
 import type { WaAssessment, WaFinding, WaPillar, WaSeverity, ResourceState } from '@/lib/engines/wellArchitected/types';
 import {
@@ -345,6 +346,8 @@ export default function WellArchitectedReview() {
           </p>
         </div>
       </div>
+
+      <AiReviewCard nodes={activeProject.nodes} edges={activeProject.edges} mode="well-architected" />
 
       {/* Critical Findings Alert Banner (if any) */}
       {criticalFindings.length > 0 && (

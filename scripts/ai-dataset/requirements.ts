@@ -60,8 +60,29 @@ const DB_TEXT: Record<Database, string[]> = {
   none: [],
 };
 
-export type PromptStyle = 'terse' | 'detailed' | 'business' | 'constraints';
-export const PROMPT_STYLES: PromptStyle[] = ['terse', 'detailed', 'business', 'constraints'];
+export type PromptStyle = 'terse' | 'detailed' | 'business' | 'constraints' | 'casual' | 'minimal' | 'technical' | 'question' | 'vague';
+export const PROMPT_STYLES: PromptStyle[] = ['terse', 'detailed', 'business', 'constraints', 'casual', 'minimal', 'technical', 'question', 'vague'];
+
+const SHORT_NAME: Record<string, string> = {
+  'aws-three-tier': 'three-tier web app on EC2', 'aws-ecs': 'ECS Fargate app', 'aws-eks': 'EKS platform', 'aws-serverless': 'serverless API on Lambda',
+  'azure-three-tier': 'three-tier web app on VM scale sets', 'azure-app-service': 'App Service web app', 'azure-serverless': 'Azure Functions API', 'azure-aks': 'AKS platform',
+  'multi-aws-azure-dr': 'AWS primary with Azure DR', 'multi-active-active': 'active-active app across AWS and Azure',
+};
+
+/**
+ * A "vague" prompt names only the cloud, the kind of app and the scale. Everything it does not say must come
+ * out as the sensible default — default region, a relational database (NoSQL for serverless), no cache/CDN/queue,
+ * not regulated — so the model learns to fill gaps predictably instead of guessing. `fixed` keeps the
+ * pattern's own constants (e.g. serverless is always NoSQL with a CDN).
+ */
+export function vagueRequirements(r: Requirements, fixed: Partial<Requirements> = {}): Requirements {
+  return {
+    ...r,
+    region: r.provider === 'azure' ? 'eastus' : 'us-east-1',
+    ...(r.provider === 'multi' ? { regionB: 'eastus' } : {}),
+    db: fixed.db ?? 'postgres', cache: fixed.cache ?? false, cdn: fixed.cdn ?? false, queue: fixed.queue ?? false, regulated: false,
+  };
+}
 
 function cloudName(r: Requirements): string {
   return r.provider === 'aws' ? 'AWS' : r.provider === 'azure' ? 'Azure' : 'AWS and Azure';
@@ -90,6 +111,16 @@ export function promptFor(r: Requirements, style: PromptStyle, seed: number): st
       return `Design ${choose(pat.phrases, seed)} for a ${r.app.replace(/-/g, ' ')} workload on ${cloudName(r)}, deployed in ${regionText}. Expected load: ${users}.${extraText}${reg} It must be highly available across two availability zones, follow the ${r.provider === 'aws' ? 'AWS' : r.provider === 'azure' ? 'Azure' : 'AWS and Azure'} Well-Architected Framework and be ready to deploy without further changes.`;
     case 'business':
       return `We're launching our ${r.app.replace(/-/g, ' ')} product and expect ${users}. We want ${choose(pat.phrases, seed + 6)} on ${cloudName(r)} in ${regionText}.${extraText}${reg} Give us a production-ready architecture that won't need rework.`;
+    case 'minimal':
+      return `${cloudName(r)} ${SHORT_NAME[r.pattern] ?? pat.title}, ${users}, ${regionText}${extras.length ? ', ' + extras.join(', ') : ''}${r.regulated ? ', regulated' : ''}.`;
+    case 'casual':
+      return `hey, we need ${choose(pat.phrases, seed)} on ${cloudName(r)}, ${users}. running it in ${regionText}.${extras.length ? ' we want ' + extras.join(', ') + '.' : ''}${r.regulated ? ' it handles sensitive customer data so please keep it locked down.' : ''} thanks!`;
+    case 'technical':
+      return `Provision ${pat.title} on ${cloudName(r)} in ${regionText}. Target: ${users}. Data tier: ${r.db === 'none' ? 'none' : r.provider !== 'aws' && r.db !== 'nosql' ? 'managed SQL' : r.db}. ${r.cache ? 'Add a Redis cache tier. ' : ''}${r.cdn ? 'Front it with a CDN and WAF. ' : ''}${r.queue ? 'Use a queue for asynchronous work. ' : ''}Workloads in private subnets across two availability zones, encryption at rest and in transit${r.regulated ? ', audit logging and private-only management' : ''}.`;
+    case 'question':
+      return `What's a good ${cloudName(r)} architecture for ${choose(pat.phrases, seed)}? We expect ${users} and will run in ${regionText}.${extraText}${r.regulated ? ' It has to meet compliance requirements.' : ''}`;
+    case 'vague':
+      return `I need ${choose(pat.phrases, seed)} on ${cloudName(r)} for ${users}.`;
     case 'constraints':
       return `Requirements: cloud=${cloudName(r)}; region=${regionText}; workload=${r.app}; pattern=${pat.title}; scale=${users}; database=${r.provider !== 'aws' && r.db !== 'nosql' && r.db !== 'none' ? 'sql' : r.db}; cache=${r.cache ? 'yes' : 'no'}; cdn=${r.cdn ? 'yes' : 'no'}; queue=${r.queue ? 'yes' : 'no'}; regulated=${r.regulated ? 'yes' : 'no'}; availability=multi-AZ; must be deployable as-is.`;
   }

@@ -33,18 +33,25 @@ export async function generateWithRepair(
   complete: (messages: { role: 'system' | 'user' | 'assistant'; content: string }[]) => Promise<string>,
   userPrompt: string,
   maxAttempts = 3,
+  /** Optional inference-time enrichment of the issues sent back to the model (never used when building training data). */
+  mapIssues?: (issues: SpecIssue[]) => SpecIssue[],
+  /** Optional inference-time clean-up of the parsed design before it is validated (see specSanitizer.ts). */
+  prepare?: (json: unknown) => unknown,
 ): Promise<RepairOutcome> {
   const attempts: RepairAttempt[] = [];
   let prompt = userPrompt;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const text = await complete([{ role: 'system', content: ARCHITECT_SYSTEM_PROMPT }, { role: 'user', content: prompt }]);
-    const json = extractJson(text);
+    const parsed = extractJson(text);
+    const json = parsed !== undefined && prepare ? prepare(parsed) : parsed;
     const ev = json === undefined
       ? { ok: false, stage: 'parse' as const, issues: [{ code: 'NOT_JSON', message: 'The reply was not a single JSON object.' }] }
       : evaluateSpec(json);
     attempts.push({ attempt, ok: ev.ok, stage: ev.stage, issues: ev.issues });
     if (ev.ok && 'spec' in ev) return { ok: true, attempts, spec: ev.spec, graph: ev.graph, deploymentInputs: ev.deploymentInputs };
-    prompt = buildRepairPrompt(userPrompt, text, ev.stage, ev.issues);
+    // Send back the design as it was validated (renamed/dropped settings applied), so the issues match what the model sees.
+    const previous = prepare && json !== undefined ? JSON.stringify(json) : text;
+    prompt = buildRepairPrompt(userPrompt, previous, ev.stage, mapIssues ? mapIssues(ev.issues) : ev.issues);
   }
   return { ok: false, attempts };
 }

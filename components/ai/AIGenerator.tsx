@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { calculateCosts } from '@/lib/analysis';
 import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
-import { mapAiGraphToCanvas } from '@/lib/ai/mapAiGraphToCanvas';
+import { rekeyGraph } from '@/lib/domain/instantiateTemplate';
 import { CloudProvider, CanvasNode, CanvasEdge, AIGeneratorResult } from '@/types';
 import { Sparkles, Server, DollarSign, ShieldCheck, ChevronRight, Loader2, BookOpen, AlertTriangle } from 'lucide-react';
 import clsx from 'clsx';
@@ -76,9 +76,9 @@ export default function AIGenerator() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to generate architecture');
+      if (!res.ok) throw new Error([data.error || 'Failed to generate architecture', ...(data.issues ?? []).slice(0, 3)].join(' • '));
 
-      const { nodes, edges } = mapAiGraphToCanvas(data.data, provider);
+      const { nodes, edges } = rekeyGraph(data.graph.nodes, data.graph.edges);
       setResult(summarizeGraph(nodes, edges, prompt));
       setProjectName(prompt.slice(0, 40).trim());
       if (data.warning) setWarning(data.warning);
@@ -200,7 +200,7 @@ export default function AIGenerator() {
             {warning && (
               <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs p-3 rounded-xl">
                 <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                <span>{warning}</span>
+                <span className="whitespace-pre-line">{warning}</span>
               </div>
             )}
 

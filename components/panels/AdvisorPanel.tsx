@@ -7,6 +7,7 @@ import type { WaAssessment } from '@/lib/engines/wellArchitected/types';
 import type { AdvisorResult } from '@/lib/services/ApiAdvisorService';
 import { Brain, TrendingUp, Shield, Zap, DollarSign, Scale, AlertTriangle, ShieldCheck, ArrowRight, RefreshCw } from 'lucide-react';
 import clsx from 'clsx';
+import AiReviewCard from './AiReviewCard';
 
 const CATEGORY_CONFIG = {
   reliability:  { icon: TrendingUp, color: 'text-blue-400',   bg: 'bg-blue-900/30',   border: 'border-blue-800',   label: 'Reliability' },
@@ -230,6 +231,9 @@ export default function AdvisorPanel() {
             );
           })}
         </div>
+
+        {/* AI review — explains the engine's findings using the knowledge base */}
+        <AiReviewCard nodes={activeProject.nodes} edges={activeProject.edges} />
 
         {/* Recommendations */}
         {recs.length === 0 ? (

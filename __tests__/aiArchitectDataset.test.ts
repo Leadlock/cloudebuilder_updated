@@ -140,10 +140,47 @@ const hasDataset = existsSync(join(dir, 'train.jsonl'));
     const accounts = new Set(text.match(/arn:aws:[a-z0-9-]+:[a-z0-9-]*:(\d{12}):/g)?.map((m) => m.match(/(\d{12})/)![1]));
     expect([...accounts]).toEqual(['123456789012'].filter((a) => accounts.has(a)));
   });
+  test('validation contains no design the model trained on (paraphrases and repairs stay on one side)', () => {
+    const design = (r: { messages: { content: string }[] }) => r.messages[2]!.content;
+    const trained = new Set(train.map(design));
+    expect(val.filter((r) => trained.has(design(r)))).toHaveLength(0);
+  });
+  test('requests are phrased in many styles, including vague ones that rely on defaults', () => {
+    const users = train.map((r) => r.messages[1].content as string).filter((u) => !u.includes('failed CloudCraft validation'));
+    expect(users.some((u) => /^I need /.test(u))).toBe(true);        // vague: cloud + kind + scale only
+    expect(users.some((u) => /^hey, we need /.test(u))).toBe(true);  // casual
+    expect(users.some((u) => /^What's a good /.test(u))).toBe(true); // question
+    expect(users.some((u) => /^Provision /.test(u))).toBe(true);     // technical
+    // A vague request must not name a region — the design uses the default one.
+    for (const u of users.filter((x) => /^I need /.test(x))) expect(u).not.toMatch(/(us|eu|ap|ca|sa|me|af)-[a-z]+-d|eastus|westeurope|northeurope|westus/);
+  });
+  test('repair examples use the same hinted message format as the app and cover the mistakes models actually make', () => {
+    const repairs = train.map((r) => r.messages[1].content as string).filter((u) => u.includes('failed CloudCraft validation'));
+    expect(repairs.length).toBeGreaterThan(100);
+    expect(repairs.some((u) => u.includes('Valid settings for') && u.includes('camelCase'))).toBe(true);   // snake_case settings
+    expect(repairs.some((u) => u.includes('must be placed inside one of'))).toBe(true);                    // wrong parent
+    expect(repairs.some((u) => u.includes('BAD_ID'))).toBe(true);                                           // Web_Server-style ids
+  });
   test('covers AWS, Azure and multi-cloud', () => {
     const names = train.map((r) => (JSON.parse(r.messages[2].content).name as string));
     expect(names.some((n) => / on AWS /.test(n))).toBe(true);
     expect(names.some((n) => / on Azure /.test(n))).toBe(true);
     expect(names.some((n) => /AWS and Azure|AWS primary with Azure/.test(n))).toBe(true);
+  });
+});
+
+describe('select settings with numeric options', () => {
+  const withCloudwatch = (config: Record<string, unknown>) => ({
+    name: 'x', summary: 'y', resources: [{ id: 'cw', type: 'aws_cloudwatch', label: 'Alarm', config }], connections: [],
+  });
+
+  test('a number that matches an option is accepted (the catalog default is itself a number)', () => {
+    expect(parseSpec(withCloudwatch({ periodSeconds: 300 })).issues).toEqual([]);
+    expect(parseSpec(withCloudwatch({ periodSeconds: '300' })).issues).toEqual([]);
+  });
+  test('a number that is not an option is still rejected, with the allowed values in the message', () => {
+    const { issues } = parseSpec(withCloudwatch({ periodSeconds: 45 }));
+    expect(issues[0]!.code).toBe('BAD_CONFIG_VALUE');
+    expect(issues[0]!.message).toContain('10, 30, 60, 300, 900');
   });
 });

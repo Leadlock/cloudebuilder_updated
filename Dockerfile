@@ -42,6 +42,8 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/migrations ./migrations
+# Knowledge base + precomputed vectors read at runtime by the AI generator and reviewer (lib/ai/knowledgeBase.ts)
+COPY --from=builder /app/datasets/ai-architect/knowledge-base ./datasets/ai-architect/knowledge-base
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 
 USER nextjs
