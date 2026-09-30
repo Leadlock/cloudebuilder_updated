@@ -352,15 +352,38 @@ export async function executeDestroy(input: ExecuteDestroyInput): Promise<{ mess
       timeoutMs: 5 * 60 * 1000,
     });
 
-    const { stdout } = await runTerraform(['destroy', '-auto-approve', '-input=false', '-no-color'], {
-      cwd: workDir,
-      env,
-      timeoutMs: 25 * 60 * 1000,
-    });
+    let destroyResult: { stdout: string; stderr: string } | null = null;
+    const maxAttempts = 3;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        destroyResult = await runTerraform(['destroy', '-auto-approve', '-input=false', '-no-color'], {
+          cwd: workDir,
+          env,
+          timeoutMs: 25 * 60 * 1000,
+        });
+        break; // Successfully destroyed all resources
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const isTransientInUse =
+          msg.includes('CacheSubnetGroupInUse') ||
+          msg.includes('DBSubnetGroupInUse') ||
+          msg.includes('DependencyViolation') ||
+          msg.includes('in use by a cache cluster') ||
+          msg.includes('network interface');
+
+        if (attempt < maxAttempts && isTransientInUse) {
+          // Wait 20 seconds for AWS async termination of dependent cluster/database nodes before retrying
+          await new Promise((r) => setTimeout(r, 20000));
+        } else {
+          throw err;
+        }
+      }
+    }
 
     return {
       message: 'All cloud infrastructure resources have been successfully destroyed from the connected account.',
-      outputTail: stdout.slice(-4000),
+      outputTail: (destroyResult?.stdout || '').slice(-4000),
     };
   } finally {
     await rm(workDir, { recursive: true, force: true }).catch(() => {});

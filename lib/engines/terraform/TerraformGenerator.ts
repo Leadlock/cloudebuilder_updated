@@ -1003,7 +1003,10 @@ class AwsTerraformGenerator {
       `  transit_encryption_enabled = ${cfg['transitEncryption'] !== false}`,
       `  snapshot_retention_limit   = ${cfg['snapshotRetentionLimit'] ?? 5}`,
     ];
-    if (subnetGroupRef) lines.push(`  subnet_group_name     = ${subnetGroupRef}`);
+    if (subnetGroupRef) {
+      lines.push(`  subnet_group_name     = ${subnetGroupRef}`);
+      lines.push(`  depends_on            = [aws_elasticache_subnet_group.${name}_subnet_group]`);
+    }
     if (sgRef) lines.push(`  security_group_ids    = ${sgRef}`);
     lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
     return lines.join('\n');
