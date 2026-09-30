@@ -1,5 +1,6 @@
 import { CanvasNode, CanvasEdge, CloudProvider } from '@/types';
-import { rekeyGraph } from '@/lib/domain/instantiateTemplate';
+import { getResourceDefinition } from '@/lib/resources';
+import { autoLayoutArchitecture } from '@/lib/canvas/autoLayout';
 
 /** Shape returned by POST /api/ai/generate's `data` field. */
 export interface AiRawResource {
@@ -21,60 +22,7 @@ export interface AiRawGraph {
   connections?: AiRawConnection[];
 }
 
-/**
- * Balances resources across Availability Zones so AZ-B subnets are never left empty
- * when multiple compute/data resources are generated.
- */
-function balanceMultiAzTopology(resources: AiRawResource[]): AiRawResource[] {
-  const subnets = resources.filter((r) => r.resourceType === 'aws_subnet' || r.resourceType === 'azure_subnet');
-  if (subnets.length < 2) return resources;
-
-  // Classify subnets by tier (public, app/compute, data) and AZ (A vs B)
-  const getTier = (s: AiRawResource) => {
-    const text = `${s.id} ${s.label || ''}`.toLowerCase();
-    if (text.includes('pub')) return 'public';
-    if (text.includes('data') || text.includes('db')) return 'data';
-    return 'app';
-  };
-
-  const getAz = (s: AiRawResource) => {
-    const text = `${s.id} ${s.label || ''} ${JSON.stringify(s.config || {})}`.toLowerCase();
-    if (text.includes('1b') || text.includes('-b') || text.includes('az-b') || text.includes('zone b') || text.includes('eastus2') || text.includes('sub-pub-2') || text.includes('sub-priv-2') || text.includes('sub-data-2')) {
-      return 'B';
-    }
-    return 'A';
-  };
-
-  const tiers = ['public', 'app', 'data'] as const;
-  const updated = resources.map((r) => ({ ...r }));
-
-  for (const tier of tiers) {
-    const tierSubnets = subnets.filter((s) => getTier(s) === tier);
-    const subA = tierSubnets.find((s) => getAz(s) === 'A') || tierSubnets[0];
-    const subB = tierSubnets.find((s) => getAz(s) === 'B') || (tierSubnets.length > 1 ? tierSubnets[1] : null);
-
-    if (!subA || !subB || subA.id === subB.id) continue;
-
-    const childrenOfA = updated.filter((r) => r.parentId === subA.id);
-    const childrenOfB = updated.filter((r) => r.parentId === subB.id);
-
-    // If Subnet B is empty and Subnet A has 2+ children, rebalance
-    if (childrenOfB.length === 0 && childrenOfA.length > 1) {
-      // Find candidate to move to Subnet B
-      const explicitB = childrenOfA.find((c) => {
-        const text = `${c.id} ${c.label || ''}`.toLowerCase();
-        return text.includes('az-b') || text.includes('az-2') || text.includes('zone b') || text.includes('(b)') || text.includes('redis') || text.includes('cache') || text.includes('standby') || text.includes('replica');
-      });
-
-      const toMove = explicitB || childrenOfA[childrenOfA.length - 1];
-      if (toMove) {
-        toMove.parentId = subB.id;
-      }
-    }
-  }
-
-  return updated;
-}
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Maps the AI generator's validated resource/connection graph onto canvas
@@ -83,27 +31,57 @@ function balanceMultiAzTopology(resources: AiRawResource[]): AiRawResource[] {
  * drift into different node shapes.
  */
 export function mapAiGraphToCanvas(graph: AiRawGraph, provider: CloudProvider): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
-  const balancedResources = balanceMultiAzTopology(graph.resources ?? []);
+  // Generate unique IDs for all resources to avoid any persistence collision across architectures
+  const idMap = new Map<string, string>();
 
-  const rawNodes: CanvasNode[] = balancedResources.map((r, index) => ({
-    id: r.id || `ai-node-${index}`,
-    type: 'cloud_node',
-    resourceType: r.resourceType,
-    provider,
-    label: (r.config?.name as string | undefined) || r.label || r.resourceType,
-    position: { x: (index % 4) * 220, y: Math.floor(index / 4) * 180 },
-    config: r.config || {},
-    parentId: r.parentId ?? undefined,
-  }));
+  (graph.resources ?? []).forEach((r, index) => {
+    const rawId = r.id || `node-${index}`;
+    const cleanPrefix = rawId.replace(/[^a-z0-9_-]/gi, '').slice(0, 24) || 'res';
+    const cleanId = `${cleanPrefix}-${uuidv4().replace(/-/g, '').slice(0, 12)}`;
+    idMap.set(rawId, cleanId);
+  });
 
-  const rawEdges: CanvasEdge[] = (graph.connections ?? []).map((c, index) => ({
-    id: `ai-edge-${index}`,
-    source: c.sourceId,
-    target: c.targetId,
-    label: c.label,
-    provider,
-  }));
+  const rawNodes: CanvasNode[] = (graph.resources ?? []).map((r, index) => {
+    const def = getResourceDefinition(r.resourceType);
+    const isContainer = def?.isContainer ?? false;
+    const rawId = r.id || `node-${index}`;
+    const mappedId = idMap.get(rawId) || `${rawId}-${uuidv4().replace(/-/g, '').slice(0, 12)}`;
+    const mappedParentId = r.parentId ? idMap.get(r.parentId) || r.parentId : undefined;
 
-  const { nodes, edges } = rekeyGraph(rawNodes, rawEdges);
-  return { nodes, edges };
+    return {
+      id: mappedId,
+      type: isContainer ? 'containerNode' : 'cloud_node',
+      resourceType: r.resourceType,
+      provider,
+      label: (r.config?.name as string | undefined) || r.label || def?.label || r.resourceType,
+      position: { x: (index % 4) * 220, y: Math.floor(index / 4) * 180 },
+      width: isContainer ? (def?.defaultWidth || 400) : undefined,
+      height: isContainer ? (def?.defaultHeight || 250) : undefined,
+      config: { ...(def?.defaultConfig || {}), ...(r.config || {}) },
+      parentId: mappedParentId,
+      groupId: mappedParentId,
+    } as CanvasNode;
+  });
+
+  const rawEdges: CanvasEdge[] = (graph.connections ?? []).map((c) => {
+    const source = idMap.get(c.sourceId) || c.sourceId;
+    const target = idMap.get(c.targetId) || c.targetId;
+    return {
+      id: `ai-edge-${uuidv4().replace(/-/g, '').slice(0, 12)}`,
+      source,
+      target,
+      label: c.label,
+      provider,
+    };
+  });
+
+  try {
+    const { nodes: laidOutNodes, edges: laidOutEdges } = autoLayoutArchitecture(rawNodes, rawEdges);
+    return { nodes: laidOutNodes, edges: laidOutEdges };
+  } catch (err) {
+    console.warn('[mapAiGraphToCanvas] AutoLayout failed, falling back to raw grid positioning:', err);
+    return { nodes: rawNodes, edges: rawEdges };
+  }
 }
+
+

@@ -6,7 +6,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ok, notFound, forbidden, unauthorized, internalError, parseBody } from '@/lib/api/response';
-import { extractIdentity, getOrgRole, resolveOrgIds } from '@/lib/api/auth';
+import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { projectRepository } from '@/lib/repositories/projectRepository';
 import { orgRepository } from '@/lib/repositories/orgRepository';
 import type { Region } from '@/types';
@@ -23,15 +23,9 @@ const UpdateProjectSchema = z.object({
 async function resolveOrgId(req: NextRequest, userId: string): Promise<string | null> {
   const orgId = req.nextUrl.searchParams.get('orgId') ?? '';
   if (orgId) return orgId;
-  const memberOrgIds = await resolveOrgIds(userId);
-  if (memberOrgIds[0]) return memberOrgIds[0];
   if (process.env.NODE_ENV === 'development') {
-    try {
-      const ctx = await orgRepository.ensureDevContext();
-      return ctx.orgId;
-    } catch {
-      return 'dev-org-id';
-    }
+    const ctx = await orgRepository.ensureDevContext();
+    return ctx.orgId;
   }
   return null;
 }
@@ -106,9 +100,7 @@ export async function DELETE(
     if (!orgId) return forbidden('orgId required');
 
     const role = await getOrgRole(identity.userId, orgId);
-    if (!role || !['owner', 'admin'].includes(role)) {
-      return forbidden('Only organization administrators can delete projects');
-    }
+    if (!role || !['owner', 'admin'].includes(role)) return forbidden();
 
     const deleted = await projectRepository.delete(id, orgId);
     if (!deleted) return notFound('Project');

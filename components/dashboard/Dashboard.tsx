@@ -6,12 +6,12 @@ import {
   Cloud, LayoutGrid, Wand2, Sparkles, Upload
 } from 'lucide-react';
 import clsx from 'clsx';
-import { CloudProvider, CanvasNode, CanvasEdge, Project } from '@/types';
-import DeleteProjectModal from '@/components/modals/DeleteProjectModal';
+import { CloudProvider, CanvasNode, CanvasEdge } from '@/types';
 import { formatCurrency } from '@/lib/currency/formatter';
 import { formatDate } from '@/lib/date';
 import { architectureTemplates } from '@/lib/templates';
 import { instantiateTemplate } from '@/lib/domain/instantiateTemplate';
+import DeleteProjectModal from '@/components/modals/DeleteProjectModal';
 
 function ScoreBadge({ score }: { score: number }) {
   const color = score >= 80 ? 'text-emerald-400' : score >= 60 ? 'text-yellow-400' : 'text-red-400';
@@ -34,16 +34,15 @@ type Tab = 'all' | 'aws' | 'azure' | 'multi';
 
 export default function Dashboard() {
   const { state, dispatch } = useApp();
-  const { projects, displayCurrency, currentUser } = state;
-  const isAdmin = currentUser?.role === 'admin' || (!currentUser && process.env.NODE_ENV === 'development');
+  const { projects, displayCurrency } = state;
   const activeCurrency = displayCurrency || 'USD';
   const [exchangeRate, setExchangeRate] = useState<number>(1.0);
   const [showNewProject, setShowNewProject] = useState(false);
-  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [newName, setNewName] = useState('');
   const [newProvider, setNewProvider] = useState<CloudProvider>('aws');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('blank');
   const [tab, setTab] = useState<Tab>('all');
+  const [projectToDelete, setProjectToDelete] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     if (activeCurrency === 'USD') return;
@@ -222,10 +221,10 @@ export default function Dashboard() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setProjectToDelete(project);
+                    setProjectToDelete({ id: project.id, name: project.name });
                   }}
-                  className="opacity-0 group-hover:opacity-100 ml-2 p-1 text-gray-500 hover:text-red-400 rounded transition-all shrink-0 cursor-pointer"
-                  title={isAdmin ? "Delete project" : "Only administrators can delete projects"}
+                  className="opacity-0 group-hover:opacity-100 ml-2 p-1 text-gray-500 hover:text-red-400 rounded transition-all shrink-0"
+                  title="Delete project"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -359,16 +358,19 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Confirmation Modal for Project Deletion */}
-      <DeleteProjectModal
-        isOpen={Boolean(projectToDelete)}
-        project={projectToDelete}
-        isAdmin={Boolean(isAdmin)}
-        onClose={() => setProjectToDelete(null)}
-        onConfirm={async (id) => {
-          dispatch({ type: 'DELETE_PROJECT', id });
-        }}
-      />
+      {/* Delete Confirmation Modal */}
+      {projectToDelete && (
+        <DeleteProjectModal
+          isOpen={true}
+          projectId={projectToDelete.id}
+          projectName={projectToDelete.name}
+          onConfirm={(id) => {
+            dispatch({ type: 'DELETE_PROJECT', id });
+            setProjectToDelete(null);
+          }}
+          onCancel={() => setProjectToDelete(null)}
+        />
+      )}
     </div>
   );
 }
