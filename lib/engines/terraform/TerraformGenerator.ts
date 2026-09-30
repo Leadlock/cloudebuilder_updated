@@ -581,7 +581,7 @@ class AwsTerraformGenerator {
 
     const lines: string[] = [
       `resource "aws_db_instance" "${name}" {`,
-      `  identifier                     = "${name}"`,
+      `  identifier                     = "${name.replace(/_/g, '-')}"`,
       `  engine                         = "${cfg['engine'] ?? 'mysql'}"`,
       `  engine_version                 = "${cfg['engineVersion'] ?? '8.0'}"`,
       `  instance_class                 = "${cfg['instanceClass'] ?? 'db.t3.micro'}"`,
@@ -852,7 +852,7 @@ class AwsTerraformGenerator {
 
     const lines: string[] = [
       `resource "aws_elasticache_replication_group" "${name}" {`,
-      `  replication_group_id = "${name}"`,
+      `  replication_group_id = "${name.replace(/_/g, '-')}"`,
       `  description           = "Managed by CloudCraft"`,
       `  engine                = "${cfg['engine'] ?? 'redis'}"`,
       `  engine_version        = "${cfg['engineVersion'] ?? '7.1'}"`,
@@ -1608,7 +1608,7 @@ ${tagLines.join('\n')}
 
     const lines: string[] = [
       `resource "aws_lb" "${name}" {`,
-      `  name               = "${name}"`,
+      `  name               = "${name.replace(/_/g, '-')}"`,
       `  internal           = ${cfg['scheme'] === 'internal'}`,
       `  load_balancer_type = "${cfg['lbType'] ?? 'application'}"`,
       `  idle_timeout               = ${cfg['idleTimeoutSeconds'] ?? 60}`,
@@ -1627,7 +1627,7 @@ ${tagLines.join('\n')}
     lines.push(
       ``,
       `resource "aws_lb_target_group" "${name}_tg" {`,
-      `  name        = "${name}-tg"`,
+      `  name        = "${name.replace(/_/g, '-')}-tg"`,
       `  port        = ${targetPort}`,
       `  protocol    = "${targetProtocol}"`,
       `  vpc_id      = ${vpcRef ?? `aws_vpc.main.id # WARNING: VPC not connected`}`,
