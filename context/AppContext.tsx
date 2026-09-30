@@ -1155,7 +1155,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
               saveErr?.message?.includes('RESOURCE_ID_CONFLICT') ||
               saveErr?.message?.includes('already belong to another architecture');
 
-            if (isIdConflict && project.nodes.length > 0) {
+            const isRevConflict =
+              saveErr?.code === 'CONFLICT' ||
+              saveErr?.status === 409 ||
+              saveErr?.message?.includes('Revision conflict') ||
+              saveErr?.message?.includes('CONFLICT');
+
+            if (isRevConflict && (saveErr?.serverRevision !== undefined)) {
+              console.warn(`[AutoSave] Revision conflict (client: ${currentRevision}, server: ${saveErr.serverRevision}). Fast-forwarding revision and retrying...`);
+              dispatch({ type: 'UPDATE_PROJECT_REVISION', projectId: project.id, revision: saveErr.serverRevision });
+              res = await _activeService.saveCanvas(
+                project.id,
+                project.nodes,
+                project.edges,
+                currentState.activeEnvironment,
+                saveErr.serverRevision,
+                project.scaleProfile
+              );
+            } else if (isIdConflict && project.nodes.length > 0) {
               console.warn('[AutoSave] Detected RESOURCE_ID_CONFLICT. Auto-rekeying canvas nodes to heal project persistence...');
               const rekeyed = rekeyGraph(project.nodes, project.edges);
               dispatch({ type: 'UPDATE_CANVAS', nodes: rekeyed.nodes, edges: rekeyed.edges });
@@ -1199,7 +1216,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       } catch (error: any) {
         if (seq !== saveSeqRef.current) return;
-        console.error('AutoSave failed:', error);
+        console.warn('[AutoSave] AutoSave notification:', error?.message || error);
         const isConflict = error?.status === 409 || error?.code === 'CONFLICT' || error?.message?.includes('conflict');
         dispatch({
           type: 'SET_AUTO_SAVE_STATUS',
