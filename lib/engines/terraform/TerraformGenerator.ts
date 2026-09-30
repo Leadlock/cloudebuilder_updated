@@ -743,7 +743,9 @@ class AwsTerraformGenerator {
     lines.push(`  iam_database_authentication_enabled = ${cfg['iamDatabaseAuthenticationEnabled'] === true}`);
     lines.push(`  skip_final_snapshot            = true`);
     lines.push(`  db_name                        = var.db_name`);
-    lines.push(`  username                       = "${cfg['masterUsername'] ?? 'admin'}"`);
+    const masterUser = (cfg['masterUsername'] as string) || 'dbadmin';
+    const safeUsername = ((cfg['engine'] as string) || 'postgres').includes('postgres') && masterUser === 'admin' ? 'dbadmin' : masterUser;
+    lines.push(`  username                       = "${safeUsername}"`);
     lines.push(`  password                       = var.db_password`);
     lines.push(`  backup_retention_period        = ${cfg['backupRetentionPeriod'] ?? 7}`);
     if (cfg['preferredBackupWindow']) {
@@ -1261,6 +1263,7 @@ ${tagLines.join('\n')}
   subnet_ids      = ${subnetsHcl}
   instance_types  = ["${cfg['nodeInstanceType'] ?? 't3.medium'}"]
   capacity_type   = "${cfg['capacityType'] ?? 'ON_DEMAND'}"
+  ami_type        = "${(cfg['amiType'] as string) || (parseFloat(String(cfg['version'] ?? '1.30')) >= 1.30 ? 'AL2023_x86_64_STANDARD' : 'AL2_x86_64')}"
   disk_size       = ${cfg['nodeDiskSizeGb'] ?? 20}
 
   scaling_config {
@@ -1781,21 +1784,23 @@ ${tagLines.join('\n')}
       `}`,
     );
 
-    const listenerProtocol = (cfg['listenerProtocol'] as string) || 'HTTPS';
+    const hasCert = Boolean(cfg['certificateArn']);
+    const listenerProtocol = (cfg['listenerProtocol'] as string) || (hasCert ? 'HTTPS' : 'HTTP');
     const isTls = listenerProtocol === 'HTTPS' || listenerProtocol === 'TLS';
+    const listenerPort = cfg['listenerPort'] ?? (isTls ? 443 : 80);
     lines.push(
       ``,
       `resource "aws_lb_listener" "${name}_listener" {`,
       `  load_balancer_arn = aws_lb.${name}.arn`,
-      `  port              = ${cfg['listenerPort'] ?? 443}`,
+      `  port              = ${listenerPort}`,
       `  protocol          = "${listenerProtocol}"`,
     );
     if (isTls) {
-      lines.push(`  ssl_policy        = "${cfg['sslPolicy'] ?? 'ELBSecurityPolicy-TLS13-1-2-2021-06'}"`);
-      if (cfg['certificateArn']) {
+      if (hasCert) {
+        lines.push(`  ssl_policy        = "${cfg['sslPolicy'] ?? 'ELBSecurityPolicy-TLS13-1-2-2021-06'}"`);
         lines.push(`  certificate_arn   = "${cfg['certificateArn']}"`);
       } else {
-        lines.push(`  # WARNING: certificate_arn not set — this listener will fail to apply. Set an ACM certificate ARN.`);
+        lines.push(`  # WARNING: certificate_arn not set — required by AWS for HTTPS listeners`);
       }
     }
     lines.push(

@@ -63,13 +63,16 @@ export default function TerraformExecutionPanel() {
   const [latestReview, setLatestReview] = useState<ArchitectureReview | null>(null);
   const isApproved = latestReview?.status === 'approved';
 
+  const storageKey = activeProject ? `cloudcraft_tf_state_${activeProject.id}_${state.activeEnvironment}` : null;
+  const backendStorageKey = activeProject ? `cloudcraft_tf_backend_${activeProject.id}` : null;
+
   const defaultProvider: 'aws' | 'azure' = activeProject?.provider === 'azure' ? 'azure' : 'aws';
   const [backendProvider, setBackendProvider] = useState<'aws' | 'azure'>(defaultProvider);
   const [accounts, setAccounts] = useState<CloudAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [loadingAccounts, setLoadingAccounts] = useState(false);
 
-  const [awsBackend, setAwsBackend] = useState<AwsBackendForm>({ bucket: '', key: '', region: 'us-east-1', dynamodbTable: '' });
+  const [awsBackend, setAwsBackend] = useState<AwsBackendForm>({ bucket: 'cloudraft-test', key: 'cloudcraft/terraform.tfstate', region: 'eu-north-1', dynamodbTable: '' });
   const [azureBackend, setAzureBackend] = useState<AzureBackendForm>({ resourceGroupName: '', storageAccountName: '', containerName: '', key: '' });
 
   const [plan, setPlan] = useState<TerraformPlanResult | null>(null);
@@ -80,6 +83,7 @@ export default function TerraformExecutionPanel() {
   const [applyStatus, setApplyStatus] = useState<TerraformApplyStatus | null>(null);
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
 
   // Destruction state
   const [destroying, setDestroying] = useState(false);
@@ -97,6 +101,82 @@ export default function TerraformExecutionPanel() {
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 1. Restore persistent backend and deployment state from localStorage
+  useEffect(() => {
+    if (!storageKey || typeof window === 'undefined') return;
+    try {
+      // Restore backend config
+      if (backendStorageKey) {
+        const savedBackend = localStorage.getItem(backendStorageKey);
+        if (savedBackend) {
+          const parsed = JSON.parse(savedBackend);
+          if (parsed.backendProvider) setBackendProvider(parsed.backendProvider);
+          if (parsed.selectedAccountId) setSelectedAccountId(parsed.selectedAccountId);
+          if (parsed.awsBackend) setAwsBackend(parsed.awsBackend);
+          if (parsed.azureBackend) setAzureBackend(parsed.azureBackend);
+        }
+      }
+
+      // Restore deployment/plan execution state
+      const savedState = localStorage.getItem(storageKey);
+      if (savedState) {
+        const parsed = JSON.parse(savedState);
+        if (parsed.plan) setPlan(parsed.plan);
+        if (parsed.applyJobId) setApplyJobId(parsed.applyJobId);
+        if (parsed.applyStatus) setApplyStatus(parsed.applyStatus);
+        if (parsed.applying !== undefined) setApplying(parsed.applying);
+        if (parsed.completedCount !== undefined) setCompletedCount(parsed.completedCount);
+        if (parsed.startedAt) {
+          setStartedAt(parsed.startedAt);
+          const elapsed = Math.max(0, Math.floor((Date.now() - parsed.startedAt) / 1000));
+          setElapsedSeconds(elapsed);
+        }
+        if (parsed.destroySuccess) setDestroySuccess(parsed.destroySuccess);
+        if (parsed.destroyError) setDestroyError(parsed.destroyError);
+        if (parsed.destroyOutputTail) setDestroyOutputTail(parsed.destroyOutputTail);
+
+        // Resume polling if job is active or in progress
+        if (parsed.applyJobId && activeProject && (!parsed.applyStatus || parsed.applyStatus.state === 'active' || parsed.applyStatus.state === 'pending' || parsed.applying)) {
+          pollApplyStatus(activeProject.id, parsed.applyJobId);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to restore Terraform execution state from localStorage', e);
+    }
+  }, [storageKey, backendStorageKey, activeProject?.id]);
+
+  // 2. Persist backend settings whenever they change
+  useEffect(() => {
+    if (!backendStorageKey || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(backendStorageKey, JSON.stringify({
+        backendProvider,
+        selectedAccountId,
+        awsBackend,
+        azureBackend,
+      }));
+    } catch {}
+  }, [backendStorageKey, backendProvider, selectedAccountId, awsBackend, azureBackend]);
+
+  // 3. Persist deployment state whenever it changes
+  useEffect(() => {
+    if (!storageKey || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({
+        plan,
+        applyJobId,
+        applyStatus,
+        applying,
+        completedCount,
+        startedAt,
+        destroySuccess,
+        destroyError,
+        destroyOutputTail,
+      }));
+    } catch {}
+  }, [storageKey, plan, applyJobId, applyStatus, applying, completedCount, startedAt, destroySuccess, destroyError, destroyOutputTail]);
 
   useEffect(() => {
     if (!activeProject) return;
@@ -113,8 +193,12 @@ export default function TerraformExecutionPanel() {
       .then((r) => r.json())
       .then((data: { ok: boolean; data: CloudAccount[] }) => {
         if (cancelled) return;
-        setAccounts(data.ok ? data.data.filter((a) => a.provider === backendProvider) : []);
-        setSelectedAccountId('');
+        const list = data.ok ? data.data.filter((a) => a.provider === backendProvider) : [];
+        setAccounts(list);
+        setSelectedAccountId((prev) => {
+          if (prev && list.some((a) => a.id === prev)) return prev;
+          return list.length > 0 ? list[0].id : '';
+        });
       })
       .catch(() => {
         if (!cancelled) setAccounts([]);
@@ -128,8 +212,14 @@ export default function TerraformExecutionPanel() {
   // Track timer and simulated progress while applying or destroying
   useEffect(() => {
     if (applying || destroying) {
-      setElapsedSeconds(0);
-      setCompletedCount(0);
+      if (!startedAt) {
+        const now = Date.now();
+        setStartedAt(now);
+        setElapsedSeconds(0);
+      } else {
+        setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+      }
+
       timerRef.current = setInterval(() => {
         setElapsedSeconds((s) => s + 1);
       }, 1000);
@@ -152,15 +242,22 @@ export default function TerraformExecutionPanel() {
       if (timerRef.current) clearInterval(timerRef.current);
       if (progressTimerRef.current) clearInterval(progressTimerRef.current);
     };
-  }, [applying, destroying, plan?.summary.resourceChanges.length]);
+  }, [applying, destroying, startedAt, plan?.summary.resourceChanges.length]);
 
   // When apply completes successfully, set progress to 100%
   useEffect(() => {
     if (applyStatus?.state === 'completed') {
       const total = plan?.summary.resourceChanges.length ?? 0;
       setCompletedCount(total);
+      setApplying(false);
       if (timerRef.current) clearInterval(timerRef.current);
       if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    } else if (applyStatus?.state === 'failed') {
+      setApplying(false);
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     }
   }, [applyStatus?.state, plan?.summary.resourceChanges.length]);
 
@@ -201,6 +298,8 @@ export default function TerraformExecutionPanel() {
     setDestroySuccess(null);
     setDestroyError(null);
     setCompletedCount(0);
+    setStartedAt(null);
+    setElapsedSeconds(0);
     try {
       const result = await ApiTerraformExecutionService.generatePlan(
         activeProject.id,
@@ -221,6 +320,10 @@ export default function TerraformExecutionPanel() {
     if (!activeProject || !plan) return;
     setApplying(true);
     setApplyError(null);
+    const now = Date.now();
+    setStartedAt(now);
+    setElapsedSeconds(0);
+    setCompletedCount(0);
     try {
       const { jobId } = await ApiTerraformExecutionService.confirmApply(activeProject.id, plan.planId, plan.planHash, currentUser);
       setApplyJobId(jobId);
@@ -239,6 +342,8 @@ export default function TerraformExecutionPanel() {
     setDestroyOutputTail(null);
     setShowDestroyModal(false);
     setDestroyConfirmInput('');
+    setStartedAt(Date.now());
+    setElapsedSeconds(0);
 
     try {
       const result = await ApiTerraformExecutionService.destroyInfrastructure(
@@ -261,17 +366,18 @@ export default function TerraformExecutionPanel() {
   }
 
   function pollApplyStatus(projectId: string, jobId: string) {
-    const interval = setInterval(async () => {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    pollIntervalRef.current = setInterval(async () => {
       try {
         const status = await ApiTerraformExecutionService.getApplyStatus(projectId, jobId, currentUser);
         setApplyStatus(status);
         if (status.state === 'completed' || status.state === 'failed' || status.state === 'unknown') {
-          clearInterval(interval);
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
           setApplying(false);
           if (status.state === 'unknown') setApplyError('Apply job could not be found — it may have expired before the worker picked it up.');
         }
       } catch (err) {
-        clearInterval(interval);
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         setApplying(false);
         setApplyError(err instanceof Error ? err.message : 'Failed to poll apply status');
       }
@@ -279,16 +385,26 @@ export default function TerraformExecutionPanel() {
   }
 
   function resetPlan() {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
     setPlan(null);
     setPlanError(null);
     setApplyJobId(null);
     setApplyStatus(null);
     setApplyError(null);
+    setApplying(false);
     setCompletedCount(0);
+    setStartedAt(null);
     setElapsedSeconds(0);
     setDestroySuccess(null);
     setDestroyError(null);
     setDestroyOutputTail(null);
+    if (storageKey && typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {}
+    }
   }
 
   if (!isAdmin) return null;
