@@ -1362,7 +1362,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       case 'DELETE_PROJECT': {
-        _activeService.deleteProject(action.id).catch(() => {});
+        if (autoSaveTimerRef.current) {
+          clearTimeout(autoSaveTimerRef.current);
+          autoSaveTimerRef.current = null;
+        }
+        _activeService.deleteProject(action.id).catch((err) => {
+          console.error('[DELETE_PROJECT] API delete failed:', err);
+        });
         break;
       }
 

@@ -44,12 +44,14 @@ export interface ApiFetchError extends Error {
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${getBaseUrl()}${path}`;
   const res = await fetch(url, {
+    credentials: 'include',
+    ...init,
     headers: {
       'Content-Type': 'application/json',
       // Dev header — replaced by real auth token in Phase 3
       ...(process.env.NODE_ENV === 'development' ? { 'x-user-id': 'dev-user-id' } : {}),
+      ...(init?.headers ?? {}),
     },
-    ...init,
   });
   const envelope = (await res.json()) as ApiEnvelope<T>;
   if (!envelope.ok) {

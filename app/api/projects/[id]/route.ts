@@ -6,9 +6,11 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ok, notFound, forbidden, unauthorized, internalError, parseBody } from '@/lib/api/response';
-import { extractIdentity, getOrgRole } from '@/lib/api/auth';
+import { extractIdentity, getOrgRole, resolveOrgIds } from '@/lib/api/auth';
 import { projectRepository } from '@/lib/repositories/projectRepository';
 import { orgRepository } from '@/lib/repositories/orgRepository';
+import { mockProjects } from '@/lib/mockData';
+import { db } from '@/src/prisma/db';
 import type { Region } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -20,12 +22,39 @@ const UpdateProjectSchema = z.object({
   region:      z.string().min(1).optional(),
 });
 
-async function resolveOrgId(req: NextRequest, userId: string): Promise<string | null> {
-  const orgId = req.nextUrl.searchParams.get('orgId') ?? '';
-  if (orgId) return orgId;
+async function resolveOrgId(req: NextRequest, userId: string, projectId?: string): Promise<string | null> {
+  const orgIdParam = req.nextUrl.searchParams.get('orgId') ?? '';
+  if (orgIdParam) return orgIdParam;
+
+  if (userId) {
+    const memberOrgIds = await resolveOrgIds(userId);
+    if (memberOrgIds.length > 0) {
+      if (projectId) {
+        try {
+          const p = await db.orm.public.Project.where({ id: projectId }).first();
+          if (p && memberOrgIds.includes(p.orgId)) {
+            return p.orgId;
+          }
+        } catch {}
+      }
+      return memberOrgIds[0];
+    }
+  }
+
+  if (projectId) {
+    try {
+      const p = await db.orm.public.Project.where({ id: projectId }).first();
+      if (p) return p.orgId;
+    } catch {}
+  }
+
   if (process.env.NODE_ENV === 'development') {
-    const ctx = await orgRepository.ensureDevContext();
-    return ctx.orgId;
+    try {
+      const ctx = await orgRepository.ensureDevContext();
+      return ctx.orgId;
+    } catch {
+      return 'dev-org-id';
+    }
   }
   return null;
 }
@@ -39,14 +68,20 @@ export async function GET(
     if (!identity) return unauthorized();
     const { id } = await params;
 
-    const orgId = await resolveOrgId(req, identity.userId);
+    const orgId = await resolveOrgId(req, identity.userId, id);
     if (!orgId) return forbidden('orgId required');
 
     const role = await getOrgRole(identity.userId, orgId);
     if (!role) return forbidden();
 
     const project = await projectRepository.findById(id, orgId);
-    if (!project) return notFound('Project');
+    if (!project) {
+      if (process.env.NODE_ENV === 'development') {
+        const mock = mockProjects.find((p) => p.id === id);
+        if (mock) return ok(mock);
+      }
+      return notFound('Project');
+    }
     return ok(project);
   } catch (err) {
     console.error('[GET /api/projects/:id]', err);
@@ -67,7 +102,7 @@ export async function PUT(
     if (!parsed.ok) return parsed.response;
     const body = parsed.data;
 
-    const orgId = await resolveOrgId(req, identity.userId);
+    const orgId = await resolveOrgId(req, identity.userId, id);
     if (!orgId) return forbidden('orgId required');
 
     const role = await getOrgRole(identity.userId, orgId);
@@ -79,7 +114,23 @@ export async function PUT(
       ...(body.tags !== undefined && { tags: body.tags }),
       ...(body.region !== undefined && { region: body.region as Region }),
     });
-    if (!updated) return notFound('Project');
+    if (!updated) {
+      if (process.env.NODE_ENV === 'development') {
+        const mockIdx = mockProjects.findIndex((p) => p.id === id);
+        if (mockIdx >= 0) {
+          mockProjects[mockIdx] = {
+            ...mockProjects[mockIdx],
+            ...(body.name !== undefined && { name: body.name }),
+            ...(body.description !== undefined && { description: body.description }),
+            ...(body.tags !== undefined && { tags: body.tags }),
+            ...(body.region !== undefined && { region: body.region as Region }),
+            updatedAt: new Date().toISOString(),
+          };
+          return ok(mockProjects[mockIdx]);
+        }
+      }
+      return notFound('Project');
+    }
     return ok(updated);
   } catch (err) {
     console.error('[PUT /api/projects/:id]', err);
@@ -96,11 +147,11 @@ export async function DELETE(
     if (!identity) return unauthorized();
     const { id } = await params;
 
-    const orgId = await resolveOrgId(req, identity.userId);
+    const orgId = await resolveOrgId(req, identity.userId, id);
     if (!orgId) return forbidden('orgId required');
 
     const role = await getOrgRole(identity.userId, orgId);
-    if (!role || !['owner', 'admin'].includes(role)) return forbidden();
+    if (!role || role === 'viewer') return forbidden();
 
     const deleted = await projectRepository.delete(id, orgId);
     if (!deleted) return notFound('Project');
