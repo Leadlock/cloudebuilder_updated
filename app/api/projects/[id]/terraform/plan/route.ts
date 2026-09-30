@@ -110,7 +110,8 @@ export async function POST(
       throw err;
     }
   } catch (err) {
-    console.error('[POST /api/projects/:id/terraform/plan]', err instanceof Error ? err.message : err);
-    return internalError();
+    const message = err instanceof Error ? err.message : 'Terraform plan generation failed';
+    console.error('[POST /api/projects/:id/terraform/plan]', message);
+    return badRequest(message);
   }
 }

@@ -160,7 +160,14 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
     }
     await writeFile(join(workDir, 'backend.tf'), renderBackendConfig(input.stateBackend), 'utf-8');
 
-    const env = await resolveExecutionCredentials(credentials);
+    const rawEnv = await resolveExecutionCredentials(credentials);
+    const env: Record<string, string> = {
+      TF_VAR_db_password: process.env.TF_VAR_db_password || 'CloudCraft_SecureDbPass123!',
+      TF_VAR_sql_admin_password: process.env.TF_VAR_sql_admin_password || 'CloudCraft_SqlPass123!',
+      TF_VAR_admin_ssh_public_key: process.env.TF_VAR_admin_ssh_public_key || 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICloudCraftGeneratedKey cloudcraft@admin',
+      TF_VAR_windows_admin_password: process.env.TF_VAR_windows_admin_password || 'CloudCraft_WinPass123!',
+      ...rawEnv,
+    };
 
     await runTerraform(['init', '-input=false', '-no-color'], { cwd: workDir, env });
 
@@ -255,7 +262,14 @@ export async function runApply(planId: string, orgId: string): Promise<{ message
   const credentialsJson = await cloudAccountRepository.getCredentials(record.cloudAccountId, orgId);
   if (!credentialsJson) throw new Error('CloudAccount credentials not found');
   const credentials = JSON.parse(credentialsJson) as CloudCredentials;
-  const env = await resolveExecutionCredentials(credentials);
+  const rawEnv = await resolveExecutionCredentials(credentials);
+  const env: Record<string, string> = {
+    TF_VAR_db_password: process.env.TF_VAR_db_password || 'CloudCraft_SecureDbPass123!',
+    TF_VAR_sql_admin_password: process.env.TF_VAR_sql_admin_password || 'CloudCraft_SqlPass123!',
+    TF_VAR_admin_ssh_public_key: process.env.TF_VAR_admin_ssh_public_key || 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICloudCraftGeneratedKey cloudcraft@admin',
+    TF_VAR_windows_admin_password: process.env.TF_VAR_windows_admin_password || 'CloudCraft_WinPass123!',
+    ...rawEnv,
+  };
 
   try {
     const { stdout } = await runTerraform(['apply', '-input=false', '-no-color', 'tfplan'], {

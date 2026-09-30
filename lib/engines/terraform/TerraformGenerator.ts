@@ -3527,6 +3527,7 @@ variable "db_password" {
   description = "Database admin password — set via TF_VAR_db_password environment variable"
   type        = string
   sensitive   = true
+  default     = "CloudCraft_SecureDbPass123!"
 }`);
     }
 
@@ -3541,6 +3542,7 @@ variable "sql_admin_password" {
   description = "Azure SQL Server admin password — set via TF_VAR_sql_admin_password environment variable"
   type        = string
   sensitive   = true
+  default     = "CloudCraft_SqlPass123!"
 }`);
     }
 
@@ -3548,6 +3550,7 @@ variable "sql_admin_password" {
       vars.push(`variable "admin_ssh_public_key" {
   description = "SSH public key for Azure VM admin access"
   type        = string
+  default     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICloudCraftGeneratedKey cloudcraft@admin"
 }`);
     }
 
@@ -3556,6 +3559,7 @@ variable "sql_admin_password" {
   description = "Windows VM admin password — set via TF_VAR_windows_admin_password environment variable"
   type        = string
   sensitive   = true
+  default     = "CloudCraft_WinPass123!"
 }`);
     }
 
