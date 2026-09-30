@@ -1,13 +1,16 @@
 'use client';
+
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '@/context/AppContext';
 import {
   LayoutDashboard, Box, Code2, ShieldCheck, DollarSign, Rocket,
   ChevronLeft, ChevronRight, Cloud, Plus, Trash2, Wand2, LayoutGrid,
   Sparkles, Brain, History, GitBranch, Shield, Upload, CheckSquare, FileCheck,
-  Activity, Scale, Users, X
+  Activity, Scale, Users, X, GripVertical
 } from 'lucide-react';
 import clsx from 'clsx';
-import { AppView } from '@/types';
+import { AppView, Project } from '@/types';
+import DeleteProjectModal from '@/components/modals/DeleteProjectModal';
 
 const NAV_GROUPS = [
   {
@@ -61,6 +64,50 @@ export default function Sidebar() {
   const { activeView, sidebarCollapsed, mobileSidebarOpen, projects, activeProjectId, currentUser } = state;
   const isAdmin = currentUser?.role === 'admin';
 
+  // Resizable sidebar state
+  const [sidebarWidth, setSidebarWidth] = useState<number>(240);
+  const [isResizing, setIsResizing] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const widthRef = useRef(sidebarWidth);
+  widthRef.current = sidebarWidth;
+
+  // Load persisted width on mount
+  useEffect(() => {
+    try {
+      const savedWidth = localStorage.getItem('cloudcraft_sidebar_width');
+      if (savedWidth) {
+        const num = parseInt(savedWidth, 10);
+        if (num >= 180 && num <= 480) {
+          setSidebarWidth(num);
+        }
+      }
+    } catch {}
+  }, []);
+
+  // Resizing drag listeners
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.max(180, Math.min(480, e.clientX));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      try {
+        localStorage.setItem('cloudcraft_sidebar_width', widthRef.current.toString());
+      } catch {}
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
+
   const handleNavClick = (id: AppView) => {
     dispatch({ type: 'SET_VIEW', view: id });
     if (mobileSidebarOpen) {
@@ -76,22 +123,27 @@ export default function Sidebar() {
     }
   };
 
+  const confirmDeleteProject = (id: string) => {
+    dispatch({ type: 'DELETE_PROJECT', id });
+    setProjectToDelete(null);
+  };
+
   const navContent = (isMobile = false) => (
     <>
       {/* Header / Logo */}
-      <div className="flex items-center justify-between px-3 py-4 border-b border-gray-800 bg-gray-950">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between px-3 py-4 border-b border-gray-800 bg-gray-950 shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center shrink-0 shadow-md shadow-blue-500/20">
             <Cloud className="w-4 h-4 text-white" />
           </div>
           {(!sidebarCollapsed || isMobile) && (
-            <div>
-              <span className="text-white font-bold text-base leading-none">CloudCraft</span>
-              <p className="text-gray-500 text-[10px] mt-0.5">Infrastructure Platform</p>
+            <div className="min-w-0">
+              <span className="text-white font-bold text-base leading-none block truncate">CloudCraft</span>
+              <p className="text-gray-500 text-[10px] mt-0.5 truncate">Infrastructure Platform</p>
             </div>
           )}
         </div>
-        {isMobile && (
+        {isMobile ? (
           <button
             onClick={() => dispatch({ type: 'SET_MOBILE_SIDEBAR', open: false })}
             className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
@@ -99,6 +151,16 @@ export default function Sidebar() {
           >
             <X className="w-5 h-5" />
           </button>
+        ) : (
+          !sidebarCollapsed && (
+            <button
+              onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
+              className="p-1 text-gray-500 hover:text-white rounded hover:bg-gray-800/80 transition-colors"
+              title="Collapse sidebar"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          )
         )}
       </div>
 
@@ -123,14 +185,14 @@ export default function Sidebar() {
                     aria-label={disabled ? `${label} — Select a project first` : label}
                     aria-current={active ? 'page' : undefined}
                     className={clsx(
-                      'w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500',
+                      'w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 text-left',
                       active ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/20' :
                       disabled ? 'text-gray-700 cursor-not-allowed' :
                       'text-gray-400 hover:text-white hover:bg-gray-800/80'
                     )}
                   >
                     <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
-                    {(!sidebarCollapsed || isMobile) && <span className="truncate text-xs">{label}</span>}
+                    {(!sidebarCollapsed || isMobile) && <span className="truncate text-xs flex-1">{label}</span>}
                   </button>
                 );
               })}
@@ -139,63 +201,85 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Project list */}
+      {/* Project list at bottom-left */}
       {(!sidebarCollapsed || isMobile) && (
-        <div className="border-t border-gray-800 p-2.5 bg-gray-950">
+        <div className="border-t border-gray-800 p-2.5 bg-gray-950/90 shrink-0">
           <div className="flex items-center justify-between mb-1.5 px-1">
-            <span className="text-gray-600 text-[10px] uppercase tracking-wider font-semibold">Projects</span>
+            <span className="text-gray-500 text-[10px] uppercase tracking-wider font-semibold">
+              Projects ({projects.length})
+            </span>
             <button
               onClick={() => {
                 dispatch({ type: 'SET_VIEW', view: 'dashboard' });
                 if (isMobile) dispatch({ type: 'SET_MOBILE_SIDEBAR', open: false });
               }}
-              className="text-gray-500 hover:text-blue-400 transition-colors p-0.5 rounded"
-              title="New project"
+              className="text-gray-400 hover:text-blue-400 transition-colors p-1 rounded hover:bg-gray-800"
+              title="Create new project"
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="space-y-0.5 max-h-36 overflow-y-auto custom-scrollbar">
-            {projects.map((p) => (
-              <div
-                key={p.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => handleProjectClick(p.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    handleProjectClick(p.id);
-                  }
-                }}
-                className={clsx(
-                  'w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center gap-2 group transition-colors cursor-pointer select-none',
-                  p.id === activeProjectId ? 'bg-blue-900/40 text-blue-300 font-medium border border-blue-800/40' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/70'
-                )}
-              >
-                <span className={clsx('w-2 h-2 rounded-full shrink-0', p.provider === 'aws' ? 'bg-orange-400' : p.provider === 'azure' ? 'bg-blue-400' : 'bg-purple-400')} />
-                <span className="truncate flex-1">{p.name}</span>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); dispatch({ type: 'DELETE_PROJECT', id: p.id }); }}
-                  className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-all p-0.5 rounded"
-                  title="Delete project"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
-            ))}
+          <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar pr-0.5">
+            {projects.length === 0 ? (
+              <p className="text-gray-600 text-[11px] px-2 py-1.5 italic">No projects yet</p>
+            ) : (
+              projects.map((p) => {
+                const isActive = p.id === activeProjectId;
+                return (
+                  <div
+                    key={p.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleProjectClick(p.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        handleProjectClick(p.id);
+                      }
+                    }}
+                    title={`${p.name} (${p.provider.toUpperCase()})`}
+                    className={clsx(
+                      'w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center gap-2 group transition-all cursor-pointer select-none border',
+                      isActive
+                        ? 'bg-blue-950/50 text-blue-200 font-semibold border-blue-700/60 shadow-sm'
+                        : 'text-gray-300 hover:text-white hover:bg-gray-800/80 border-transparent'
+                    )}
+                  >
+                    <span
+                      className={clsx(
+                        'w-2 h-2 rounded-full shrink-0 shadow-sm',
+                        p.provider === 'aws' ? 'bg-orange-400 ring-2 ring-orange-500/20' :
+                        p.provider === 'azure' ? 'bg-blue-400 ring-2 ring-blue-500/20' :
+                        'bg-purple-400 ring-2 ring-purple-500/20'
+                      )}
+                    />
+                    <span className="truncate flex-1 font-medium">{p.name}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setProjectToDelete(p);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-all p-1 rounded hover:bg-red-500/10"
+                      title="Delete project"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       )}
 
-      {/* Collapse toggle (Desktop only) */}
-      {!isMobile && (
+      {/* Collapse toggle (Desktop only when collapsed) */}
+      {!isMobile && sidebarCollapsed && (
         <button
           onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
-          className="flex items-center justify-center py-3 border-t border-gray-800 text-gray-500 hover:text-gray-300 hover:bg-gray-900/50 transition-colors"
-          title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="flex items-center justify-center py-3 border-t border-gray-800 text-gray-500 hover:text-gray-300 hover:bg-gray-900/50 transition-colors shrink-0"
+          title="Expand sidebar"
         >
-          {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          <ChevronRight className="w-4 h-4" />
         </button>
       )}
     </>
@@ -204,11 +288,35 @@ export default function Sidebar() {
   return (
     <>
       {/* Desktop In-flow Sidebar */}
-      <aside className={clsx(
-        'hidden lg:flex flex-col bg-gray-950 border-r border-gray-800 transition-all duration-200 shrink-0 h-screen select-none',
-        sidebarCollapsed ? 'w-14' : 'w-56'
-      )}>
+      <aside
+        style={{
+          width: sidebarCollapsed ? '56px' : `${sidebarWidth}px`,
+        }}
+        className={clsx(
+          'hidden lg:flex flex-col bg-gray-950 border-r border-gray-800 shrink-0 h-screen select-none relative group/sidebar',
+          !isResizing && 'transition-[width] duration-200 ease-out'
+        )}
+      >
         {navContent(false)}
+
+        {/* Resizable Drag Handle on Right Border */}
+        {!sidebarCollapsed && (
+          <div
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setIsResizing(true);
+            }}
+            className={clsx(
+              'absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-500/50 transition-colors z-20 flex items-center justify-center',
+              isResizing ? 'bg-blue-500 shadow-md' : 'bg-transparent'
+            )}
+            title="Drag to resize sidebar width"
+          >
+            <div className="opacity-0 group-hover/sidebar:opacity-100 transition-opacity">
+              <GripVertical className="w-3 h-3 text-gray-500 -ml-1" />
+            </div>
+          </div>
+        )}
       </aside>
 
       {/* Mobile Drawer Overlay */}
@@ -220,10 +328,21 @@ export default function Sidebar() {
             onClick={() => dispatch({ type: 'SET_MOBILE_SIDEBAR', open: false })}
           />
           {/* Slide-over Drawer */}
-          <div className="relative w-64 max-w-[80vw] bg-gray-950 border-r border-gray-800 h-full flex flex-col shadow-2xl z-10 animate-in slide-in-from-left duration-200">
+          <div className="relative w-72 max-w-[85vw] bg-gray-950 border-r border-gray-800 h-full flex flex-col shadow-2xl z-10 animate-in slide-in-from-left duration-200">
             {navContent(true)}
           </div>
         </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {projectToDelete && (
+        <DeleteProjectModal
+          isOpen={true}
+          projectId={projectToDelete.id}
+          projectName={projectToDelete.name}
+          onConfirm={confirmDeleteProject}
+          onCancel={() => setProjectToDelete(null)}
+        />
       )}
     </>
   );

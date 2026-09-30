@@ -11,6 +11,7 @@ import { formatCurrency } from '@/lib/currency/formatter';
 import { formatDate } from '@/lib/date';
 import { architectureTemplates } from '@/lib/templates';
 import { instantiateTemplate } from '@/lib/domain/instantiateTemplate';
+import DeleteProjectModal from '@/components/modals/DeleteProjectModal';
 
 function ScoreBadge({ score }: { score: number }) {
   const color = score >= 80 ? 'text-emerald-400' : score >= 60 ? 'text-yellow-400' : 'text-red-400';
@@ -41,6 +42,7 @@ export default function Dashboard() {
   const [newProvider, setNewProvider] = useState<CloudProvider>('aws');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('blank');
   const [tab, setTab] = useState<Tab>('all');
+  const [projectToDelete, setProjectToDelete] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     if (activeCurrency === 'USD') return;
@@ -217,7 +219,10 @@ export default function Dashboard() {
                   {project.description && <p className="text-gray-400 text-xs line-clamp-2">{project.description}</p>}
                 </div>
                 <button
-                  onClick={(e) => { e.stopPropagation(); dispatch({ type: 'DELETE_PROJECT', id: project.id }); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setProjectToDelete({ id: project.id, name: project.name });
+                  }}
                   className="opacity-0 group-hover:opacity-100 ml-2 p-1 text-gray-500 hover:text-red-400 rounded transition-all shrink-0"
                   title="Delete project"
                 >
@@ -351,6 +356,20 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {projectToDelete && (
+        <DeleteProjectModal
+          isOpen={true}
+          projectId={projectToDelete.id}
+          projectName={projectToDelete.name}
+          onConfirm={(id) => {
+            dispatch({ type: 'DELETE_PROJECT', id });
+            setProjectToDelete(null);
+          }}
+          onCancel={() => setProjectToDelete(null)}
+        />
       )}
     </div>
   );

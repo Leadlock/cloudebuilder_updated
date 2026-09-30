@@ -20,6 +20,7 @@ import { setActiveProjectId as setCostProjectId, setActiveEnvironment as setCost
 import { setActiveProjectId as setTerraformProjectId, setActiveEnvironment as setTerraformEnvironment } from '@/lib/services/ApiTerraformService';
 import { setActiveProjectId as setAdvisorProjectId, setActiveEnvironment as setAdvisorEnvironment } from '@/lib/services/ApiAdvisorService';
 import { setActiveProjectId as setWaProjectId, setActiveEnvironment as setWaEnvironment } from '@/lib/services/ApiWellArchitectedService';
+import { rekeyGraph } from '@/lib/domain/instantiateTemplate';
 
 import type { AuthUser } from '@/lib/api/authService';
 
@@ -515,10 +516,21 @@ function reducer(state: AppState, action: Action): AppState {
     // ── PROMOTE_DRAFT_TO_PROJECT ──────────────────────────────────────────────
     case 'PROMOTE_DRAFT_TO_PROJECT': {
       const draft = state.draftProject;
+      const { nodes, edges } = draft.nodes.length > 0 ? rekeyGraph(draft.nodes, draft.edges) : { nodes: [], edges: [] };
       const newProject: Project = {
         ...draft,
         id: `proj-${Date.now()}`,
         name: action.name || draft.name,
+        nodes,
+        edges,
+        environments: {
+          ...draft.environments,
+          production: {
+            ...draft.environments.production,
+            nodes,
+            edges,
+          },
+        },
         isDraft: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -620,8 +632,9 @@ function reducer(state: AppState, action: Action): AppState {
     }
 
     case 'CREATE_PROJECT': {
-      const nodes = action.nodes ?? [];
-      const edges = action.edges ?? [];
+      const rawNodes = action.nodes ?? [];
+      const rawEdges = action.edges ?? [];
+      const { nodes, edges } = rawNodes.length > 0 ? rekeyGraph(rawNodes, rawEdges) : { nodes: [], edges: [] };
       const providerKey = action.provider === 'multi' ? 'aws' : action.provider;
       const region: Region = providerKey === 'aws' ? 'us-east-1' : 'eastus';
       const emptyEnvs: Record<Environment, EnvironmentState> = {
@@ -1126,14 +1139,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (!project) return;
           const currentRevision = project.revision ?? 1;
 
-          const res = await _activeService.saveCanvas(
-            project.id,
-            project.nodes,
-            project.edges,
-            currentState.activeEnvironment,
-            currentRevision,
-            project.scaleProfile
-          );
+          let res;
+          try {
+            res = await _activeService.saveCanvas(
+              project.id,
+              project.nodes,
+              project.edges,
+              currentState.activeEnvironment,
+              currentRevision,
+              project.scaleProfile
+            );
+          } catch (saveErr: any) {
+            const isIdConflict =
+              saveErr?.code === 'RESOURCE_ID_CONFLICT' ||
+              saveErr?.message?.includes('RESOURCE_ID_CONFLICT') ||
+              saveErr?.message?.includes('already belong to another architecture');
+
+            if (isIdConflict && project.nodes.length > 0) {
+              console.warn('[AutoSave] Detected RESOURCE_ID_CONFLICT. Auto-rekeying canvas nodes to heal project persistence...');
+              const rekeyed = rekeyGraph(project.nodes, project.edges);
+              dispatch({ type: 'UPDATE_CANVAS', nodes: rekeyed.nodes, edges: rekeyed.edges });
+              res = await _activeService.saveCanvas(
+                project.id,
+                rekeyed.nodes,
+                rekeyed.edges,
+                currentState.activeEnvironment,
+                currentRevision,
+                project.scaleProfile
+              );
+            } else {
+              throw saveErr;
+            }
+          }
           if (seq !== saveSeqRef.current) {
             // Drop stale response
             return;
@@ -1266,12 +1303,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const created = currentState.projects[currentState.projects.length - 1];
         if (!created) break;
         const localId = created.id;
-        const initialNodes = action.nodes ?? created.nodes ?? [];
-        const initialEdges = action.edges ?? created.edges ?? [];
+        const initialNodes = created.nodes ?? [];
+        const initialEdges = created.edges ?? [];
         _activeService.createProject(action.name, action.provider).then(async (apiProject) => {
           // Persist the canvas to backend if initial nodes or edges exist
           if (initialNodes.length > 0 || initialEdges.length > 0) {
-            await _activeService.saveCanvas(apiProject.id, initialNodes, initialEdges, 'production', 1, created.scaleProfile).catch(() => {});
+            await _activeService.saveCanvas(apiProject.id, initialNodes, initialEdges, 'production', 1, created.scaleProfile).catch(async (err) => {
+              if (err?.code === 'RESOURCE_ID_CONFLICT' || err?.message?.includes('RESOURCE_ID_CONFLICT')) {
+                const rekeyed = rekeyGraph(initialNodes, initialEdges);
+                await _activeService.saveCanvas(apiProject.id, rekeyed.nodes, rekeyed.edges, 'production', 1, created.scaleProfile).catch(() => {});
+              }
+            });
           }
           const mergedProject: Project = {
             ...apiProject,

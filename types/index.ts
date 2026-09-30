@@ -536,6 +536,45 @@ export interface AIGeneratorResult {
   securityScore: number | null;
 }
 
+export interface ArchitectureQuestionOption {
+  id: string;
+  label: string;
+  description?: string;
+  isRecommended?: boolean;
+  technicalImpact?: string;
+}
+
+export interface ArchitectureQuestion {
+  id: string;
+  category: 'scale' | 'availability' | 'security' | 'compute' | 'database' | 'storage' | 'network' | 'observability';
+  categoryLabel: string;
+  question: string;
+  rationale?: string;
+  options: ArchitectureQuestionOption[];
+  allowCustom?: boolean;
+  defaultOptionId: string;
+}
+
+export interface IdentifiedGap {
+  id: string;
+  title: string;
+  description: string;
+  severity: 'critical' | 'important' | 'suggestion';
+  addressedByQuestionId?: string;
+}
+
+export interface QuestionnaireResult {
+  summary: string;
+  identifiedGaps: IdentifiedGap[];
+  questions: ArchitectureQuestion[];
+  suggestedProjectName?: string;
+}
+
+export interface QuestionnaireAnswers {
+  [questionId: string]: string;
+}
+
+
 export interface DisasterRecoveryStrategy {
   id: string;
   name: string;
