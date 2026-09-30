@@ -24,9 +24,22 @@ import LoginModal from '@/components/auth/LoginModal';
 import { useApp } from '@/context/AppContext';
 import { AppView } from '@/types';
 
+import { useState, useEffect } from 'react';
+import clsx from 'clsx';
+
 function MainContent() {
   const { state } = useApp();
   const { activeView } = state;
+  const [renderedViews, setRenderedViews] = useState<Set<AppView>>(() => new Set([activeView]));
+
+  useEffect(() => {
+    setRenderedViews((prev) => {
+      if (prev.has(activeView)) return prev;
+      const next = new Set(prev);
+      next.add(activeView);
+      return next;
+    });
+  }, [activeView]);
 
   const map: Record<AppView, React.ReactNode> = {
     dashboard:          <Dashboard />,
@@ -50,7 +63,25 @@ function MainContent() {
     team:               <TeamPanel />,
   };
 
-  return <>{map[activeView] ?? <Dashboard />}</>;
+  return (
+    <div className="flex-1 min-h-0 min-w-0 w-full h-full relative overflow-hidden">
+      {(Object.keys(map) as AppView[]).map((viewKey) => {
+        if (!renderedViews.has(viewKey)) return null;
+        const isActive = activeView === viewKey;
+        return (
+          <div
+            key={viewKey}
+            className={clsx(
+              'w-full h-full flex flex-col min-h-0 min-w-0 overflow-hidden',
+              isActive ? 'block' : 'hidden'
+            )}
+          >
+            {map[viewKey]}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function AuthGate({ children }: { children: React.ReactNode }) {

@@ -127,6 +127,8 @@ export default function TerraformExecutionPanel() {
         if (parsed.applyJobId) setApplyJobId(parsed.applyJobId);
         if (parsed.applyStatus) setApplyStatus(parsed.applyStatus);
         if (parsed.applying !== undefined) setApplying(parsed.applying);
+        if (parsed.planning !== undefined) setPlanning(parsed.planning);
+        if (parsed.destroying !== undefined) setDestroying(parsed.destroying);
         if (parsed.completedCount !== undefined) setCompletedCount(parsed.completedCount);
         if (parsed.startedAt) {
           setStartedAt(parsed.startedAt);
@@ -169,6 +171,8 @@ export default function TerraformExecutionPanel() {
         applyJobId,
         applyStatus,
         applying,
+        planning,
+        destroying,
         completedCount,
         startedAt,
         destroySuccess,
@@ -176,7 +180,7 @@ export default function TerraformExecutionPanel() {
         destroyOutputTail,
       }));
     } catch {}
-  }, [storageKey, plan, applyJobId, applyStatus, applying, completedCount, startedAt, destroySuccess, destroyError, destroyOutputTail]);
+  }, [storageKey, plan, applyJobId, applyStatus, applying, planning, destroying, completedCount, startedAt, destroySuccess, destroyError, destroyOutputTail]);
 
   useEffect(() => {
     if (!activeProject) return;
