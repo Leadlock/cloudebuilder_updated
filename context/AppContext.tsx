@@ -66,7 +66,7 @@ type Action =
   | { type: 'TOGGLE_MOBILE_SIDEBAR' }
   | { type: 'CREATE_PROJECT'; name: string; provider: CloudProvider; nodes?: CanvasNode[]; edges?: CanvasEdge[] }
   | { type: 'DELETE_PROJECT'; id: string }
-  | { type: 'UPDATE_CANVAS'; nodes: CanvasNode[]; edges: CanvasEdge[] }
+  | { type: 'UPDATE_CANVAS'; nodes: CanvasNode[]; edges: CanvasEdge[]; bumpCanvasKey?: boolean; name?: string }
   | { type: 'UPDATE_NODE_CONFIG'; nodeId: string; config: Record<string, unknown>; label?: string }
   | { type: 'SAVE_PROJECT'; project: Project }
   | { type: 'SET_REGION'; region: Region }
@@ -238,7 +238,7 @@ function reducer(state: AppState, action: Action): AppState {
     case 'SET_CANVAS_MODE':
       return { ...state, activeCanvasMode: action.mode };
     case 'SET_ACTIVE_PROJECT':
-      return { ...state, activeProjectId: action.id, mobileSidebarOpen: false };
+      return { ...state, activeProjectId: action.id, mobileSidebarOpen: false, canvasKey: state.canvasKey + 1 };
     case 'TOGGLE_SIDEBAR':
       return { ...state, sidebarCollapsed: !state.sidebarCollapsed };
     case 'SET_MOBILE_SIDEBAR':
@@ -365,14 +365,19 @@ function reducer(state: AppState, action: Action): AppState {
 
     // ── UPDATE_CANVAS: sync nodes/edges for the active environment only ────────
     case 'UPDATE_CANVAS': {
-      const { draftProject, projects } = applyCanvasUpdate(state, () => ({
-        nodes: action.nodes,
-        edges: action.edges,
-      }));
+      const { draftProject, projects } = applyCanvasUpdate(
+        state,
+        () => ({
+          nodes: action.nodes,
+          edges: action.edges,
+        }),
+        action.name ? () => ({ name: action.name }) : undefined,
+      );
       return {
         ...state,
         draftProject,
         projects,
+        canvasKey: action.bumpCanvasKey ? state.canvasKey + 1 : state.canvasKey,
         autoSaveStatus: 'unsaved',
         architectureVersion: state.architectureVersion + 1,
       };

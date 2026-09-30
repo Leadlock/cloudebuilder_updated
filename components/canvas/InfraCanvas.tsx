@@ -754,9 +754,14 @@ export default function InfraCanvas() {
     const projectChanged = activeProject.id !== prevProjectRef.current;
     const envChanged = state.activeEnvironment !== prevEnvRef.current;
     const keyChanged = state.canvasKey !== prevCanvasKey.current;
-    const nodesCountMismatch = activeProject.nodes.length > 0 && nodes.length === 0;
+    const currentResourceNodeIds = new Set(
+      nodes.filter((n) => n.id !== 'aws-cloud' && n.id !== 'az-cloud' && n.type !== 'azBoundaryNode').map((n) => n.id)
+    );
+    const hasExternalNodeDiff =
+      activeProject.nodes.length !== currentResourceNodeIds.size ||
+      activeProject.nodes.some((n) => !currentResourceNodeIds.has(n.id));
 
-    if (projectChanged || envChanged || keyChanged || nodesCountMismatch) {
+    if (projectChanged || envChanged || keyChanged || hasExternalNodeDiff) {
       prevProjectRef.current = activeProject.id;
       prevEnvRef.current = state.activeEnvironment;
       prevCanvasKey.current = state.canvasKey;
@@ -776,7 +781,7 @@ export default function InfraCanvas() {
         }, 80);
       }
     }
-  }, [activeProject, state.activeEnvironment, state.canvasKey, setNodes, setEdges, nodes.length]);
+  }, [activeProject, state.activeEnvironment, state.canvasKey, setNodes, setEdges, nodes]);
 
   // ── Canvas Start Modal Callback ─────────────────────────────────────────────
   const handleStartModalComplete = useCallback((options: {
