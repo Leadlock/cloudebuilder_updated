@@ -11,6 +11,7 @@ import {
   Trash2,
   Copy,
   Layout,
+  LayoutGrid,
   Plus,
   Compass,
   Wrench,
@@ -38,6 +39,7 @@ interface CanvasToolbarProps {
   onDeleteSelected: () => void;
   onCopy: () => void;
   onOpenAddModal?: () => void;
+  onOpenImportTemplate?: () => void;
   onDiscard?: () => void;
   providerMode?: ProviderMode;
   onSelectProviderMode?: (mode: ProviderMode) => void;
@@ -64,6 +66,7 @@ export default function CanvasToolbar({
   onDeleteSelected,
   onCopy,
   onOpenAddModal,
+  onOpenImportTemplate,
   onDiscard,
   providerMode,
   onSelectProviderMode,
@@ -86,6 +89,22 @@ export default function CanvasToolbar({
           >
             <Plus className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Add Resource</span>
+          </button>
+          <div className="shrink-0 w-[1px] h-4 bg-slate-700 mx-0.5" />
+        </>
+      )}
+
+      {/* Import Template */}
+      {onOpenImportTemplate && (
+        <>
+          <button
+            id="btn-import-template"
+            onClick={onOpenImportTemplate}
+            title="Import Architecture Template"
+            className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 text-xs font-medium transition-colors"
+          >
+            <LayoutGrid className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="hidden sm:inline">Templates</span>
           </button>
           <div className="shrink-0 w-[1px] h-4 bg-slate-700 mx-0.5" />
         </>

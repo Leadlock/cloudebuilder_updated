@@ -184,7 +184,7 @@ export default function AIGenerator() {
               <span className="text-white font-medium">Calling Azure AI Foundry...</span>
             </div>
             <div className="space-y-2">
-              {['Sending prompt to gpt-4o', 'Validating resources against the RDE catalog', 'Laying out the canvas'].map((s, i) => (
+              {['Sending prompt to AI model', 'Validating resources against the RDE catalog', 'Laying out the canvas'].map((s, i) => (
                 <div key={s} className="flex items-center gap-2 text-xs text-gray-500">
                   <div className="w-3 h-3 border border-purple-500 rounded-full border-t-transparent animate-spin" style={{ animationDelay: `${i * 150}ms` }} />
                   {s}

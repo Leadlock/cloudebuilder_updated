@@ -6,7 +6,8 @@ import {
   Cloud, LayoutGrid, Wand2, Sparkles, Upload
 } from 'lucide-react';
 import clsx from 'clsx';
-import { CloudProvider, CanvasNode, CanvasEdge } from '@/types';
+import { CloudProvider, CanvasNode, CanvasEdge, Project } from '@/types';
+import DeleteProjectModal from '@/components/modals/DeleteProjectModal';
 import { formatCurrency } from '@/lib/currency/formatter';
 import { formatDate } from '@/lib/date';
 import { architectureTemplates } from '@/lib/templates';
@@ -33,10 +34,12 @@ type Tab = 'all' | 'aws' | 'azure' | 'multi';
 
 export default function Dashboard() {
   const { state, dispatch } = useApp();
-  const { projects, displayCurrency } = state;
+  const { projects, displayCurrency, currentUser } = state;
+  const isAdmin = currentUser?.role === 'admin' || (!currentUser && process.env.NODE_ENV === 'development');
   const activeCurrency = displayCurrency || 'USD';
   const [exchangeRate, setExchangeRate] = useState<number>(1.0);
   const [showNewProject, setShowNewProject] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [newName, setNewName] = useState('');
   const [newProvider, setNewProvider] = useState<CloudProvider>('aws');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('blank');
@@ -217,9 +220,12 @@ export default function Dashboard() {
                   {project.description && <p className="text-gray-400 text-xs line-clamp-2">{project.description}</p>}
                 </div>
                 <button
-                  onClick={(e) => { e.stopPropagation(); dispatch({ type: 'DELETE_PROJECT', id: project.id }); }}
-                  className="opacity-0 group-hover:opacity-100 ml-2 p-1 text-gray-500 hover:text-red-400 rounded transition-all shrink-0"
-                  title="Delete project"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setProjectToDelete(project);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 ml-2 p-1 text-gray-500 hover:text-red-400 rounded transition-all shrink-0 cursor-pointer"
+                  title={isAdmin ? "Delete project" : "Only administrators can delete projects"}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -352,6 +358,17 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Confirmation Modal for Project Deletion */}
+      <DeleteProjectModal
+        isOpen={Boolean(projectToDelete)}
+        project={projectToDelete}
+        isAdmin={Boolean(isAdmin)}
+        onClose={() => setProjectToDelete(null)}
+        onConfirm={async (id) => {
+          dispatch({ type: 'DELETE_PROJECT', id });
+        }}
+      />
     </div>
   );
 }

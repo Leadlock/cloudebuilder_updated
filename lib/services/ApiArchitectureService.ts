@@ -44,6 +44,7 @@ export interface ApiFetchError extends Error {
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${getBaseUrl()}${path}`;
   const res = await fetch(url, {
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       // Dev header — replaced by real auth token in Phase 3

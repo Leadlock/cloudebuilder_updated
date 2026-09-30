@@ -147,6 +147,33 @@ export class AiGeneratorService {
       })),
     }));
 
+    const FEW_SHOT_EXAMPLE_AWS = {
+      resources: [
+        { id: "vpc-1", resourceType: "aws_vpc", label: "Production VPC", config: { cidrBlock: "10.0.0.0/16" }, parentId: null },
+        { id: "sub-pub-1", resourceType: "aws_subnet", label: "Public Subnet 1A", config: { cidrBlock: "10.0.1.0/24", availabilityZone: "us-east-1a", isPublic: true }, parentId: "vpc-1" },
+        { id: "sub-pub-2", resourceType: "aws_subnet", label: "Public Subnet 1B", config: { cidrBlock: "10.0.2.0/24", availabilityZone: "us-east-1b", isPublic: true }, parentId: "vpc-1" },
+        { id: "sub-priv-1", resourceType: "aws_subnet", label: "App Subnet 1A", config: { cidrBlock: "10.0.3.0/24", availabilityZone: "us-east-1a", isPublic: false }, parentId: "vpc-1" },
+        { id: "sub-priv-2", resourceType: "aws_subnet", label: "App Subnet 1B", config: { cidrBlock: "10.0.4.0/24", availabilityZone: "us-east-1b", isPublic: false }, parentId: "vpc-1" },
+        { id: "sub-data-1", resourceType: "aws_subnet", label: "Data Subnet 1A", config: { cidrBlock: "10.0.5.0/24", availabilityZone: "us-east-1a", isPublic: false }, parentId: "vpc-1" },
+        { id: "sub-data-2", resourceType: "aws_subnet", label: "Data Subnet 1B", config: { cidrBlock: "10.0.6.0/24", availabilityZone: "us-east-1b", isPublic: false }, parentId: "vpc-1" },
+        { id: "cdn-1", resourceType: "aws_cloudfront", label: "CloudFront CDN", config: {}, parentId: null },
+        { id: "alb-1", resourceType: "aws_alb", label: "Application Load Balancer", config: { internetFacing: true }, parentId: "sub-pub-1" },
+        { id: "asg-1", resourceType: "aws_auto_scaling", label: "App Auto Scaling (AZ-A)", config: { minSize: 2, maxSize: 8 }, parentId: "sub-priv-1" },
+        { id: "asg-2", resourceType: "aws_auto_scaling", label: "App Auto Scaling (AZ-B)", config: { minSize: 2, maxSize: 8 }, parentId: "sub-priv-2" },
+        { id: "rds-1", resourceType: "aws_rds", label: "PostgreSQL Database", config: { multiAZ: true, storageEncrypted: true }, parentId: "sub-data-1" },
+        { id: "cache-1", resourceType: "aws_elasticache", label: "Redis Cluster", config: { numCacheNodes: 2 }, parentId: "sub-data-2" }
+      ],
+      connections: [
+        { sourceId: "cdn-1", targetId: "alb-1", label: "HTTPS" },
+        { sourceId: "alb-1", targetId: "asg-1", label: "HTTP Traffic (AZ-A)" },
+        { sourceId: "alb-1", targetId: "asg-2", label: "HTTP Traffic (AZ-B)" },
+        { sourceId: "asg-1", targetId: "cache-1", label: "Cache Reads/Writes" },
+        { sourceId: "asg-2", targetId: "cache-1", label: "Cache Reads/Writes" },
+        { sourceId: "asg-1", targetId: "rds-1", label: "Database Queries" },
+        { sourceId: "asg-2", targetId: "rds-1", label: "Database Queries" }
+      ]
+    };
+
     const systemPrompt = `You are an expert ${provider.toUpperCase()} cloud architect. Given a user prompt, generate a JSON representation of a cloud architecture.
 
 IMPORTANT: Use ONLY the resource types defined in this catalog. Do NOT invent resource types.
@@ -163,14 +190,18 @@ Output must be valid JSON matching this exact schema:
   ]
 }
 
-Rules:
-1. Only use resource types from the catalog above.
-2. Set parentId correctly for nested resources (e.g. subnets inside VPCs).
-3. If a service the user asks for is not in the catalog, omit it or map it to the closest supported type.
-4. Generate realistic, production-like configurations.
+Connection & Topology Rules:
+1. Multi-AZ Balance: When designing high-availability architectures, create subnets in multiple AZs (e.g. us-east-1a and us-east-1b) and balance compute/app resources across both zones.
+2. Ingress & Routing: Ingress flows Edge (CDN/CloudFront/Front Door) -> Load Balancer (ALB/App Gateway) -> Compute Instances in private subnets.
+3. Data Tier: Compute instances connect directly to the Cache (Redis/ElastiCache) for fast lookups AND to the Database (RDS/Postgres/SQL) for persistence. Do NOT connect Database to Cache.
+4. Set parentId correctly for nested resources (e.g. subnets inside VPCs, instances inside subnets).
+5. Generate realistic, production-like configurations.
 
 Architecture quality guidelines (violating these lowers the design's security/reliability score in CloudCraft's own review engine — follow them by default unless the user's prompt explicitly asks for something less secure or a minimal/dev-only setup):
-${buildQualityGuidelines(provider)}`;
+${buildQualityGuidelines(provider)}
+
+Gold Standard Reference Example (AWS Multi-Tier HA Pattern):
+${JSON.stringify(FEW_SHOT_EXAMPLE_AWS, null, 2)}`;
 
     const response = await foundryClient().responses.create({
       model: FOUNDRY_MODEL,

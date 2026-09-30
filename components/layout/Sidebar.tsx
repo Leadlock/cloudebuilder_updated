@@ -7,7 +7,9 @@ import {
   Activity, Scale, Users, X
 } from 'lucide-react';
 import clsx from 'clsx';
-import { AppView } from '@/types';
+import { AppView, Project } from '@/types';
+import DeleteProjectModal from '@/components/modals/DeleteProjectModal';
+import { useState } from 'react';
 
 const NAV_GROUPS = [
   {
@@ -59,7 +61,8 @@ const NAV_GROUPS = [
 export default function Sidebar() {
   const { state, dispatch } = useApp();
   const { activeView, sidebarCollapsed, mobileSidebarOpen, projects, activeProjectId, currentUser } = state;
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === 'admin' || (!currentUser && process.env.NODE_ENV === 'development');
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
 
   const handleNavClick = (id: AppView) => {
     dispatch({ type: 'SET_VIEW', view: id });
@@ -176,9 +179,12 @@ export default function Sidebar() {
                 <span className="truncate flex-1">{p.name}</span>
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); dispatch({ type: 'DELETE_PROJECT', id: p.id }); }}
-                  className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-all p-0.5 rounded"
-                  title="Delete project"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setProjectToDelete(p);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-all p-0.5 rounded cursor-pointer"
+                  title={isAdmin ? "Delete project" : "Only administrators can delete projects"}
                 >
                   <Trash2 className="w-3 h-3" />
                 </button>
@@ -225,6 +231,17 @@ export default function Sidebar() {
           </div>
         </div>
       )}
+
+      {/* Confirmation Modal for Project Deletion */}
+      <DeleteProjectModal
+        isOpen={Boolean(projectToDelete)}
+        project={projectToDelete}
+        isAdmin={Boolean(isAdmin)}
+        onClose={() => setProjectToDelete(null)}
+        onConfirm={async (id) => {
+          dispatch({ type: 'DELETE_PROJECT', id });
+        }}
+      />
     </>
   );
 }

@@ -11,6 +11,7 @@ import { calculateCosts } from '@/lib/analysis';
 import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
 import { scoreArchitecture } from '@/lib/generator';
 import { v4 as uuidv4 } from 'uuid';
+import { rekeyGraph } from '@/lib/domain/instantiateTemplate';
 import { applyAutoFix } from '@/lib/engines/assessment/autofix';
 import { adaptiveScaleEngine } from '@/lib/engines/capacity/AdaptiveScaleEngine';
 import { apiArchitectureService } from '@/lib/services/ApiArchitectureService';
@@ -620,8 +621,9 @@ function reducer(state: AppState, action: Action): AppState {
     }
 
     case 'CREATE_PROJECT': {
-      const nodes = action.nodes ?? [];
-      const edges = action.edges ?? [];
+      const rawNodes = action.nodes ?? [];
+      const rawEdges = action.edges ?? [];
+      const { nodes, edges } = rawNodes.length > 0 ? rekeyGraph(rawNodes, rawEdges) : { nodes: [], edges: [] };
       const providerKey = action.provider === 'multi' ? 'aws' : action.provider;
       const region: Region = providerKey === 'aws' ? 'us-east-1' : 'eastus';
       const emptyEnvs: Record<Environment, EnvironmentState> = {
@@ -1018,12 +1020,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (_activeService.loadDraft) {
         try {
           const backendDraft = await _activeService.loadDraft();
-          if (!cancelled && backendDraft && Array.isArray(backendDraft.nodes) && backendDraft.nodes.length > 0) {
-            dispatch({
-              type: 'LOAD_DURABLE_DRAFT',
-              draft: backendDraft,
-            });
-            loadedFromBackend = true;
+          if (!cancelled && backendDraft) {
+            if (Array.isArray(backendDraft.nodes) && backendDraft.nodes.length > 0) {
+              dispatch({
+                type: 'LOAD_DURABLE_DRAFT',
+                draft: backendDraft,
+              });
+              loadedFromBackend = true;
+            } else if (backendDraft.revision) {
+              dispatch({ type: 'UPDATE_DRAFT_REVISION', revision: backendDraft.revision });
+            }
           }
         } catch {}
       }
@@ -1162,8 +1168,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       } catch (error: any) {
         if (seq !== saveSeqRef.current) return;
+        const isConflict = error?.status === 409 || error?.code === 'CONFLICT' || error?.message?.includes('conflict') || error?.message?.includes('CONFLICT');
+
+        // For draft mode, if there is a draft revision desync on server (e.g. after refresh or multi-edit),
+        // automatically adopt the server's revision and retry save cleanly
+        if (isDraft && isConflict && error?.serverRevision) {
+          dispatch({ type: 'UPDATE_DRAFT_REVISION', revision: error.serverRevision });
+          pendingSaveRef.current = true;
+          return;
+        }
+
         console.error('AutoSave failed:', error);
-        const isConflict = error?.status === 409 || error?.code === 'CONFLICT' || error?.message?.includes('conflict');
         dispatch({
           type: 'SET_AUTO_SAVE_STATUS',
           status: 'error',
@@ -1266,8 +1281,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const created = currentState.projects[currentState.projects.length - 1];
         if (!created) break;
         const localId = created.id;
-        const initialNodes = action.nodes ?? created.nodes ?? [];
-        const initialEdges = action.edges ?? created.edges ?? [];
+        const initialNodes = created.nodes ?? action.nodes ?? [];
+        const initialEdges = created.edges ?? action.edges ?? [];
         _activeService.createProject(action.name, action.provider).then(async (apiProject) => {
           // Persist the canvas to backend if initial nodes or edges exist
           if (initialNodes.length > 0 || initialEdges.length > 0) {
