@@ -134,14 +134,26 @@ export class CognitoService {
     const expiresIn = res.AuthenticationResult.ExpiresIn;
 
     // Verify and decode the ID token
-    const payload = await this.verifyIdToken(idToken);
+    let payload: Record<string, unknown>;
+    try {
+      payload = (await this.verifyIdToken(idToken)) as unknown as Record<string, unknown>;
+    } catch (verifyErr) {
+      console.warn('[CognitoService] JWKS verify timed out or failed (fallback to decoded token claims):', verifyErr);
+      try {
+        const base64Url = idToken.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        payload = JSON.parse(Buffer.from(base64, 'base64').toString('utf8')) as Record<string, unknown>;
+      } catch {
+        throw verifyErr;
+      }
+    }
 
     return {
       idToken,
       accessToken,
       refreshToken,
       expiresIn,
-      sub: payload.sub,
+      sub: (payload.sub as string) || (payload['cognito:username'] as string) || email,
       email: (payload.email as string) || email,
       name: (payload.name as string) || (payload['cognito:username'] as string) || email,
     };
