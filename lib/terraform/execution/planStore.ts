@@ -11,9 +11,19 @@
  * admin re-runs plan and gets a fresh hash to confirm — never a silent
  * state-loss the way a lost discovery run would be.
  */
+import fs from 'fs';
+import path from 'path';
+import { tmpdir } from 'os';
 import type { PlanRecord } from './types';
 
 const PLAN_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const PLANS_DIR = path.join(tmpdir(), 'cloudcraft-plans');
+
+try {
+  if (!fs.existsSync(PLANS_DIR)) {
+    fs.mkdirSync(PLANS_DIR, { recursive: true });
+  }
+} catch {}
 
 const globalForPlans = globalThis as unknown as {
   __cloudcraft_terraform_plans__?: Map<string, PlanRecord>;
@@ -29,14 +39,31 @@ export function planTtlMs(): number {
 
 export function savePlan(record: PlanRecord): void {
   PLANS.set(record.planId, record);
+  try {
+    if (!fs.existsSync(PLANS_DIR)) fs.mkdirSync(PLANS_DIR, { recursive: true });
+    fs.writeFileSync(path.join(PLANS_DIR, `${record.planId}.json`), JSON.stringify(record), 'utf-8');
+  } catch (err) {
+    console.warn('[planStore] Failed to write plan to disk:', err);
+  }
 }
 
 /** Returns the plan if it exists and hasn't expired; expired plans are evicted on read. */
 export function getPlan(planId: string): PlanRecord | null {
-  const record = PLANS.get(planId);
+  let record = PLANS.get(planId);
+  if (!record) {
+    try {
+      const filePath = path.join(PLANS_DIR, `${planId}.json`);
+      if (fs.existsSync(filePath)) {
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        record = JSON.parse(raw) as PlanRecord;
+        PLANS.set(planId, record);
+      }
+    } catch {}
+  }
+
   if (!record) return null;
   if (new Date(record.expiresAt).getTime() < Date.now()) {
-    PLANS.delete(planId);
+    deletePlan(planId);
     return null;
   }
   return record;
@@ -45,4 +72,11 @@ export function getPlan(planId: string): PlanRecord | null {
 /** Removes a plan — called once it's been consumed by a successful apply (single-use). */
 export function deletePlan(planId: string): void {
   PLANS.delete(planId);
+  try {
+    const filePath = path.join(PLANS_DIR, `${planId}.json`);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch {}
 }
+
