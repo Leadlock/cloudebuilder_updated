@@ -152,7 +152,7 @@ export default function ImportPanel() {
     setSelectedRegions([]);
     setAllRegionsSelected(true);
     try {
-      const res = await fetch(`/api/cloud-accounts/${accountId}/regions`);
+      const res = await fetch(`/api/cloud-accounts/${accountId}/regions`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json() as { ok: boolean; data?: { regions: string[] } };
         if (data.ok && data.data?.regions?.length) {
@@ -168,7 +168,7 @@ export default function ImportPanel() {
 
   async function fetchAccounts(provider: string) {
     try {
-      const res = await fetch(`/api/cloud-accounts?provider=${provider}`);
+      const res = await fetch(`/api/cloud-accounts?provider=${provider}`, { credentials: 'include' });
       if (!res.ok) return;
       const data = await res.json() as { ok: boolean; data: CloudAccount[] };
       if (data.ok) {
@@ -208,12 +208,16 @@ export default function ImportPanel() {
     try {
       const res = await fetch('/api/cloud-accounts', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider: 'aws',
           name: accountName || `AWS (${awsForm.region})`,
           // Credentials go directly to backend — never stored in React context
-          credentials: awsForm,
+          credentials: {
+            ...awsForm,
+            externalId: awsForm.externalId.trim(),
+          },
         }),
       });
       const data = await res.json() as { ok: boolean; data: CloudAccount; error?: { message: string } };
@@ -244,6 +248,7 @@ export default function ImportPanel() {
     try {
       const res = await fetch('/api/cloud-accounts', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider: 'azure',
@@ -271,7 +276,10 @@ export default function ImportPanel() {
 
   async function validateAccount(accountId: string) {
     try {
-      await fetch(`/api/cloud-accounts/${accountId}/validate`, { method: 'POST' });
+      await fetch(`/api/cloud-accounts/${accountId}/validate`, {
+        method: 'POST',
+        credentials: 'include',
+      });
     } catch {
       // Non-fatal at connection time — status will be shown in account list
     }
@@ -288,6 +296,7 @@ export default function ImportPanel() {
       const targetRegions = allRegionsSelected ? undefined : selectedRegions;
       const res = await fetch(`/api/cloud-accounts/${accountId}/discover`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           regions: targetRegions && targetRegions.length > 0 ? targetRegions : undefined,
@@ -320,7 +329,7 @@ export default function ImportPanel() {
       }
 
       try {
-        const res = await fetch(`/api/cloud-accounts/${accountId}/discovery?runId=${runId}`);
+        const res = await fetch(`/api/cloud-accounts/${accountId}/discovery?runId=${runId}`, { credentials: 'include' });
         const data = await res.json() as { ok: boolean; data: DiscoveryRun };
         if (!data.ok) return;
 
@@ -372,6 +381,7 @@ export default function ImportPanel() {
         try {
           const res = await fetch(`/api/cloud-accounts/${selectedAccountId}/discovery/import`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               runId: discoveryRun.id,
