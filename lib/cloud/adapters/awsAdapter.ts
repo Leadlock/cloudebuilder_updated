@@ -962,6 +962,10 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         for (const instance of reservation.Instances ?? []) {
           const id = safeString(instance.InstanceId);
           if (!id) continue;
+          const stateName = (instance.State?.Name ?? 'unknown').toLowerCase();
+          // Skip terminated instances (AWS returns terminated instances in DescribeInstances response for up to a few hours)
+          if (stateName === 'terminated') continue;
+
           const name = nameTag(instance.Tags) || id;
           const config = {
             instanceType: instance.InstanceType,
@@ -979,6 +983,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
               deviceName: bdm.DeviceName,
               volumeId: bdm.Ebs?.VolumeId,
             })),
+            status: stateName,
             source: 'aws-api',
             imported: true,
           };
@@ -992,7 +997,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             arn: `arn:aws:ec2:${region}:${accountId}:instance/${id}`,
             resourceId: id,
             tags: tagsToMap(instance.Tags),
-            status: instance.State?.Name ?? 'unknown',
+            status: stateName,
             configuration: config,
             parentResourceId: instance.SubnetId || instance.VpcId,
             metadata: {
@@ -1061,12 +1066,17 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
       for (const nat of resp.NatGateways ?? []) {
         const id = safeString(nat.NatGatewayId);
         if (!id) continue;
+        const state = (safeString(nat.State) || 'unknown').toLowerCase();
+        // Skip deleted NAT Gateways (AWS retains tombstone records for deleted NAT gateways in DescribeNatGateways response for up to 1-2 hours)
+        if (state === 'deleted') continue;
+
         const name = nameTag(nat.Tags) || id;
         const config = {
           vpcId: nat.VpcId ?? null,
           subnetId: nat.SubnetId ?? null,
           connectivityType: nat.ConnectivityType,
           publicIp: nat.NatGatewayAddresses?.[0]?.PublicIp ?? null,
+          status: state,
           source: 'aws-api',
           imported: true,
         };
@@ -1080,7 +1090,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
           arn: `arn:aws:ec2:${region}:${accountId}:natgateway/${id}`,
           resourceId: id,
           tags: tagsToMap(nat.Tags),
-          status: safeString(nat.State) || 'unknown',
+          status: state,
           configuration: config,
           parentResourceId: nat.SubnetId || nat.VpcId,
           metadata: {},
@@ -1200,6 +1210,9 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
       for (const vol of resp.Volumes ?? []) {
         const id = safeString(vol.VolumeId);
         if (!id) continue;
+        const state = (safeString(vol.State) || 'unknown').toLowerCase();
+        if (state === 'deleted' || state === 'deleting') continue;
+
         const name = nameTag(vol.Tags) || id;
         const attachedInstanceId = vol.Attachments?.[0]?.InstanceId ?? null;
         const config = {
@@ -1207,6 +1220,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
           volumeType: vol.VolumeType,
           encrypted: vol.Encrypted,
           attachedInstanceId,
+          status: state,
           source: 'aws-api',
           imported: true,
         };
@@ -1220,7 +1234,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
           arn: `arn:aws:ec2:${region}:${accountId}:volume/${id}`,
           resourceId: id,
           tags: tagsToMap(vol.Tags),
-          status: safeString(vol.State) || 'unknown',
+          status: state,
           configuration: config,
           parentResourceId: attachedInstanceId ?? undefined,
           metadata: {},
@@ -1258,6 +1272,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
       const config: Record<string, unknown> = {
         bucketName: bucket.Name,
         region: bucketRegion,
+        status: 'available',
         source: 'aws-api',
         imported: true,
       };
@@ -1318,7 +1333,12 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
   private async _discoverRdsInstances(region: string, accountId: string): Promise<CloudResource[]> {
     const rds = await this._makeRdsClient(region);
     const resp = await retryWithBackoff(() => rds.send(new DescribeDBInstancesCommand({})));
-    return (resp.DBInstances ?? []).map((db) => {
+    const results: CloudResource[] = [];
+
+    for (const db of resp.DBInstances ?? []) {
+      const status = (safeString(db.DBInstanceStatus) || 'unknown').toLowerCase();
+      if (status === 'deleted' || status === 'deleting') continue;
+
       const arn = safeString(db.DBInstanceArn);
       const name = db.DBInstanceIdentifier ?? 'unnamed-rds';
       const subnetGroupVpcId = db.DBSubnetGroup?.VpcId ?? null;
@@ -1337,8 +1357,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         endpoint: db.Endpoint?.Address ?? null,
         port: db.Endpoint?.Port,
         securityGroupIds: (db.VpcSecurityGroups ?? []).map((sg) => sg.VpcSecurityGroupId),
-        // Security settings returned by DescribeDBInstances, mapped to the fields the
-        // assessment rules read. Absent in the response → left undefined (unknown).
+        status,
         publiclyAccessible: db.PubliclyAccessible,
         encrypted: db.StorageEncrypted,
         kmsKeyId: db.KmsKeyId,
@@ -1352,7 +1371,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         imported: true,
       };
 
-      return {
+      results.push({
         id: db.DBInstanceIdentifier || arn,
         provider: 'aws',
         accountId,
@@ -1362,7 +1381,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         arn,
         resourceId: db.DBInstanceIdentifier || arn,
         tags: tagsToMap(db.TagList),
-        status: db.DBInstanceStatus ?? 'unknown',
+        status,
         configuration: config,
         parentResourceId: subnets[0] || subnetGroupVpcId || undefined,
         metadata: {
@@ -1370,8 +1389,10 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         },
         configurationHash: computeConfigHash(config),
         discoveredAt: now(),
-      };
-    });
+      });
+    }
+
+    return results;
   }
 
   private async _discoverLoadBalancers(region: string, accountId: string): Promise<CloudResource[]> {
@@ -1632,6 +1653,8 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             for (const svc of descResp.services ?? []) {
               const name = safeString(svc.serviceName);
               if (!name) continue;
+              const status = (safeString(svc.status) || 'unknown').toLowerCase();
+              if (status === 'inactive' || status === 'draining') continue;
 
               let cpu = 256;
               let memory = 512;
@@ -1670,6 +1693,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
                 assignPublicIp: netConfig?.assignPublicIp === 'ENABLED',
                 subnetId,
                 securityGroupIds: netConfig?.securityGroups ?? [],
+                status,
                 source: 'aws-api',
                 imported: true,
               };
@@ -1684,7 +1708,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
                 arn: safeString(svc.serviceArn),
                 resourceId: name,
                 tags: {},
-                status: svc.status ?? 'unknown',
+                status,
                 configuration: config,
                 parentResourceId: subnetId ?? undefined,
                 metadata: { clusterArn },
@@ -1722,6 +1746,8 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
           );
           const cluster = descResp.cluster;
           if (!cluster) continue;
+          const status = (safeString(cluster.status) || 'unknown').toLowerCase();
+          if (status === 'deleted' || status === 'deleting') continue;
 
           let nodeInstanceType = 't3.medium';
           let nodeCount = 3;
@@ -1767,6 +1793,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             vpcId,
             subnetId,
             securityGroupIds: cluster.resourcesVpcConfig?.securityGroupIds ?? [],
+            status,
             source: 'aws-api',
             imported: true,
           };
@@ -1781,7 +1808,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             arn: safeString(cluster.arn),
             resourceId: clusterName,
             tags: cluster.tags ?? {},
-            status: cluster.status ?? 'unknown',
+            status,
             configuration: config,
             parentResourceId: subnetId || vpcId || undefined,
             metadata: {},
@@ -1909,6 +1936,9 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             multiAzEnabled = rgInfo.multiAz;
           }
 
+          const status = (safeString(cluster.CacheClusterStatus) || 'unknown').toLowerCase();
+          if (status === 'deleted' || status === 'deleting') continue;
+
           const config = {
             name: id,
             engine: cluster.Engine,
@@ -1921,6 +1951,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             atRestEncryption: cluster.AtRestEncryptionEnabled,
             port: cluster.CacheNodeType ? (cluster.CacheNodes?.[0]?.Endpoint?.Port ?? 6379) : 6379,
             snapshotRetentionLimit: cluster.SnapshotRetentionLimit,
+            status,
             source: 'aws-api',
             imported: true,
           };
@@ -1935,7 +1966,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             arn: safeString(cluster.ARN),
             resourceId: id,
             tags: {},
-            status: cluster.CacheClusterStatus ?? 'unknown',
+            status,
             configuration: config,
             metadata: { replicationGroupId: replicationGroupId ?? null },
             configurationHash: computeConfigHash(config),
@@ -2071,6 +2102,9 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             // Best effort
           }
 
+          const status = (safeString(group.Status) || 'active').toLowerCase();
+          if (status === 'delete in progress' || status === 'deleted' || status.includes('delete')) continue;
+
           const subnetId = (group.VPCZoneIdentifier ?? '').split(',')[0]?.trim() || null;
           const config = {
             name,
@@ -2086,6 +2120,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             targetCpuUtilization,
             subnetId,
             targetGroupArns: group.TargetGroupARNs ?? [],
+            status,
             source: 'aws-api',
             imported: true,
           };
@@ -2100,7 +2135,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
             arn: safeString(group.AutoScalingGroupARN),
             resourceId: name,
             tags: Object.fromEntries((group.Tags ?? []).map((t) => [t.Key ?? '', t.Value ?? '']).filter(([k]) => k)),
-            status: 'active',
+            status,
             configuration: config,
             parentResourceId: subnetId ?? undefined,
             metadata: { instanceIds: (group.Instances ?? []).map((i) => i.InstanceId).filter(Boolean) },
@@ -2307,6 +2342,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
               // whether deletion is scheduled — default to the schema's own default.
               deletionWindowDays: 30,
               multiRegion: meta.MultiRegion,
+              status: meta.KeyState ? meta.KeyState.toLowerCase() : (meta.Enabled ? 'enabled' : 'disabled'),
               source: 'aws-api',
               imported: true,
             };
@@ -2321,7 +2357,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
               arn: safeString(meta.Arn),
               resourceId: keyId,
               tags: {},
-              status: meta.Enabled ? 'active' : 'disabled',
+              status: meta.KeyState ? meta.KeyState.toLowerCase() : (meta.Enabled ? 'enabled' : 'disabled'),
               configuration: config,
               metadata: { description: meta.Description ?? '' },
               configurationHash: computeConfigHash(config),

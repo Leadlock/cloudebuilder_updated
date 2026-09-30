@@ -69,11 +69,48 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
     if (rules.length > 0) specs.push(rules.join(', '));
   }
 
-  // Determine status
-  const isError = data.hasErrors;
-  const isWarning = data.hasWarnings || (data.resourceType === 'aws_ec2' && !config.keyName);
-  const statusColor = isError ? 'bg-rose-500' : isWarning ? 'bg-amber-400' : 'bg-emerald-400';
-  const statusText = isError ? 'Configuration Error' : isWarning ? 'Warning' : 'Ready';
+  // Determine live status and architectural validation
+  const rawStatus = (config.status as string) || (config.cloudStatus as string) || (config.state as string) || (data as any).status;
+  const normalizedStatus = rawStatus ? String(rawStatus).toLowerCase().trim() : '';
+
+  const isDeleted = normalizedStatus === 'deleted' || normalizedStatus === 'terminated' || normalizedStatus === 'destroyed';
+  const isDeleting = normalizedStatus === 'deleting' || normalizedStatus === 'terminating' || normalizedStatus === 'shutting-down';
+  const isStopped = normalizedStatus === 'stopped' || normalizedStatus === 'stopping' || normalizedStatus === 'inactive' || normalizedStatus === 'paused' || normalizedStatus === 'disabled' || normalizedStatus === 'draining';
+  const isPending = normalizedStatus === 'pending' || normalizedStatus === 'creating' || normalizedStatus === 'provisioning' || normalizedStatus === 'modifying' || normalizedStatus === 'updating' || normalizedStatus === 'scaling';
+  const isFailed = normalizedStatus === 'failed' || normalizedStatus === 'error' || normalizedStatus === 'unhealthy' || normalizedStatus === 'impaired' || normalizedStatus === 'degraded';
+  const isLiveActive = normalizedStatus === 'available' || normalizedStatus === 'running' || normalizedStatus === 'active' || normalizedStatus === 'ready' || normalizedStatus === 'in-use' || normalizedStatus === 'attached' || normalizedStatus === 'ok' || normalizedStatus === 'enabled';
+
+  let statusColor = 'bg-emerald-400';
+  let statusText = 'Ready';
+
+  if (isDeleted) {
+    statusColor = 'bg-slate-500';
+    statusText = normalizedStatus === 'terminated' ? 'Terminated' : 'Deleted';
+  } else if (isDeleting) {
+    statusColor = 'bg-rose-500 animate-pulse';
+    statusText = 'Deleting';
+  } else if (isFailed) {
+    statusColor = 'bg-rose-500';
+    statusText = 'Failed';
+  } else if (isStopped) {
+    statusColor = 'bg-amber-400';
+    statusText = normalizedStatus === 'inactive' ? 'Inactive' : normalizedStatus === 'draining' ? 'Draining' : 'Stopped';
+  } else if (isPending) {
+    statusColor = 'bg-sky-400 animate-pulse';
+    statusText = normalizedStatus === 'creating' || normalizedStatus === 'provisioning' ? 'Creating' : 'Pending';
+  } else if (data.hasErrors) {
+    statusColor = 'bg-rose-500';
+    statusText = 'Config Error';
+  } else if (data.hasWarnings || (data.resourceType === 'aws_ec2' && !config.keyName)) {
+    statusColor = 'bg-amber-400';
+    statusText = 'Warning';
+  } else if (isLiveActive) {
+    statusColor = 'bg-emerald-400';
+    statusText = isImported ? (normalizedStatus === 'running' ? 'Running' : normalizedStatus === 'available' ? 'Available' : 'Active') : 'Ready';
+  } else if (isPlanned) {
+    statusColor = 'bg-cyan-400';
+    statusText = 'Proposed';
+  }
 
   // Level of detail based on zoom
   const isZoomedOut = zoom < 0.65;
@@ -86,7 +123,11 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
       className={clsx(
         'group relative rounded-xl transition-all select-none border',
         'bg-slate-900/95 shadow-xl backdrop-blur-md',
-        isImported && '!border-cyan-500/50 shadow-cyan-950/40',
+        isDeleted && '!opacity-50 !border-slate-700 bg-slate-950/80 grayscale',
+        isDeleting && '!border-rose-500/60 shadow-rose-950/50 ring-1 ring-rose-500/30',
+        isStopped && '!border-amber-500/50 shadow-amber-950/40',
+        isFailed && '!border-rose-500 shadow-rose-950/50',
+        isImported && !isDeleted && !isDeleting && !isStopped && !isFailed && '!border-cyan-500/50 shadow-cyan-950/40',
         selected
           ? '!border-cyan-400 !shadow-cyan-500/25 ring-2 ring-cyan-400/40'
           : 'border-slate-700/80 hover:border-slate-500 hover:shadow-2xl',
@@ -145,7 +186,7 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
           <p className="text-white font-bold text-xs tracking-tight truncate leading-snug">
             {data.label}
           </p>
-          <div className="flex items-center gap-1.5 mt-0.5">
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <p className="text-[10px] text-slate-400 truncate font-medium">
               {serviceTitle}
             </p>
@@ -156,6 +197,30 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
               >
                 <span className="w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />
                 Imported
+              </span>
+            )}
+            {isDeleted && (
+              <span className="inline-flex items-center gap-1 text-[8px] font-bold text-slate-300 bg-slate-800/90 border border-slate-600 px-1.5 py-0.2 rounded-full uppercase tracking-wider shrink-0">
+                <span className="w-1 h-1 rounded-full bg-slate-400" />
+                Deleted
+              </span>
+            )}
+            {isDeleting && (
+              <span className="inline-flex items-center gap-1 text-[8px] font-bold text-rose-300 bg-rose-950/90 border border-rose-500/40 px-1.5 py-0.2 rounded-full uppercase tracking-wider shrink-0 animate-pulse">
+                <span className="w-1 h-1 rounded-full bg-rose-400" />
+                Deleting
+              </span>
+            )}
+            {isStopped && (
+              <span className="inline-flex items-center gap-1 text-[8px] font-bold text-amber-300 bg-amber-950/90 border border-amber-500/40 px-1.5 py-0.2 rounded-full uppercase tracking-wider shrink-0">
+                <span className="w-1 h-1 rounded-full bg-amber-400" />
+                Stopped
+              </span>
+            )}
+            {isFailed && (
+              <span className="inline-flex items-center gap-1 text-[8px] font-bold text-rose-300 bg-rose-950/90 border border-rose-500/40 px-1.5 py-0.2 rounded-full uppercase tracking-wider shrink-0">
+                <span className="w-1 h-1 rounded-full bg-rose-400" />
+                Failed
               </span>
             )}
             {isPlanned && (
@@ -186,7 +251,7 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
       {!isZoomedOut && (
         <div className="mt-2.5 pt-1.5 flex items-center justify-between border-t border-slate-800/50">
           <div className="flex items-center gap-1.5">
-            <span className={clsx('w-2 h-2 rounded-full animate-pulse', statusColor)} />
+            <span className={clsx('w-2 h-2 rounded-full', statusColor)} />
             <span className="text-[9px] font-medium text-slate-400 uppercase tracking-wider">
               {statusText}
             </span>
