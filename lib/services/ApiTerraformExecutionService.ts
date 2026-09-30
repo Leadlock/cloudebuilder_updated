@@ -87,4 +87,22 @@ export class ApiTerraformExecutionService {
     if (!res.ok) throw new Error(parseErrorMessage(data, `Failed to fetch apply status (${res.status})`));
     return data.data;
   }
+
+  static async destroyInfrastructure(
+    projectId: string,
+    environment: string,
+    cloudAccountId: string,
+    stateBackend: TerraformStateBackendConfig,
+    user?: { id: string; role?: string },
+  ): Promise<{ status: string; message: string; outputTail?: string }> {
+    const res = await fetch(`/api/projects/${projectId}/terraform/destroy`, {
+      method: 'POST',
+      headers: authHeaders(user),
+      credentials: 'include',
+      body: JSON.stringify({ environment, cloudAccountId, stateBackend }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(parseErrorMessage(data, `Teardown failed (${res.status})`));
+    return data.data;
+  }
 }

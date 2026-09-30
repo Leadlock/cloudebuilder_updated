@@ -7,7 +7,8 @@ import type { ArchitectureReview } from '@/lib/services/ArchitectureReviewServic
 import type { TerraformStateBackendConfig } from '@/lib/terraform/execution/types';
 import {
   CloudCog, Loader2, CheckCircle2, XCircle, AlertTriangle, ShieldAlert, Plus, ArrowRightLeft,
-  Terminal, Database, Globe, Layers, Server, Shield, Box, Activity, Cpu, Search, Clock, Zap
+  Terminal, Database, Globe, Layers, Server, Shield, Box, Activity, Cpu, Search, Clock, Zap,
+  Trash2, AlertOctagon, Flame
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -80,6 +81,14 @@ export default function TerraformExecutionPanel() {
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
 
+  // Destruction state
+  const [destroying, setDestroying] = useState(false);
+  const [destroyError, setDestroyError] = useState<string | null>(null);
+  const [destroySuccess, setDestroySuccess] = useState<string | null>(null);
+  const [destroyOutputTail, setDestroyOutputTail] = useState<string | null>(null);
+  const [showDestroyModal, setShowDestroyModal] = useState(false);
+  const [destroyConfirmInput, setDestroyConfirmInput] = useState('');
+
   // Live progress tracking
   const [completedCount, setCompletedCount] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -116,9 +125,9 @@ export default function TerraformExecutionPanel() {
     return () => { cancelled = true; };
   }, [backendProvider]);
 
-  // Track timer and simulated progress while applying
+  // Track timer and simulated progress while applying or destroying
   useEffect(() => {
-    if (applying) {
+    if (applying || destroying) {
       setElapsedSeconds(0);
       setCompletedCount(0);
       timerRef.current = setInterval(() => {
@@ -143,7 +152,7 @@ export default function TerraformExecutionPanel() {
       if (timerRef.current) clearInterval(timerRef.current);
       if (progressTimerRef.current) clearInterval(progressTimerRef.current);
     };
-  }, [applying, plan?.summary.resourceChanges.length]);
+  }, [applying, destroying, plan?.summary.resourceChanges.length]);
 
   // When apply completes successfully, set progress to 100%
   useEffect(() => {
@@ -189,6 +198,8 @@ export default function TerraformExecutionPanel() {
     setApplyStatus(null);
     setApplyJobId(null);
     setApplyError(null);
+    setDestroySuccess(null);
+    setDestroyError(null);
     setCompletedCount(0);
     try {
       const result = await ApiTerraformExecutionService.generatePlan(
@@ -220,6 +231,35 @@ export default function TerraformExecutionPanel() {
     }
   }
 
+  async function handleExecuteDestroy() {
+    if (!activeProject || !selectedAccountId || !backendReady()) return;
+    setDestroying(true);
+    setDestroyError(null);
+    setDestroySuccess(null);
+    setDestroyOutputTail(null);
+    setShowDestroyModal(false);
+    setDestroyConfirmInput('');
+
+    try {
+      const result = await ApiTerraformExecutionService.destroyInfrastructure(
+        activeProject.id,
+        state.activeEnvironment,
+        selectedAccountId,
+        buildBackend(),
+        currentUser,
+      );
+      setDestroySuccess(result.message || 'All cloud infrastructure resources have been destroyed.');
+      setDestroyOutputTail(result.outputTail || null);
+      setPlan(null);
+      setApplyStatus(null);
+      setApplyJobId(null);
+    } catch (err) {
+      setDestroyError(err instanceof Error ? err.message : 'Teardown failed');
+    } finally {
+      setDestroying(false);
+    }
+  }
+
   function pollApplyStatus(projectId: string, jobId: string) {
     const interval = setInterval(async () => {
       try {
@@ -246,6 +286,9 @@ export default function TerraformExecutionPanel() {
     setApplyError(null);
     setCompletedCount(0);
     setElapsedSeconds(0);
+    setDestroySuccess(null);
+    setDestroyError(null);
+    setDestroyOutputTail(null);
   }
 
   if (!isAdmin) return null;
@@ -270,16 +313,19 @@ export default function TerraformExecutionPanel() {
     return true;
   });
 
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
+
   return (
     <div className="mt-6 bg-gray-800/50 border border-emerald-900/40 rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-1">
-        <CloudCog className="w-4 h-4 text-emerald-400" />
-        <h3 className="text-white font-semibold text-sm">Real Infrastructure Deployment</h3>
-        <span className="text-[10px] px-2 py-0.5 bg-emerald-900/40 text-emerald-300 border border-emerald-800 rounded-full font-medium">Live</span>
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <CloudCog className="w-4 h-4 text-emerald-400" />
+          <h3 className="text-white font-semibold text-sm">Real Infrastructure Deployment</h3>
+          <span className="text-[10px] px-2 py-0.5 bg-emerald-900/40 text-emerald-300 border border-emerald-800 rounded-full font-medium">Live</span>
+        </div>
       </div>
       <p className="text-gray-500 text-xs mb-4">
-        Runs actual <code className="text-gray-400">terraform plan</code> / <code className="text-gray-400">apply</code> against a connected cloud account.
-        Destroy actions are always refused. A remote state backend is required.
+        Runs actual <code className="text-gray-400">terraform plan</code>, <code className="text-gray-400">apply</code>, or <code className="text-gray-400">destroy</code> against a connected cloud account using your remote state backend.
       </p>
 
       {!isApproved ? (
@@ -356,15 +402,85 @@ export default function TerraformExecutionPanel() {
             )}
           </div>
 
-          {!plan && (
-            <button
-              onClick={handleGeneratePlan}
-              disabled={!selectedAccountId || !backendReady() || planning}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white transition-colors"
-            >
-              {planning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRightLeft className="w-3.5 h-3.5" />}
-              {planning ? 'Generating plan…' : 'Generate Terraform Plan'}
-            </button>
+          {/* Main Action Buttons */}
+          {!plan && !destroying && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                onClick={handleGeneratePlan}
+                disabled={!selectedAccountId || !backendReady() || planning}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white transition-colors"
+              >
+                {planning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRightLeft className="w-3.5 h-3.5" />}
+                {planning ? 'Generating plan…' : 'Generate Terraform Plan'}
+              </button>
+
+              <button
+                onClick={() => setShowDestroyModal(true)}
+                disabled={!selectedAccountId || !backendReady() || planning || destroying}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-rose-950/70 hover:bg-rose-900 border border-rose-800/80 disabled:opacity-40 disabled:cursor-not-allowed text-rose-300 transition-colors"
+                title="Tear down and destroy all cloud infrastructure provisioned for this project"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                Teardown / Terminate All Services
+              </button>
+            </div>
+          )}
+
+          {/* Destroying Active State Banner */}
+          {destroying && (
+            <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-500/40 text-white space-y-2.5 animate-pulse shadow-xl">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 text-rose-400 animate-spin" />
+                  <span className="font-semibold text-rose-200">Tearing Down Infrastructure in {backendProvider.toUpperCase()}...</span>
+                </div>
+                <div className="flex items-center gap-1 text-rose-300 font-mono text-xs">
+                  <Clock className="w-3.5 h-3.5 animate-spin" /> {formatDuration(elapsedSeconds)}
+                </div>
+              </div>
+              <p className="text-[11px] text-gray-300">
+                Running <code className="text-rose-300 font-mono">terraform destroy</code> against your remote state. This will safely terminate VPCs, subnets, compute, and databases.
+              </p>
+            </div>
+          )}
+
+          {/* Destroy Success Banner */}
+          {destroySuccess && (
+            <div className="p-4 rounded-xl bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 text-xs shadow-xl space-y-2">
+              <div className="flex items-center gap-2 font-semibold text-sm">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <span>All Infrastructure Successfully Terminated!</span>
+              </div>
+              <p className="text-[11px] text-emerald-300/90">{destroySuccess}</p>
+              {destroyOutputTail && (
+                <details className="mt-2 bg-gray-950/80 rounded-lg p-2 border border-emerald-900/40">
+                  <summary className="cursor-pointer text-emerald-400/90 font-medium">View Teardown Log Output</summary>
+                  <div className="mt-2 bg-black rounded-lg p-2.5 flex items-start gap-2 max-h-40 overflow-y-auto">
+                    <Terminal className="w-3.5 h-3.5 text-gray-500 mt-0.5 shrink-0" />
+                    <pre className="text-[10px] text-gray-300 font-mono whitespace-pre-wrap">{destroyOutputTail}</pre>
+                  </div>
+                </details>
+              )}
+              <button onClick={resetPlan} className="mt-2 px-3 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white font-medium text-xs transition-colors">
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {/* Destroy Error Banner */}
+          {destroyError && (
+            <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs shadow-lg space-y-2">
+              <div className="flex items-center gap-2 font-semibold">
+                <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>Teardown encountered an issue</span>
+              </div>
+              <p className="text-[11px] text-rose-300/90 bg-black/40 p-2 rounded border border-rose-900/30 font-mono">
+                {destroyError}
+              </p>
+              <button onClick={() => setShowDestroyModal(true)} className="text-xs text-rose-400 hover:text-rose-200 underline font-medium">
+                Try again
+              </button>
+            </div>
           )}
 
           {planError && (
@@ -558,17 +674,25 @@ export default function TerraformExecutionPanel() {
 
               {/* Action Buttons */}
               {!applyJobId ? (
-                <div className="flex gap-2 pt-1">
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleConfirmApply}
+                      disabled={applying}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white transition-all shadow-lg shadow-emerald-600/20"
+                    >
+                      {applying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                      Confirm &amp; Apply to AWS
+                    </button>
+                    <button onClick={resetPlan} className="px-3 py-2 rounded-lg text-xs font-medium bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400">
+                      Discard
+                    </button>
+                  </div>
                   <button
-                    onClick={handleConfirmApply}
-                    disabled={applying}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white transition-all shadow-lg shadow-emerald-600/20"
+                    onClick={() => setShowDestroyModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-rose-400 hover:text-rose-200 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900/60 transition-colors"
                   >
-                    {applying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                    Confirm &amp; Apply to AWS
-                  </button>
-                  <button onClick={resetPlan} className="px-3 py-2 rounded-lg text-xs font-medium bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400">
-                    Discard
+                    <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Teardown
                   </button>
                 </div>
               ) : (
@@ -589,9 +713,17 @@ export default function TerraformExecutionPanel() {
                           </div>
                         </details>
                       )}
-                      <button onClick={resetPlan} className="mt-3 px-3 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white font-medium text-xs transition-colors">
-                        Start a new deployment
-                      </button>
+                      <div className="mt-3 flex items-center justify-between">
+                        <button onClick={resetPlan} className="px-3 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white font-medium text-xs transition-colors">
+                          Start a new deployment
+                        </button>
+                        <button
+                          onClick={() => setShowDestroyModal(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 font-semibold text-xs transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Teardown All Services
+                        </button>
+                      </div>
                     </div>
                   )}
                   {(applyStatus?.state === 'failed' || applyError) && (
@@ -603,13 +735,97 @@ export default function TerraformExecutionPanel() {
                       <p className="text-[11px] text-rose-300/90 bg-black/40 p-2 rounded border border-rose-900/30 font-mono">
                         {applyStatus?.output?.message ?? applyError}
                       </p>
-                      <button onClick={resetPlan} className="mt-2.5 text-xs text-rose-400 hover:text-rose-200 underline font-medium">
-                        Re-plan and try again
-                      </button>
+                      <div className="mt-2.5 flex items-center justify-between">
+                        <button onClick={resetPlan} className="text-xs text-rose-400 hover:text-rose-200 underline font-medium">
+                          Re-plan and try again
+                        </button>
+                        <button
+                          onClick={() => setShowDestroyModal(true)}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 font-medium text-[11px]"
+                        >
+                          <Trash2 className="w-3 h-3" /> Teardown partially created resources
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Teardown Safety Confirmation Modal */}
+          {showDestroyModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+              <div className="bg-gray-900 border border-rose-500/50 rounded-2xl p-5 max-w-md w-full shadow-2xl shadow-rose-950/50 space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-950/80 border border-rose-500/50 flex items-center justify-center text-rose-400 shrink-0">
+                    <AlertOctagon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-white font-bold text-sm">Terminate All Cloud Infrastructure</h4>
+                    <p className="text-gray-400 text-xs mt-0.5">
+                      This action will run <code className="text-rose-300 font-mono">terraform destroy</code> against your live cloud account.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-gray-950/80 rounded-xl p-3 border border-gray-800 text-xs space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Project:</span>
+                    <span className="text-white font-medium">{activeProject.name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Account:</span>
+                    <span className="text-white font-medium">{selectedAccount?.name ?? 'Connected Cloud Account'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Remote State:</span>
+                    <span className="text-emerald-400 font-mono text-[11px]">{backendProvider === 'aws' ? awsBackend.bucket : azureBackend.storageAccountName}</span>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-rose-950/30 border border-rose-900/50 rounded-xl text-rose-300 text-xs space-y-2">
+                  <p className="font-semibold flex items-center gap-1.5">
+                    <Flame className="w-4 h-4 text-rose-400" /> Irreversible Action
+                  </p>
+                  <p className="text-[11px] text-rose-300/80 leading-relaxed">
+                    All VPCs, subnets, compute instances, database clusters, load balancers, and caches provisioned for this project will be deleted.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-gray-400 text-xs">
+                    Type <span className="text-white font-bold font-mono">DESTROY</span> to confirm:
+                  </label>
+                  <input
+                    type="text"
+                    value={destroyConfirmInput}
+                    onChange={(e) => setDestroyConfirmInput(e.target.value)}
+                    placeholder="DESTROY"
+                    className="w-full bg-black/60 border border-gray-700 rounded-lg px-3 py-2 text-white font-mono text-xs focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-gray-800">
+                  <button
+                    onClick={() => {
+                      setShowDestroyModal(false);
+                      setDestroyConfirmInput('');
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleExecuteDestroy}
+                    disabled={destroyConfirmInput !== 'DESTROY' || destroying}
+                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white transition-all shadow-lg shadow-rose-600/30"
+                  >
+                    {destroying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    Confirm &amp; Destroy All Services
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

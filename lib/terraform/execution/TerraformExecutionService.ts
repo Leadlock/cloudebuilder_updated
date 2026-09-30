@@ -286,3 +286,83 @@ export async function runApply(planId: string, orgId: string): Promise<{ message
     await rm(record.workDir, { recursive: true, force: true }).catch(() => {});
   }
 }
+
+export interface ExecuteDestroyInput {
+  projectId: string;
+  orgId: string;
+  environment: string;
+  cloudAccountId: string;
+  stateBackend: TerraformStateBackendConfig;
+  user: { id: string; name: string; email: string; role: string };
+  resources: DbArchitectureResource[];
+  connections: DbArchitectureConnection[];
+  architectureId: string;
+  projectName: string;
+}
+
+export async function executeDestroy(input: ExecuteDestroyInput): Promise<{ message: string; outputTail: string }> {
+  if (input.user.role !== 'admin') {
+    const err = new Error('Forbidden: Only Administrators can destroy infrastructure.') as Error & { statusCode: number };
+    err.statusCode = 403;
+    throw err;
+  }
+
+  if (!input.stateBackend?.provider) {
+    const err = new Error('Teardown blocked: a remote Terraform state backend configuration is required.') as Error & { statusCode: number };
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const credentialsJson = await cloudAccountRepository.getCredentials(input.cloudAccountId, input.orgId);
+  if (!credentialsJson) {
+    const err = new Error('CloudAccount credentials not found') as Error & { statusCode: number };
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const credentials = JSON.parse(credentialsJson) as CloudCredentials;
+  const rawEnv = await resolveExecutionCredentials(credentials);
+  const env: Record<string, string> = {
+    TF_VAR_db_password: process.env.TF_VAR_db_password || 'CloudCraft_SecureDbPass123!',
+    TF_VAR_sql_admin_password: process.env.TF_VAR_sql_admin_password || 'CloudCraft_SqlPass123!',
+    TF_VAR_admin_ssh_public_key: process.env.TF_VAR_admin_ssh_public_key || 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICloudCraftGeneratedKey cloudcraft@admin',
+    TF_VAR_windows_admin_password: process.env.TF_VAR_windows_admin_password || 'CloudCraft_WinPass123!',
+    ...rawEnv,
+  };
+
+  const generated = terraformGenerator.generate({
+    architectureId: input.architectureId,
+    projectId: input.projectId,
+    resources: input.resources,
+    connections: input.connections,
+    projectName: input.projectName,
+  });
+
+  const workDir = await mkdtemp(join(tmpdir(), 'cloudcraft-tf-destroy-'));
+  try {
+    for (const file of generated.files) {
+      await writeFile(join(workDir, file.filename), file.content, 'utf-8');
+    }
+    const backendHcl = renderBackendConfig(input.stateBackend);
+    await writeFile(join(workDir, 'backend.tf'), backendHcl, 'utf-8');
+
+    await runTerraform(['init', '-input=false', '-no-color'], {
+      cwd: workDir,
+      env,
+      timeoutMs: 5 * 60 * 1000,
+    });
+
+    const { stdout } = await runTerraform(['destroy', '-auto-approve', '-input=false', '-no-color'], {
+      cwd: workDir,
+      env,
+      timeoutMs: 25 * 60 * 1000,
+    });
+
+    return {
+      message: 'All cloud infrastructure resources have been successfully destroyed from the connected account.',
+      outputTail: stdout.slice(-4000),
+    };
+  } finally {
+    await rm(workDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
