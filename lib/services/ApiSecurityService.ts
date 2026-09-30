@@ -154,13 +154,13 @@ class ApiSecurityServiceImpl implements ISecurityService {
   }
 
   /** Download the assessment report generated server-side from a persisted snapshot. */
-  async downloadReport(format: 'pdf' | 'html' | 'json', scanId?: string): Promise<{ blob: Blob; filename: string; scanId: string | null }> {
+  async downloadReport(format: 'pdf' | 'html' | 'json', scanId?: string, aiCommentary?: { summary: string; priorities: { ruleId: string; problem?: string; fix?: string }[]; suggestions: string[] }): Promise<{ blob: Blob; filename: string; scanId: string | null }> {
     const projectId = _activeProjectId;
     if (!projectId || projectId === 'draft-project') throw new Error('Save the project before exporting a report.');
     const res = await fetch(`${getBaseUrl()}/api/projects/${projectId}/assessment-report`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(process.env.NODE_ENV === 'development' ? { 'x-user-id': 'dev-user-id' } : {}) },
-      body: JSON.stringify({ env: _activeEnvironment, format, ...(scanId ? { scanId } : {}) }),
+      body: JSON.stringify({ env: _activeEnvironment, format, ...(scanId ? { scanId } : {}), ...(aiCommentary ? { aiCommentary } : {}) }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => null) as ApiError | null;

@@ -32,9 +32,9 @@ const COPY: Record<AiReviewMode, { title: string; button: string; placeholder: s
   },
 };
 
-type AnyReview = AiReviewResult | AiSecurityReview | AiWellArchitectedReview;
+export type AnyReview = AiReviewResult | AiSecurityReview | AiWellArchitectedReview;
 
-export default function AiReviewCard({ nodes, edges, mode = 'general' }: { nodes: CanvasNode[]; edges: CanvasEdge[]; mode?: AiReviewMode }) {
+export default function AiReviewCard({ nodes, edges, mode = 'general', onReview }: { nodes: CanvasNode[]; edges: CanvasEdge[]; mode?: AiReviewMode; /** Called with each completed review (and the nodes it was run on) so a parent can reuse it, e.g. in an export. */ onReview?: (review: AnyReview, nodes: CanvasNode[]) => void }) {
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +54,7 @@ export default function AiReviewCard({ nodes, edges, mode = 'general' }: { nodes
       const body = await res.json();
       if (!res.ok || !body.ok) throw new Error(body?.error?.message || 'The AI review failed. Please try again.');
       setReview(body.data as AnyReview);
+      onReview?.(body.data as AnyReview, nodes);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'The AI review failed. Please try again.');
     } finally {

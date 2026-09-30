@@ -3,6 +3,7 @@
  * content as the PDF). Suitable for sharing, archiving, or printing; all
  * values are HTML-escaped.
  */
+import { COMMENTARY_DISCLAIMER } from '@/lib/ai/reportCommentary';
 import type { AssessmentReport, RecommendationGroup } from '@/lib/engines/assessment/report/buildReport';
 import type { Finding, Severity } from '@/lib/engines/assessment/types';
 import { VERIFICATION_LABEL } from '@/lib/engines/assessment/references';
@@ -49,6 +50,13 @@ function finding(f: Finding): string {
 </article>`;
 }
 
+function aiCommentaryHtml(c: NonNullable<AssessmentReport['aiCommentary']>): string {
+  return `<h3>AI-generated commentary</h3><div class="callout warn">${esc(COMMENTARY_DISCLAIMER)} Generated ${esc(date(c.generatedAt))}.</div>
+  ${c.summary ? `<p>${esc(c.summary)}</p>` : ''}
+  ${c.priorities.length ? `<p><b>Suggested order of work</b></p><ol>${c.priorities.map((p) => `<li><b>${esc(p.title)}</b> <span class="muted">(${esc(p.severity)}, ${esc(p.ruleId)})</span><br>${esc(p.problem)}<br><i>Fix:</i> ${esc(p.fix)}</li>`).join('')}</ol>` : ''}
+  ${c.suggestions.length ? `<p><b>Unverified AI suggestions</b> <span class="muted">(not backed by a finding)</span></p>${list(c.suggestions)}` : ''}`;
+}
+
 export function renderReportHtml(r: AssessmentReport): string {
   const m = r.meta; const ex = r.executive;
   const counts = (c: Record<Severity, number>) => `<div class="counts">${(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFORMATIONAL'] as Severity[]).map((s) => `<div><b style="color:${SEV[s]}">${c[s]}</b><span>${s}</span></div>`).join('')}</div>`;
@@ -79,7 +87,8 @@ export function renderReportHtml(r: AssessmentReport): string {
   <h3>SOC 1 readiness summary</h3><p>${ex.soc1.observed} area(s) with technical evidence observed, ${ex.soc1.gaps} with gaps, ${ex.soc1.partial} partially evaluated, ${ex.soc1.notEvaluated} not evaluated. All areas require organizational evidence and independent auditor assessment.</p>
   <h3>High-impact checks passed</h3>${list(ex.strengths, 'No critical- or high-severity security checks passed in the evaluated configuration.')}
   <h3>Major risks</h3>${list(ex.majorRisks, 'No critical or high severity failures in the evaluated checks.')}
-  <h3>Immediate priorities</h3>${list(ex.immediatePriorities, 'No immediate remediation items.')}</section>`);
+  <h3>Immediate priorities</h3>${list(ex.immediatePriorities, 'No immediate remediation items.')}
+  ${r.aiCommentary ? aiCommentaryHtml(r.aiCommentary) : ''}</section>`);
 
   sections.push(`<section><h2>3. Architecture Overview</h2>
   ${table(['Providers', 'Regions', 'Resources', 'Connections'], [[esc(m.providers.join(', ')), esc(m.regions.join(', ') || '—'), String(r.architecture.resourceCount), String(r.architecture.edges.length)]])}

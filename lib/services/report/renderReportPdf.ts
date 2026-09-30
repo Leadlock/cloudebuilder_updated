@@ -4,6 +4,7 @@
  * Generated directly from report data with pdfkit — vector text, tables and a
  * vector architecture diagram — never a screenshot of the UI.
  */
+import { COMMENTARY_DISCLAIMER } from '@/lib/ai/reportCommentary';
 import type { AssessmentReport, RecommendationGroup } from '@/lib/engines/assessment/report/buildReport';
 import type { Finding, Severity } from '@/lib/engines/assessment/types';
 import type { CanvasNode } from '@/types';
@@ -341,6 +342,14 @@ export async function renderReportPdf(report: AssessmentReport): Promise<Buffer>
   w.h3('High-impact checks passed'); w.bullets(ex.strengths, { empty: 'No critical- or high-severity security checks passed in the evaluated configuration.' });
   w.h3('Major risks'); w.bullets(ex.majorRisks, { empty: 'No critical- or high-severity failures were identified in the checks that could be evaluated.' });
   w.h3('Immediate priorities'); w.bullets(ex.immediatePriorities, { empty: 'No immediate (critical/high required) remediation items.' });
+  if (report.aiCommentary) {
+    const ai = report.aiCommentary;
+    w.h3('AI-generated commentary');
+    w.box('AI-generated', `${COMMENTARY_DISCLAIMER} Generated ${fmtDate(ai.generatedAt)}.`, '#B45309');
+    if (ai.summary) w.p(ai.summary);
+    if (ai.priorities.length) { w.p('Suggested order of work', { bold: true, size: 9 }); w.bullets(ai.priorities.map((p) => `${p.title} (${p.severity}, ${p.ruleId}) — ${p.problem} Fix: ${p.fix}`), { size: 8.5 }); }
+    if (ai.suggestions.length) { w.p('Unverified AI suggestions (not backed by a finding)', { bold: true, size: 9 }); w.bullets(ai.suggestions, { size: 8.5 }); }
+  }
 
   // ── 3 Architecture overview ──
   w.h1('3', 'Architecture Overview');

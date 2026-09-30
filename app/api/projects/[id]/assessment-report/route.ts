@@ -22,6 +22,7 @@ import {
 import { buildReport, type AutoFixHistoryEntry } from '@/lib/engines/assessment/report/buildReport';
 import { renderReportPdf } from '@/lib/services/report/renderReportPdf';
 import { renderReportHtml } from '@/lib/services/report/renderReportHtml';
+import { AiCommentaryInputSchema, buildCommentary } from '@/lib/ai/reportCommentary';
 import { db } from '@/src/prisma/db';
 
 export const dynamic = 'force-dynamic';
@@ -31,6 +32,8 @@ const Schema = z.object({
   env: z.string().optional().default('production'),
   format: z.enum(['pdf', 'html', 'json']).default('pdf'),
   scanId: z.string().uuid().optional(),
+  /** The AI security review the user is looking at; validated against the report's own findings. */
+  aiCommentary: AiCommentaryInputSchema.optional(),
 });
 
 async function autoFixHistory(architectureId: string): Promise<AutoFixHistoryEntry[]> {
@@ -87,6 +90,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       comparison: cmp ? { ...cmp, unchangedCount: cmp.unchangedFindings.length } : undefined,
       autoFixHistory: (await autoFixHistory(snapshot.architecture.architectureId)).filter((h) => h.timestamp <= snapshot.createdAt),
     });
+
+    if (body.aiCommentary) report.aiCommentary = buildCommentary(body.aiCommentary, report.security.findings, new Date().toISOString());
 
     const base = `cloudcraft-assessment-${ctx.project.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 40)}-rev${snapshot.architecture.revision}-${report.meta.reportId}`;
     if (body.format === 'json') {

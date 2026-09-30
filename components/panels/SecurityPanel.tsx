@@ -14,6 +14,7 @@ import clsx from 'clsx';
 import { ShieldCheck, AlertTriangle, CheckCircle2, Download, RefreshCw, Wrench, History, HelpCircle, Info } from 'lucide-react';
 import { useApp, useActiveProject } from '@/context/AppContext';
 import AiReviewCard from './AiReviewCard';
+import type { AiSecurityReview } from '@/lib/services/AiReviewService';
 import { apiSecurityService, type ReviewRecord, type ScanHistoryEntry, type PersistedScan } from '@/lib/services/ApiSecurityService';
 import { apiArchitectureService } from '@/lib/services/ApiArchitectureService';
 import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
@@ -57,6 +58,7 @@ function download(blob: Blob, filename: string) {
 export default function SecurityPanel() {
   const { state, dispatch } = useApp();
   const project = useActiveProject();
+  const [aiReview, setAiReview] = useState<{ review: AiSecurityReview; nodes: unknown } | null>(null);
   const [tab, setTab] = useState<Tab>('findings');
   const [scope, setScope] = useState<Scope>('security');
   const [sevFilter, setSevFilter] = useState<Severity | 'ALL'>('ALL');
@@ -187,7 +189,9 @@ export default function SecurityPanel() {
   async function exportReport(format: 'pdf' | 'html' | 'json', scanId?: string) {
     setExporting(format);
     try {
-      const { blob, filename } = await apiSecurityService.downloadReport(format, scanId);
+      // Include the AI commentary only for a fresh export of the design it was written for (not when re-rendering an old snapshot).
+      const ai = !scanId && aiReview && aiReview.nodes === nodes ? aiReview.review : null;
+      const { blob, filename } = await apiSecurityService.downloadReport(format, scanId, ai ? { summary: ai.summary, priorities: ai.priorities.map((p) => ({ ruleId: p.ruleId, problem: p.problem, fix: p.fix })), suggestions: ai.suggestions } : undefined);
       download(blob, filename);
       if (!scanId) apiSecurityService.listScans().then((h) => setHistory(h.scans)).catch(() => {});
     } catch (e) { flash({ kind: 'error', text: (e as Error).message }); } finally { setExporting(null); }
@@ -279,7 +283,8 @@ export default function SecurityPanel() {
           </div>
         </div>
 
-        <AiReviewCard nodes={nodes} edges={project.edges} mode="security" />
+        <AiReviewCard nodes={nodes} edges={project.edges} mode="security" onReview={(r, n) => setAiReview({ review: r as AiSecurityReview, nodes: n })} />
+        {aiReview && aiReview.nodes === nodes && <p className="text-[11px] text-gray-500 -mt-3">The AI summary above will be included in PDF and HTML exports as a separately labelled section.</p>}
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-gray-800 text-xs">
