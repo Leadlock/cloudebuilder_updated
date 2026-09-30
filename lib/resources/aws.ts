@@ -1,4 +1,11 @@
 import { ResourceDefinition } from '@/types';
+import { AUTHORITATIVE_AWS_REGIONS } from '@/lib/cloud/regions/CloudRegionService';
+
+function subnetAzOptions(): { label: string; value: string }[] {
+  const out = AUTHORITATIVE_AWS_REGIONS.flatMap((r) => ['a', 'b'].map((z) => `${r.id}${z}`));
+  if (!out.includes('us-east-1c')) out.splice(out.indexOf('us-east-1b') + 1, 0, 'us-east-1c');
+  return out.map((v) => ({ label: v, value: v }));
+}
 
 export const awsResources: ResourceDefinition[] = [
   {
@@ -45,13 +52,9 @@ export const awsResources: ResourceDefinition[] = [
       { key: 'cidrBlock', label: 'CIDR Block', type: 'cidr', defaultValue: '10.0.1.0/24', required: true },
       {
         key: 'availabilityZone', label: 'Availability Zone', type: 'select', defaultValue: 'us-east-1a',
-        options: [
-          { label: 'us-east-1a', value: 'us-east-1a' },
-          { label: 'us-east-1b', value: 'us-east-1b' },
-          { label: 'us-east-1c', value: 'us-east-1c' },
-          { label: 'us-west-2a', value: 'us-west-2a' },
-          { label: 'us-west-2b', value: 'us-west-2b' },
-        ],
+        // Every AWS Region has at least two AZs (letters a and b), so a / b are offered for every
+        // region CloudCraft knows; us-east-1c stays for backwards compatibility.
+        options: subnetAzOptions(),
       },
       { key: 'mapPublicIpOnLaunch', label: 'Auto-assign Public IP', type: 'boolean', defaultValue: false },
     ],
