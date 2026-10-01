@@ -2161,6 +2161,14 @@ resource "azurerm_resource_group" "main" {
       resourceMap['__default_rg'] = 'azurerm_resource_group.main';
     }
 
+    // Random suffix for globally unique Azure resource names (Storage, KeyVault, Redis, SQL)
+    blocks.push(`# Random suffix for globally unique Azure resource names
+resource "random_string" "az_suffix" {
+  length  = 6
+  special = false
+  upper   = false
+}`);
+
     for (const r of resources) {
       const cfg = this._cfg(r);
       const name = resolver.tfNameOf(r.id) ?? tfName(r.label);
@@ -2594,7 +2602,7 @@ data "azurerm_network_security_group" "${name}" {
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
     const tagsBlock = tagLines.length > 0 ? `\n  tags = {\n${tagLines.join('\n')}\n  }` : '';
     let serverName = ((cfg['serverName'] as string) || `${name}-server`).toLowerCase().replace(/_/g, '-').replace(/[^a-z0-9-]/g, '');
-    serverName = serverName.replace(/^-+|-+$/g, '').slice(0, 63);
+    serverName = serverName.replace(/^-+|-+$/g, '').slice(0, 50);
     if (!serverName) serverName = 'sql-server';
 
     const tierRaw = (cfg['tier'] as string) || 'S0';
@@ -2612,9 +2620,9 @@ data "azurerm_network_security_group" "${name}" {
 
     const parts: string[] = [
       `resource "azurerm_mssql_server" "${name}_server" {
-  name                         = "${serverName}"
+  name                         = "${serverName}-\${random_string.az_suffix.result}"
   resource_group_name          = ${rgName}
-  location                     = ${rgLoc}
+  location                     = ${cfg['location'] ? `"${cfg['location']}"` : rgLoc}
   version                      = "12.0"
   administrator_login          = var.sql_admin_login
   administrator_login_password = var.sql_admin_password
@@ -2991,11 +2999,11 @@ ${tagLines.join('\n')}
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
     let redisName = ((cfg['name'] as string) || name).toLowerCase().replace(/_/g, '-').replace(/[^a-z0-9-]/g, '');
-    redisName = redisName.replace(/^-+|-+$/g, '').slice(0, 63);
+    redisName = redisName.replace(/^-+|-+$/g, '').slice(0, 50);
     if (!redisName) redisName = 'redis-cache';
 
     return `resource "azurerm_redis_cache" "${name}" {
-  name                          = "${redisName}"
+  name                          = "${redisName}-\${random_string.az_suffix.result}"
   resource_group_name           = ${rgName}
   location                      = ${rgLoc}
   capacity                      = ${cfg['capacity'] ?? 1}
@@ -3166,7 +3174,7 @@ ${tagLines.join('\n')}
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.${name}_origin_group.id
   cdn_frontdoor_origin_ids      = [azurerm_cdn_frontdoor_origin.${name}_origin.id]
   patterns_to_match             = ${JSON.stringify(cfg['patternsToMatch'] ?? ["/*"])}
-  supported_protocols           = ${cfg['httpsOnly'] !== false ? '["Https"]' : '["Http", "Https"]'}
+  supported_protocols           = ["Http", "Https"]
   https_redirect_enabled        = ${cfg['httpsOnly'] !== false}
   cache {
     query_string_caching_behavior = "${cfg['queryStringCachingBehavior'] ?? 'IgnoreQueryString'}"
@@ -3213,16 +3221,21 @@ ${tagLines.join('\n')}
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
 
+    const rawPrefix = (cfg['computerNamePrefix'] as string) || name;
+    let computerNamePrefix = rawPrefix.replace(/_/g, '-').replace(/[^a-zA-Z0-9-]/g, '').slice(0, 9);
+    computerNamePrefix = computerNamePrefix.replace(/^-+|-+$/g, '') || (isWindows ? 'winvm' : 'lnxvm');
+
     const lines: string[] = [
       `resource "${resourceType}" "${name}" {`,
-      `  name                = "${name}"`,
-      `  resource_group_name = ${rgName}`,
-      `  location            = ${rgLoc}`,
-      `  sku                 = "${cfg['sku'] ?? 'Standard_B2s'}"`,
-      `  instances           = ${cfg['capacity'] ?? 2}`,
-      `  admin_username      = "${cfg['adminUsername'] ?? 'azureuser'}"`,
-      `  overprovision       = ${cfg['overprovision'] !== false}`,
-      `  upgrade_mode        = "${cfg['upgradeMode'] ?? 'Manual'}"`,
+      `  name                 = "${name}"`,
+      `  computer_name_prefix = "${computerNamePrefix}"`,
+      `  resource_group_name  = ${rgName}`,
+      `  location             = ${rgLoc}`,
+      `  sku                  = "${cfg['sku'] ?? 'Standard_B2s'}"`,
+      `  instances            = ${cfg['capacity'] ?? 2}`,
+      `  admin_username       = "${cfg['adminUsername'] ?? 'azureuser'}"`,
+      `  overprovision        = ${cfg['overprovision'] !== false}`,
+      `  upgrade_mode         = "${cfg['upgradeMode'] ?? 'Manual'}"`,
       `  encryption_at_host_enabled = ${cfg['osDiskEncryption'] === true}`,
     ];
     if (!isWindows) {
@@ -3327,7 +3340,7 @@ ${tagLines.join('\n')}
       `  }`,
       `  frontend_port {`,
       `    name = "${name}-feport"`,
-      `    port = 443`,
+      `    port = ${cfg['frontendPort'] ?? 80}`,
       `  }`,
       `  frontend_ip_configuration {`,
       `    name                 = "${name}-feip"`,
@@ -3347,7 +3360,7 @@ ${tagLines.join('\n')}
       `    name                           = "${name}-listener"`,
       `    frontend_ip_configuration_name = "${name}-feip"`,
       `    frontend_port_name             = "${name}-feport"`,
-      `    protocol                       = "Https"`,
+      `    protocol                       = "Http"`,
       `  }`,
       `  request_routing_rule {`,
       `    name                       = "${name}-rule"`,
@@ -3634,6 +3647,7 @@ export class TerraformGenerator {
     const required: string[] = [];
     if (hasAws)   required.push('    aws = {\n      source  = "hashicorp/aws"\n      version = "~> 5.0"\n    }');
     if (hasAzure) required.push('    azurerm = {\n      source  = "hashicorp/azurerm"\n      version = "~> 3.0"\n    }');
+    if (hasAzure || hasAws) required.push('    random = {\n      source  = "hashicorp/random"\n      version = "~> 3.5"\n    }');
 
     const parts: string[] = [
       `terraform {
