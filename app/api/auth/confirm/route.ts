@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { apiError, badRequest, internalError, parseBody } from '@/lib/api/response';
 import { AuthService } from '@/lib/api/authService';
 import { CognitoService } from '@/lib/auth/cognitoService';
+import { limitAuthAttempt } from '@/lib/api/authRateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,10 @@ export async function POST(req: NextRequest) {
 
     const { email, code, name, orgName } = parsed.data;
 
+    // A verification code is short: limit guesses per (address, email) so it cannot be brute-forced.
+    const limited = limitAuthAttempt(req, 'confirm', email);
+    if (limited) return limited;
+
     try {
       await CognitoService.confirmSignUp(email, code);
     } catch (cognitoErr: any) {
@@ -32,8 +37,8 @@ export async function POST(req: NextRequest) {
       if (cognitoErr.name === 'NotAuthorizedException' && cognitoErr.message?.includes('already confirmed')) {
         // User already confirmed
       } else {
-        console.error('[POST /api/auth/confirm] Cognito confirm error:', cognitoErr);
-        return badRequest(cognitoErr.message || 'Failed to verify code.');
+        console.error('[POST /api/auth/confirm] Cognito confirm error:', cognitoErr?.name, cognitoErr?.message);
+        return badRequest('Failed to verify the code. Please check it and try again.');
       }
     }
 
@@ -50,7 +55,6 @@ export async function POST(req: NextRequest) {
       success: true,
       message: 'Account successfully verified!',
       user,
-      token: session.token,
       expiresAt: session.expiresAt,
     });
 

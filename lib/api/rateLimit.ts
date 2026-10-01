@@ -60,6 +60,11 @@ export function checkRateLimit(key: string, limit: number, windowMs: number): Ra
   return { allowed: true, limit, remaining: limit - existing.count };
 }
 
+/** Forgets a caller's counter, e.g. after a successful login clears earlier failed attempts. */
+export function resetRateLimit(key: string): void {
+  buckets.delete(key);
+}
+
 /**
  * Reads a caller's budget WITHOUT using any of it — for showing "N left, renews in M" in the UI.
  * Mirrors checkRateLimit's window rules exactly.

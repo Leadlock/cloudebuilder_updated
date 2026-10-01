@@ -12,6 +12,7 @@ import { apiError, badRequest, internalError, parseBody } from '@/lib/api/respon
 import { AuthService } from '@/lib/api/authService';
 import { orgRepository } from '@/lib/repositories/orgRepository';
 import { isPasswordStrongEnough } from '@/lib/crypto/password';
+import { limitAuthAttempt } from '@/lib/api/authRateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +27,10 @@ export async function POST(req: NextRequest) {
     const parsed = await parseBody(req, AcceptSchema);
     if (!parsed.ok) return parsed.response;
     const { token, password, name } = parsed.data;
+
+    // Invite tokens are random, but the route also sets passwords: keep guessing and scripted use in check.
+    const limited = limitAuthAttempt(req, 'invite');
+    if (limited) return limited;
 
     const invite = await orgRepository.findInviteByToken(token);
     if (!invite) return badRequest('Invalid or unknown invite link');
@@ -58,7 +63,6 @@ export async function POST(req: NextRequest) {
     const response = NextResponse.json({
       success: true,
       user: authUser,
-      token: session.token,
       expiresAt: session.expiresAt,
     });
 

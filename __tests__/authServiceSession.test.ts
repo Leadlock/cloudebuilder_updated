@@ -63,9 +63,36 @@ describe('AuthService — stateless session roundtrip', () => {
     nowSpy.mockRestore();
   });
 
-  it('revokeSession no-ops without throwing (stateless tokens have no store to remove from)', () => {
-    const session = AuthService.createSession(testUser);
-    expect(() => AuthService.revokeSession(session.token)).not.toThrow();
-    expect(AuthService.revokeSession(session.token)).toBe(true);
+  it('revokeSession makes that token stop working (a copied token too) without affecting other sessions', () => {
+    const a = AuthService.createSession(testUser);
+    const b = AuthService.createSession({ ...testUser, email: 'other@example.com' });
+    expect(AuthService.getSession(a.token)).not.toBeNull();
+    expect(AuthService.revokeSession(a.token)).toBe(true);
+    expect(AuthService.getSession(a.token)).toBeNull();
+    expect(AuthService.getSession(b.token)).not.toBeNull();
+  });
+
+  it('revokeSession reports false for something that is not a valid session token', () => {
+    expect(AuthService.revokeSession('not.a.token')).toBe(false);
+    expect(AuthService.revokeSession('')).toBe(false);
+  });
+
+  it('revokeAllSessionsForUser ends the sessions the user already has, but not ones issued afterwards', () => {
+    const user = { ...testUser, id: 'user-revoke-all' };
+    const nowSpy = jest.spyOn(Date, 'now');
+    const t0 = 1_800_000_000_000;
+    nowSpy.mockReturnValue(t0);
+    const before1 = AuthService.createSession(user);
+    const before2 = AuthService.createSession(user);
+    const someoneElse = AuthService.createSession({ ...testUser, id: 'someone-else' });
+    nowSpy.mockReturnValue(t0 + 1000);
+    AuthService.revokeAllSessionsForUser(user.id);
+    nowSpy.mockReturnValue(t0 + 2000);
+    const after = AuthService.createSession(user);
+    expect(AuthService.getSession(before1.token)).toBeNull();
+    expect(AuthService.getSession(before2.token)).toBeNull();
+    expect(AuthService.getSession(after.token)).not.toBeNull();
+    expect(AuthService.getSession(someoneElse.token)).not.toBeNull();
+    nowSpy.mockRestore();
   });
 });

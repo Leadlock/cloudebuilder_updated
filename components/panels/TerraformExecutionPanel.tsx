@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
-import { ApiTerraformExecutionService, type TerraformPlanResult, type TerraformApplyStatus } from '@/lib/services/ApiTerraformExecutionService';
+import { ApiTerraformExecutionService, type TerraformPlanResult, type TerraformApplyStatus, type TerraformDestroyPreview } from '@/lib/services/ApiTerraformExecutionService';
 import { ApiReviewService } from '@/lib/services/ApiReviewService';
 import type { ArchitectureReview } from '@/lib/services/ArchitectureReviewService';
 import type { TerraformStateBackendConfig } from '@/lib/terraform/execution/types';
@@ -92,6 +92,10 @@ export default function TerraformExecutionPanel() {
   const [destroySuccess, setDestroySuccess] = useState<string | null>(null);
   const [destroyOutputTail, setDestroyOutputTail] = useState<string | null>(null);
   const [showDestroyModal, setShowDestroyModal] = useState(false);
+  // Step 1 of teardown: what would be removed, plus the server's one-time confirmation token.
+  const [destroyPreview, setDestroyPreview] = useState<TerraformDestroyPreview | null>(null);
+  const [destroyPreviewLoading, setDestroyPreviewLoading] = useState(false);
+  const [destroyPreviewError, setDestroyPreviewError] = useState<string | null>(null);
   const [destroyConfirmInput, setDestroyConfirmInput] = useState('');
 
   // Live progress tracking
@@ -105,6 +109,26 @@ export default function TerraformExecutionPanel() {
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // 1. Restore persistent backend and deployment state from localStorage
+  // Declared before the effects that use it.
+  function pollApplyStatus(projectId: string, jobId: string) {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const status = await ApiTerraformExecutionService.getApplyStatus(projectId, jobId, currentUser);
+        setApplyStatus(status);
+        if (status.state === 'completed' || status.state === 'failed' || status.state === 'unknown') {
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          setApplying(false);
+          if (status.state === 'unknown') setApplyError('Apply job could not be found — it may have expired before the worker picked it up.');
+        }
+      } catch (err) {
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        setApplying(false);
+        setApplyError(err instanceof Error ? err.message : 'Failed to poll apply status');
+      }
+    }, 3000);
+  }
+
   useEffect(() => {
     if (!storageKey || typeof window === 'undefined') return;
     try {
@@ -339,8 +363,26 @@ export default function TerraformExecutionPanel() {
     }
   }
 
-  async function handleExecuteDestroy() {
+  async function openDestroyModal() {
     if (!activeProject || !selectedAccountId || !backendReady()) return;
+    setDestroyConfirmInput('');
+    setDestroyPreview(null);
+    setDestroyPreviewError(null);
+    setShowDestroyModal(true);
+    setDestroyPreviewLoading(true);
+    try {
+      setDestroyPreview(await ApiTerraformExecutionService.previewDestroy(activeProject.id, state.activeEnvironment, selectedAccountId, buildBackend(), currentUser));
+    } catch (err) {
+      setDestroyPreviewError(err instanceof Error ? err.message : 'Could not prepare the teardown');
+    } finally {
+      setDestroyPreviewLoading(false);
+    }
+  }
+
+  async function handleExecuteDestroy() {
+    if (!activeProject || !selectedAccountId || !backendReady() || !destroyPreview) return;
+    const confirmationToken = destroyPreview.confirmationToken;
+    setDestroyPreview(null);   // a token is single-use
     setDestroying(true);
     setDestroyError(null);
     setDestroySuccess(null);
@@ -357,6 +399,7 @@ export default function TerraformExecutionPanel() {
         selectedAccountId,
         buildBackend(),
         currentUser,
+        confirmationToken,
       );
       setDestroySuccess(result.message || 'All cloud infrastructure resources have been destroyed.');
       setDestroyOutputTail(result.outputTail || null);
@@ -368,25 +411,6 @@ export default function TerraformExecutionPanel() {
     } finally {
       setDestroying(false);
     }
-  }
-
-  function pollApplyStatus(projectId: string, jobId: string) {
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    pollIntervalRef.current = setInterval(async () => {
-      try {
-        const status = await ApiTerraformExecutionService.getApplyStatus(projectId, jobId, currentUser);
-        setApplyStatus(status);
-        if (status.state === 'completed' || status.state === 'failed' || status.state === 'unknown') {
-          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-          setApplying(false);
-          if (status.state === 'unknown') setApplyError('Apply job could not be found — it may have expired before the worker picked it up.');
-        }
-      } catch (err) {
-        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-        setApplying(false);
-        setApplyError(err instanceof Error ? err.message : 'Failed to poll apply status');
-      }
-    }, 3000);
   }
 
   function resetPlan() {
@@ -545,7 +569,7 @@ export default function TerraformExecutionPanel() {
               </button>
 
               <button
-                onClick={() => setShowDestroyModal(true)}
+                onClick={openDestroyModal}
                 disabled={!selectedAccountId || !backendReady() || planning || destroying}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-rose-950/70 hover:bg-rose-900 border border-rose-800/80 disabled:opacity-40 disabled:cursor-not-allowed text-rose-300 transition-colors"
                 title="Tear down and destroy all cloud infrastructure provisioned for this project"
@@ -607,7 +631,7 @@ export default function TerraformExecutionPanel() {
               <p className="text-[11px] text-rose-300/90 bg-black/40 p-2 rounded border border-rose-900/30 font-mono">
                 {destroyError}
               </p>
-              <button onClick={() => setShowDestroyModal(true)} className="text-xs text-rose-400 hover:text-rose-200 underline font-medium">
+              <button onClick={openDestroyModal} className="text-xs text-rose-400 hover:text-rose-200 underline font-medium">
                 Try again
               </button>
             </div>
@@ -819,7 +843,7 @@ export default function TerraformExecutionPanel() {
                     </button>
                   </div>
                   <button
-                    onClick={() => setShowDestroyModal(true)}
+                    onClick={openDestroyModal}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-rose-400 hover:text-rose-200 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900/60 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Teardown
@@ -848,7 +872,7 @@ export default function TerraformExecutionPanel() {
                           Start a new deployment
                         </button>
                         <button
-                          onClick={() => setShowDestroyModal(true)}
+                          onClick={openDestroyModal}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 font-semibold text-xs transition-colors"
                         >
                           <Trash2 className="w-3.5 h-3.5" /> Teardown All Services
@@ -870,7 +894,7 @@ export default function TerraformExecutionPanel() {
                           Re-plan and try again
                         </button>
                         <button
-                          onClick={() => setShowDestroyModal(true)}
+                          onClick={openDestroyModal}
                           className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 font-medium text-[11px]"
                         >
                           <Trash2 className="w-3 h-3" /> Teardown partially created resources
@@ -914,6 +938,21 @@ export default function TerraformExecutionPanel() {
                   </div>
                 </div>
 
+                <div className="bg-gray-950/80 rounded-xl p-3 border border-gray-800 text-xs space-y-1.5" data-testid="destroy-preview">
+                  {destroyPreviewLoading && <p className="text-gray-400 flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" />Listing what would be removed…</p>}
+                  {destroyPreviewError && <p className="text-rose-300">{destroyPreviewError}</p>}
+                  {destroyPreview && (
+                    <>
+                      <p className="text-white font-medium">{destroyPreview.resourceCount} resource{destroyPreview.resourceCount === 1 ? '' : 's'} from this project will be removed:</p>
+                      <ul className="max-h-28 overflow-y-auto text-[11px] text-gray-300 space-y-0.5">
+                        {destroyPreview.resources.map((r, i) => <li key={`${r.label}-${i}`}>{r.label || '(unnamed)'} <span className="text-gray-500 font-mono">{r.resourceType}</span></li>)}
+                        {destroyPreview.resourceCount > destroyPreview.resources.length && <li className="text-gray-500">…and {destroyPreview.resourceCount - destroyPreview.resources.length} more</li>}
+                      </ul>
+                      <p className="text-[10px] text-gray-500">This confirmation expires in 5 minutes and works once.</p>
+                    </>
+                  )}
+                </div>
+
                 <div className="p-3 bg-rose-950/30 border border-rose-900/50 rounded-xl text-rose-300 text-xs space-y-2">
                   <p className="font-semibold flex items-center gap-1.5">
                     <Flame className="w-4 h-4 text-rose-400" /> Irreversible Action
@@ -948,7 +987,7 @@ export default function TerraformExecutionPanel() {
                   </button>
                   <button
                     onClick={handleExecuteDestroy}
-                    disabled={destroyConfirmInput !== 'DESTROY' || destroying}
+                    disabled={destroyConfirmInput !== 'DESTROY' || destroying || !destroyPreview}
                     className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white transition-all shadow-lg shadow-rose-600/30"
                   >
                     {destroying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}

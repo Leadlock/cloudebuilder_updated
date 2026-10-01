@@ -19,6 +19,7 @@
 import { orgRepository } from '@/lib/repositories/orgRepository';
 import { hashPassword, verifyPassword } from '@/lib/crypto/password';
 import { encodeSessionToken, decodeSessionToken } from '@/lib/crypto/sessionToken';
+import { createHash } from 'crypto';
 
 export interface AuthUser {
   id: string;
@@ -37,6 +38,20 @@ export interface UserSession {
 }
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Revoked sessions. Tokens are stateless, so "logout" and "sign out everywhere" are remembered here until the token
+ * would have expired anyway. This is held in this server process: with several instances, a revocation takes effect on
+ * the instance that handled it (and on all of them once the token expires, at most 24 hours later). Making it global needs
+ * a shared store; the check is synchronous on purpose because every request path calls getSession.
+ */
+const revokedTokens = new Map<string, number>();            // sha256(token) → token expiry (ms)
+const revokedBefore = new Map<string, number>();            // userId → sessions issued before this time are invalid
+const tokenKey = (token: string) => createHash('sha256').update(token).digest('hex');
+function pruneRevocations(now: number): void {
+  for (const [k, exp] of revokedTokens) if (exp < now) revokedTokens.delete(k);
+  for (const [u, at] of revokedBefore) if (at + SESSION_TTL_MS < now) revokedBefore.delete(u);
+}
 
 /** The shape actually encoded into the signed token — kept minimal and flat. */
 interface SessionTokenPayload {
@@ -109,6 +124,9 @@ export class AuthService {
     if (!payload) return null;
     if (typeof payload.exp !== 'number' || Date.now() > payload.exp) return null;
     if (!payload.sub || !payload.email) return null;
+    if (revokedTokens.has(tokenKey(token))) return null;
+    const cutoff = revokedBefore.get(payload.sub);
+    if (cutoff !== undefined && payload.iat <= cutoff) return null;
 
     return {
       token,
@@ -122,30 +140,27 @@ export class AuthService {
   }
 
   /**
-   * Stateless tokens can't be individually revoked server-side — there is
-   * no store to remove an entry from, only the token's own expiry. This
-   * matches how the Cognito ID tokens layered on top of this already
-   * behave (see lib/auth/cognitoService.ts): both are bearer credentials
-   * valid until they expire, not until something revokes them. Logout's
-   * real effect is clearing the cookie so the browser stops sending it
-   * (see app/api/auth/logout/route.ts) — a copied/stolen token would still
-   * verify elsewhere until it naturally expires (≤24h), the standard
-   * tradeoff for any stateless-token design without a revocation list.
-   * Returns true unconditionally so existing call sites don't need to
-   * change behavior on the return value.
+   * Logout: remembers this token as revoked until it would have expired anyway, so a copied or stolen token stops working
+   * too — not just the browser's cookie. Returns false for something that is not a valid session token.
+   * The list is held in this server process (see `revokedTokens` above for the multi-instance caveat).
    */
-  static revokeSession(_token: string): boolean {
+  static revokeSession(token: string): boolean {
+    const payload = decodeSessionToken<SessionTokenPayload>(token);
+    if (!payload) return false;           // not a valid token: nothing to revoke
+    const now = Date.now();
+    pruneRevocations(now);
+    revokedTokens.set(tokenKey(token), typeof payload.exp === 'number' ? payload.exp : now + SESSION_TTL_MS);
     return true;
   }
 
   /**
-   * Same stateless-token caveat as revokeSession — there is no per-user
-   * session set to walk and delete from. Not currently called anywhere;
-   * kept as a documented no-op rather than removed, so a future caller
-   * gets a clear explanation instead of a missing method.
+   * "Sign out everywhere": every session this user already has stops working, and only sessions issued after this call
+   * are valid. Use after a password reset or a suspected account compromise. Same process-local caveat as revokeSession.
    */
-  static revokeAllSessionsForUser(_userId: string): void {
-    // No-op — see revokeSession's doc comment for why.
+  static revokeAllSessionsForUser(userId: string): void {
+    const now = Date.now();
+    pruneRevocations(now);
+    revokedBefore.set(userId, now);       // every session issued up to now stops working
   }
 
   /**

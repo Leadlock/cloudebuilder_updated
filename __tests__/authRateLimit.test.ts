@@ -1,0 +1,171 @@
+/**
+ * Rate limits on the sign-in routes. The real limiter is used; each test uses its own client address so counters never
+ * leak between tests.
+ */
+const mockSignIn = jest.fn();
+const mockSignUp = jest.fn();
+const mockResend = jest.fn();
+const mockConfirm = jest.fn();
+jest.mock('@/lib/auth/cognitoService', () => ({
+  ...jest.requireActual('@/lib/auth/cognitoService'),
+  CognitoService: {
+    signIn: (...a: unknown[]) => mockSignIn(...a),
+    signUp: (...a: unknown[]) => mockSignUp(...a),
+    resendConfirmationCode: (...a: unknown[]) => mockResend(...a),
+    confirmSignUp: (...a: unknown[]) => mockConfirm(...a),
+  },
+}));
+jest.mock('@/lib/api/authService', () => ({
+  AuthService: {
+    authenticate: async () => null,
+    syncCognitoUser: async () => ({ id: 'u1', email: 'a@example.com', name: 'A', role: 'user', orgId: 'org-1' }),
+    createSession: () => ({ token: 'tok', expiresAt: '2099-01-01T00:00:00.000Z' }),
+    hashPassword: async () => 'hash',
+  },
+}));
+const mockFindInvite = jest.fn();
+jest.mock('@/lib/repositories/orgRepository', () => ({ orgRepository: { findInviteByToken: (...a: unknown[]) => mockFindInvite(...a) } }));
+
+import { NextRequest } from 'next/server';
+import { POST as loginPost } from '@/app/api/auth/login/route';
+import { POST as signupPost } from '@/app/api/auth/signup/route';
+import { POST as resendPost } from '@/app/api/auth/resend-code/route';
+import { POST as confirmPost } from '@/app/api/auth/confirm/route';
+import { POST as invitePost } from '@/app/api/auth/invite/accept/route';
+import { AUTH_LIMITS, clientIp } from '@/lib/api/authRateLimit';
+
+let n = 0;
+const uniq = () => `${Date.now()}-${++n}`;
+const post = (path: string, body: unknown, ip: string) =>
+  new NextRequest(`http://localhost${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': `${ip}, 10.0.0.1` }, body: JSON.stringify(body) });
+const cognitoError = (name: string) => Object.assign(new Error('cognito detail'), { name });
+
+beforeEach(() => {
+  [mockSignIn, mockSignUp, mockResend, mockConfirm, mockFindInvite].forEach((m) => m.mockReset());
+  jest.spyOn(console, 'error').mockImplementation(() => {});
+  jest.spyOn(console, 'warn').mockImplementation(() => {});
+});
+
+describe('clientIp', () => {
+  it('uses the first X-Forwarded-For hop, then X-Real-IP, then "unknown"', () => {
+    const r = (h: Record<string, string>) => new NextRequest('http://localhost/x', { headers: h });
+    expect(clientIp(r({ 'x-forwarded-for': '1.2.3.4, 5.6.7.8' }))).toBe('1.2.3.4');
+    expect(clientIp(r({ 'x-real-ip': '9.9.9.9' }))).toBe('9.9.9.9');
+    expect(clientIp(r({}))).toBe('unknown');
+  });
+});
+
+describe('login', () => {
+  const login = (ip: string, email: string) => loginPost(post('/api/auth/login', { email, password: 'wrong-pass1' }, ip));
+
+  it('locks one (address, email) after repeated failures — without calling Cognito again — and says when to retry', async () => {
+    const ip = `ip-${uniq()}`; const email = `v${uniq()}@example.com`;
+    mockSignIn.mockRejectedValue(cognitoError('NotAuthorizedException'));
+    for (let i = 0; i < AUTH_LIMITS.loginFailures.limit; i++) expect((await login(ip, email)).status).toBe(401);
+    mockSignIn.mockClear();
+    const blocked = await login(ip, email);
+    expect(blocked.status).toBe(429);
+    expect(Number(blocked.headers.get('Retry-After'))).toBeGreaterThan(0);
+    expect(mockSignIn).not.toHaveBeenCalled();
+  });
+
+  it('does not let a stranger lock the real user out: another address can still sign in for the same email', async () => {
+    const email = `v${uniq()}@example.com`; const attacker = `ip-${uniq()}`; const owner = `ip-${uniq()}`;
+    mockSignIn.mockRejectedValue(cognitoError('NotAuthorizedException'));
+    for (let i = 0; i < AUTH_LIMITS.loginFailures.limit; i++) await login(attacker, email);
+    expect((await login(attacker, email)).status).toBe(429);
+    mockSignIn.mockResolvedValue({ idToken: 'i', accessToken: 'a', sub: 's', email, name: 'N' });
+    expect((await login(owner, email)).status).toBe(200);
+  });
+
+  it('a successful sign-in clears earlier failures', async () => {
+    const ip = `ip-${uniq()}`; const email = `v${uniq()}@example.com`;
+    mockSignIn.mockRejectedValue(cognitoError('NotAuthorizedException'));
+    for (let i = 0; i < AUTH_LIMITS.loginFailures.limit - 1; i++) await login(ip, email);
+    mockSignIn.mockResolvedValue({ idToken: 'i', accessToken: 'a', sub: 's', email, name: 'N' });
+    expect((await login(ip, email)).status).toBe(200);
+    mockSignIn.mockRejectedValue(cognitoError('NotAuthorizedException'));
+    for (let i = 0; i < AUTH_LIMITS.loginFailures.limit; i++) expect((await login(ip, email)).status).toBe(401);   // a fresh budget
+  });
+
+  it('a Cognito outage is not counted against the user', async () => {
+    const ip = `ip-${uniq()}`; const email = `v${uniq()}@example.com`;
+    mockSignIn.mockRejectedValue(cognitoError('InternalErrorException'));
+    for (let i = 0; i < AUTH_LIMITS.loginFailures.limit + 3; i++) expect((await login(ip, email)).status).toBe(503);
+    mockSignIn.mockResolvedValue({ idToken: 'i', accessToken: 'a', sub: 's', email, name: 'N' });
+    expect((await login(ip, email)).status).toBe(200);
+  });
+
+  it('limits one address overall, whatever emails it tries', async () => {
+    const ip = `ip-${uniq()}`;
+    mockSignIn.mockRejectedValue(cognitoError('InternalErrorException'));
+    for (let i = 0; i < AUTH_LIMITS.loginIp.limit; i++) await login(ip, `x${i}-${uniq()}@example.com`);
+    expect((await login(ip, `y${uniq()}@example.com`)).status).toBe(429);
+  });
+});
+
+describe('sign-up', () => {
+  const signup = (ip: string, email: string) => signupPost(post('/api/auth/signup', { email, password: 'Str0ng!Passw0rd', name: 'N', orgName: 'O' }, ip));
+  it('limits sign-ups per email and per address', async () => {
+    mockSignUp.mockResolvedValue({ isConfirmed: false, userSub: 's' });
+    const email = `s${uniq()}@example.com`;
+    for (let i = 0; i < AUTH_LIMITS.signupEmail.limit; i++) expect((await signup(`ip-${uniq()}`, email)).status).toBe(200);
+    expect((await signup(`ip-${uniq()}`, email)).status).toBe(429);
+
+    const ip = `ip-${uniq()}`;
+    for (let i = 0; i < AUTH_LIMITS.signupIp.limit; i++) expect((await signup(ip, `s${uniq()}@example.com`)).status).toBe(200);
+    expect((await signup(ip, `s${uniq()}@example.com`)).status).toBe(429);
+  });
+});
+
+describe('resend code', () => {
+  const resend = (ip: string, email: string) => resendPost(post('/api/auth/resend-code', { email }, ip));
+
+  it('answers the same whether or not the address is registered', async () => {
+    mockResend.mockResolvedValueOnce(undefined);
+    const a = await resend(`ip-${uniq()}`, `a${uniq()}@example.com`);
+    mockResend.mockRejectedValueOnce(cognitoError('UserNotFoundException'));
+    const b = await resend(`ip-${uniq()}`, `b${uniq()}@example.com`);
+    expect(a.status).toBe(200); expect(b.status).toBe(200);
+    expect(await a.json()).toEqual(await b.json());
+  });
+
+  it('limits repeats per email and does not leak Cognito\'s wording on a service error', async () => {
+    const email = `r${uniq()}@example.com`;
+    mockResend.mockResolvedValue(undefined);
+    for (let i = 0; i < AUTH_LIMITS.resendEmail.limit; i++) expect((await resend(`ip-${uniq()}`, email)).status).toBe(200);
+    expect((await resend(`ip-${uniq()}`, email)).status).toBe(429);
+
+    mockResend.mockRejectedValue(cognitoError('InternalErrorException'));
+    const res = await resend(`ip-${uniq()}`, `r${uniq()}@example.com`);
+    expect(res.status).toBe(503);
+    expect(JSON.stringify(await res.json())).not.toContain('cognito detail');
+  });
+});
+
+describe('confirm code', () => {
+  const confirm = (ip: string, email: string) => confirmPost(post('/api/auth/confirm', { email, code: '000000' }, ip));
+  it('allows only a few code guesses per (address, email), then stops asking Cognito', async () => {
+    const ip = `ip-${uniq()}`; const email = `c${uniq()}@example.com`;
+    mockConfirm.mockRejectedValue(cognitoError('CodeMismatchException'));
+    for (let i = 0; i < AUTH_LIMITS.confirmAttempts.limit; i++) expect((await confirm(ip, email)).status).toBe(400);
+    mockConfirm.mockClear();
+    expect((await confirm(ip, email)).status).toBe(429);
+    expect(mockConfirm).not.toHaveBeenCalled();
+  });
+  it('does not pass Cognito\'s own wording to the caller for unexpected errors', async () => {
+    mockConfirm.mockRejectedValue(cognitoError('InternalErrorException'));
+    const res = await confirm(`ip-${uniq()}`, `c${uniq()}@example.com`);
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(await res.json())).not.toContain('cognito detail');
+  });
+});
+
+describe('invite accept', () => {
+  it('limits scripted guessing per address', async () => {
+    mockFindInvite.mockResolvedValue(null);
+    const ip = `ip-${uniq()}`;
+    for (let i = 0; i < AUTH_LIMITS.inviteIp.limit; i++) expect((await invitePost(post('/api/auth/invite/accept', { token: `t${i}` }, ip))).status).toBe(400);
+    expect((await invitePost(post('/api/auth/invite/accept', { token: 'tx' }, ip))).status).toBe(429);
+  });
+});

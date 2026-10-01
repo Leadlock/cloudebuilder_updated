@@ -92,6 +92,11 @@ export function detectServiceNotices(prompt: string, designTypes?: string[], cat
 }
 
 /** Plain sentences for the UI. */
+/** Display names of services CloudCraft cannot model yet — used to keep them out of questions and suggestions. */
+export function unsupportedServiceNames(catalog: ReadonlySet<string> = new Set(CATALOG_TYPES)): string[] {
+  return SERVICES.filter((svc) => !svc.types.some((t) => catalog.has(t))).map((svc) => svc.name);
+}
+
 export function describeNotices(n: ServiceNotices): string[] {
   return [
     ...n.unsupported.map((u) => `${u.service} isn't supported by CloudCraft yet${u.nearest.length ? ` — closest available: ${u.nearest.join(', ')}` : ''}.`),

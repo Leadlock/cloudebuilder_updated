@@ -15,6 +15,7 @@ import {
   AuthFlowType,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
+import { unverifiedTokenFallbackAllowed } from './localFallback';
 
 const REGION = process.env.COGNITO_REGION || process.env.AWS_REGION || 'us-east-1';
 const USER_POOL_ID = process.env.COGNITO_USER_POOL_ID || 'us-east-1_JWhzLoOFB';
@@ -51,6 +52,23 @@ export interface CognitoAuthResult {
   sub: string;
   email: string;
   name?: string;
+}
+
+/** Development-only: decodes an ID token's payload and checks issuer, audience, token use and expiry — NOT its signature. */
+export function readClaimsWithoutSignature(idToken: string): Record<string, unknown> | null {
+  try {
+    const base64Url = idToken.split('.')[1];
+    if (!base64Url) return null;
+    const claims = JSON.parse(Buffer.from(base64Url.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')) as Record<string, unknown>;
+    const exp = Number(claims['exp']);
+    const valid = claims['iss'] === `https://cognito-idp.${REGION}.amazonaws.com/${USER_POOL_ID}`
+      && claims['token_use'] === 'id'
+      && claims['aud'] === CLIENT_ID
+      && Number.isFinite(exp) && exp * 1000 > Date.now();
+    return valid ? claims : null;
+  } catch {
+    return null;
+  }
 }
 
 export class CognitoService {
@@ -138,14 +156,13 @@ export class CognitoService {
     try {
       payload = (await this.verifyIdToken(idToken)) as unknown as Record<string, unknown>;
     } catch (verifyErr) {
-      console.warn('[CognitoService] JWKS verify timed out or failed (fallback to decoded token claims):', verifyErr);
-      try {
-        const base64Url = idToken.split('.')[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        payload = JSON.parse(Buffer.from(base64, 'base64').toString('utf8')) as Record<string, unknown>;
-      } catch {
-        throw verifyErr;
-      }
+      // Reading a token without checking its signature is acceptable only on a developer machine whose network cannot
+      // reach Cognito's key server — and even then the token must be for this pool and client and not expired.
+      if (!unverifiedTokenFallbackAllowed()) throw verifyErr;
+      console.warn('[CognitoService] JWKS verify failed; development fallback to checked, unsigned claims:', verifyErr instanceof Error ? verifyErr.message : String(verifyErr));
+      const claims = readClaimsWithoutSignature(idToken);
+      if (!claims) throw verifyErr;
+      payload = claims;
     }
 
     return {

@@ -384,3 +384,39 @@ describe('generateValidatedArchitecture — setting-name clean-up', () => {
     expect(repair).not.toContain('invented_thing');     // the dropped setting is not sent back as if it still mattered
   });
 });
+
+describe('questionnaire only offers services CloudCraft can model', () => {
+  const { detectServiceNotices } = jest.requireActual('@/lib/ai/serviceCoverage') as typeof import('@/lib/ai/serviceCoverage');
+  const { dropUnsupportedOptions } = jest.requireActual('@/lib/services/AiGeneratorService') as typeof import('@/lib/services/AiGeneratorService');
+  const optionText = (o: { label?: string; description?: string; technicalImpact?: string }) => `${o.label} ${o.description} ${o.technicalImpact}`;
+
+  it.each(['aws', 'azure'] as const)('the built-in %s options name no unsupported service, even for a serverless request', async (provider) => {
+    mockCreate.mockRejectedValue(new Error('offline'));            // force the built-in questionnaire
+    const q = await AiGeneratorService.generateQuestionnaire('SaaS app with lambda serverless functions and a redis cache', provider);
+    const offenders = q.questions.flatMap((qu) => qu.options).filter((o) => detectServiceNotices(optionText(o)).unsupported.length > 0);
+    expect(offenders.map((o) => o.label)).toEqual([]);
+    expect(q.questions.some((qu) => qu.options.some((o) => /serverless/i.test(o.label)))).toBe(true);   // the serverless choice is still there
+  });
+
+  it('tells the model which services not to offer', async () => {
+    mockCreate.mockResolvedValue({ output_text: JSON.stringify({ questions: [] }) });
+    await AiGeneratorService.generateQuestionnaire('a web app', 'aws');
+    const system = (mockCreate.mock.calls.at(-1)![0].input as { content: string }[])[0]!.content;
+    expect(system).toMatch(/NEVER offer them as options/);
+    expect(system).toContain('API Gateway');
+  });
+
+  it('removes options the model offered anyway, re-points a removed default, and drops a question with nothing left', () => {
+    const q = (id: string, options: { id: string; label: string; isRecommended?: boolean }[], defaultOptionId: string) =>
+      ({ id, category: 'compute', categoryLabel: 'Compute', question: 'Q?', rationale: '', options: options.map((o) => ({ description: '', technicalImpact: '', isRecommended: false, ...o })), defaultOptionId }) as never;
+    const out = dropUnsupportedOptions([
+      q('q1', [{ id: 'a', label: 'Lambda + API Gateway', isRecommended: true }, { id: 'b', label: 'ECS Fargate' }, { id: 'c', label: 'EC2 instances' }], 'a'),
+      q('q2', [{ id: 'x', label: 'API Gateway only' }], 'x'),
+      q('q3', [{ id: 'm', label: 'Multi-AZ RDS', isRecommended: true }], 'm'),
+    ]);
+    expect(out.map((x) => x.id)).toEqual(['q1', 'q3']);
+    expect(out[0]!.options.map((o) => o.id)).toEqual(['b', 'c']);
+    expect(out[0]!.defaultOptionId).toBe('b');            // the default was removed, so it points at a remaining option
+    expect(out[1]!.defaultOptionId).toBe('m');            // untouched
+  });
+});

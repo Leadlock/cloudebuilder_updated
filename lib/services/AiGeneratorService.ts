@@ -1,6 +1,6 @@
 import { foundryClient, FOUNDRY_MODEL } from '../ai/foundryClient';
 import { buildGenerationContext } from '../ai/knowledgeBase';
-import { detectServiceNotices, type ServiceNotices } from '../ai/serviceCoverage';
+import { detectServiceNotices, unsupportedServiceNames, type ServiceNotices } from '../ai/serviceCoverage';
 import { sanitizeSpecInput, type SanitizeReport } from '../ai/specSanitizer';
 import { awsResources } from '../resources/aws';
 import { azureResources } from '../resources/azure';
@@ -262,10 +262,12 @@ function getHeuristicQuestionnaire(prompt: string, provider: 'aws' | 'azure'): Q
       },
       {
         id: 'opt-comp-serverless',
-        label: isAws ? 'Serverless (AWS Lambda + API Gateway)' : 'Serverless (Azure Functions + API Mgmt)',
+        // Only services CloudCraft can model: an option naming one it cannot (API Gateway / API Management) would end in
+        // an "unsupported service" warning after the user picked it.
+        label: isAws ? 'Serverless (AWS Lambda functions)' : 'Serverless (Azure Functions)',
         description: 'Event-driven, zero idle cost, instant scale per request.',
         isRecommended: isServerlessRequested,
-        technicalImpact: isAws ? 'API Gateway + Lambda Functions' : 'API Management + Azure Functions',
+        technicalImpact: isAws ? 'Lambda Functions with event triggers' : 'Azure Functions with event triggers',
       },
       {
         id: 'opt-comp-vms',
@@ -339,6 +341,23 @@ function getHeuristicQuestionnaire(prompt: string, provider: 'aws' | 'azure'): Q
   };
 }
 
+/**
+ * The model is told not to, but the questionnaire is the last thing the user sees before a design is generated: an option
+ * naming a service CloudCraft cannot model would only turn into an "unsupported" warning after they chose it. Such options
+ * are removed; a question left with nothing to choose from is removed too, and a default that was removed is re-pointed.
+ */
+export function dropUnsupportedOptions(questions: ArchitectureQuestion[]): ArchitectureQuestion[] {
+  const out: ArchitectureQuestion[] = [];
+  for (const q of questions) {
+    const options = (Array.isArray(q.options) ? q.options : []).filter((o) => detectServiceNotices(`${o.label ?? ''} ${o.description ?? ''} ${o.technicalImpact ?? ''}`).unsupported.length === 0);
+    if (options.length === 0) continue;
+    const stillThere = (id: string | undefined) => options.some((o) => o.id === id);
+    const fallback = options.find((o) => o.isRecommended) ?? options[0]!;
+    out.push({ ...q, options, defaultOptionId: stillThere(q.defaultOptionId) ? q.defaultOptionId : fallback.id });
+  }
+  return out;
+}
+
 export class AiGeneratorService {
   /**
    * Generates dynamic discovery questions and identifies architectural gaps for a given prompt.
@@ -394,7 +413,8 @@ Output MUST be a single valid JSON object strictly matching this schema:
   ]
 }
 
-Provide 4 to 6 questions. Ensure exactly one option per question has "isRecommended": true, and "defaultOptionId" matches that option.`;
+Provide 4 to 6 questions. Ensure exactly one option per question has "isRecommended": true, and "defaultOptionId" matches that option.
+CloudCraft cannot model these services yet, so NEVER offer them as options (not even inside a description): ${unsupportedServiceNames().join(', ')}. Offer only services that exist in the ${provider.toUpperCase()} catalog.`;
 
       const response = await foundryClient().responses.create({
         model: FOUNDRY_MODEL,
@@ -413,7 +433,7 @@ Provide 4 to 6 questions. Ensure exactly one option per question has "isRecommen
           summary: parsed.summary || 'Please review and customize the following architectural specifications.',
           suggestedProjectName: parsed.suggestedProjectName || prompt.slice(0, 35).trim(),
           identifiedGaps: parsed.identifiedGaps || [],
-          questions: parsed.questions,
+          questions: dropUnsupportedOptions(parsed.questions),
         };
       }
     } catch (err) {

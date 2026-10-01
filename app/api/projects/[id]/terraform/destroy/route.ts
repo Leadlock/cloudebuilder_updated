@@ -9,6 +9,7 @@ import { ok, notFound, forbidden, unauthorized, internalError, badRequest, parse
 import { extractIdentity } from '@/lib/api/auth';
 import { terraformExecutionDenied } from '@/lib/api/terraformAccess';
 import { recordTerraformAudit } from '@/lib/terraform/execution/audit';
+import { consumeDestroyConfirmation, issueDestroyConfirmation } from '@/lib/terraform/execution/destroyConfirmation';
 
 import { resolveOrgId, resolveArchitecture } from '@/lib/api/phase2d';
 import { executeDestroy } from '@/lib/terraform/execution/TerraformExecutionService';
@@ -21,6 +22,8 @@ const RequestSchema = z.object({
   environment: z.string().default('production'),
   cloudAccountId: z.string().min(1),
   stateBackend: StateBackendSchema,
+  /** Absent on the first call (which returns a preview and a token); required on the second, which does the destroy. */
+  confirmationToken: z.string().min(10).max(4000).optional(),
 });
 
 export async function POST(
@@ -37,7 +40,7 @@ export async function POST(
     const { id: projectId } = await params;
     const parsed = await parseBody(req, RequestSchema);
     if (!parsed.ok) return parsed.response;
-    const { environment, cloudAccountId, stateBackend } = parsed.data;
+    const { environment, cloudAccountId, stateBackend, confirmationToken } = parsed.data;
 
     const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return badRequest('orgId required');
@@ -46,7 +49,6 @@ export async function POST(
       await recordTerraformAudit({ action: 'destroy', outcome: 'denied', orgId, projectId, userId: identity.userId, detail: denied });
       return forbidden(denied);
     }
-    await recordTerraformAudit({ action: 'destroy', outcome: 'requested', orgId, projectId, userId: identity.userId });
 
     const ctx = await resolveArchitecture(projectId, orgId, environment);
     if ('error' in ctx) {
@@ -55,6 +57,29 @@ export async function POST(
       return notFound('Environment');
     }
     const { arch, project } = ctx;
+
+    // Step 1 shows what would be removed and issues a one-time token; step 2 must present it. The token is bound to
+    // this exact user, project, account, backend and resource list (see destroyConfirmation.ts).
+    const binding = {
+      userId: identity.userId, orgId, projectId, environment, cloudAccountId, stateBackend,
+      resources: arch.resources.map((r) => ({ id: r.id, resourceType: r.resourceType })),
+    };
+    if (!confirmationToken) {
+      const { token, expiresAt } = issueDestroyConfirmation(binding);
+      await recordTerraformAudit({ action: 'destroy', outcome: 'requested', orgId, projectId, userId: identity.userId, detail: `preview of ${arch.resources.length} resource(s)` });
+      return ok({
+        status: 'confirmation_required',
+        confirmationToken: token,
+        expiresAt,
+        resourceCount: arch.resources.length,
+        resources: arch.resources.slice(0, 100).map((r) => ({ label: r.label, resourceType: r.resourceType })),
+      });
+    }
+    const confirmed = consumeDestroyConfirmation(confirmationToken, binding);
+    if (!confirmed.ok) {
+      await recordTerraformAudit({ action: 'destroy', outcome: 'blocked', orgId, projectId, userId: identity.userId, detail: confirmed.reason });
+      return badRequest(confirmed.reason);
+    }
 
     const user = {
       id: identity.userId,

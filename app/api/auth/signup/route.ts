@@ -11,6 +11,8 @@ import { AuthService } from '@/lib/api/authService';
 import { orgRepository } from '@/lib/repositories/orgRepository';
 import { isPasswordStrongEnough } from '@/lib/crypto/password';
 import { CognitoService } from '@/lib/auth/cognitoService';
+import { localSignupAllowed } from '@/lib/auth/localFallback';
+import { limitAuthAttempt } from '@/lib/api/authRateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +29,9 @@ export async function POST(req: NextRequest) {
     if (!parsed.ok) return parsed.response;
 
     const { email, password, name, orgName } = parsed.data;
+
+    const limited = limitAuthAttempt(req, 'signup', email);
+    if (limited) return limited;
 
     if (!isPasswordStrongEnough(password)) {
       return badRequest('Password must be at least 8 characters');
@@ -60,7 +65,6 @@ export async function POST(req: NextRequest) {
       const response = NextResponse.json({
         success: true,
         user,
-        token: session.token,
         expiresAt: session.expiresAt,
       });
 
@@ -83,7 +87,11 @@ export async function POST(req: NextRequest) {
         return badRequest(cognitoErr.message || 'Password does not meet Cognito complexity requirements');
       }
 
-      console.error('[POST /api/auth/signup] Cognito error, falling back to local:', cognitoErr);
+      // Never fall back to an unverified local account: that would let anyone register an email address they do not own.
+      console.error('[POST /api/auth/signup] Cognito error:', cognitoErr?.name, cognitoErr?.message);
+      if (!localSignupAllowed()) {
+        return apiError('SERVICE_UNAVAILABLE', 'Sign-up is temporarily unavailable. Please try again in a few minutes.', 503);
+      }
 
       // Local fallback if Cognito fails
       const existing = await orgRepository.findUserByEmailForAuth(email);
@@ -102,7 +110,6 @@ export async function POST(req: NextRequest) {
       const response = NextResponse.json({
         success: true,
         user,
-        token: session.token,
         expiresAt: session.expiresAt,
       });
 

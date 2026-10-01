@@ -33,6 +33,14 @@ export interface TerraformApplyStatus {
   output: ApplyJobOutput | null;
 }
 
+export interface TerraformDestroyPreview {
+  status: 'confirmation_required';
+  confirmationToken: string;
+  expiresAt: string;
+  resourceCount: number;
+  resources: { label: string; resourceType: string }[];
+}
+
 export interface TerraformExecutionStatus {
   /** False when the server's access rules or kill switch stop this caller from running Terraform. */
   enabled: boolean;
@@ -105,18 +113,39 @@ export class ApiTerraformExecutionService {
     return data.data;
   }
 
+  /** Step 1 of teardown: what would be removed, plus the one-time token that step 2 must present. Destroys nothing. */
+  static async previewDestroy(
+    projectId: string,
+    environment: string,
+    cloudAccountId: string,
+    stateBackend: TerraformStateBackendConfig,
+    user?: { id: string; role?: string },
+  ): Promise<TerraformDestroyPreview> {
+    const res = await fetch(`/api/projects/${projectId}/terraform/destroy`, {
+      method: 'POST',
+      headers: authHeaders(user),
+      credentials: 'include',
+      body: JSON.stringify({ environment, cloudAccountId, stateBackend }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(parseErrorMessage(data, `Could not prepare the teardown (${res.status})`));
+    return data.data;
+  }
+
+  /** Step 2: runs the destroy. `confirmationToken` comes from previewDestroy and is single-use. */
   static async destroyInfrastructure(
     projectId: string,
     environment: string,
     cloudAccountId: string,
     stateBackend: TerraformStateBackendConfig,
     user?: { id: string; role?: string },
+    confirmationToken?: string,
   ): Promise<{ status: string; message: string; outputTail?: string }> {
     const res = await fetch(`/api/projects/${projectId}/terraform/destroy`, {
       method: 'POST',
       headers: authHeaders(user),
       credentials: 'include',
-      body: JSON.stringify({ environment, cloudAccountId, stateBackend }),
+      body: JSON.stringify({ environment, cloudAccountId, stateBackend, ...(confirmationToken ? { confirmationToken } : {}) }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(parseErrorMessage(data, `Teardown failed (${res.status})`));
