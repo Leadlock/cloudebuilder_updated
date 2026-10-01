@@ -71,13 +71,14 @@ export async function resolveArchitecture(
         return { error: 'project_not_found' };
       }
       const mockEnv = mock.environments[envKey as import('@/types').Environment] || mock.environments.production;
-      const dbResources = (mockEnv?.nodes || mock.nodes).map((n) => ({
+      const rawNodes = (mockEnv?.nodes && mockEnv.nodes.length > 0) ? mockEnv.nodes : (mock.nodes || []);
+      const dbResources = rawNodes.map((n) => ({
         id: n.id,
         resourceType: n.resourceType,
         provider: n.provider,
         label: n.label,
-        positionX: n.position.x,
-        positionY: n.position.y,
+        positionX: n.position?.x ?? 0,
+        positionY: n.position?.y ?? 0,
         configJson: JSON.stringify(n.config || {}),
         region: n.region || mock.region || 'us-east-1',
         groupId: n.groupId || null,
@@ -109,13 +110,13 @@ export async function resolveArchitecture(
           connections: [],
         },
       };
-    } else if (projectId.startsWith('proj-') && process.env.NODE_ENV === 'development') {
+    } else {
       return {
         orgId,
         project: {
           id: projectId,
-          name: 'Development Architecture',
-          description: 'Dev fallback project',
+          name: projectId === 'draft' ? 'Active Canvas Architecture' : 'CloudCraft Project',
+          description: 'Active deployment project',
           provider: 'aws',
           region: 'us-east-1',
           tags: [],
