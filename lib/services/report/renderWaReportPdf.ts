@@ -3,7 +3,7 @@
  * scorecard, one section per pillar, optional validated AI commentary, improvement roadmap, evidence gaps, method.
  * Built from report data with pdfkit — vector text and tables, not a screenshot.
  */
-import { COMMENTARY_DISCLAIMER } from '@/lib/ai/reportCommentary';
+import { COMMENTARY_DISCLAIMER, waUnscoredNotice } from '@/lib/ai/reportCommentary';
 import type { AssessmentReport, RecommendationGroup } from '@/lib/engines/assessment/report/buildReport';
 import { waPillarViews, strongestAndWeakest, WA_REPORT_DISCLAIMER, type WaPillarView } from '@/lib/engines/assessment/report/waReportView';
 import type { Finding, Severity } from '@/lib/engines/assessment/types';
@@ -43,7 +43,7 @@ function pillarSection(w: Writer, p: WaPillarView, ai: AssessmentReport['aiWaCom
   w.p(p.evaluable
     ? `${p.framework} · Score ${scoreText(p.score)} (${p.rating}) · Coverage ${pct(p.coveragePct)} — ${p.evaluated} of ${p.applicable} applicable checks evaluated · ${p.failed} failed · ${p.warnings} warnings · ${p.passed} passed`
     : `${p.framework} · Not scored — ${p.evaluated} of ${p.applicable} applicable checks could be evaluated`, { size: 8.5, color: statusColor(p.status) });
-  if (!p.evaluable) w.box('Insufficient evidence', 'Too few checks could be evaluated for this pillar to be scored. This is not a pass — add the relevant resources or settings, or supply discovered configuration.', '#B45309');
+  if (!p.evaluable) { const n = waUnscoredNotice(p.insufficient); w.box(n.title, n.text, p.insufficient ? '#B45309' : C.accent); }
   if (p.strengths.length) { w.h3('What the design does well'); w.bullets(p.strengths, { size: 9 }); }
   const aiPillar = ai?.pillars.find((x) => x.key === p.key);
   // Only the model's own wording is labelled AI commentary; thin-evidence pillars already carry the fixed notice above.
@@ -95,7 +95,7 @@ export async function renderWaReportPdf(report: AssessmentReport): Promise<Buffe
   w.h3('Open findings by severity');
   w.table(SEVERITIES.map((s) => ({ header: s, width: 20, align: 'center' as const, render: () => ({ color: C.sev[s], bold: true }) })), [SEVERITIES.map((s) => String(counts[s]))]);
   if (report.executive.counts.CRITICAL > 0 || report.executive.counts.HIGH > 0) w.box('Critical or high-severity findings are open', 'See the improvement roadmap for the order in which to address them.', C.fail);
-  const thin = views.filter((v) => !v.evaluable);
+  const thin = views.filter((v) => v.insufficient);
   if (thin.length) w.box('Pillars without enough evidence', `${thin.map((v) => v.label).join(', ')}. They are shown as "Insufficient evidence", never as passing.`, '#B45309');
 
   // ── 2 Pillar reviews ──

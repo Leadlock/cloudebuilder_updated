@@ -3,6 +3,7 @@ import { SEVERITY_ORDER, type Finding, type Severity } from '@/lib/engines/asses
 import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
 import { checkDeployReadiness, collectDeploymentInputs, type DeploymentInput } from '@/lib/ai/architectureSpec';
 import { buildReviewContext } from '@/lib/ai/knowledgeBase';
+import { waUnscoredNotice } from '@/lib/ai/reportCommentary';
 import { foundryClient, FOUNDRY_MODEL } from '@/lib/ai/foundryClient';
 import { extractJson } from '@/lib/ai/architectRepair';
 
@@ -210,7 +211,7 @@ export class AiReviewService {
       const key = `${pr.provider}:${pr.pillar}`;
       const ruleIds = [...new Set(pr.findingIds.map((id) => findingRule.get(id)).filter((r): r is string => !!r))]
         .sort((a, b) => sevRank(byRule.get(a)!.f.severity) - sevRank(byRule.get(b)!.f.severity)).slice(0, 8);
-      return { key, pr, ruleIds, evaluable: pr.status !== 'Insufficient evidence' && pr.score.score !== null };
+      return { key, pr, ruleIds, evaluable: pr.status !== 'Insufficient evidence' && pr.score.score !== null, insufficient: pr.status === 'Insufficient evidence' };
     });
     const allRuleIds = [...new Set(pillars.flatMap((p) => p.ruleIds))];
     const context = await buildReviewContext({
@@ -232,7 +233,7 @@ export class AiReviewService {
     const outPillars: AiWaPillar[] = pillars.map((p) => {
       const base = { key: p.key, provider: p.pr.provider, label: p.pr.label, score: p.pr.score.score, rating: p.pr.score.rating, status: p.pr.status, coveragePct: p.pr.score.coverage.coveragePct };
       if (!p.evaluable) {
-        return { ...base, assessment: 'CloudCraft has too little evidence in this design to assess this pillar — add the relevant resources or settings before drawing conclusions.', topFixes: [] };
+        return { ...base, assessment: waUnscoredNotice(p.insufficient).text, topFixes: [] };
       }
       const m = modelPillars.get(p.key);
       const topFixes = asRecords(m?.['topFixes']).filter((x) => typeof x['ruleId'] === 'string' && p.ruleIds.includes(x['ruleId'] as string)).slice(0, 3).map((x) => {

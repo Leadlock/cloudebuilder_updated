@@ -50,6 +50,17 @@ export function buildCommentary(input: AiCommentaryInput, findings: Finding[], g
 export const COMMENTARY_DISCLAIMER =
   'AI-generated commentary. CloudCraft\'s analysis engine produced every finding, severity and score in this report; the AI only re-explains and orders them. It does not change any result and is not part of the report\'s integrity hash. Suggestions marked unverified are not backed by a finding.';
 
+/**
+ * A pillar can lack a score for two different reasons, and the wording must not mix them up:
+ *  - too little evidence: CloudCraft could not evaluate enough checks (status "Insufficient evidence");
+ *  - informational only: checks were evaluated (no issues, or observations only) but none carries scoring weight.
+ */
+export const WA_INSUFFICIENT_TITLE = 'Insufficient evidence';
+export const WA_INSUFFICIENT_TEXT = 'Too few checks could be evaluated for this pillar to be scored. This is not a pass — add the relevant resources or settings, or supply discovered configuration.';
+export const WA_INFORMATIONAL_TITLE = 'Not scored';
+export const WA_INFORMATIONAL_TEXT = 'The checks evaluated for this pillar are informational only and carry no scoring weight, so it has no score. This is not a failure.';
+export const waUnscoredNotice = (insufficient: boolean) => (insufficient ? { title: WA_INSUFFICIENT_TITLE, text: WA_INSUFFICIENT_TEXT } : { title: WA_INFORMATIONAL_TITLE, text: WA_INFORMATIONAL_TEXT });
+
 // ── Well-Architected report commentary ────────────────────────────────────────────────────────────────
 
 export interface AiWaCommentary {
@@ -73,7 +84,7 @@ export const AiWaCommentaryInputSchema = z.object({
 export type AiWaCommentaryInput = z.infer<typeof AiWaCommentaryInputSchema>;
 
 /** The slice of the report the validation needs (kept structural so this file does not import the report builder). */
-export interface WaReportPillar { provider: string; pillar: string; label: string; evaluable: boolean; findings: Finding[] }
+export interface WaReportPillar { provider: string; pillar: string; label: string; evaluable: boolean; /** No score because of too little evidence (as opposed to informational-only checks). */ insufficient?: boolean; findings: Finding[] }
 
 /**
  * Pillar keys must be `provider:pillar` pairs in the report, rule ids must be findings of that pillar (plan: of any pillar),
@@ -85,7 +96,7 @@ export function buildWaCommentary(input: AiWaCommentaryInput, pillars: WaReportP
 
   const out: AiWaCommentary['pillars'] = pillars.map((p) => {
     const key = `${p.provider}:${p.pillar}`;
-    if (!p.evaluable) return { key, label: p.label, assessment: 'CloudCraft has too little evidence in this design to assess this pillar — add the relevant resources or settings before drawing conclusions.', topFixes: [] };
+    if (!p.evaluable) return { key, label: p.label, assessment: waUnscoredNotice(p.insufficient ?? true).text, topFixes: [] };
     const m = modelPillars.get(key);
     const rules = new Map(p.findings.map((f) => [f.ruleId, f]));
     const seen = new Set<string>();

@@ -118,7 +118,9 @@ describe('AiReviewService.reviewWellArchitected', () => {
     const out = await AiReviewService.reviewWellArchitected({ nodes, edges: [] });
     for (const pr of thin) {
       const p = out.pillars.find((x) => x.key === `${pr.provider}:${pr.pillar}`)!;
-      expect(p.assessment).toMatch(/too little evidence/i);
+      // too little evidence and "informational checks only" are different situations and must not be described alike
+      expect(p.assessment).toMatch(pr.status === 'Insufficient evidence' ? /too few checks could be evaluated/i : /informational only/i);
+      expect(p.assessment).not.toMatch(/excellent/i);
       expect(p.topFixes).toEqual([]);
     }
     // and those pillars were never sent to the model as evaluable

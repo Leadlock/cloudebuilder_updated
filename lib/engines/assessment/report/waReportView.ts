@@ -30,6 +30,8 @@ export interface WaPillarView {
   findings: Finding[];
   /** False when CloudCraft has too little evidence to say anything about this pillar. */
   evaluable: boolean;
+  /** True when the pillar has no score because too few checks could be evaluated (not merely because they are informational). */
+  insufficient: boolean;
 }
 
 const rank = (s: Severity) => SEVERITY_ORDER.indexOf(s);
@@ -54,6 +56,7 @@ export function waPillarViews(report: AssessmentReport): WaPillarView[] {
     strengths: p.strengths.slice(0, 4),
     findings: [...p.findings].sort((a, b) => rank(a.severity) - rank(b.severity)),
     evaluable: p.status !== 'Insufficient evidence' && p.score.score !== null,
+    insufficient: p.status === 'Insufficient evidence',
   })));
 }
 
