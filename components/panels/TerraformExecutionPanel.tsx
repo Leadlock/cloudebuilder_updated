@@ -812,10 +812,10 @@ export default function TerraformExecutionPanel() {
                       className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white transition-all shadow-lg shadow-emerald-600/20"
                     >
                       {applying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                      Confirm &amp; Apply to AWS
+                      Confirm &amp; Apply to {backendProvider.toUpperCase()}
                     </button>
                     <button onClick={resetPlan} className="px-3 py-2 rounded-lg text-xs font-medium bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400">
-                      Discard
+                      Discard / Reset
                     </button>
                   </div>
                   <button
@@ -831,7 +831,7 @@ export default function TerraformExecutionPanel() {
                     <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 text-xs shadow-lg">
                       <div className="flex items-center gap-2 mb-1.5 font-semibold text-sm">
                         <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                        <span>All Infrastructure Successfully Provisioned in AWS!</span>
+                        <span>All Infrastructure Successfully Provisioned in {backendProvider.toUpperCase()}!</span>
                       </div>
                       <p className="text-[11px] text-emerald-400/90">{applyStatus.output?.message}</p>
                       {applyStatus.output?.outputTail && (

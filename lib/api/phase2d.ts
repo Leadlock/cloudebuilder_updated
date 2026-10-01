@@ -64,9 +64,12 @@ export async function resolveArchitecture(
     // Database connection error — fall through to dev mock fallback if in development
   }
 
-  if (process.env.NODE_ENV === 'development') {
+  if (process.env.NODE_ENV !== 'test') {
     const mock = mockProjects.find((p) => p.id === projectId);
     if (mock) {
+      if (mock.orgId && mock.orgId !== orgId) {
+        return { error: 'project_not_found' };
+      }
       const mockEnv = mock.environments[envKey as import('@/types').Environment] || mock.environments.production;
       const dbResources = (mockEnv?.nodes || mock.nodes).map((n) => ({
         id: n.id,
@@ -106,7 +109,7 @@ export async function resolveArchitecture(
           connections: [],
         },
       };
-    } else if (projectId.startsWith('proj-')) {
+    } else if (projectId.startsWith('proj-') && process.env.NODE_ENV === 'development') {
       return {
         orgId,
         project: {
