@@ -2161,12 +2161,10 @@ resource "azurerm_resource_group" "main" {
       resourceMap['__default_rg'] = 'azurerm_resource_group.main';
     }
 
-    // Random suffix for globally unique Azure resource names (Storage, KeyVault, Redis, SQL)
-    blocks.push(`# Random suffix for globally unique Azure resource names
-resource "random_string" "az_suffix" {
-  length  = 6
-  special = false
-  upper   = false
+    // Deterministic suffix for globally unique Azure resource names (Storage, KeyVault, Redis, SQL)
+    blocks.push(`# Deterministic suffix for globally unique Azure resource names
+locals {
+  az_suffix = substr(md5(var.project_name), 0, 6)
 }`);
 
     for (const r of resources) {
@@ -2620,7 +2618,7 @@ data "azurerm_network_security_group" "${name}" {
 
     const parts: string[] = [
       `resource "azurerm_mssql_server" "${name}_server" {
-  name                         = "${serverName}-\${random_string.az_suffix.result}"
+  name                         = "${serverName}-\${local.az_suffix}"
   resource_group_name          = ${rgName}
   location                     = ${cfg['location'] ? `"${cfg['location']}"` : rgLoc}
   version                      = "12.0"
@@ -3003,7 +3001,7 @@ ${tagLines.join('\n')}
     if (!redisName) redisName = 'redis-cache';
 
     return `resource "azurerm_redis_cache" "${name}" {
-  name                          = "${redisName}-\${random_string.az_suffix.result}"
+  name                          = "${redisName}-\${local.az_suffix}"
   resource_group_name           = ${rgName}
   location                      = ${rgLoc}
   capacity                      = ${cfg['capacity'] ?? 1}
