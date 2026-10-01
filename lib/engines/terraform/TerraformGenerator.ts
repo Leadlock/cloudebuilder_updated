@@ -2780,7 +2780,7 @@ data "azurerm_network_security_group" "${name}" {
     lines.push(``, `  network_profile {`, `    network_plugin = "${cfg['networkPlugin'] ?? 'azure'}"`, `  }`);
     lines.push(``, `  role_based_access_control_enabled = ${cfg['rbacEnabled'] !== false}`);
     if (cfg['rbacEnabled'] !== false) {
-      lines.push(``, `  azure_active_directory_role_based_access_control {`, `    azure_rbac_enabled = true`, `  }`);
+      lines.push(``, `  azure_active_directory_role_based_access_control {`, `    managed            = true`, `    azure_rbac_enabled = true`, `  }`);
     }
     lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
     return lines.join('\n');
@@ -3065,39 +3065,40 @@ ${tagLines.join('\n')}
   }
 
   private _frontDoor(name: string, cfg: Record<string, unknown>, rgName: string): string {
+    const fdName = name.replace(/_/g, '-');
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
 
     return [
       `resource "azurerm_cdn_frontdoor_profile" "${name}" {
-  name                = "${name}"
+  name                = "${fdName}"
   resource_group_name = ${rgName}
   sku_name            = "${cfg['sku'] ?? 'Standard_AzureFrontDoor'}"
   tags = {
-    Name      = "${name}"
+    Name      = "${fdName}"
     ManagedBy = "CloudCraft"
 ${tagLines.join('\n')}
   }
 }`,
       `resource "azurerm_cdn_frontdoor_endpoint" "${name}_endpoint" {
-  name                     = "${name}-endpoint"
+  name                     = "${fdName}-ep"
   cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.${name}.id
 }`,
       `resource "azurerm_cdn_frontdoor_origin_group" "${name}_origin_group" {
-  name                     = "${name}-origin-group"
+  name                     = "${fdName}-origin-group"
   cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.${name}.id
 
   load_balancing {}
 }`,
       `resource "azurerm_cdn_frontdoor_origin" "${name}_origin" {
-  name                          = "${name}-origin"
+  name                          = "${fdName}-origin"
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.${name}_origin_group.id
   host_name                     = "${cfg['originHostName'] ?? 'origin.example.com'}"
   origin_host_header            = "${cfg['originHostName'] ?? 'origin.example.com'}"
   certificate_name_check_enabled = ${cfg['httpsOnly'] !== false}
 }`,
       `resource "azurerm_cdn_frontdoor_route" "${name}_route" {
-  name                          = "${name}-route"
+  name                          = "${fdName}-route"
   cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.${name}_endpoint.id
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.${name}_origin_group.id
   cdn_frontdoor_origin_ids      = [azurerm_cdn_frontdoor_origin.${name}_origin.id]
