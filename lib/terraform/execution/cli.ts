@@ -69,12 +69,15 @@ export async function runTerraform(
     });
     return { stdout, stderr };
   } catch (err) {
-    const e = err as NodeJS.ErrnoException & { stdout?: string; stderr?: string; code?: number | string };
+    const e = err as NodeJS.ErrnoException & { stdout?: string; stderr?: string; code?: number | string; killed?: boolean };
     if (e.code === 'ENOENT') throw new TerraformNotInstalledError();
     if (typeof e.code === 'number' && allowExitCodes.includes(e.code)) {
       return { stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
     }
-    const message = `terraform ${args[0]} failed (exit ${e.code ?? 'unknown'}): ${(e.stderr || e.message || '').slice(0, 4000)}`;
+    const detail = (e.stderr || e.stdout || e.message || '').slice(0, 4000);
+    const message = e.killed
+      ? `terraform ${args[0]} timed out after ${Math.round(timeoutMs / 60000)} minutes.`
+      : `terraform ${args[0]} failed (exit ${e.code ?? 'unknown'}): ${detail}`;
     throw new Error(message);
   }
 }

@@ -32,7 +32,7 @@ export const TERRAFORM_APPLY_QUEUE = 'terraform-apply';
 export async function ensureTerraformApplyQueue(): Promise<void> {
   const boss = await getQueue();
   await boss.createQueue(TERRAFORM_APPLY_QUEUE, {
-    expireInSeconds: 1800,
+    expireInSeconds: 3600,
     // Apply is NOT safely retryable in general — a failed apply may have
     // partially modified real infrastructure, and blindly re-running it
     // could compound the problem rather than fix it. No automatic retry;

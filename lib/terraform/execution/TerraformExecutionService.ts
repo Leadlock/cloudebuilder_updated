@@ -95,6 +95,35 @@ function toResourceMap(
   return { nodes: canvasNodes, edges: canvasEdges };
 }
 
+async function handleStateLockAndRetry<T>(
+  fn: () => Promise<T>,
+  workDir: string,
+  env: Record<string, string>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (
+      msg.includes('Error acquiring the state lock') ||
+      msg.includes('state blob is already locked') ||
+      msg.includes('Lock Info:')
+    ) {
+      const match = msg.match(/ID:\s*([a-f0-9-]+)/i) || msg.match(/ID:\s*([^\s\r\n,]+)/i);
+      if (match && match[1]) {
+        const lockId = match[1].trim();
+        try {
+          await runTerraform(['force-unlock', '-force', lockId], { cwd: workDir, env });
+          return await fn();
+        } catch (unlockErr) {
+          console.warn('[TerraformExecution] Auto-unlock attempt failed:', unlockErr);
+        }
+      }
+    }
+    throw err;
+  }
+}
+
 export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord> {
   const { resources, connections } = input;
   const { nodes, edges } = toResourceMap(resources, connections);
@@ -159,6 +188,13 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
     assertSafeHcl([...generated.files, { filename: 'backend.tf', content: planBackendHcl }]);
     await writeFile(join(workDir, 'backend.tf'), planBackendHcl, 'utf-8');
 
+    // Valid non-empty zip archive containing index.js for AWS Lambda placeholder packages
+    const LAMBDA_PLACEHOLDER_ZIP = Buffer.from(
+      'UEsDBBQAAAAAAAAAAABSXXJzQQAAAEEAAAAIAAAAaW5kZXguanNleHBvcnRzLmhhbmRsZXIgPSBhc3luYyAoKSA9PiAoeyBzdGF0dXNDb2RlOiAyMDAsIGJvZHk6ICJPSyIgfSk7ClBLAQIUABQAAAAAAAAAAABSXXJzQQAAAEEAAAAIAAAAAAAAAAAAAAAAAAAAAABpbmRleC5qc1BLBQYAAAAAAQABADYAAABnAAAAAAA=',
+      'base64',
+    );
+    await writeFile(join(workDir, 'placeholder.zip'), LAMBDA_PLACEHOLDER_ZIP);
+
     const rawEnv = await resolveExecutionCredentials(credentials);
     const env: Record<string, string> = {
       ...terraformSecretVars(),
@@ -168,9 +204,15 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
     await runTerraform(['init', '-input=false', '-no-color'], { cwd: workDir, env });
 
     // -detailed-exitcode: 0 = no changes, 2 = changes present, 1 = error (thrown by runTerraform).
-    await runTerraform(
-      ['plan', '-input=false', '-no-color', '-out=tfplan', '-detailed-exitcode'],
-      { cwd: workDir, env, allowExitCodes: [0, 2] },
+    await handleStateLockAndRetry(
+      () =>
+        runTerraform(['plan', '-input=false', '-no-color', '-out=tfplan', '-detailed-exitcode'], {
+          cwd: workDir,
+          env,
+          allowExitCodes: [0, 2],
+        }),
+      workDir,
+      env,
     );
 
     const { stdout: planJsonRaw } = await runTerraform(['show', '-json', 'tfplan'], { cwd: workDir, env });
@@ -276,11 +318,16 @@ export async function runApply(planId: string, orgId: string): Promise<{ message
   };
 
   try {
-    const { stdout } = await runTerraform(['apply', '-input=false', '-no-color', 'tfplan'], {
-      cwd: record.workDir,
+    const { stdout } = await handleStateLockAndRetry(
+      () =>
+        runTerraform(['apply', '-input=false', '-no-color', 'tfplan'], {
+          cwd: record.workDir,
+          env,
+          timeoutMs: 45 * 60 * 1000,
+        }),
+      record.workDir,
       env,
-      timeoutMs: 20 * 60 * 1000,
-    });
+    );
     return {
       message: `Applied ${record.summary.toAdd} new and ${record.summary.toChange} changed resource(s).`,
       outputTail: stdout.slice(-4000),
@@ -347,6 +394,11 @@ export async function executeDestroy(input: ExecuteDestroyInput): Promise<{ mess
     const backendHcl = renderBackendConfig(input.stateBackend);
     assertSafeHcl([...generated.files, { filename: 'backend.tf', content: backendHcl }]);
     await writeFile(join(workDir, 'backend.tf'), backendHcl, 'utf-8');
+    const LAMBDA_PLACEHOLDER_ZIP = Buffer.from(
+      'UEsDBBQAAAAAAAAAAABSXXJzQQAAAEEAAAAIAAAAaW5kZXguanNleHBvcnRzLmhhbmRsZXIgPSBhc3luYyAoKSA9PiAoeyBzdGF0dXNDb2RlOiAyMDAsIGJvZHk6ICJPSyIgfSk7ClBLAQIUABQAAAAAAAAAAABSXXJzQQAAAEEAAAAIAAAAAAAAAAAAAAAAAAAAAABpbmRleC5qc1BLBQYAAAAAAQABADYAAABnAAAAAAA=',
+      'base64',
+    );
+    await writeFile(join(workDir, 'placeholder.zip'), LAMBDA_PLACEHOLDER_ZIP);
 
     await runTerraform(['init', '-input=false', '-no-color'], {
       cwd: workDir,
@@ -359,11 +411,16 @@ export async function executeDestroy(input: ExecuteDestroyInput): Promise<{ mess
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        destroyResult = await runTerraform(['destroy', '-auto-approve', '-input=false', '-no-color'], {
-          cwd: workDir,
+        destroyResult = await handleStateLockAndRetry(
+          () =>
+            runTerraform(['destroy', '-auto-approve', '-input=false', '-no-color'], {
+              cwd: workDir,
+              env,
+              timeoutMs: 25 * 60 * 1000,
+            }),
+          workDir,
           env,
-          timeoutMs: 25 * 60 * 1000,
-        });
+        );
         break; // Successfully destroyed all resources
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

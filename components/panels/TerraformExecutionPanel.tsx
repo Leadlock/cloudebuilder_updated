@@ -67,7 +67,11 @@ export default function TerraformExecutionPanel() {
   const storageKey = activeProject ? `cloudcraft_tf_state_${activeProject.id}_${state.activeEnvironment}` : null;
   const backendStorageKey = activeProject ? `cloudcraft_tf_backend_${activeProject.id}` : null;
 
-  const defaultProvider: 'aws' | 'azure' = activeProject?.provider === 'azure' ? 'azure' : 'aws';
+  const defaultProvider: 'aws' | 'azure' =
+    activeProject?.provider === 'azure' ||
+    (activeProject?.nodes && activeProject.nodes.some((n) => n.resourceType.startsWith('azure_') || n.provider === 'azure'))
+      ? 'azure'
+      : 'aws';
   const [backendProvider, setBackendProvider] = useState<'aws' | 'azure'>(defaultProvider);
   const [accounts, setAccounts] = useState<CloudAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
@@ -481,22 +485,28 @@ export default function TerraformExecutionPanel() {
       ) : (
         <div className="space-y-4">
           {/* Provider + account selection */}
-          {activeProject.provider === 'multi' && (
-            <div className="flex gap-2">
-              {(['aws', 'azure'] as const).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setBackendProvider(p)}
-                  className={clsx(
-                    'px-3 py-1 rounded-lg text-xs font-medium border transition-colors',
-                    backendProvider === p ? 'bg-emerald-700 border-emerald-600 text-white' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600',
-                  )}
-                >
-                  {p.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <span className="text-gray-400 text-xs font-medium">Target Cloud:</span>
+            {(['aws', 'azure'] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => {
+                  setBackendProvider(p);
+                  resetPlan();
+                }}
+                className={clsx(
+                  'px-3 py-1 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5',
+                  backendProvider === p
+                    ? (p === 'aws' ? 'bg-orange-950/80 border-orange-500 text-orange-300 ring-1 ring-orange-500/40' : 'bg-blue-950/80 border-blue-500 text-blue-300 ring-1 ring-blue-500/40')
+                    : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200',
+                )}
+              >
+                <span className={clsx('w-1.5 h-1.5 rounded-full', p === 'aws' ? 'bg-orange-400' : 'bg-blue-400')} />
+                {p.toUpperCase()}
+              </button>
+            ))}
+          </div>
 
           <div>
             <label htmlFor="tf-account" className="block text-gray-400 text-xs mb-1">Cloud Account</label>
@@ -631,15 +641,25 @@ export default function TerraformExecutionPanel() {
               <p className="text-[11px] text-rose-300/90 bg-black/40 p-2 rounded border border-rose-900/30 font-mono">
                 {destroyError}
               </p>
-              <button onClick={openDestroyModal} className="text-xs text-rose-400 hover:text-rose-200 underline font-medium">
-                Try again
-              </button>
+              <div className="flex items-center gap-3">
+                <button onClick={openDestroyModal} className="text-xs text-rose-400 hover:text-rose-200 underline font-medium">
+                  Try again
+                </button>
+                <button onClick={() => setDestroyError(null)} className="text-xs text-gray-400 hover:text-gray-200 underline font-medium">
+                  Dismiss
+                </button>
+              </div>
             </div>
           )}
 
           {planError && (
-            <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 shrink-0" /> <span>{planError}</span>
+            <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 shrink-0" /> <span>{planError}</span>
+              </div>
+              <button onClick={() => setPlanError(null)} className="text-xs text-gray-400 hover:text-gray-200 underline font-medium">
+                Dismiss
+              </button>
             </div>
           )}
 
@@ -648,14 +668,24 @@ export default function TerraformExecutionPanel() {
               {/* Header */}
               <div className="flex items-center justify-between mb-3 border-b border-gray-800 pb-2.5">
                 <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <div className={clsx("w-2.5 h-2.5 rounded-full", applying ? "bg-blue-400 animate-ping" : isAllDone ? "bg-emerald-400" : "bg-emerald-400 animate-pulse")} />
                   <p className="text-white text-xs font-bold uppercase tracking-wider">
                     {applying ? 'Live Deployment In Progress' : isAllDone ? 'Deployment Completed' : 'Plan Ready for Apply'}
                   </p>
                 </div>
-                <span className="font-mono text-[10px] text-gray-500 bg-gray-950 px-2 py-0.5 rounded border border-gray-800">
-                  SHA: {plan.planHash.slice(0, 10)}…
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[10px] text-gray-500 bg-gray-950 px-2 py-0.5 rounded border border-gray-800">
+                    SHA: {plan.planHash.slice(0, 10)}…
+                  </span>
+                  <button
+                    onClick={resetPlan}
+                    className="text-[11px] px-2.5 py-1 rounded bg-rose-950/60 hover:bg-rose-900 border border-rose-800/80 text-rose-300 transition-colors flex items-center gap-1 font-medium shadow-sm"
+                    title="Stop process, clear plan, and reset view"
+                  >
+                    <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                    {applying ? 'Terminate / Stop' : 'Clear / Discard'}
+                  </button>
+                </div>
               </div>
 
               {/* Summary Stats */}
@@ -689,7 +719,18 @@ export default function TerraformExecutionPanel() {
                         </>
                       )}
                     </span>
-                    <span className="font-bold text-xs text-white">{progressPercent}%</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs text-white">{progressPercent}%</span>
+                      {!isAllDone && (
+                        <button
+                          onClick={resetPlan}
+                          className="text-[10px] px-2 py-0.5 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 transition-colors font-medium"
+                          title="Terminate execution and reset panel"
+                        >
+                          Terminate
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Animated Progress Bar */}
@@ -836,10 +877,10 @@ export default function TerraformExecutionPanel() {
                       className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white transition-all shadow-lg shadow-emerald-600/20"
                     >
                       {applying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                      Confirm &amp; Apply to AWS
+                      Confirm &amp; Apply to {backendProvider.toUpperCase()}
                     </button>
                     <button onClick={resetPlan} className="px-3 py-2 rounded-lg text-xs font-medium bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400">
-                      Discard
+                      Discard / Reset
                     </button>
                   </div>
                   <button
@@ -855,7 +896,7 @@ export default function TerraformExecutionPanel() {
                     <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 text-xs shadow-lg">
                       <div className="flex items-center gap-2 mb-1.5 font-semibold text-sm">
                         <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                        <span>All Infrastructure Successfully Provisioned in AWS!</span>
+                        <span>All Infrastructure Successfully Provisioned in {backendProvider.toUpperCase()}!</span>
                       </div>
                       <p className="text-[11px] text-emerald-400/90">{applyStatus.output?.message}</p>
                       {applyStatus.output?.outputTail && (
@@ -900,6 +941,21 @@ export default function TerraformExecutionPanel() {
                           <Trash2 className="w-3 h-3" /> Teardown partially created resources
                         </button>
                       </div>
+                    </div>
+                  )}
+                  {(!applyStatus || applyStatus.state === 'active' || applyStatus.state === 'pending') && !applyError && (
+                    <div className="p-3 rounded-xl bg-gray-950 border border-gray-800 flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs text-gray-300">
+                        <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                        <span>Deployment in progress in {backendProvider.toUpperCase()}...</span>
+                      </div>
+                      <button
+                        onClick={resetPlan}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 font-semibold text-xs transition-colors"
+                      >
+                        <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                        Terminate / Cancel
+                      </button>
                     </div>
                   )}
                 </div>
