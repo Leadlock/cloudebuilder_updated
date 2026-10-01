@@ -188,9 +188,12 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
       await writeFile(join(workDir, file.filename), file.content, 'utf-8');
     }
     await writeFile(join(workDir, 'backend.tf'), renderBackendConfig(input.stateBackend), 'utf-8');
-    // Minimal valid 22-byte empty zip archive for Lambda placeholder packages
-    const EMPTY_ZIP = Buffer.from('UEsFBgAAAAAAAAAAAAAAAAAAAAAAAA==', 'base64');
-    await writeFile(join(workDir, 'placeholder.zip'), EMPTY_ZIP);
+    // Valid non-empty zip archive containing index.js for AWS Lambda placeholder packages
+    const LAMBDA_PLACEHOLDER_ZIP = Buffer.from(
+      'UEsDBBQAAAAAAAAAAABSXXJzQQAAAEEAAAAIAAAAaW5kZXguanNleHBvcnRzLmhhbmRsZXIgPSBhc3luYyAoKSA9PiAoeyBzdGF0dXNDb2RlOiAyMDAsIGJvZHk6ICJPSyIgfSk7ClBLAQIUABQAAAAAAAAAAABSXXJzQQAAAEEAAAAIAAAAAAAAAAAAAAAAAAAAAABpbmRleC5qc1BLBQYAAAAAAQABADYAAABnAAAAAAA=',
+      'base64',
+    );
+    await writeFile(join(workDir, 'placeholder.zip'), LAMBDA_PLACEHOLDER_ZIP);
 
     const rawEnv = await resolveExecutionCredentials(credentials);
     const env: Record<string, string> = {
@@ -388,8 +391,11 @@ export async function executeDestroy(input: ExecuteDestroyInput): Promise<{ mess
     }
     const backendHcl = renderBackendConfig(input.stateBackend);
     await writeFile(join(workDir, 'backend.tf'), backendHcl, 'utf-8');
-    const EMPTY_ZIP = Buffer.from('UEsFBgAAAAAAAAAAAAAAAAAAAAAAAA==', 'base64');
-    await writeFile(join(workDir, 'placeholder.zip'), EMPTY_ZIP);
+    const LAMBDA_PLACEHOLDER_ZIP = Buffer.from(
+      'UEsDBBQAAAAAAAAAAABSXXJzQQAAAEEAAAAIAAAAaW5kZXguanNleHBvcnRzLmhhbmRsZXIgPSBhc3luYyAoKSA9PiAoeyBzdGF0dXNDb2RlOiAyMDAsIGJvZHk6ICJPSyIgfSk7ClBLAQIUABQAAAAAAAAAAABSXXJzQQAAAEEAAAAIAAAAAAAAAAAAAAAAAAAAAABpbmRleC5qc1BLBQYAAAAAAQABADYAAABnAAAAAAA=',
+      'base64',
+    );
+    await writeFile(join(workDir, 'placeholder.zip'), LAMBDA_PLACEHOLDER_ZIP);
 
     await runTerraform(['init', '-input=false', '-no-color'], {
       cwd: workDir,

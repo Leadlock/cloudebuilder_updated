@@ -178,6 +178,12 @@ class AwsTerraformGenerator {
       subnetAzMap.set(sub.id, az);
     });
 
+    // Deterministic suffix for globally unique AWS resource names (S3 buckets, etc.)
+    blocks.push(`# Deterministic suffix for globally unique AWS resource names
+locals {
+  aws_suffix = substr(md5(var.project_name), 0, 6)
+}`);
+
     for (const r of resources) {
       const cfg = this._cfg(r);
       const name = resolver.tfNameOf(r.id) ?? tfName(r.label);
@@ -1309,13 +1315,20 @@ ${tagLines.join('\n')}
 
     const recordType = (cfg['recordType'] as string) || 'A';
     const routingPolicy = (cfg['routingPolicy'] as string) || 'Simple';
+    let recordValue = (cfg['recordValue'] as string)?.trim();
+    if (!recordValue) {
+      if (recordType === 'A' || recordType === 'AAAA') recordValue = '192.0.2.1';
+      else if (recordType === 'CNAME') recordValue = (cfg['domainName'] as string) || 'lb.example.com';
+      else if (recordType === 'TXT') recordValue = 'v=spf1 ~all';
+      else recordValue = '192.0.2.1';
+    }
     const recordLines: string[] = [
       `resource "aws_route53_record" "${name}" {`,
       `  zone_id = aws_route53_zone.${name}.zone_id`,
       `  name    = "${cfg['domainName'] ?? 'example.com'}"`,
       `  type    = "${recordType}"`,
       `  ttl     = ${cfg['ttl'] ?? 300}`,
-      `  records = ["${cfg['recordValue'] ?? ''}"]`,
+      `  records = ["${recordValue}"]`,
     ];
     if (routingPolicy === 'Weighted') {
       recordLines.push(`  weighted_routing_policy {`, `    weight = ${cfg['weight'] ?? 100}`, `  }`, `  set_identifier = "${name}"`);
@@ -1663,14 +1676,17 @@ ${tagLines.join('\n')}
   }
 
   private _s3(name: string, cfg: Record<string, unknown>): string {
-    const bucketName = (cfg['bucketName'] as string) ?? name;
+    const rawBucketName = (cfg['bucketName'] as string) ?? name;
+    const sanitizedRaw = rawBucketName.toLowerCase().replace(/_/g, '-').replace(/[^a-z0-9-]/g, '').replace(/--+/g, '-').replace(/^-+|-+$/g, '');
+    const baseName = sanitizedRaw.length > 0 ? sanitizedRaw : 'cloudcraft-bucket';
+    const bucketExpr = baseName.includes('${') ? `"${baseName}"` : `"${baseName}-\${local.aws_suffix}"`;
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const blockAcls = cfg['publicAccess'] === true ? cfg['blockPublicAcls'] === true : true;
     const blockPolicy = cfg['publicAccess'] === true ? cfg['blockPublicPolicy'] === true : true;
 
     const parts: string[] = [
       `resource "aws_s3_bucket" "${name}" {`,
-      `  bucket = "${bucketName}"`,
+      `  bucket = ${bucketExpr}`,
       `  tags = {`,
       `    Name      = "${name}"`,
       `    ManagedBy = "CloudCraft"`,
