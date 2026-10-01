@@ -26,6 +26,16 @@ function estimateTemplateCostUsd(templateId: string, generate: () => { nodes: { 
 
 const categories = ['All', 'Web Applications', 'High Availability', 'SaaS', 'E-Commerce', 'Microservices', 'Serverless', 'Containers / Kubernetes', 'Data & Analytics', 'Disaster Recovery', 'Multi-cloud'];
 
+/** Badge colour by the template's architecture pattern (falls back to its category). */
+function architectureBadgeClass(t: { architecturePattern?: string; category: string }): string {
+  const label = (t.architecturePattern ?? t.category).toLowerCase();
+  if (label.includes('3-tier') || label.includes('three-tier')) return 'bg-blue-950/60 text-blue-300 border border-blue-800/40';
+  if (label.includes('serverless')) return 'bg-amber-950/60 text-amber-300 border border-amber-800/40';
+  if (label.includes('microservice')) return 'bg-purple-950/60 text-purple-300 border border-purple-800/40';
+  if (label.includes('event')) return 'bg-cyan-950/60 text-cyan-300 border border-cyan-800/40';
+  return 'bg-emerald-950/60 text-emerald-300 border border-emerald-800/40';
+}
+
 export default function TemplateGallery() {
   const { state, dispatch } = useApp();
   const [filter, setFilter] = useState('All');
@@ -163,19 +173,12 @@ export default function TemplateGallery() {
 
                 {/* Architecture tags */}
                 <div className="flex items-center gap-2 mb-3">
-                  <span className={clsx('text-[10px] font-semibold px-2 py-0.5 rounded',
-                    t.architectureType === '3-tier' ? 'bg-blue-950/60 text-blue-300 border border-blue-800/40' :
-                    t.architectureType === 'serverless' ? 'bg-amber-950/60 text-amber-300 border border-amber-800/40' :
-                    t.architectureType === 'microservices' ? 'bg-purple-950/60 text-purple-300 border border-purple-800/40' :
-                    t.architectureType === 'event-driven' ? 'bg-cyan-950/60 text-cyan-300 border border-cyan-800/40' :
-                    'bg-emerald-950/60 text-emerald-300 border border-emerald-800/40'
-                  )}>
-                    {t.architectureType}
+                  <span className={clsx('text-[10px] font-semibold px-2 py-0.5 rounded', architectureBadgeClass(t))}>
+                    {t.architecturePattern ?? t.category}
                   </span>
                   <span className={clsx('text-[10px] px-2 py-0.5 rounded',
-                    t.complexity === 'Production' ? 'bg-red-950/50 text-red-400 border border-red-900/40' :
-                    t.complexity === 'Advanced' ? 'bg-yellow-950/50 text-yellow-400 border border-yellow-900/40' :
-                    t.complexity === 'Intermediate' ? 'bg-blue-950/50 text-blue-400 border border-blue-900/40' :
+                    t.complexity === 'complex' ? 'bg-red-950/50 text-red-400 border border-red-900/40' :
+                    t.complexity === 'moderate' ? 'bg-yellow-950/50 text-yellow-400 border border-yellow-900/40' :
                     'bg-emerald-950/50 text-emerald-400 border border-emerald-900/40'
                   )}>
                     {t.complexity}

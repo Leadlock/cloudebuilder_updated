@@ -76,7 +76,7 @@ async function main() {
   }
 
   const credentials = JSON.parse(credentialsJson);
-  console.log(`🔐 Resolving credentials for: ${awsAccount.name} (${awsAccount.accountId}) ...`);
+  console.log(`🔐 Resolving credentials for: ${awsAccount.name} (${awsAccount.id}) ...`);
   const envVars = await resolveExecutionCredentials(credentials);
 
   // 2. Resolve architecture resources
