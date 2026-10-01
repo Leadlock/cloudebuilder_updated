@@ -3805,6 +3805,11 @@ variable "sql_admin_password" {
       const cfg = (() => { try { return JSON.parse(r.configJson) as Record<string, unknown>; } catch { return {}; } })();
       const name = tfName((cfg['name'] as string) || r.label);
 
+      // An imported (existing) resource is declared as a `data` source, not a managed resource, so these outputs would
+      // reference an address that does not exist ("Reference to undeclared resource") and fail every plan, apply and
+      // destroy. It is not managed by this configuration, so no output is generated for it.
+      if (cfg['imported'] || cfg['importState'] === 'imported') continue;
+
       if (r.resourceType === 'aws_alb') {
         outputs.push(`output "${name}_dns_name" {
   description = "DNS name of the Application Load Balancer ${r.label}"
