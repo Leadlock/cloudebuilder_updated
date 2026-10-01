@@ -33,9 +33,9 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'a61af368dd73848610d6d33b031dca54c99a49efe389a9c56e1793d9ea894270'>;
+  StorageHashBase<'e93966cf06f92708de12b9327127d88570069c17c200b479d2ce101bf690e4ad'>;
 export type ExecutionHash =
-  ExecutionHashBase<'e5e8e5bc803bc09d1e42a5ddb9c0f82aff70b2633614157d58780c098ca36443'>;
+  ExecutionHashBase<'f2cabb7b653b19c268fbfec23ecf7ec67c4f7687b2f0915b17f47f99cf2edae3'>;
 export type ProfileHash =
   ProfileHashBase<'3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2'>;
 
@@ -483,6 +483,18 @@ export type FieldOutputTypes = {
       readonly createdAt: CodecTypes['pg/text@1']['output'];
       readonly completedAt: CodecTypes['pg/text@1']['output'] | null;
     };
+    readonly TerraformAuditEvent: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly createdAt: CodecTypes['pg/text@1']['output'];
+      readonly orgId: CodecTypes['pg/text@1']['output'] | null;
+      readonly projectId: CodecTypes['pg/text@1']['output'] | null;
+      readonly userId: CodecTypes['pg/text@1']['output'] | null;
+      readonly action: CodecTypes['pg/text@1']['output'];
+      readonly outcome: CodecTypes['pg/text@1']['output'];
+      readonly planId: CodecTypes['pg/text@1']['output'] | null;
+      readonly planHash: CodecTypes['pg/text@1']['output'] | null;
+      readonly detail: CodecTypes['pg/text@1']['output'] | null;
+    };
     readonly TerraformGeneration: {
       readonly id: CodecTypes['pg/text@1']['output'];
       readonly projectId: CodecTypes['pg/text@1']['output'];
@@ -785,6 +797,18 @@ export type FieldInputTypes = {
       readonly findingsJson: CodecTypes['pg/text@1']['input'];
       readonly createdAt: CodecTypes['pg/text@1']['input'];
       readonly completedAt: CodecTypes['pg/text@1']['input'] | null;
+    };
+    readonly TerraformAuditEvent: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly createdAt: CodecTypes['pg/text@1']['input'];
+      readonly orgId: CodecTypes['pg/text@1']['input'] | null;
+      readonly projectId: CodecTypes['pg/text@1']['input'] | null;
+      readonly userId: CodecTypes['pg/text@1']['input'] | null;
+      readonly action: CodecTypes['pg/text@1']['input'];
+      readonly outcome: CodecTypes['pg/text@1']['input'];
+      readonly planId: CodecTypes['pg/text@1']['input'] | null;
+      readonly planHash: CodecTypes['pg/text@1']['input'] | null;
+      readonly detail: CodecTypes['pg/text@1']['input'] | null;
     };
     readonly TerraformGeneration: {
       readonly id: CodecTypes['pg/text@1']['input'];
@@ -1089,6 +1113,18 @@ export type StorageColumnTypes = {
       readonly status: CodecTypes['pg/text@1']['output'];
       readonly versionId: CodecTypes['pg/text@1']['output'] | null;
     };
+    readonly terraformAuditEvent: {
+      readonly action: CodecTypes['pg/text@1']['output'];
+      readonly createdAt: CodecTypes['pg/text@1']['output'];
+      readonly detail: CodecTypes['pg/text@1']['output'] | null;
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly orgId: CodecTypes['pg/text@1']['output'] | null;
+      readonly outcome: CodecTypes['pg/text@1']['output'];
+      readonly planHash: CodecTypes['pg/text@1']['output'] | null;
+      readonly planId: CodecTypes['pg/text@1']['output'] | null;
+      readonly projectId: CodecTypes['pg/text@1']['output'] | null;
+      readonly userId: CodecTypes['pg/text@1']['output'] | null;
+    };
     readonly terraformGeneration: {
       readonly architectureId: CodecTypes['pg/text@1']['output'];
       readonly createdAt: CodecTypes['pg/text@1']['output'];
@@ -1391,6 +1427,18 @@ export type StorageColumnInputTypes = {
       readonly score: CodecTypes['pg/int4@1']['input'];
       readonly status: CodecTypes['pg/text@1']['input'];
       readonly versionId: CodecTypes['pg/text@1']['input'] | null;
+    };
+    readonly terraformAuditEvent: {
+      readonly action: CodecTypes['pg/text@1']['input'];
+      readonly createdAt: CodecTypes['pg/text@1']['input'];
+      readonly detail: CodecTypes['pg/text@1']['input'] | null;
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly orgId: CodecTypes['pg/text@1']['input'] | null;
+      readonly outcome: CodecTypes['pg/text@1']['input'];
+      readonly planHash: CodecTypes['pg/text@1']['input'] | null;
+      readonly planId: CodecTypes['pg/text@1']['input'] | null;
+      readonly projectId: CodecTypes['pg/text@1']['input'] | null;
+      readonly userId: CodecTypes['pg/text@1']['input'] | null;
     };
     readonly terraformGeneration: {
       readonly architectureId: CodecTypes['pg/text@1']['input'];
@@ -3429,6 +3477,77 @@ type ContractBase = Omit<
                 },
               ];
             };
+            readonly terraformAuditEvent: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly createdAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly orgId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly projectId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly userId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly action: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly outcome: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly planId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly planHash: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly detail: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [];
+              indexes: readonly [
+                {
+                  readonly name: 'terraformAuditEvent_orgId_createdAt_idx_e5d9317b';
+                  readonly prefix: 'terraformAuditEvent_orgId_createdAt_idx';
+                  readonly columns: readonly ['orgId', 'createdAt'];
+                  readonly unique: false;
+                },
+                {
+                  readonly name: 'terraformAuditEvent_projectId_createdAt_idx_d2d6484f';
+                  readonly prefix: 'terraformAuditEvent_projectId_createdAt_idx';
+                  readonly columns: readonly ['projectId', 'createdAt'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [];
+            };
             readonly terraformGeneration: {
               columns: {
                 readonly id: {
@@ -3949,6 +4068,10 @@ type ContractBase = Omit<
     readonly githubConnection: {
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'GithubConnection';
+    };
+    readonly terraformAuditEvent: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'TerraformAuditEvent';
     };
   };
   readonly domain: {
@@ -5930,6 +6053,67 @@ type ContractBase = Omit<
               };
             };
           };
+          readonly TerraformAuditEvent: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly createdAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly orgId: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly projectId: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly userId: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly action: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly outcome: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly planId: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly planHash: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly detail: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: {
+              readonly table: 'terraformAuditEvent';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly createdAt: { readonly column: 'createdAt' };
+                readonly orgId: { readonly column: 'orgId' };
+                readonly projectId: { readonly column: 'projectId' };
+                readonly userId: { readonly column: 'userId' };
+                readonly action: { readonly column: 'action' };
+                readonly outcome: { readonly column: 'outcome' };
+                readonly planId: { readonly column: 'planId' };
+                readonly planHash: { readonly column: 'planHash' };
+                readonly detail: { readonly column: 'detail' };
+              };
+            };
+          };
           readonly TerraformGeneration: {
             readonly fields: {
               readonly id: {
@@ -6518,6 +6702,14 @@ type ContractBase = Omit<
           readonly ref: {
             readonly namespace: 'public';
             readonly table: 'securityScan';
+            readonly column: 'id';
+          };
+          readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };
+        },
+        {
+          readonly ref: {
+            readonly namespace: 'public';
+            readonly table: 'terraformAuditEvent';
             readonly column: 'id';
           };
           readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };

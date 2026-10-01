@@ -1,3 +1,4 @@
+import { assertSafeHcl, sanitizeCanvasForHcl } from '@/lib/engines/terraform/hclSafety';
 import { CanvasNode, CanvasEdge, SecurityIssue, CostItem } from '@/types';
 import { getResourceDefinition } from './resources';
 import { runAssessment } from './engines/assessment/AssessmentEngine';
@@ -93,7 +94,18 @@ export function calculateCosts(nodes: CanvasNode[]): CostItem[] {
   return costs;
 }
 
+/**
+ * Single-file Terraform for the on-screen view and the fallback path. User-controlled strings are made safe for HCL and
+ * the result is checked, exactly like the full generator (see lib/engines/terraform/hclSafety.ts).
+ */
 export function generateTerraform(nodes: CanvasNode[], edges: CanvasEdge[] = [], provider: string = 'aws'): string {
+  const safe = sanitizeCanvasForHcl(nodes, edges);
+  const tf = generateTerraformUnsafe(safe.nodes, safe.edges, provider);
+  assertSafeHcl([{ filename: 'main.tf', content: tf }]);
+  return tf;
+}
+
+function generateTerraformUnsafe(nodes: CanvasNode[], edges: CanvasEdge[] = [], provider: string = 'aws'): string {
   if (nodes.length === 0) {
     return `# No resources defined yet.\n# Add resources to the canvas to generate Terraform code.\n`;
   }
@@ -107,8 +119,8 @@ export function generateTerraform(nodes: CanvasNode[], edges: CanvasEdge[] = [],
   if (provider === 'multi') {
     const awsNodes   = nodes.filter((n) => n.provider === 'aws');
     const azureNodes = nodes.filter((n) => n.provider === 'azure');
-    const awsPart    = generateTerraform(awsNodes,   edges, 'aws');
-    const azurePart  = generateTerraform(azureNodes, edges, 'azure');
+    const awsPart    = generateTerraformUnsafe(awsNodes,   edges, 'aws');
+    const azurePart  = generateTerraformUnsafe(azureNodes, edges, 'azure');
     return [
       awsPart,
       '\n# ─── Azure Resources ─────────────────────────────────────────────────────────\n',

@@ -11,6 +11,7 @@ import {
   Trash2, AlertOctagon, Flame
 } from 'lucide-react';
 import clsx from 'clsx';
+import TerraformLimitsBar from './TerraformLimitsBar';
 
 interface CloudAccount {
   id: string;
@@ -521,6 +522,15 @@ export default function TerraformExecutionPanel() {
               </div>
             )}
           </div>
+
+          {activeProject && (
+            <TerraformLimitsBar
+              projectId={activeProject.id}
+              environment={state.activeEnvironment}
+              user={currentUser}
+              refreshKey={`${planning}|${applying}|${applyStatus?.state ?? ''}|${plan?.planId ?? ''}`}
+            />
+          )}
 
           {/* Main Action Buttons */}
           {!plan && !destroying && (

@@ -27,7 +27,11 @@ jest.mock('@/lib/terraform/execution/TerraformExecutionService', () => ({
   runApply: jest.fn(),
 }));
 
+const mockAudit = jest.fn();
+jest.mock('@/lib/terraform/execution/audit', () => ({ recordTerraformAudit: (...args: unknown[]) => mockAudit(...args) }));
+
 import { runApply } from '@/lib/terraform/execution/TerraformExecutionService';
+import { acquireProjectLock, releaseProjectLock } from '@/lib/terraform/execution/projectLock';
 import {
   enqueueApplyJob, processApplyJob, getApplyJobStatus, TERRAFORM_APPLY_QUEUE,
 } from '@/lib/jobs/terraformApplyJob';
@@ -84,6 +88,37 @@ describe('Terraform apply job queue', () => {
       (runApply as jest.Mock).mockResolvedValue({ message: 'Applied 2 resources.', outputTail: 'Apply complete!' });
       const result = await processApplyJob({ applyRunId: 'run-1', planId: 'plan-1', accountId: 'acct-1', orgId: 'org-1' });
       expect(result).toEqual({ status: 'success', message: 'Applied 2 resources.', outputTail: 'Apply complete!' });
+    });
+
+    it('refuses to run when the operator has switched Terraform off — even for a job that was already queued', async () => {
+      const env = process.env as Record<string, string | undefined>;
+      (runApply as jest.Mock).mockReset();
+      mockAudit.mockReset();
+      env.CLOUDCRAFT_TERRAFORM_DISABLED = '1';
+      try {
+        const result = await processApplyJob({ applyRunId: 'run-k', planId: 'plan-k', accountId: 'acct-1', orgId: 'org-1' });
+        expect(result.status).toBe('failed');
+        expect(result.message).toMatch(/switched off/i);
+        expect(runApply).not.toHaveBeenCalled();
+        expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'apply', outcome: 'blocked' }));
+      } finally {
+        delete env.CLOUDCRAFT_TERRAFORM_DISABLED;
+      }
+    });
+
+    it('records the outcome in the audit trail and always frees the project lock, success or failure', async () => {
+      mockAudit.mockReset();
+      const projectId = 'proj-lock-job';
+      expect(acquireProjectLock(projectId)).toBe(true);
+      (runApply as jest.Mock).mockRejectedValueOnce(new Error('boom'));
+      await processApplyJob({ applyRunId: 'run-l', projectId, requestedBy: 'u-1', planId: 'plan-l', accountId: 'a', orgId: 'org-1' });
+      expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'failed', userId: 'u-1', projectId }));
+      expect(acquireProjectLock(projectId)).toBe(true);          // the failed run released it
+      (runApply as jest.Mock).mockResolvedValueOnce({ message: 'ok', outputTail: '' });
+      await processApplyJob({ applyRunId: 'run-m', projectId, planId: 'plan-m', accountId: 'a', orgId: 'org-1' });
+      expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'succeeded' }));
+      expect(acquireProjectLock(projectId)).toBe(true);          // and so did the successful one
+      releaseProjectLock(projectId);
     });
 
     it('never throws — a runApply failure becomes { status: "failed" } output', async () => {

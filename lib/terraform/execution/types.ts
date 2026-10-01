@@ -35,11 +35,15 @@ export interface PlanResourceChange {
   actions: PlanResourceAction[];
 }
 
+import type { GuardrailReport } from './planGuardrails';
+
 export interface PlanSummary {
   toAdd: number;
   toChange: number;
   toDestroy: number;
   resourceChanges: PlanResourceChange[];
+  /** Result of the safety checks run on the plan; shown to the approver. A plan that failed them is never stored. */
+  guardrails?: GuardrailReport;
 }
 
 export interface PlanRecord {
@@ -59,6 +63,10 @@ export interface PlanRecord {
 
 export interface TerraformApplyJobData {
   applyRunId: string;
+  /** Used to release the per-project apply lock and to label the audit trail. */
+  projectId?: string;
+  /** The user who requested the apply (audit trail). */
+  requestedBy?: string;
   planId: string;
   accountId: string;
   orgId: string;

@@ -549,3 +549,23 @@ model GithubConnection {
 
   @@index([projectId])
 }
+
+/// Append-only record of Terraform plan / apply / destroy activity: who asked, for which org and project, what plan
+/// (by hash), and what happened — including refusals. Written best-effort; see lib/terraform/execution/audit.ts.
+model TerraformAuditEvent {
+  id        String  @id @default(uuid())
+  createdAt String
+  orgId     String?
+  projectId String?
+  userId    String?
+  // plan | apply | destroy
+  action    String
+  // requested | allowed | denied | blocked | succeeded | failed
+  outcome   String
+  planId    String?
+  planHash  String?
+  detail    String?
+
+  @@index([orgId, createdAt])
+  @@index([projectId, createdAt])
+}

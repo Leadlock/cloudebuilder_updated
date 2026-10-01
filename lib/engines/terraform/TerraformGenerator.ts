@@ -9,6 +9,7 @@
  * Generated Terraform uses variables for all sensitive values.
  */
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
+import { assertSafeHcl, escapeHclString, hclSafeId, sanitizeResourcesForHcl } from './hclSafety';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -3496,6 +3497,12 @@ export class TerraformGenerator {
       };
     }
 
+    // Every user-controlled string is made safe for HCL before anything is generated (see hclSafety.ts), and the
+    // generated files are checked at the end — a crafted label or setting must never become Terraform code.
+    const safe = sanitizeResourcesForHcl(input.resources, input.connections);
+    const rawInput = input;
+    input = { ...rawInput, resources: safe.resources, connections: safe.connections, architectureId: hclSafeId(rawInput.architectureId), projectId: hclSafeId(rawInput.projectId), projectName: rawInput.projectName === undefined ? undefined : escapeHclString(rawInput.projectName) };
+
     const resolver = new ReferenceResolver(input.resources);
     const projectName = input.projectName ?? 'cloudcraft';
     const awsResources   = input.resources.filter((r) => r.provider === 'aws');
@@ -3534,6 +3541,7 @@ export class TerraformGenerator {
     }
 
     const files = this._buildFiles(awsBlocks, azureBlocks, providers, projectName, input);
+    assertSafeHcl(files);
 
     return { files, warnings, resourceMap, providers };
   }

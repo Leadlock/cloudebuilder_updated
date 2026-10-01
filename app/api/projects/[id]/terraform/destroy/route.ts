@@ -4,8 +4,12 @@
  */
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { StateBackendSchema } from '@/lib/terraform/execution/backendSchema';
 import { ok, notFound, forbidden, unauthorized, internalError, badRequest, parseBody } from '@/lib/api/response';
 import { extractIdentity } from '@/lib/api/auth';
+import { terraformExecutionDenied } from '@/lib/api/terraformAccess';
+import { recordTerraformAudit } from '@/lib/terraform/execution/audit';
+
 import { resolveOrgId, resolveArchitecture } from '@/lib/api/phase2d';
 import { executeDestroy } from '@/lib/terraform/execution/TerraformExecutionService';
 import { TerraformNotInstalledError } from '@/lib/terraform/execution/cli';
@@ -13,25 +17,10 @@ import type { TerraformStateBackendConfig } from '@/lib/terraform/execution/type
 
 export const dynamic = 'force-dynamic';
 
-const AwsBackendSchema = z.object({
-  provider: z.literal('aws'),
-  bucket: z.string().min(1),
-  key: z.string().min(1),
-  region: z.string().min(1),
-  dynamodbTable: z.string().optional(),
-});
-const AzureBackendSchema = z.object({
-  provider: z.literal('azure'),
-  resourceGroupName: z.string().min(1),
-  storageAccountName: z.string().min(1),
-  containerName: z.string().min(1),
-  key: z.string().min(1),
-});
-
 const RequestSchema = z.object({
   environment: z.string().default('production'),
   cloudAccountId: z.string().min(1),
-  stateBackend: z.discriminatedUnion('provider', [AwsBackendSchema, AzureBackendSchema]),
+  stateBackend: StateBackendSchema,
 });
 
 export async function POST(
@@ -52,6 +41,12 @@ export async function POST(
 
     const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return badRequest('orgId required');
+    const denied = await terraformExecutionDenied(identity.userId, orgId);
+    if (denied) {
+      await recordTerraformAudit({ action: 'destroy', outcome: 'denied', orgId, projectId, userId: identity.userId, detail: denied });
+      return forbidden(denied);
+    }
+    await recordTerraformAudit({ action: 'destroy', outcome: 'requested', orgId, projectId, userId: identity.userId });
 
     const ctx = await resolveArchitecture(projectId, orgId, environment);
     if ('error' in ctx) {
@@ -81,6 +76,7 @@ export async function POST(
       projectName: project.name.replace(/\s+/g, '-').toLowerCase(),
     });
 
+    await recordTerraformAudit({ action: 'destroy', outcome: 'succeeded', orgId, projectId, userId: identity.userId });
     return ok({
       status: 'success',
       message: result.message,

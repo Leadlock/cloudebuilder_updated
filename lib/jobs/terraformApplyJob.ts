@@ -21,6 +21,9 @@
  * without any additional plumbing.
  */
 import { getQueue } from './queue';
+import { terraformExecutionDisabled } from '@/lib/terraform/execution/killSwitch';
+import { recordTerraformAudit } from '@/lib/terraform/execution/audit';
+import { releaseProjectLock } from '@/lib/terraform/execution/projectLock';
 import { runApply } from '@/lib/terraform/execution/TerraformExecutionService';
 import type { TerraformApplyJobData, ApplyJobOutput } from '@/lib/terraform/execution/types';
 
@@ -48,13 +51,24 @@ export async function enqueueApplyJob(data: TerraformApplyJobData): Promise<stri
 
 /** Runs inside the worker process. */
 export async function processApplyJob(data: TerraformApplyJobData): Promise<ApplyJobOutput> {
+  const audit = { action: 'apply' as const, orgId: data.orgId, projectId: data.projectId, userId: data.requestedBy, planId: data.planId };
   try {
+    // Kill switch: honoured even for jobs that were already queued when it was switched on.
+    if (terraformExecutionDisabled()) {
+      const message = 'Terraform execution was switched off by the server operator before this apply ran.';
+      await recordTerraformAudit({ ...audit, outcome: 'blocked', detail: message });
+      return { status: 'failed', message, outputTail: '' };
+    }
     const result = await runApply(data.planId, data.orgId);
+    await recordTerraformAudit({ ...audit, outcome: 'succeeded' });
     return { status: 'success', message: result.message, outputTail: result.outputTail };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[terraformApplyWorker] Apply run ${data.applyRunId} failed: ${message}`);
+    await recordTerraformAudit({ ...audit, outcome: 'failed', detail: message });
     return { status: 'failed', message, outputTail: '' };
+  } finally {
+    if (data.projectId) releaseProjectLock(data.projectId);
   }
 }
 

@@ -15,8 +15,14 @@
  */
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { ok, notFound, forbidden, unauthorized, internalError, badRequest, parseBody } from '@/lib/api/response';
+import { StateBackendSchema } from '@/lib/terraform/execution/backendSchema';
+import { ok, notFound, forbidden, unauthorized, internalError, badRequest, tooManyRequests, parseBody } from '@/lib/api/response';
 import { extractIdentity } from '@/lib/api/auth';
+import { terraformExecutionDenied } from '@/lib/api/terraformAccess';
+import { checkRateLimit } from '@/lib/api/rateLimit';
+import { planLimit, planRateKey } from '@/lib/terraform/execution/limits';
+import { recordTerraformAudit } from '@/lib/terraform/execution/audit';
+import { PlanGuardrailError } from '@/lib/terraform/execution/planGuardrails';
 import { resolveOrgId, resolveArchitecture } from '@/lib/api/phase2d';
 import { generatePlan, PlanBlockedError } from '@/lib/terraform/execution/TerraformExecutionService';
 import { TerraformNotInstalledError } from '@/lib/terraform/execution/cli';
@@ -24,25 +30,10 @@ import type { TerraformStateBackendConfig } from '@/lib/terraform/execution/type
 
 export const dynamic = 'force-dynamic';
 
-const AwsBackendSchema = z.object({
-  provider: z.literal('aws'),
-  bucket: z.string().min(1),
-  key: z.string().min(1),
-  region: z.string().min(1),
-  dynamodbTable: z.string().optional(),
-});
-const AzureBackendSchema = z.object({
-  provider: z.literal('azure'),
-  resourceGroupName: z.string().min(1),
-  storageAccountName: z.string().min(1),
-  containerName: z.string().min(1),
-  key: z.string().min(1),
-});
-
 const RequestSchema = z.object({
   environment: z.string().default('production'),
   cloudAccountId: z.string().min(1),
-  stateBackend: z.discriminatedUnion('provider', [AwsBackendSchema, AzureBackendSchema]),
+  stateBackend: StateBackendSchema,
 });
 
 export async function POST(
@@ -63,6 +54,18 @@ export async function POST(
 
     const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return badRequest('orgId required');
+    const denied = await terraformExecutionDenied(identity.userId, orgId);
+    if (denied) {
+      await recordTerraformAudit({ action: 'plan', outcome: 'denied', orgId, projectId, userId: identity.userId, detail: denied });
+      return forbidden(denied);
+    }
+    // A plan runs terraform on the server; keep it from being used as a resource-exhaustion lever.
+    const { limit, windowMs } = planLimit();
+    const rl = checkRateLimit(planRateKey(identity.userId), limit, windowMs);
+    if (!rl.allowed) {
+      await recordTerraformAudit({ action: 'plan', outcome: 'denied', orgId, projectId, userId: identity.userId, detail: 'rate limited' });
+      return tooManyRequests(rl.retryAfterSeconds);
+    }
 
     const ctx = await resolveArchitecture(projectId, orgId, environment);
     if ('error' in ctx) {
@@ -93,6 +96,7 @@ export async function POST(
         projectName: project.name.replace(/\s+/g, '-').toLowerCase(),
       });
 
+      await recordTerraformAudit({ action: 'plan', outcome: 'succeeded', orgId, projectId, userId: identity.userId, planId: record.planId, planHash: record.planHash, detail: `${record.summary.toAdd} to add, ${record.summary.toChange} to change` });
       return ok({
         planId: record.planId,
         planHash: record.planHash,
@@ -100,7 +104,14 @@ export async function POST(
         expiresAt: record.expiresAt,
       });
     } catch (err) {
-      if (err instanceof PlanBlockedError) return badRequest(err.message);
+      if (err instanceof PlanGuardrailError) {
+        await recordTerraformAudit({ action: 'plan', outcome: 'blocked', orgId, projectId, userId: identity.userId, detail: err.message });
+        return badRequest(err.message, { guardrails: err.report });
+      }
+      if (err instanceof PlanBlockedError) {
+        await recordTerraformAudit({ action: 'plan', outcome: 'blocked', orgId, projectId, userId: identity.userId, detail: err.message });
+        return badRequest(err.message);
+      }
       if (err instanceof TerraformNotInstalledError) return internalError(err.message);
       const statusCode = (err as { statusCode?: number })?.statusCode;
       const message = err instanceof Error ? err.message : 'Plan generation failed';

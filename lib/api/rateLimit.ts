@@ -60,6 +60,17 @@ export function checkRateLimit(key: string, limit: number, windowMs: number): Ra
   return { allowed: true, limit, remaining: limit - existing.count };
 }
 
+/**
+ * Reads a caller's budget WITHOUT using any of it — for showing "N left, renews in M" in the UI.
+ * Mirrors checkRateLimit's window rules exactly.
+ */
+export function peekRateLimit(key: string, limit: number, windowMs: number): { limit: number; remaining: number; used: number; resetsInSeconds: number } {
+  const now = Date.now();
+  const existing = buckets.get(key);
+  if (!existing || now - existing.windowStartMs >= windowMs) return { limit, remaining: limit, used: 0, resetsInSeconds: 0 };
+  return { limit, remaining: Math.max(0, limit - existing.count), used: existing.count, resetsInSeconds: Math.max(0, Math.ceil((existing.windowStartMs + windowMs - now) / 1000)) };
+}
+
 /** Common presets for route-level limits, per caller. */
 export const RATE_LIMITS = {
   /** LLM calls are the most expensive — tightest limit. */

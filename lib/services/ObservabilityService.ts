@@ -200,6 +200,11 @@ async function getAzureMetrics(
   region: string,
   credentials: Record<string, string>
 ): Promise<ResourceMetrics> {
+  // The id is placed into a management-API URL carrying a service-principal token: only a plain ARM resource path
+  // may get through (no query string, fragment, encoded separators or "..").
+  if (!/^\/subscriptions\/[0-9a-fA-F-]{36}\/resourceGroups\/[\w.()-]{1,90}\/providers\/[\w.]+(?:\/[\w.-]+){2,10}$/.test(resourceId) || resourceId.includes('..')) {
+    return unavailable('The Azure resource id is not a valid resource path.', 'azure-monitor');
+  }
   const key = cacheKey('azure', resourceId, region);
   const cached = getCached(key);
   if (cached) return cached;

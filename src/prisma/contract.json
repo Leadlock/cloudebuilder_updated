@@ -96,6 +96,10 @@
       "model": "SecurityScan",
       "namespace": "public"
     },
+    "terraformAuditEvent": {
+      "model": "TerraformAuditEvent",
+      "namespace": "public"
+    },
     "terraformGeneration": {
       "model": "TerraformGeneration",
       "namespace": "public"
@@ -3342,6 +3346,117 @@
               "table": "securityScan"
             }
           },
+          "TerraformAuditEvent": {
+            "fields": {
+              "action": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "detail": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "orgId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "outcome": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "planHash": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "planId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "projectId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "userId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "fields": {
+                "action": {
+                  "column": "action"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "detail": {
+                  "column": "detail"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "orgId": {
+                  "column": "orgId"
+                },
+                "outcome": {
+                  "column": "outcome"
+                },
+                "planHash": {
+                  "column": "planHash"
+                },
+                "planId": {
+                  "column": "planId"
+                },
+                "projectId": {
+                  "column": "projectId"
+                },
+                "userId": {
+                  "column": "userId"
+                }
+              },
+              "namespaceId": "public",
+              "table": "terraformAuditEvent"
+            }
+          },
           "TerraformGeneration": {
             "fields": {
               "architectureId": {
@@ -6332,6 +6447,87 @@
               },
               "uniques": []
             },
+            "terraformAuditEvent": {
+              "columns": {
+                "action": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "createdAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "detail": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "orgId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "outcome": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "planHash": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "planId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "projectId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "userId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                }
+              },
+              "foreignKeys": [],
+              "indexes": [
+                {
+                  "columns": [
+                    "orgId",
+                    "createdAt"
+                  ],
+                  "name": "terraformAuditEvent_orgId_createdAt_idx_e5d9317b",
+                  "prefix": "terraformAuditEvent_orgId_createdAt_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "projectId",
+                    "createdAt"
+                  ],
+                  "name": "terraformAuditEvent_projectId_createdAt_idx_d2d6484f",
+                  "prefix": "terraformAuditEvent_projectId_createdAt_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
             "terraformGeneration": {
               "columns": {
                 "architectureId": {
@@ -6812,10 +7008,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "a61af368dd73848610d6d33b031dca54c99a49efe389a9c56e1793d9ea894270"
+    "storageHash": "e93966cf06f92708de12b9327127d88570069c17c200b479d2ce101bf690e4ad"
   },
   "execution": {
-    "executionHash": "e5e8e5bc803bc09d1e42a5ddb9c0f82aff70b2633614157d58780c098ca36443",
+    "executionHash": "f2cabb7b653b19c268fbfec23ecf7ec67c4f7687b2f0915b17f47f99cf2edae3",
     "mutations": {
       "defaults": [
         {
@@ -7069,6 +7265,17 @@
             "column": "id",
             "namespace": "public",
             "table": "securityScan"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "terraformAuditEvent"
           }
         },
         {

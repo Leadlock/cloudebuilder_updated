@@ -1,4 +1,9 @@
 import type { TerraformStateBackendConfig } from './types';
+import { escapeHclString } from '@/lib/engines/terraform/hclSafety';
+
+// Defence in depth: the routes already restrict these names (backendSchema.ts); anything that still reaches
+// here is escaped so it cannot leave its string.
+const q = (v: string) => `"${escapeHclString(v)}"`;
 
 /**
  * Renders a `terraform { backend "..." { ... } }` block from an explicit,
@@ -13,12 +18,12 @@ export function renderBackendConfig(backend: TerraformStateBackendConfig): strin
     const lines = [
       'terraform {',
       '  backend "s3" {',
-      `    bucket = "${backend.bucket}"`,
-      `    key    = "${backend.key}"`,
-      `    region = "${backend.region}"`,
+      `    bucket = ${q(backend.bucket)}`,
+      `    key    = ${q(backend.key)}`,
+      `    region = ${q(backend.region)}`,
     ];
     if (backend.dynamodbTable) {
-      lines.push(`    dynamodb_table = "${backend.dynamodbTable}"`);
+      lines.push(`    dynamodb_table = ${q(backend.dynamodbTable)}`);
     }
     lines.push('    encrypt = true', '  }', '}');
     return lines.join('\n');
@@ -27,10 +32,10 @@ export function renderBackendConfig(backend: TerraformStateBackendConfig): strin
   return [
     'terraform {',
     '  backend "azurerm" {',
-    `    resource_group_name  = "${backend.resourceGroupName}"`,
-    `    storage_account_name = "${backend.storageAccountName}"`,
-    `    container_name        = "${backend.containerName}"`,
-    `    key                   = "${backend.key}"`,
+    `    resource_group_name  = ${q(backend.resourceGroupName)}`,
+    `    storage_account_name = ${q(backend.storageAccountName)}`,
+    `    container_name        = ${q(backend.containerName)}`,
+    `    key                   = ${q(backend.key)}`,
     '  }',
     '}',
   ].join('\n');

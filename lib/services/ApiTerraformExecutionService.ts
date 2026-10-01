@@ -33,7 +33,24 @@ export interface TerraformApplyStatus {
   output: ApplyJobOutput | null;
 }
 
+export interface TerraformExecutionStatus {
+  /** False when the server's access rules or kill switch stop this caller from running Terraform. */
+  enabled: boolean;
+  reason?: string;
+  plans: { limit: number; remaining: number; resetsInSeconds: number; windowMinutes: number };
+  /** True while an apply is running for this project (only one can run at a time). */
+  applyRunning: boolean;
+}
+
 export class ApiTerraformExecutionService {
+  /** Read-only: how many plans are left in the current window and whether an apply is running. Uses none of the budget. */
+  static async getStatus(projectId: string, environment: string, user?: { id: string; role?: string }): Promise<TerraformExecutionStatus> {
+    const res = await fetch(`/api/projects/${projectId}/terraform/status?env=${encodeURIComponent(environment)}`, { headers: authHeaders(user), credentials: 'include' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(parseErrorMessage(data, `Failed to load Terraform limits (${res.status})`));
+    return data.data;
+  }
+
   static async generatePlan(
     projectId: string,
     environment: string,

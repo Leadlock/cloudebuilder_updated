@@ -32,6 +32,9 @@ import type { CanvasNode, CanvasEdge } from '@/types';
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
 import { runTerraform } from './cli';
 import { renderBackendConfig } from './backendConfig';
+import { assertSafeHcl } from '@/lib/engines/terraform/hclSafety';
+import { terraformSecretVars } from './secretVars';
+import { evaluatePlanGuardrails, PlanGuardrailError, type PlanJsonForGuardrails } from './planGuardrails';
 import { savePlan, getPlan, deletePlan, planTtlMs } from './planStore';
 import type { PlanRecord, PlanResourceAction, PlanSummary, TerraformStateBackendConfig } from './types';
 
@@ -59,13 +62,7 @@ interface GeneratePlanInput {
   projectName: string;
 }
 
-interface TerraformPlanJson {
-  resource_changes?: Array<{
-    address: string;
-    type: string;
-    change: { actions: string[] };
-  }>;
-}
+type TerraformPlanJson = PlanJsonForGuardrails;
 
 function toResourceMap(
   nodes: DbArchitectureResource[],
@@ -158,14 +155,13 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
     for (const file of generated.files) {
       await writeFile(join(workDir, file.filename), file.content, 'utf-8');
     }
-    await writeFile(join(workDir, 'backend.tf'), renderBackendConfig(input.stateBackend), 'utf-8');
+    const planBackendHcl = renderBackendConfig(input.stateBackend);
+    assertSafeHcl([...generated.files, { filename: 'backend.tf', content: planBackendHcl }]);
+    await writeFile(join(workDir, 'backend.tf'), planBackendHcl, 'utf-8');
 
     const rawEnv = await resolveExecutionCredentials(credentials);
     const env: Record<string, string> = {
-      TF_VAR_db_password: process.env.TF_VAR_db_password || 'CloudCraft_SecureDbPass123!',
-      TF_VAR_sql_admin_password: process.env.TF_VAR_sql_admin_password || 'CloudCraft_SqlPass123!',
-      TF_VAR_admin_ssh_public_key: process.env.TF_VAR_admin_ssh_public_key || 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICloudCraftGeneratedKey cloudcraft@admin',
-      TF_VAR_windows_admin_password: process.env.TF_VAR_windows_admin_password || 'CloudCraft_WinPass123!',
+      ...terraformSecretVars(),
       ...rawEnv,
     };
 
@@ -194,11 +190,16 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
       throw new PlanBlockedError(destroyed);
     }
 
+    // Look at what Terraform would actually do before this plan can ever be approved.
+    const guardrails = evaluatePlanGuardrails(planJson);
+    if (!guardrails.passed) throw new PlanGuardrailError(guardrails);
+
     const summary: PlanSummary = {
       toAdd: resourceChanges.filter((rc) => rc.actions.includes('create')).length,
       toChange: resourceChanges.filter((rc) => rc.actions.includes('update')).length,
       toDestroy: 0,
       resourceChanges,
+      guardrails,
     };
 
     const planFileBytes = await readFile(join(workDir, 'tfplan'));
@@ -238,6 +239,12 @@ export function verifyPlanForApply(planId: string, planHash: string): PlanRecord
     err.statusCode = 409;
     throw err;
   }
+  if (record.summary.guardrails && !record.summary.guardrails.passed) {
+    // Defense in depth — generatePlan already refuses to store a plan that failed its safety checks.
+    const err = new Error('Plan blocked by safety checks.') as Error & { statusCode: number };
+    err.statusCode = 400;
+    throw err;
+  }
   if (record.summary.toDestroy > 0) {
     // Defense in depth — generatePlan already refuses to store a plan with destroys.
     const err = new Error('Plan blocked: contains destroy actions.') as Error & { statusCode: number };
@@ -264,10 +271,7 @@ export async function runApply(planId: string, orgId: string): Promise<{ message
   const credentials = JSON.parse(credentialsJson) as CloudCredentials;
   const rawEnv = await resolveExecutionCredentials(credentials);
   const env: Record<string, string> = {
-    TF_VAR_db_password: process.env.TF_VAR_db_password || 'CloudCraft_SecureDbPass123!',
-    TF_VAR_sql_admin_password: process.env.TF_VAR_sql_admin_password || 'CloudCraft_SqlPass123!',
-    TF_VAR_admin_ssh_public_key: process.env.TF_VAR_admin_ssh_public_key || 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICloudCraftGeneratedKey cloudcraft@admin',
-    TF_VAR_windows_admin_password: process.env.TF_VAR_windows_admin_password || 'CloudCraft_WinPass123!',
+    ...terraformSecretVars(),
     ...rawEnv,
   };
 
@@ -323,10 +327,7 @@ export async function executeDestroy(input: ExecuteDestroyInput): Promise<{ mess
   const credentials = JSON.parse(credentialsJson) as CloudCredentials;
   const rawEnv = await resolveExecutionCredentials(credentials);
   const env: Record<string, string> = {
-    TF_VAR_db_password: process.env.TF_VAR_db_password || 'CloudCraft_SecureDbPass123!',
-    TF_VAR_sql_admin_password: process.env.TF_VAR_sql_admin_password || 'CloudCraft_SqlPass123!',
-    TF_VAR_admin_ssh_public_key: process.env.TF_VAR_admin_ssh_public_key || 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICloudCraftGeneratedKey cloudcraft@admin',
-    TF_VAR_windows_admin_password: process.env.TF_VAR_windows_admin_password || 'CloudCraft_WinPass123!',
+    ...terraformSecretVars(),
     ...rawEnv,
   };
 
@@ -344,6 +345,7 @@ export async function executeDestroy(input: ExecuteDestroyInput): Promise<{ mess
       await writeFile(join(workDir, file.filename), file.content, 'utf-8');
     }
     const backendHcl = renderBackendConfig(input.stateBackend);
+    assertSafeHcl([...generated.files, { filename: 'backend.tf', content: backendHcl }]);
     await writeFile(join(workDir, 'backend.tf'), backendHcl, 'utf-8');
 
     await runTerraform(['init', '-input=false', '-no-color'], {

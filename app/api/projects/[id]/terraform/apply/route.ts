@@ -13,8 +13,11 @@
  */
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { ok, created, notFound, forbidden, unauthorized, internalError, badRequest, parseBody } from '@/lib/api/response';
+import { ok, created, notFound, forbidden, unauthorized, internalError, badRequest, apiError, parseBody } from '@/lib/api/response';
 import { extractIdentity } from '@/lib/api/auth';
+import { terraformExecutionDenied } from '@/lib/api/terraformAccess';
+import { recordTerraformAudit } from '@/lib/terraform/execution/audit';
+import { acquireProjectLock, releaseProjectLock } from '@/lib/terraform/execution/projectLock';
 import { resolveOrgId } from '@/lib/api/phase2d';
 import { verifyPlanForApply } from '@/lib/terraform/execution/TerraformExecutionService';
 import { enqueueApplyJob, getApplyJobStatus } from '@/lib/jobs/terraformApplyJob';
@@ -46,6 +49,11 @@ export async function POST(
 
     const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return badRequest('orgId required');
+    const denied = await terraformExecutionDenied(identity.userId, orgId);
+    if (denied) {
+      await recordTerraformAudit({ action: 'apply', outcome: 'denied', orgId, userId: identity.userId, planId, planHash, detail: denied });
+      return forbidden(denied);
+    }
 
     let record;
     try {
@@ -53,19 +61,35 @@ export async function POST(
     } catch (err) {
       const statusCode = (err as { statusCode?: number })?.statusCode ?? 400;
       const message = err instanceof Error ? err.message : 'Plan verification failed';
+      await recordTerraformAudit({ action: 'apply', outcome: 'blocked', orgId, userId: identity.userId, planId, planHash, detail: message });
       if (statusCode === 404) return notFound(message);
       return badRequest(message);
     }
 
     if (record.orgId !== orgId) return forbidden('Plan does not belong to this organization');
 
+    // Two applies against the same state would race; allow one at a time per project.
+    if (!acquireProjectLock(record.projectId)) {
+      await recordTerraformAudit({ action: 'apply', outcome: 'blocked', orgId, projectId: record.projectId, userId: identity.userId, planId: record.planId, planHash: record.planHash, detail: 'another apply is already running for this project' });
+      return apiError('CONFLICT', 'Another Terraform apply is already running for this project. Wait for it to finish.', 409);
+    }
+
     const applyRunId = randomUUID();
-    const jobId = await enqueueApplyJob({
-      applyRunId,
-      planId: record.planId,
-      accountId: record.cloudAccountId,
-      orgId,
-    });
+    let jobId: string;
+    try {
+      jobId = await enqueueApplyJob({
+        applyRunId,
+        projectId: record.projectId,
+        requestedBy: identity.userId,
+        planId: record.planId,
+        accountId: record.cloudAccountId,
+        orgId,
+      });
+    } catch (enqueueErr) {
+      releaseProjectLock(record.projectId);
+      throw enqueueErr;
+    }
+    await recordTerraformAudit({ action: 'apply', outcome: 'allowed', orgId, projectId: record.projectId, userId: identity.userId, planId: record.planId, planHash: record.planHash, detail: 'apply queued' });
 
     return created({ applyRunId, jobId, status: 'pending' });
   } catch (err) {
