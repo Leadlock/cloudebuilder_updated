@@ -167,7 +167,7 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
     const env: Record<string, string> = {
       TF_VAR_db_password: process.env.TF_VAR_db_password || 'CloudCraft_SecureDbPass123!',
       TF_VAR_sql_admin_password: process.env.TF_VAR_sql_admin_password || 'CloudCraft_SqlPass123!',
-      TF_VAR_admin_ssh_public_key: process.env.TF_VAR_admin_ssh_public_key || 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICloudCraftGeneratedKey cloudcraft@admin',
+      TF_VAR_admin_ssh_public_key: process.env.TF_VAR_admin_ssh_public_key || 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC/0ui7B45zZkM18ZUX8JLFf0MxHaIjnG/UL3bWtrXRo778I5+DkLGgucleDg75VxkqWBdGv2DZuRzdzRHFTPwOc9e1gRs2mCPXcGLIgRhZ4gquPPiU5j6glr4UrSebWfYINXXfrR/KRSJAAwqK+gNJOdUghUPScSK7CS2EEMWdwPnLEbgvynFeKmEfJilRSSRzpivg59WpBh5p1lU7cGu+7m85SCBcrGRCE65ggzTUP8eZuQeLCmNsV8QtuPj9dyO1Aixau15JRaHq2OWL8vgUqHok3bocw2difFfLbT42A2dXFbYgz50+6fltIvdflqeuJlM4AvFrIRFhb1rBqXAB cloudcraft@admin',
       TF_VAR_windows_admin_password: process.env.TF_VAR_windows_admin_password || 'CloudCraft_WinPass123!',
       ...rawEnv,
     };
@@ -269,7 +269,7 @@ export async function runApply(planId: string, orgId: string): Promise<{ message
   const env: Record<string, string> = {
     TF_VAR_db_password: process.env.TF_VAR_db_password || 'CloudCraft_SecureDbPass123!',
     TF_VAR_sql_admin_password: process.env.TF_VAR_sql_admin_password || 'CloudCraft_SqlPass123!',
-    TF_VAR_admin_ssh_public_key: process.env.TF_VAR_admin_ssh_public_key || 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICloudCraftGeneratedKey cloudcraft@admin',
+    TF_VAR_admin_ssh_public_key: process.env.TF_VAR_admin_ssh_public_key || 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC/0ui7B45zZkM18ZUX8JLFf0MxHaIjnG/UL3bWtrXRo778I5+DkLGgucleDg75VxkqWBdGv2DZuRzdzRHFTPwOc9e1gRs2mCPXcGLIgRhZ4gquPPiU5j6glr4UrSebWfYINXXfrR/KRSJAAwqK+gNJOdUghUPScSK7CS2EEMWdwPnLEbgvynFeKmEfJilRSSRzpivg59WpBh5p1lU7cGu+7m85SCBcrGRCE65ggzTUP8eZuQeLCmNsV8QtuPj9dyO1Aixau15JRaHq2OWL8vgUqHok3bocw2difFfLbT42A2dXFbYgz50+6fltIvdflqeuJlM4AvFrIRFhb1rBqXAB cloudcraft@admin',
     TF_VAR_windows_admin_password: process.env.TF_VAR_windows_admin_password || 'CloudCraft_WinPass123!',
     ...rawEnv,
   };
@@ -328,7 +328,7 @@ export async function executeDestroy(input: ExecuteDestroyInput): Promise<{ mess
   const env: Record<string, string> = {
     TF_VAR_db_password: process.env.TF_VAR_db_password || 'CloudCraft_SecureDbPass123!',
     TF_VAR_sql_admin_password: process.env.TF_VAR_sql_admin_password || 'CloudCraft_SqlPass123!',
-    TF_VAR_admin_ssh_public_key: process.env.TF_VAR_admin_ssh_public_key || 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICloudCraftGeneratedKey cloudcraft@admin',
+    TF_VAR_admin_ssh_public_key: process.env.TF_VAR_admin_ssh_public_key || 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC/0ui7B45zZkM18ZUX8JLFf0MxHaIjnG/UL3bWtrXRo778I5+DkLGgucleDg75VxkqWBdGv2DZuRzdzRHFTPwOc9e1gRs2mCPXcGLIgRhZ4gquPPiU5j6glr4UrSebWfYINXXfrR/KRSJAAwqK+gNJOdUghUPScSK7CS2EEMWdwPnLEbgvynFeKmEfJilRSSRzpivg59WpBh5p1lU7cGu+7m85SCBcrGRCE65ggzTUP8eZuQeLCmNsV8QtuPj9dyO1Aixau15JRaHq2OWL8vgUqHok3bocw2difFfLbT42A2dXFbYgz50+6fltIvdflqeuJlM4AvFrIRFhb1rBqXAB cloudcraft@admin',
     TF_VAR_windows_admin_password: process.env.TF_VAR_windows_admin_password || 'CloudCraft_WinPass123!',
     ...rawEnv,
   };

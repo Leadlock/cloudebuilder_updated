@@ -3746,7 +3746,7 @@ variable "sql_admin_password" {
       vars.push(`variable "admin_ssh_public_key" {
   description = "SSH public key for Azure VM admin access"
   type        = string
-  default     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICloudCraftGeneratedKey cloudcraft@admin"
+  default     = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC/0ui7B45zZkM18ZUX8JLFf0MxHaIjnG/UL3bWtrXRo778I5+DkLGgucleDg75VxkqWBdGv2DZuRzdzRHFTPwOc9e1gRs2mCPXcGLIgRhZ4gquPPiU5j6glr4UrSebWfYINXXfrR/KRSJAAwqK+gNJOdUghUPScSK7CS2EEMWdwPnLEbgvynFeKmEfJilRSSRzpivg59WpBh5p1lU7cGu+7m85SCBcrGRCE65ggzTUP8eZuQeLCmNsV8QtuPj9dyO1Aixau15JRaHq2OWL8vgUqHok3bocw2difFfLbT42A2dXFbYgz50+6fltIvdflqeuJlM4AvFrIRFhb1rBqXAB cloudcraft@admin"
 }`);
     }
 
