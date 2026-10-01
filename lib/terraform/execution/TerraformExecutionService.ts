@@ -34,6 +34,7 @@ import { runTerraform } from './cli';
 import { renderBackendConfig } from './backendConfig';
 import { assertSafeHcl } from '@/lib/engines/terraform/hclSafety';
 import { terraformSecretVars } from './secretVars';
+import { decideAutoUnlock, describeHeldLock, isStateLockError, type LockedOperation } from './stateLock';
 import { evaluatePlanGuardrails, PlanGuardrailError, type PlanJsonForGuardrails } from './planGuardrails';
 import { savePlan, getPlan, deletePlan, planTtlMs } from './planStore';
 import type { PlanRecord, PlanResourceAction, PlanSummary, TerraformStateBackendConfig } from './types';
@@ -95,32 +96,32 @@ function toResourceMap(
   return { nodes: canvasNodes, edges: canvasEdges };
 }
 
+/**
+ * Runs a terraform step; if the remote state is locked it explains who holds the lock. It only clears the lock itself
+ * when that is provably safe (see stateLock.ts: our own machine, older than any run we allow, never for a destroy) —
+ * breaking a lock held by a live run elsewhere can corrupt shared state.
+ */
 async function handleStateLockAndRetry<T>(
   fn: () => Promise<T>,
   workDir: string,
   env: Record<string, string>,
+  operation: LockedOperation,
 ): Promise<T> {
   try {
     return await fn();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (
-      msg.includes('Error acquiring the state lock') ||
-      msg.includes('state blob is already locked') ||
-      msg.includes('Lock Info:')
-    ) {
-      const match = msg.match(/ID:\s*([a-f0-9-]+)/i) || msg.match(/ID:\s*([^\s\r\n,]+)/i);
-      if (match && match[1]) {
-        const lockId = match[1].trim();
-        try {
-          await runTerraform(['force-unlock', '-force', lockId], { cwd: workDir, env });
-          return await fn();
-        } catch (unlockErr) {
-          console.warn('[TerraformExecution] Auto-unlock attempt failed:', unlockErr);
-        }
-      }
+    if (!isStateLockError(msg)) throw err;
+    const decision = decideAutoUnlock(msg, operation);
+    if (!decision.unlock) throw new Error(describeHeldLock(msg, decision));
+    try {
+      console.warn(`[TerraformExecution] Releasing a stale state lock of our own (${decision.id}) before retrying ${operation}.`);
+      await runTerraform(['force-unlock', '-force', decision.id], { cwd: workDir, env });
+      return await fn();
+    } catch (unlockErr) {
+      console.warn('[TerraformExecution] Auto-unlock attempt failed:', unlockErr instanceof Error ? unlockErr.message : String(unlockErr));
+      throw err;
     }
-    throw err;
   }
 }
 
@@ -213,6 +214,7 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
         }),
       workDir,
       env,
+      'plan',
     );
 
     const { stdout: planJsonRaw } = await runTerraform(['show', '-json', 'tfplan'], { cwd: workDir, env });
@@ -327,6 +329,7 @@ export async function runApply(planId: string, orgId: string): Promise<{ message
         }),
       record.workDir,
       env,
+      'apply',
     );
     return {
       message: `Applied ${record.summary.toAdd} new and ${record.summary.toChange} changed resource(s).`,
@@ -420,6 +423,7 @@ export async function executeDestroy(input: ExecuteDestroyInput): Promise<{ mess
             }),
           workDir,
           env,
+          'destroy',
         );
         break; // Successfully destroyed all resources
       } catch (err) {
