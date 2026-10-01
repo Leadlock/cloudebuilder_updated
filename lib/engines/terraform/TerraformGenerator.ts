@@ -2589,10 +2589,13 @@ data "azurerm_network_security_group" "${name}" {
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
     const tagsBlock = tagLines.length > 0 ? `\n  tags = {\n${tagLines.join('\n')}\n  }` : '';
+    let serverName = ((cfg['serverName'] as string) || `${name}-server`).toLowerCase().replace(/_/g, '-').replace(/[^a-z0-9-]/g, '');
+    serverName = serverName.replace(/^-+|-+$/g, '').slice(0, 63);
+    if (!serverName) serverName = 'sql-server';
 
     const parts: string[] = [
       `resource "azurerm_mssql_server" "${name}_server" {
-  name                         = "${name}-server"
+  name                         = "${serverName}"
   resource_group_name          = ${rgName}
   location                     = ${rgLoc}
   version                      = "12.0"
@@ -2602,7 +2605,7 @@ data "azurerm_network_security_group" "${name}" {
   public_network_access_enabled = ${cfg['publicNetworkAccess'] === true}${tagsBlock}
 }`,
       `resource "azurerm_mssql_database" "${name}" {
-  name                        = "${name}"
+  name                        = "${(cfg['databaseName'] as string) || name}"
   server_id                   = azurerm_mssql_server.${name}_server.id
   max_size_gb                 = ${cfg['maxSizeGb'] ?? 250}
   sku_name                    = "${cfg['tier'] ?? 'S0'}"
@@ -2642,10 +2645,13 @@ data "azurerm_network_security_group" "${name}" {
   private _cosmosDb(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+    let cosmosName = ((cfg['accountName'] as string) || name).toLowerCase().replace(/_/g, '-').replace(/[^a-z0-9-]/g, '');
+    cosmosName = cosmosName.replace(/^-+|-+$/g, '').slice(0, 44);
+    if (!cosmosName) cosmosName = 'cosmos-account';
 
     const lines: string[] = [
       `resource "azurerm_cosmosdb_account" "${name}" {`,
-      `  name                          = "${name}"`,
+      `  name                          = "${cosmosName}"`,
       `  resource_group_name           = ${rgName}`,
       `  location                      = ${rgLoc}`,
       `  offer_type                    = "Standard"`,
@@ -2686,6 +2692,9 @@ data "azurerm_network_security_group" "${name}" {
     const planType = (cfg['planType'] as string) || 'Y1';
     const skuName = planType === 'Y1' ? 'Y1' : planType;
     const storageName = `${name}fnsa`.replace(/[^a-z0-9]/gi, '').toLowerCase().substring(0, 24);
+    let appName = ((cfg['name'] as string) || name).toLowerCase().replace(/_/g, '-').replace(/[^a-z0-9-]/g, '');
+    appName = appName.replace(/^-+|-+$/g, '').slice(0, 60);
+    if (!appName) appName = 'func-app';
     const runtime = (cfg['runtime'] as string) || 'node';
     const runtimeVersion = (cfg['runtimeVersion'] as string) || '20';
     const appSettings = (cfg['appSettings'] && typeof cfg['appSettings'] === 'object') ? cfg['appSettings'] as Record<string, string> : {};
@@ -2707,7 +2716,7 @@ data "azurerm_network_security_group" "${name}" {
   }
 }`,
       `resource "azurerm_service_plan" "${name}_plan" {
-  name                = "${name}-plan"
+  name                = "${appName}-plan"
   resource_group_name = ${rgName}
   location            = ${rgLoc}
   os_type             = "${isWindows ? 'Windows' : 'Linux'}"
@@ -2717,7 +2726,7 @@ data "azurerm_network_security_group" "${name}" {
 
     const appLines: string[] = [
       `resource "${resourceType}" "${name}" {`,
-      `  name                       = "${name}"`,
+      `  name                       = "${appName}"`,
       `  resource_group_name        = ${rgName}`,
       `  location                   = ${rgLoc}`,
       `  service_plan_id            = azurerm_service_plan.${name}_plan.id`,
@@ -2752,13 +2761,16 @@ data "azurerm_network_security_group" "${name}" {
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
     const autoscale = cfg['enableAutoScaling'] === true;
+    let dnsPrefix = ((cfg['dnsPrefix'] as string) || name).toLowerCase().replace(/_/g, '-').replace(/[^a-z0-9-]/g, '');
+    dnsPrefix = dnsPrefix.replace(/^-+|-+$/g, '').slice(0, 54);
+    if (!dnsPrefix) dnsPrefix = 'aks-cluster';
 
     const lines: string[] = [
       `resource "azurerm_kubernetes_cluster" "${name}" {`,
       `  name                = "${name}"`,
       `  resource_group_name = ${rgName}`,
       `  location            = ${rgLoc}`,
-      `  dns_prefix          = "${cfg['dnsPrefix'] ?? name}"`,
+      `  dns_prefix          = "${dnsPrefix}"`,
       `  sku_tier            = "${cfg['skuTier'] ?? 'Free'}"`,
       `  private_cluster_enabled = ${cfg['privateClusterEnabled'] === true}`,
     ];
@@ -2796,6 +2808,9 @@ data "azurerm_network_security_group" "${name}" {
     const isWindows = cfg['osType'] === 'Windows';
     const resourceType = isWindows ? 'azurerm_windows_web_app' : 'azurerm_linux_web_app';
     const skuName = (cfg['skuName'] as string) || 'B1';
+    let appName = ((cfg['name'] as string) || name).toLowerCase().replace(/_/g, '-').replace(/[^a-z0-9-]/g, '');
+    appName = appName.replace(/^-+|-+$/g, '').slice(0, 60);
+    if (!appName) appName = 'web-app';
     const runtime = (cfg['runtime'] as string) || 'node';
     const runtimeVersion = (cfg['runtimeVersion'] as string) || '20-lts';
     const appSettings = (cfg['appSettings'] && typeof cfg['appSettings'] === 'object') ? cfg['appSettings'] as Record<string, string> : {};
@@ -2810,7 +2825,7 @@ data "azurerm_network_security_group" "${name}" {
 
     const parts: string[] = [
       `resource "azurerm_service_plan" "${name}_plan" {
-  name                = "${name}-plan"
+  name                = "${appName}-plan"
   resource_group_name = ${rgName}
   location            = ${rgLoc}
   os_type             = "${isWindows ? 'Windows' : 'Linux'}"
@@ -2820,7 +2835,7 @@ data "azurerm_network_security_group" "${name}" {
 
     const appLines: string[] = [
       `resource "${resourceType}" "${name}" {`,
-      `  name                       = "${name}"`,
+      `  name                       = "${appName}"`,
       `  resource_group_name        = ${rgName}`,
       `  location                   = ${rgLoc}`,
       `  service_plan_id            = azurerm_service_plan.${name}_plan.id`,
@@ -2906,10 +2921,13 @@ ${tagLines.join('\n')}
   private _keyVault(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+    let kvName = ((cfg['name'] as string) || name).toLowerCase().replace(/_/g, '-').replace(/[^a-z0-9-]/g, '');
+    kvName = kvName.replace(/^-+|-+$/g, '').slice(0, 24);
+    if (!kvName) kvName = 'kv-app';
 
     const lines: string[] = [
       `resource "azurerm_key_vault" "${name}" {`,
-      `  name                       = "${name}"`,
+      `  name                       = "${kvName}"`,
       `  resource_group_name        = ${rgName}`,
       `  location                   = ${rgLoc}`,
       `  tenant_id                  = data.azurerm_client_config.current.tenant_id`,
@@ -2930,9 +2948,12 @@ ${tagLines.join('\n')}
   private _redis(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+    let redisName = ((cfg['name'] as string) || name).toLowerCase().replace(/_/g, '-').replace(/[^a-z0-9-]/g, '');
+    redisName = redisName.replace(/^-+|-+$/g, '').slice(0, 63);
+    if (!redisName) redisName = 'redis-cache';
 
     return `resource "azurerm_redis_cache" "${name}" {
-  name                          = "${name}"
+  name                          = "${redisName}"
   resource_group_name           = ${rgName}
   location                      = ${rgLoc}
   capacity                      = ${cfg['capacity'] ?? 1}
@@ -3102,6 +3123,7 @@ ${tagLines.join('\n')}
   cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.${name}_endpoint.id
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.${name}_origin_group.id
   cdn_frontdoor_origin_ids      = [azurerm_cdn_frontdoor_origin.${name}_origin.id]
+  patterns_to_match             = ${JSON.stringify(cfg['patternsToMatch'] ?? ["/*"])}
   supported_protocols           = ${cfg['httpsOnly'] !== false ? '["Https"]' : '["Http", "Https"]'}
   https_redirect_enabled        = ${cfg['httpsOnly'] !== false}
   cache {
