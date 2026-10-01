@@ -9,7 +9,7 @@ import { extractIdentity } from '@/lib/api/auth';
 import { checkRateLimit, peekRateLimit } from '@/lib/api/rateLimit';
 import { planLimit, planRateKey } from '@/lib/terraform/execution/limits';
 import { acquireProjectLock, isProjectLocked, releaseProjectLock } from '@/lib/terraform/execution/projectLock';
-import { GET as statusGet } from '@/app/api/projects/[id]/terraform/status/route';
+import { GET as statusGet, _clearStatusAccessCacheForTests } from '@/app/api/projects/[id]/terraform/status/route';
 
 const env = process.env as Record<string, string | undefined>;
 const saved: Record<string, string | undefined> = {};
@@ -73,7 +73,7 @@ describe('isProjectLocked', () => {
 describe('GET /api/projects/[id]/terraform/status', () => {
   const call = (projectId = 'proj-s') => statusGet(new NextRequest(`http://localhost/api/projects/${projectId}/terraform/status`), { params: Promise.resolve({ id: projectId }) });
   const signedIn = (id: string) => (extractIdentity as jest.Mock).mockReturnValue({ userId: id, role: 'admin', orgIds: [] });
-  beforeEach(() => { mockOrgRole.mockReset(); mockResolveOrg.mockReset(); mockResolveArch.mockReset(); mockResolveOrg.mockResolvedValue('org-s'); mockOrgRole.mockResolvedValue('owner'); mockResolveArch.mockResolvedValue({ arch: {}, project: {} }); });
+  beforeEach(() => { _clearStatusAccessCacheForTests(); mockOrgRole.mockReset(); mockResolveOrg.mockReset(); mockResolveArch.mockReset(); mockResolveOrg.mockResolvedValue('org-s'); mockOrgRole.mockResolvedValue('owner'); mockResolveArch.mockResolvedValue({ arch: {}, project: {} }); });
 
   it('requires a signed-in org member and an existing project', async () => {
     (extractIdentity as jest.Mock).mockReturnValue(null);
@@ -89,6 +89,7 @@ describe('GET /api/projects/[id]/terraform/status', () => {
     const body = await (await call()).json() as { data: { enabled: boolean; reason?: string } };
     expect(body.data.enabled).toBe(false);
     expect(body.data.reason).toMatch(/not enabled/i);
+    _clearStatusAccessCacheForTests();                       // the server's settings just changed; a real change shows within 30 s
     env.CLOUDCRAFT_TERRAFORM_ORG_IDS = 'org-s'; env.CLOUDCRAFT_TERRAFORM_DISABLED = '1';
     const off = await (await call()).json() as { data: { enabled: boolean; reason?: string } };
     expect(off.data.reason).toMatch(/switched off/i);
@@ -105,6 +106,23 @@ describe('GET /api/projects/[id]/terraform/status', () => {
       expect(body.data.plans).toMatchObject({ limit: 6, remaining: 4, windowMinutes: 10 });
       expect(body.data.plans.resetsInSeconds).toBeGreaterThan(590);
     }
+  });
+
+  it('remembers a successful access check for a short time (the panel polls every 20 s), but never a refusal, and always reads the numbers fresh', async () => {
+    signedIn('u-cache'); env.CLOUDCRAFT_TERRAFORM_ORG_IDS = 'org-s';
+    const id = `proj-cache-${Date.now()}`;
+    expect((await call(id)).status).toBe(200);
+    expect(mockResolveOrg).toHaveBeenCalledTimes(1);
+    for (let i = 0; i < 3; i++) expect((await call(id)).status).toBe(200);
+    expect(mockResolveOrg).toHaveBeenCalledTimes(1);                               // three more polls, no more database lookups
+    const { limit, windowMs } = planLimit();
+    checkRateLimit(planRateKey('u-cache'), limit, windowMs);
+    expect((await (await call(id)).json() as { data: { plans: { remaining: number } } }).data.plans.remaining).toBe(5);   // plans left is never cached
+
+    mockOrgRole.mockResolvedValue(null);                                           // a refusal is not remembered
+    expect((await call(`${id}-other`)).status).toBe(403);
+    mockOrgRole.mockResolvedValue('owner');
+    expect((await call(`${id}-other`)).status).toBe(200);
   });
 
   it('shows whether an apply is running for this project, and only this project', async () => {

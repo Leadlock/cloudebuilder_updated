@@ -55,19 +55,19 @@ const SaveDraftSchema = z.object({
   revision:     z.number().optional(),
 });
 
-function resolveDraftKey(req: NextRequest, identityUserId?: string): string {
-  const customKey = req.nextUrl.searchParams.get('key');
-  if (customKey) return customKey;
-  if (identityUserId) return `usr-${identityUserId}`;
-  const cookieSession = req.cookies.get('cloudcraft_session')?.value;
-  if (cookieSession) return `sess-${cookieSession.slice(0, 16)}`;
-  return 'default-user-draft';
+/**
+ * A draft belongs to the signed-in user, full stop. (It used to accept a `?key=` that named ANY draft, and to share one
+ * draft between everyone who was not signed in — so anyone could read, overwrite or delete another user's draft.)
+ */
+function resolveDraftKey(identityUserId: string): string {
+  return `usr-${identityUserId}`;
 }
 
 export async function GET(req: NextRequest) {
   try {
     const identity = extractIdentity(req);
-    const key = resolveDraftKey(req, identity?.userId);
+    if (!identity) return unauthorized();
+    const key = resolveDraftKey(identity.userId);
     const draft = await draftRepository.getDraft(key);
     return ok(draft);
   } catch (err) {
@@ -79,14 +79,15 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const identity = extractIdentity(req);
-    const key = resolveDraftKey(req, identity?.userId);
+    if (!identity) return unauthorized();
+    const key = resolveDraftKey(identity.userId);
 
     const parsed = await parseBody(req, SaveDraftSchema);
     if (!parsed.ok) return parsed.response;
     const body = parsed.data;
 
     const result = await draftRepository.saveDraft(key, {
-      userId: identity?.userId,
+      userId: identity.userId,
       nodes: body.nodes as CanvasNode[],
       edges: body.edges as CanvasEdge[],
       providerMode: body.providerMode as ProviderMode | undefined,
@@ -126,7 +127,8 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const identity = extractIdentity(req);
-    const key = resolveDraftKey(req, identity?.userId);
+    if (!identity) return unauthorized();
+    const key = resolveDraftKey(identity.userId);
     const cleared = await draftRepository.clearDraft(key);
     return ok({ cleared });
   } catch (err) {

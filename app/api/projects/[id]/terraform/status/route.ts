@@ -13,8 +13,14 @@ import { terraformExecutionDenied } from '@/lib/api/terraformAccess';
 import { peekRateLimit } from '@/lib/api/rateLimit';
 import { planLimit, planRateKey } from '@/lib/terraform/execution/limits';
 import { isProjectLocked } from '@/lib/terraform/execution/projectLock';
+import { TtlCache } from '@/lib/api/ttlCache';
 
 export const dynamic = 'force-dynamic';
+
+const accessCache = new TtlCache<{ denied: string | null }>(30_000, 1000);
+
+/** For tests. */
+export function _clearStatusAccessCacheForTests(): void { accessCache.clear(); }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -22,13 +28,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!identity) return unauthorized();
     const { id: projectId } = await params;
 
-    const orgId = await resolveOrgId(req, identity.userId);
-    if (!orgId) return badRequest('orgId required');
-    if (!(await getOrgRole(identity.userId, orgId))) return forbidden();
-    const ctx = await resolveArchitecture(projectId, orgId, new URL(req.url).searchParams.get('env') ?? 'production');
-    if ('error' in ctx && ctx.error === 'project_not_found') return notFound('Project');
-
-    const denied = await terraformExecutionDenied(identity.userId, orgId);
+    // The panel polls this every 20 seconds, and the access checks are several database round trips. They only change when
+    // someone is added to or removed from an organisation, so a successful check is remembered for 30 seconds. A refusal is
+    // never remembered. (The numbers below — plans left, apply running — are always read fresh.)
+    const env = new URL(req.url).searchParams.get('env') ?? 'production';
+    const key = `${identity.userId}:${projectId}:${env}:${new URL(req.url).searchParams.get('orgId') ?? ''}`;
+    let access = accessCache.get(key);
+    if (!access) {
+      const orgId = await resolveOrgId(req, identity.userId);
+      if (!orgId) return badRequest('orgId required');
+      if (!(await getOrgRole(identity.userId, orgId))) return forbidden();
+      const ctx = await resolveArchitecture(projectId, orgId, env);
+      if ('error' in ctx && ctx.error === 'project_not_found') return notFound('Project');
+      access = { denied: await terraformExecutionDenied(identity.userId, orgId) };
+      accessCache.set(key, access);
+    }
+    const { denied } = access;
     const { limit, windowMs, windowMinutes } = planLimit();
     const budget = peekRateLimit(planRateKey(identity.userId), limit, windowMs);
 

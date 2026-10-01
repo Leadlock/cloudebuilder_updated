@@ -41,7 +41,7 @@ export default function AiReviewCard({ nodes, edges, mode = 'general', onReview 
   const [review, setReview] = useState<AnyReview | null>(null);
   const copy = COPY[mode];
 
-  async function run(withQuestion: boolean) {
+  async function run(withQuestion: boolean, refresh = false) {
     setLoading(true);
     setError(null);
     try {
@@ -49,7 +49,7 @@ export default function AiReviewCard({ nodes, edges, mode = 'general', onReview 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ nodes, edges, mode, ...(withQuestion && question.trim() ? { question: question.trim() } : {}) }),
+        body: JSON.stringify({ nodes, edges, mode, ...(refresh ? { refresh: true } : {}), ...(withQuestion && question.trim() ? { question: question.trim() } : {}) }),
       });
       const body = await res.json();
       if (!res.ok || !body.ok) throw new Error(body?.error?.message || 'The AI review failed. Please try again.');
@@ -71,7 +71,7 @@ export default function AiReviewCard({ nodes, edges, mode = 'general', onReview 
           <span className="text-[10px] px-2 py-0.5 rounded-full bg-fuchsia-900/30 text-fuchsia-300">grounded in CloudCraft&apos;s analysis</span>
         </div>
         <button
-          onClick={() => run(false)}
+          onClick={() => run(false, Boolean(review))}   // "Review again" asks the model afresh; the first review may come from the cache
           disabled={loading}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
         >

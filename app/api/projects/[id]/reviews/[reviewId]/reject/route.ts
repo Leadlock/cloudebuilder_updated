@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { ok, unauthorized, forbidden, badRequest, parseBody } from '@/lib/api/response';
+import { ok, unauthorized, forbidden, badRequest, notFound, parseBody } from '@/lib/api/response';
 import { extractIdentity } from '@/lib/api/auth';
+import { requireProjectAccess } from '@/lib/api/projectAccess';
 import { ArchitectureReviewService } from '@/lib/services/ArchitectureReviewService';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +23,11 @@ export async function POST(
       return forbidden('Access denied: Only Administrators can reject architecture reviews.');
     }
 
-    const { reviewId } = await params;
+    const { id: projectId, reviewId } = await params;
+    const access = await requireProjectAccess(req, identity.userId, projectId, { adminOnly: true });
+    if ('response' in access) return access.response;
+    // The review must belong to THIS project: a review id alone must never let a caller act on another project's review.
+    if (!ArchitectureReviewService.listReviews(projectId).some((r) => r.id === reviewId)) return notFound('Review');
     const parsed = await parseBody(req, RejectSchema);
     if (!parsed.ok) return parsed.response;
 

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ok, unauthorized, forbidden, badRequest, internalError, parseBody } from '@/lib/api/response';
 import { extractIdentity } from '@/lib/api/auth';
+import { requireProjectAccess } from '@/lib/api/projectAccess';
 import { ArchitectureReviewService } from '@/lib/services/ArchitectureReviewService';
 import type { CanvasNode, CanvasEdge } from '@/types';
 
@@ -29,6 +30,8 @@ export async function POST(
     }
 
     const { id: projectId } = await params;
+    const access = await requireProjectAccess(req, identity.userId, projectId, { adminOnly: true });
+    if ('response' in access) return access.response;
     const parsed = await parseBody(req, DeploySchema);
     if (!parsed.ok) return parsed.response;
 

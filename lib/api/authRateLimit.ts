@@ -10,8 +10,13 @@
  * throttles repeated failures per user on its side.
  *
  * Counters live in this server process (see rateLimit.ts), so a deployment with several instances multiplies each limit
- * by the number of instances; a shared store would be needed for an exact global limit. The client address comes from
- * X-Forwarded-For, which is only trustworthy behind a proxy that sets it — the per-pair limits do not depend on it.
+ * by the number of instances; a shared store would be needed for an exact global limit.
+ *
+ * The client address comes from X-Forwarded-For, but only the part a trusted proxy wrote: each proxy appends the address
+ * it received the request from, so the entries on the LEFT are whatever the caller chose to send and are worthless. With
+ * CLOUDCRAFT_TRUSTED_PROXY_HOPS proxies in front (default 1, e.g. a load balancer), the real client is that many entries
+ * from the RIGHT. Set it to 2 behind a CDN plus a load balancer, and to 0 when the app is exposed directly (the header is
+ * then ignored and everyone shares one address bucket — the per-email limits still apply).
  */
 import type { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, peekRateLimit, resetRateLimit } from './rateLimit';
@@ -30,9 +35,20 @@ export const AUTH_LIMITS = {
   inviteIp:        { limit: 20, windowMs: 15 * MIN },
 } as const;
 
+export function trustedProxyHops(): number {
+  const raw = process.env.CLOUDCRAFT_TRUSTED_PROXY_HOPS;
+  if (raw === undefined || raw.trim() === '') return 1;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 && n <= 10 ? n : 1;
+}
+
 export function clientIp(req: NextRequest): string {
-  const forwarded = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-  return forwarded || req.headers.get('x-real-ip')?.trim() || 'unknown';
+  const hops = trustedProxyHops();
+  if (hops === 0) return 'unknown';
+  const chain = (req.headers.get('x-forwarded-for') ?? '').split(',').map((p) => p.trim()).filter(Boolean);
+  // Fewer entries than trusted proxies means the header did not come through them all: do not trust it.
+  const forwarded = chain.length >= hops ? chain[chain.length - hops] : undefined;
+  return forwarded || (hops >= 1 ? req.headers.get('x-real-ip')?.trim() : undefined) || 'unknown';
 }
 
 const norm = (email: string) => email.trim().toLowerCase();

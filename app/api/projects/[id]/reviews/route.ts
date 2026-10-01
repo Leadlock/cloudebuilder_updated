@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ok, created, unauthorized, badRequest, internalError, parseBody } from '@/lib/api/response';
 import { extractIdentity } from '@/lib/api/auth';
+import { requireProjectAccess } from '@/lib/api/projectAccess';
 import { ArchitectureReviewService } from '@/lib/services/ArchitectureReviewService';
 import type { CanvasNode, CanvasEdge } from '@/types';
 
@@ -28,6 +29,8 @@ export async function GET(
     if (!identity) return unauthorized('Authentication required');
 
     const { id: projectId } = await params;
+    const access = await requireProjectAccess(req, identity.userId, projectId);
+    if ('response' in access) return access.response;
     const env = req.nextUrl.searchParams.get('env') ?? undefined;
 
     const reviews = ArchitectureReviewService.listReviews(projectId, env);
@@ -52,6 +55,8 @@ export async function POST(
     if (!identity) return unauthorized('Authentication required');
 
     const { id: projectId } = await params;
+    const access = await requireProjectAccess(req, identity.userId, projectId);
+    if ('response' in access) return access.response;
     const parsed = await parseBody(req, SubmitReviewSchema);
     if (!parsed.ok) return parsed.response;
 
