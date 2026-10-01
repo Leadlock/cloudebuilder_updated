@@ -278,7 +278,7 @@ export async function runApply(planId: string, orgId: string): Promise<{ message
     const { stdout } = await runTerraform(['apply', '-input=false', '-no-color', 'tfplan'], {
       cwd: record.workDir,
       env,
-      timeoutMs: 20 * 60 * 1000,
+      timeoutMs: 45 * 60 * 1000,
     });
     return {
       message: `Applied ${record.summary.toAdd} new and ${record.summary.toChange} changed resource(s).`,
