@@ -25,6 +25,10 @@ const ContainerNode = memo(({ data, selected }: NodeProps<ContainerNodeData>) =>
   const provider = data.provider ?? (data.resourceType.startsWith('azure_') ? 'azure' : 'aws');
   const isImported = data.importState === 'imported' || data.config?.imported === true || data.config?.importState === 'imported';
   
+  const rawStatus = (data.config?.status as string) || (data.config?.cloudStatus as string) || (data.config?.state as string) || '';
+  const normalizedStatus = rawStatus ? String(rawStatus).toLowerCase().trim() : '';
+  const isDeleted = normalizedStatus === 'deleted' || normalizedStatus === 'terminated';
+
   const cidr = (data.config?.cidrBlock as string) || (data.config?.addressPrefix as string) || (data.config?.addressSpace as string) || '';
   const az = (data.config?.availabilityZone as string) || '';
   const isPublic = data.config?.mapPublicIpOnLaunch === true || (data.label || '').toLowerCase().includes('public');
@@ -42,7 +46,8 @@ const ContainerNode = memo(({ data, selected }: NodeProps<ContainerNodeData>) =>
         isVpc
           ? 'bg-purple-950/15 border-2 border-purple-500/40 shadow-2xl backdrop-blur-[2px]'
           : 'bg-emerald-950/10 border-2 border-dashed border-emerald-500/50 shadow-md',
-        isImported && '!border-cyan-500/40',
+        isDeleted && '!opacity-50 !border-slate-700 bg-slate-950/80 grayscale',
+        isImported && !isDeleted && '!border-cyan-500/40',
         selected && 'ring-2 ring-blue-400 border-blue-400 shadow-blue-500/20',
         data.isDragTarget && (data.isValidDrop !== false
           ? '!border-cyan-400 !ring-4 !ring-cyan-400/30 !bg-cyan-950/25'
@@ -67,7 +72,7 @@ const ContainerNode = memo(({ data, selected }: NodeProps<ContainerNodeData>) =>
             />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-white font-bold text-xs tracking-tight truncate max-w-[180px]">
                 {data.label}
               </span>
@@ -86,6 +91,11 @@ const ContainerNode = memo(({ data, selected }: NodeProps<ContainerNodeData>) =>
                 >
                   <span className="w-1 h-1 rounded-full bg-cyan-400 animate-pulse" />
                   Imported
+                </span>
+              )}
+              {isDeleted && (
+                <span className="inline-flex items-center gap-1 text-[8px] font-bold px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-600 uppercase tracking-wider shrink-0">
+                  Deleted
                 </span>
               )}
             </div>

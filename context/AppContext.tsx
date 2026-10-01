@@ -11,7 +11,6 @@ import { calculateCosts } from '@/lib/analysis';
 import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
 import { scoreArchitecture } from '@/lib/generator';
 import { v4 as uuidv4 } from 'uuid';
-import { rekeyGraph } from '@/lib/domain/instantiateTemplate';
 import { applyAutoFix } from '@/lib/engines/assessment/autofix';
 import { adaptiveScaleEngine } from '@/lib/engines/capacity/AdaptiveScaleEngine';
 import { apiArchitectureService } from '@/lib/services/ApiArchitectureService';
@@ -21,6 +20,7 @@ import { setActiveProjectId as setCostProjectId, setActiveEnvironment as setCost
 import { setActiveProjectId as setTerraformProjectId, setActiveEnvironment as setTerraformEnvironment } from '@/lib/services/ApiTerraformService';
 import { setActiveProjectId as setAdvisorProjectId, setActiveEnvironment as setAdvisorEnvironment } from '@/lib/services/ApiAdvisorService';
 import { setActiveProjectId as setWaProjectId, setActiveEnvironment as setWaEnvironment } from '@/lib/services/ApiWellArchitectedService';
+import { rekeyGraph } from '@/lib/domain/instantiateTemplate';
 
 import type { AuthUser } from '@/lib/api/authService';
 
@@ -66,7 +66,7 @@ type Action =
   | { type: 'TOGGLE_MOBILE_SIDEBAR' }
   | { type: 'CREATE_PROJECT'; name: string; provider: CloudProvider; nodes?: CanvasNode[]; edges?: CanvasEdge[] }
   | { type: 'DELETE_PROJECT'; id: string }
-  | { type: 'UPDATE_CANVAS'; nodes: CanvasNode[]; edges: CanvasEdge[] }
+  | { type: 'UPDATE_CANVAS'; nodes: CanvasNode[]; edges: CanvasEdge[]; bumpCanvasKey?: boolean; name?: string }
   | { type: 'UPDATE_NODE_CONFIG'; nodeId: string; config: Record<string, unknown>; label?: string }
   | { type: 'SAVE_PROJECT'; project: Project }
   | { type: 'SET_REGION'; region: Region }
@@ -238,7 +238,7 @@ function reducer(state: AppState, action: Action): AppState {
     case 'SET_CANVAS_MODE':
       return { ...state, activeCanvasMode: action.mode };
     case 'SET_ACTIVE_PROJECT':
-      return { ...state, activeProjectId: action.id, mobileSidebarOpen: false };
+      return { ...state, activeProjectId: action.id, mobileSidebarOpen: false, canvasKey: state.canvasKey + 1 };
     case 'TOGGLE_SIDEBAR':
       return { ...state, sidebarCollapsed: !state.sidebarCollapsed };
     case 'SET_MOBILE_SIDEBAR':
@@ -365,14 +365,19 @@ function reducer(state: AppState, action: Action): AppState {
 
     // ── UPDATE_CANVAS: sync nodes/edges for the active environment only ────────
     case 'UPDATE_CANVAS': {
-      const { draftProject, projects } = applyCanvasUpdate(state, () => ({
-        nodes: action.nodes,
-        edges: action.edges,
-      }));
+      const { draftProject, projects } = applyCanvasUpdate(
+        state,
+        () => ({
+          nodes: action.nodes,
+          edges: action.edges,
+        }),
+        action.name ? () => ({ name: action.name }) : undefined,
+      );
       return {
         ...state,
         draftProject,
         projects,
+        canvasKey: action.bumpCanvasKey ? state.canvasKey + 1 : state.canvasKey,
         autoSaveStatus: 'unsaved',
         architectureVersion: state.architectureVersion + 1,
       };
@@ -516,10 +521,21 @@ function reducer(state: AppState, action: Action): AppState {
     // ── PROMOTE_DRAFT_TO_PROJECT ──────────────────────────────────────────────
     case 'PROMOTE_DRAFT_TO_PROJECT': {
       const draft = state.draftProject;
+      const { nodes, edges } = draft.nodes.length > 0 ? rekeyGraph(draft.nodes, draft.edges) : { nodes: [], edges: [] };
       const newProject: Project = {
         ...draft,
         id: `proj-${Date.now()}`,
         name: action.name || draft.name,
+        nodes,
+        edges,
+        environments: {
+          ...draft.environments,
+          production: {
+            ...draft.environments.production,
+            nodes,
+            edges,
+          },
+        },
         isDraft: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -1020,16 +1036,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (_activeService.loadDraft) {
         try {
           const backendDraft = await _activeService.loadDraft();
-          if (!cancelled && backendDraft) {
-            if (Array.isArray(backendDraft.nodes) && backendDraft.nodes.length > 0) {
-              dispatch({
-                type: 'LOAD_DURABLE_DRAFT',
-                draft: backendDraft,
-              });
-              loadedFromBackend = true;
-            } else if (backendDraft.revision) {
-              dispatch({ type: 'UPDATE_DRAFT_REVISION', revision: backendDraft.revision });
-            }
+          if (!cancelled && backendDraft && Array.isArray(backendDraft.nodes) && backendDraft.nodes.length > 0) {
+            dispatch({
+              type: 'LOAD_DURABLE_DRAFT',
+              draft: backendDraft,
+            });
+            loadedFromBackend = true;
           }
         } catch {}
       }
@@ -1132,14 +1144,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (!project) return;
           const currentRevision = project.revision ?? 1;
 
-          const res = await _activeService.saveCanvas(
-            project.id,
-            project.nodes,
-            project.edges,
-            currentState.activeEnvironment,
-            currentRevision,
-            project.scaleProfile
-          );
+          let res;
+          try {
+            res = await _activeService.saveCanvas(
+              project.id,
+              project.nodes,
+              project.edges,
+              currentState.activeEnvironment,
+              currentRevision,
+              project.scaleProfile
+            );
+          } catch (saveErr: any) {
+            const isIdConflict =
+              saveErr?.code === 'RESOURCE_ID_CONFLICT' ||
+              saveErr?.message?.includes('RESOURCE_ID_CONFLICT') ||
+              saveErr?.message?.includes('already belong to another architecture');
+
+            const isRevConflict =
+              saveErr?.code === 'CONFLICT' ||
+              saveErr?.status === 409 ||
+              saveErr?.message?.includes('Revision conflict') ||
+              saveErr?.message?.includes('CONFLICT');
+
+            if (isRevConflict && (saveErr?.serverRevision !== undefined)) {
+              console.warn(`[AutoSave] Revision conflict (client: ${currentRevision}, server: ${saveErr.serverRevision}). Fast-forwarding revision and retrying...`);
+              dispatch({ type: 'UPDATE_PROJECT_REVISION', projectId: project.id, revision: saveErr.serverRevision });
+              res = await _activeService.saveCanvas(
+                project.id,
+                project.nodes,
+                project.edges,
+                currentState.activeEnvironment,
+                saveErr.serverRevision,
+                project.scaleProfile
+              );
+            } else if (isIdConflict && project.nodes.length > 0) {
+              console.warn('[AutoSave] Detected RESOURCE_ID_CONFLICT. Auto-rekeying canvas nodes to heal project persistence...');
+              const rekeyed = rekeyGraph(project.nodes, project.edges);
+              dispatch({ type: 'UPDATE_CANVAS', nodes: rekeyed.nodes, edges: rekeyed.edges });
+              res = await _activeService.saveCanvas(
+                project.id,
+                rekeyed.nodes,
+                rekeyed.edges,
+                currentState.activeEnvironment,
+                currentRevision,
+                project.scaleProfile
+              );
+            } else {
+              throw saveErr;
+            }
+          }
           if (seq !== saveSeqRef.current) {
             // Drop stale response
             return;
@@ -1168,17 +1221,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       } catch (error: any) {
         if (seq !== saveSeqRef.current) return;
-        const isConflict = error?.status === 409 || error?.code === 'CONFLICT' || error?.message?.includes('conflict') || error?.message?.includes('CONFLICT');
-
-        // For draft mode, if there is a draft revision desync on server (e.g. after refresh or multi-edit),
-        // automatically adopt the server's revision and retry save cleanly
-        if (isDraft && isConflict && error?.serverRevision) {
-          dispatch({ type: 'UPDATE_DRAFT_REVISION', revision: error.serverRevision });
-          pendingSaveRef.current = true;
-          return;
-        }
-
-        console.error('AutoSave failed:', error);
+        console.warn('[AutoSave] AutoSave notification:', error?.message || error);
+        const isConflict = error?.status === 409 || error?.code === 'CONFLICT' || error?.message?.includes('conflict');
         dispatch({
           type: 'SET_AUTO_SAVE_STATUS',
           status: 'error',
@@ -1281,12 +1325,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const created = currentState.projects[currentState.projects.length - 1];
         if (!created) break;
         const localId = created.id;
-        const initialNodes = created.nodes ?? action.nodes ?? [];
-        const initialEdges = created.edges ?? action.edges ?? [];
+        const initialNodes = created.nodes ?? [];
+        const initialEdges = created.edges ?? [];
         _activeService.createProject(action.name, action.provider).then(async (apiProject) => {
           // Persist the canvas to backend if initial nodes or edges exist
           if (initialNodes.length > 0 || initialEdges.length > 0) {
-            await _activeService.saveCanvas(apiProject.id, initialNodes, initialEdges, 'production', 1, created.scaleProfile).catch(() => {});
+            await _activeService.saveCanvas(apiProject.id, initialNodes, initialEdges, 'production', 1, created.scaleProfile).catch(async (err) => {
+              if (err?.code === 'RESOURCE_ID_CONFLICT' || err?.message?.includes('RESOURCE_ID_CONFLICT')) {
+                const rekeyed = rekeyGraph(initialNodes, initialEdges);
+                await _activeService.saveCanvas(apiProject.id, rekeyed.nodes, rekeyed.edges, 'production', 1, created.scaleProfile).catch(() => {});
+              }
+            });
           }
           const mergedProject: Project = {
             ...apiProject,
@@ -1335,7 +1384,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       case 'DELETE_PROJECT': {
-        _activeService.deleteProject(action.id).catch(() => {});
+        if (autoSaveTimerRef.current) {
+          clearTimeout(autoSaveTimerRef.current);
+          autoSaveTimerRef.current = null;
+        }
+        _activeService.deleteProject(action.id).catch((err) => {
+          console.error('[DELETE_PROJECT] API delete failed:', err);
+        });
         break;
       }
 

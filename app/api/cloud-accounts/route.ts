@@ -7,7 +7,7 @@ import { z } from 'zod';
 import {
   ok, created, badRequest, forbidden, unauthorized, internalError, parseBody,
 } from '@/lib/api/response';
-import { extractIdentity, getOrgRole } from '@/lib/api/auth';
+import { extractIdentity, getOrgRole, resolveOrgIds } from '@/lib/api/auth';
 import { orgRepository } from '@/lib/repositories/orgRepository';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
 
@@ -84,9 +84,17 @@ export async function GET(req: NextRequest) {
     if (!identity) return unauthorized();
 
     let orgId = req.nextUrl.searchParams.get('orgId') ?? '';
+    if (!orgId) {
+      const memberOrgIds = await resolveOrgIds(identity.userId);
+      orgId = memberOrgIds[0] ?? '';
+    }
     if (!orgId && process.env.NODE_ENV === 'development') {
-      const ctx = await orgRepository.ensureDevContext();
-      orgId = ctx.orgId;
+      try {
+        const ctx = await orgRepository.ensureDevContext();
+        orgId = ctx.orgId;
+      } catch {
+        orgId = 'dev-org-id';
+      }
     }
     if (!orgId) return badRequest('orgId query parameter is required');
 
@@ -112,14 +120,22 @@ export async function POST(req: NextRequest) {
     const body = parsed.data;
 
     let orgId = body.orgId ?? '';
+    if (!orgId) {
+      const memberOrgIds = await resolveOrgIds(identity.userId);
+      orgId = memberOrgIds[0] ?? '';
+    }
     if (!orgId && process.env.NODE_ENV === 'development') {
-      const ctx = await orgRepository.ensureDevContext();
-      orgId = ctx.orgId;
+      try {
+        const ctx = await orgRepository.ensureDevContext();
+        orgId = ctx.orgId;
+      } catch {
+        orgId = 'dev-org-id';
+      }
     }
     if (!orgId) return badRequest('orgId is required');
 
     const role = await getOrgRole(identity.userId, orgId);
-    if (!role) return forbidden();
+    if (!role || role === 'viewer') return forbidden();
 
     // Serialize credentials for storage — never log this value
     const credentialsJson = JSON.stringify(body.credentials);

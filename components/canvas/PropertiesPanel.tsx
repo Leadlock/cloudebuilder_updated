@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { CanvasNode, ConfigField } from '@/types';
 import { getResourceDefinition } from '@/lib/resources';
 import { CloudServiceIcon } from '@/components/icons/cloud/CloudServiceIcon';
-import { X, Settings, Network, Info, CheckCircle2, AlertTriangle, Layers, ShieldCheck, ShieldAlert, ExternalLink } from 'lucide-react';
+import { X, Settings, Network, Info, CheckCircle2, AlertTriangle, Layers, ShieldCheck, ShieldAlert, ExternalLink, Copy, Check } from 'lucide-react';
 import clsx from 'clsx';
 import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedService';
 import { useActiveProject } from '@/context/AppContext';
@@ -292,6 +292,27 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
   const cloudRegion = (node.config?.region as string) || node.region || '';
   const cloudSource = (node.config?.source as string) || (provider === 'azure' ? 'azure-arm' : 'aws-api');
 
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const rawStatus = (node.config?.status as string) || (node.config?.cloudStatus as string) || (node.config?.state as string) || '';
+  const normalizedStatus = rawStatus ? String(rawStatus).toLowerCase().trim() : '';
+  const cloudResourceId = (node.config?.resourceId as string) || (node.config?.providerResourceId as string) || (node.id.startsWith('node-') ? '' : node.id);
+
+  function copyToClipboard(text: string, key: string) {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopiedKey(key);
+        setTimeout(() => setCopiedKey(null), 2000);
+      }).catch(() => {});
+    }
+  }
+
+  const isDeleted = normalizedStatus === 'deleted' || normalizedStatus === 'terminated';
+  const isDeleting = normalizedStatus === 'deleting' || normalizedStatus === 'terminating';
+  const isStopped = normalizedStatus === 'stopped' || normalizedStatus === 'inactive' || normalizedStatus === 'paused';
+  const isPending = normalizedStatus === 'pending' || normalizedStatus === 'creating' || normalizedStatus === 'provisioning';
+  const isFailed = normalizedStatus === 'failed' || normalizedStatus === 'error';
+
   return (
     <div className="w-full sm:w-80 sm:relative fixed inset-y-0 right-0 z-40 sm:z-20 bg-slate-900 border-l border-slate-800 flex flex-col shrink-0 select-none shadow-2xl animate-in slide-in-from-right duration-150">
       {/* Header */}
@@ -305,7 +326,7 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <p className="text-white text-sm font-bold truncate leading-tight">{node.label}</p>
             {isContainer && (
               <span className="text-[9px] px-1 py-0.2 rounded bg-purple-500/20 text-purple-300 font-medium">
@@ -315,6 +336,21 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
             {isImported && (
               <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-medium">
                 Imported
+              </span>
+            )}
+            {normalizedStatus && (
+              <span
+                className={clsx(
+                  'text-[8px] font-bold px-1.5 py-0.2 rounded uppercase tracking-wider',
+                  isDeleted ? 'bg-slate-800 text-slate-300 border border-slate-600' :
+                  isDeleting ? 'bg-rose-950 text-rose-300 border border-rose-500/40 animate-pulse' :
+                  isStopped ? 'bg-amber-950 text-amber-300 border border-amber-500/40' :
+                  isPending ? 'bg-sky-950 text-sky-300 border border-sky-500/40 animate-pulse' :
+                  isFailed ? 'bg-rose-950 text-rose-300 border border-rose-500/40' :
+                  'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
+                )}
+              >
+                {normalizedStatus}
               </span>
             )}
           </div>
@@ -401,13 +437,71 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
         {isImported && (
-          <div className="bg-cyan-950/40 border border-cyan-500/40 rounded-xl p-3 flex items-start gap-2.5 text-xs text-cyan-300">
-            <AlertTriangle className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-cyan-200">Imported Infrastructure (Read-Only)</p>
-              <p className="text-[11px] text-cyan-400/80 mt-0.5 leading-relaxed">
-                Discovered live from {provider.toUpperCase()} ({cloudRegion || 'cloud'}). Protected against destructive modification or deletion.
-              </p>
+          <div className="p-3 rounded-xl bg-slate-950/80 border border-cyan-500/40 space-y-2.5 shadow-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-300">
+                  Live Cloud Resource
+                </span>
+              </div>
+              <span
+                className={clsx(
+                  'text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full flex items-center gap-1',
+                  isDeleted ? 'bg-slate-800 text-slate-300 border border-slate-600' :
+                  isDeleting ? 'bg-rose-950 text-rose-300 border border-rose-500/40 animate-pulse' :
+                  isStopped ? 'bg-amber-950 text-amber-300 border border-amber-500/40' :
+                  isPending ? 'bg-sky-950 text-sky-300 border border-sky-500/40 animate-pulse' :
+                  isFailed ? 'bg-rose-950 text-rose-300 border border-rose-500/40' :
+                  'bg-emerald-950/90 text-emerald-300 border border-emerald-500/40'
+                )}
+              >
+                <span className={clsx('w-1.5 h-1.5 rounded-full', isDeleted ? 'bg-slate-400' : isDeleting || isFailed ? 'bg-rose-400' : isStopped ? 'bg-amber-400' : isPending ? 'bg-sky-400' : 'bg-emerald-400')} />
+                {normalizedStatus || 'Available'}
+              </span>
+            </div>
+
+            {Boolean(cloudResourceId) && (
+              <div className="flex items-center justify-between text-xs bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                <div className="min-w-0 flex-1 pr-2">
+                  <span className="text-[10px] text-slate-500 block">Resource ID</span>
+                  <span className="font-mono text-xs text-white truncate block font-medium">
+                    {cloudResourceId}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(cloudResourceId, 'id')}
+                  className="p-1 rounded text-slate-400 hover:text-cyan-300 hover:bg-slate-800 transition-colors shrink-0"
+                  title="Copy Resource ID"
+                >
+                  {copiedKey === 'id' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            )}
+
+            {Boolean(cloudArn) && cloudArn !== cloudResourceId && (
+              <div className="flex items-start justify-between text-xs bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                <div className="min-w-0 flex-1 pr-2">
+                  <span className="text-[10px] text-slate-500 block">Cloud ARN</span>
+                  <span className="font-mono text-[10px] text-cyan-300 break-all leading-tight block">
+                    {cloudArn}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(cloudArn, 'arn')}
+                  className="p-1 rounded text-slate-400 hover:text-cyan-300 hover:bg-slate-800 transition-colors shrink-0 mt-1"
+                  title="Copy ARN"
+                >
+                  {copiedKey === 'arn' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
+              <span>Region: <strong className="text-slate-300 font-mono">{cloudRegion || 'us-east-1'}</strong></span>
+              <span>Provider: <strong className="text-amber-400">{provider.toUpperCase()}</strong></span>
             </div>
           </div>
         )}

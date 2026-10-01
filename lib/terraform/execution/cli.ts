@@ -13,6 +13,23 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
+import fs from 'fs';
+import path from 'path';
+
+function getTerraformBinary(): string {
+  if (process.env.TERRAFORM_BINARY_PATH && fs.existsSync(process.env.TERRAFORM_BINARY_PATH)) {
+    return process.env.TERRAFORM_BINARY_PATH;
+  }
+  const userHome = process.env.USERPROFILE || process.env.HOME || '';
+  if (userHome) {
+    const candidate = path.join(userHome, 'bin', process.platform === 'win32' ? 'terraform.exe' : 'terraform');
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return 'terraform';
+}
+
 export class TerraformNotInstalledError extends Error {
   constructor() {
     super('The `terraform` CLI is not installed or not on PATH. Install it from https://developer.hashicorp.com/terraform/install and ensure it is reachable from this process.');
@@ -38,11 +55,15 @@ export async function runTerraform(
   options: { cwd: string; env: Record<string, string>; timeoutMs?: number; allowExitCodes?: number[] },
 ): Promise<TerraformRunResult> {
   const { cwd, env, timeoutMs = 300_000, allowExitCodes = [0] } = options;
+  const binary = getTerraformBinary();
+  const binDir = path.dirname(binary);
+  const currentPath = process.env['PATH'] ?? '';
+  const fullPath = binDir !== '.' ? `${binDir}${path.delimiter}${currentPath}` : currentPath;
 
   try {
-    const { stdout, stderr } = await execFileAsync('terraform', args, {
+    const { stdout, stderr } = await execFileAsync(binary, args, {
       cwd,
-      env: { NODE_ENV: process.env['NODE_ENV'] ?? 'production', PATH: process.env['PATH'] ?? '', ...env },
+      env: { NODE_ENV: process.env['NODE_ENV'] ?? 'production', PATH: fullPath, ...env },
       timeout: timeoutMs,
       maxBuffer: 16 * 1024 * 1024,
     });

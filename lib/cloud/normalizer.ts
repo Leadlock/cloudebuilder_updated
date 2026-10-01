@@ -178,6 +178,8 @@ export function normalizeDiscoveredInfrastructure(
       Object.entries(r.configuration ?? {}).filter(([k, v]) => v !== undefined && v !== null && !DISCOVERY_BOOKKEEPING_KEYS.has(k)),
     );
 
+    const resourceStatus = (r.status || (r.configuration?.status as string) || (r.configuration?.state as string) || 'available').toLowerCase();
+
     const config: Record<string, unknown> = {
       ...r.configuration,
       originalResourceType: rawType,
@@ -186,7 +188,8 @@ export function normalizeDiscoveredInfrastructure(
       resourceId: (r as CloudResource).resourceId || rawId,
       arn,
       region: r.region,
-      status: r.status,
+      status: resourceStatus,
+      cloudStatus: resourceStatus,
       imported: true,
       importState: 'imported',
       source,

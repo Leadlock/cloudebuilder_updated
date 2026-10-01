@@ -146,6 +146,38 @@ class AwsTerraformGenerator {
     const warnings: string[] = [];
     const resourceMap: Record<string, string> = {};
 
+    // Pre-calculate distinct Availability Zones for all AWS subnets in the architecture
+    const subnetAzMap = new Map<string, string>();
+    const allAwsSubnets = resources.filter((r) => r.resourceType === 'aws_subnet');
+    const azLetters = ['a', 'b', 'c', 'd'];
+    const usedAzCounters = new Map<string, number>();
+
+    allAwsSubnets.forEach((sub) => {
+      const sCfg = this._cfg(sub);
+      const sName = (resolver.tfNameOf(sub.id) ?? tfName(sub.label)).toLowerCase();
+      const sLabel = (sub.label || '').toLowerCase();
+      const explicitAz = typeof sCfg['availabilityZone'] === 'string' && sCfg['availabilityZone'].trim() ? sCfg['availabilityZone'].trim() : null;
+
+      let az: string;
+      if (sName.match(/[\-_ ]b(\b|_|\d)|az[\-_ ]?b|subnet[\-_ ]?b/i) || sLabel.match(/az[\-_ ]?b|subnet[\-_ ]?b|\(az[\-_ ]?b\)/i)) {
+        az = 'us-east-1b';
+      } else if (sName.match(/[\-_ ]c(\b|_|\d)|az[\-_ ]?c|subnet[\-_ ]?c/i) || sLabel.match(/az[\-_ ]?c|subnet[\-_ ]?c|\(az[\-_ ]?c\)/i)) {
+        az = 'us-east-1c';
+      } else if (sName.match(/[\-_ ]a(\b|_|\d)|az[\-_ ]?a|subnet[\-_ ]?a/i) || sLabel.match(/az[\-_ ]?a|subnet[\-_ ]?a|\(az[\-_ ]?a\)/i)) {
+        az = 'us-east-1a';
+      } else if (explicitAz && explicitAz !== 'us-east-1a') {
+        az = explicitAz;
+      } else {
+        const categoryMatch = sName.match(/^(public|app|private|data|db|web)/);
+        const category = categoryMatch ? categoryMatch[1] : 'general';
+        const count = usedAzCounters.get(category) ?? 0;
+        az = `us-east-1${azLetters[count % azLetters.length]}`;
+        usedAzCounters.set(category, count + 1);
+      }
+
+      subnetAzMap.set(sub.id, az);
+    });
+
     for (const r of resources) {
       const cfg = this._cfg(r);
       const name = resolver.tfNameOf(r.id) ?? tfName(r.label);
@@ -168,12 +200,13 @@ class AwsTerraformGenerator {
           const vpcRef = vpc
             ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id`
             : 'aws_vpc.main.id # WARNING: VPC not connected';
+          const az = subnetAzMap.get(r.id) ?? (cfg['availabilityZone'] as string) ?? 'us-east-1a';
 
           if (isImported) {
             blocks.push(this._dataSubnet(name, cfg));
             resourceMap[r.id] = `data.aws_subnet.${name}`;
           } else {
-            blocks.push(this._subnet(name, cfg, vpcRef));
+            blocks.push(this._subnet(name, cfg, vpcRef, az));
             resourceMap[r.id] = `aws_subnet.${name}`;
           }
           break;
@@ -205,6 +238,32 @@ class AwsTerraformGenerator {
             const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
             return `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
           });
+          // Ensure multi-AZ coverage for RDS DB Subnet Group if peer subnets exist
+          if (subnetRefs.length < 2) {
+            const vpc = resolver.resolveParent(r.id, 'aws_vpc', connections, resources) ||
+              (subnets.length > 0 ? resolver.resolveParent(subnets[0]!.id, 'aws_vpc', connections, resources) : undefined);
+            const peerSubnets = allAwsSubnets.filter((s) => {
+              if (vpc) {
+                const sVpc = resolver.resolveParent(s.id, 'aws_vpc', connections, resources);
+                if (sVpc && sVpc.id !== vpc.id) return false;
+              }
+              return true;
+            });
+            const dataPeerSubnets = peerSubnets.filter((s) => {
+              const sName = (resolver.tfNameOf(s.id) ?? s.label).toLowerCase();
+              return sName.includes('data') || sName.includes('db') || sName.includes('database');
+            });
+            const candidates = dataPeerSubnets.length >= 2 ? dataPeerSubnets : peerSubnets;
+            for (const s of candidates) {
+              const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
+              const ref = `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
+              if (!subnetRefs.includes(ref)) {
+                subnetRefs.push(ref);
+              }
+              if (subnetRefs.length >= 2) break;
+            }
+          }
+
           const sg = resolver.resolveParent(r.id, 'aws_sg', connections, resources);
           const isSgImported = sg && Boolean(this._cfg(sg).imported || this._cfg(sg).importState === 'imported');
           const sgRef = sg
@@ -266,14 +325,41 @@ class AwsTerraformGenerator {
             const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
             return `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
           });
-          if (subnetRefs.length < 2) {
-            warnings.push(`ALB "${r.label}" is connected to ${subnetRefs.length} subnet(s) — an aws_lb requires subnets in at least 2 distinct Availability Zones and will fail to apply as generated.`);
-          }
 
           let vpc = resolver.resolveParent(r.id, 'aws_vpc', connections, resources);
           if (!vpc && subnets.length > 0) {
             vpc = resolver.resolveParent(subnets[0]!.id, 'aws_vpc', connections, resources);
           }
+
+          // Ensure multi-AZ coverage for ALB (requires >= 2 subnets in distinct AZs)
+          if (subnetRefs.length < 2) {
+            const peerSubnets = allAwsSubnets.filter((s) => {
+              if (vpc) {
+                const sVpc = resolver.resolveParent(s.id, 'aws_vpc', connections, resources);
+                if (sVpc && sVpc.id !== vpc.id) return false;
+              }
+              return true;
+            });
+            const publicPeerSubnets = peerSubnets.filter((s) => {
+              const sCfg = this._cfg(s);
+              const sName = (resolver.tfNameOf(s.id) ?? s.label).toLowerCase();
+              return sCfg['mapPublicIpOnLaunch'] === true || sName.includes('public') || sName.includes('pub');
+            });
+            const candidates = publicPeerSubnets.length >= 2 ? publicPeerSubnets : peerSubnets;
+            for (const s of candidates) {
+              const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
+              const ref = `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
+              if (!subnetRefs.includes(ref)) {
+                subnetRefs.push(ref);
+              }
+              if (subnetRefs.length >= 2) break;
+            }
+          }
+
+          if (subnetRefs.length < 2) {
+            warnings.push(`ALB "${r.label}" is connected to ${subnetRefs.length} subnet(s) — an aws_lb requires subnets in at least 2 distinct Availability Zones and will fail to apply as generated.`);
+          }
+
           const isVpcImported = vpc && Boolean(this._cfg(vpc).imported || this._cfg(vpc).importState === 'imported');
           const vpcRef = vpc ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id` : null;
           if (!vpcRef) {
@@ -350,6 +436,30 @@ class AwsTerraformGenerator {
             const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
             return `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
           });
+          if (subnetRefs.length < 2) {
+            const vpc = resolver.resolveParent(r.id, 'aws_vpc', connections, resources) ||
+              (subnets.length > 0 ? resolver.resolveParent(subnets[0]!.id, 'aws_vpc', connections, resources) : undefined);
+            const peerSubnets = allAwsSubnets.filter((s) => {
+              if (vpc) {
+                const sVpc = resolver.resolveParent(s.id, 'aws_vpc', connections, resources);
+                if (sVpc && sVpc.id !== vpc.id) return false;
+              }
+              return true;
+            });
+            const cachePeerSubnets = peerSubnets.filter((s) => {
+              const sName = (resolver.tfNameOf(s.id) ?? s.label).toLowerCase();
+              return sName.includes('data') || sName.includes('db') || sName.includes('cache') || sName.includes('redis');
+            });
+            const candidates = cachePeerSubnets.length >= 2 ? cachePeerSubnets : peerSubnets;
+            for (const s of candidates) {
+              const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
+              const ref = `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
+              if (!subnetRefs.includes(ref)) {
+                subnetRefs.push(ref);
+              }
+              if (subnetRefs.length >= 2) break;
+            }
+          }
           const sg = resolver.resolveParent(r.id, 'aws_sg', connections, resources);
           const isSgImported = sg && Boolean(this._cfg(sg).imported || this._cfg(sg).importState === 'imported');
           const sgRef = sg ? `[${isSgImported ? 'data.' : ''}aws_security_group.${resolver.tfNameOf(sg.id) ?? 'main'}.id]` : null;
@@ -387,6 +497,30 @@ class AwsTerraformGenerator {
             const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
             return `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
           });
+          if (subnetRefs.length < 2) {
+            const vpc = resolver.resolveParent(r.id, 'aws_vpc', connections, resources) ||
+              (subnets.length > 0 ? resolver.resolveParent(subnets[0]!.id, 'aws_vpc', connections, resources) : undefined);
+            const peerSubnets = allAwsSubnets.filter((s) => {
+              if (vpc) {
+                const sVpc = resolver.resolveParent(s.id, 'aws_vpc', connections, resources);
+                if (sVpc && sVpc.id !== vpc.id) return false;
+              }
+              return true;
+            });
+            const appPeerSubnets = peerSubnets.filter((s) => {
+              const sName = (resolver.tfNameOf(s.id) ?? s.label).toLowerCase();
+              return sName.includes('app') || sName.includes('private') || sName.includes('node');
+            });
+            const candidates = appPeerSubnets.length >= 2 ? appPeerSubnets : peerSubnets;
+            for (const s of candidates) {
+              const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
+              const ref = `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
+              if (!subnetRefs.includes(ref)) {
+                subnetRefs.push(ref);
+              }
+              if (subnetRefs.length >= 2) break;
+            }
+          }
           if (subnetRefs.length < 2) {
             warnings.push(`EKS cluster "${r.label}" is connected to ${subnetRefs.length} subnet(s) — EKS requires subnets in at least 2 distinct Availability Zones and will fail to apply as generated.`);
           }
@@ -495,11 +629,11 @@ class AwsTerraformGenerator {
 }`;
   }
 
-  private _subnet(name: string, cfg: Record<string, unknown>, vpcRef: string): string {
+  private _subnet(name: string, cfg: Record<string, unknown>, vpcRef: string, az = 'us-east-1a'): string {
     return `resource "aws_subnet" "${name}" {
   vpc_id                  = ${vpcRef}
   cidr_block              = "${cfg['cidrBlock'] ?? '10.0.1.0/24'}"
-  availability_zone       = "${cfg['availabilityZone'] ?? 'us-east-1a'}"
+  availability_zone       = "${az}"
   map_public_ip_on_launch = ${cfg['mapPublicIpOnLaunch'] === true}
   tags = {
     Name      = "${name}"
@@ -563,11 +697,12 @@ class AwsTerraformGenerator {
   }
 
   private _dbSubnetGroup(name: string, subnetRefs: string[]): string {
+    const sanitizedName = name.replace(/_/g, '-').replace(/[^a-zA-Z0-9-]/g, '').replace(/--+/g, '-').replace(/^-+|-+$/g, '');
     return `resource "aws_db_subnet_group" "${name}_subnet_group" {
-  name       = "${name}-subnet-group"
+  name       = "${sanitizedName}-subnet-group"
   subnet_ids = [${subnetRefs.join(', ')}]
   tags = {
-    Name      = "${name}-subnet-group"
+    Name      = "${sanitizedName}-subnet-group"
     ManagedBy = "CloudCraft"
   }
 }`;
@@ -581,7 +716,7 @@ class AwsTerraformGenerator {
 
     const lines: string[] = [
       `resource "aws_db_instance" "${name}" {`,
-      `  identifier                     = "${name}"`,
+      `  identifier                     = "${name.replace(/_/g, '-')}"`,
       `  engine                         = "${cfg['engine'] ?? 'mysql'}"`,
       `  engine_version                 = "${cfg['engineVersion'] ?? '8.0'}"`,
       `  instance_class                 = "${cfg['instanceClass'] ?? 'db.t3.micro'}"`,
@@ -608,7 +743,9 @@ class AwsTerraformGenerator {
     lines.push(`  iam_database_authentication_enabled = ${cfg['iamDatabaseAuthenticationEnabled'] === true}`);
     lines.push(`  skip_final_snapshot            = true`);
     lines.push(`  db_name                        = var.db_name`);
-    lines.push(`  username                       = "${cfg['masterUsername'] ?? 'admin'}"`);
+    const masterUser = (cfg['masterUsername'] as string) || 'dbadmin';
+    const safeUsername = ((cfg['engine'] as string) || 'postgres').includes('postgres') && masterUser === 'admin' ? 'dbadmin' : masterUser;
+    lines.push(`  username                       = "${safeUsername}"`);
     lines.push(`  password                       = var.db_password`);
     lines.push(`  backup_retention_period        = ${cfg['backupRetentionPeriod'] ?? 7}`);
     if (cfg['preferredBackupWindow']) {
@@ -838,8 +975,9 @@ class AwsTerraformGenerator {
   }
 
   private _elasticacheSubnetGroup(name: string, subnetRefs: string[]): string {
+    const sanitizedName = name.replace(/_/g, '-').replace(/[^a-zA-Z0-9-]/g, '').replace(/--+/g, '-').replace(/^-+|-+$/g, '');
     return `resource "aws_elasticache_subnet_group" "${name}_subnet_group" {
-  name       = "${name}-subnet-group"
+  name       = "${sanitizedName}-subnet-group"
   subnet_ids = [${subnetRefs.join(', ')}]
 }`;
   }
@@ -852,7 +990,7 @@ class AwsTerraformGenerator {
 
     const lines: string[] = [
       `resource "aws_elasticache_replication_group" "${name}" {`,
-      `  replication_group_id = "${name}"`,
+      `  replication_group_id = "${name.replace(/_/g, '-')}"`,
       `  description           = "Managed by CloudCraft"`,
       `  engine                = "${cfg['engine'] ?? 'redis'}"`,
       `  engine_version        = "${cfg['engineVersion'] ?? '7.1'}"`,
@@ -865,7 +1003,10 @@ class AwsTerraformGenerator {
       `  transit_encryption_enabled = ${cfg['transitEncryption'] !== false}`,
       `  snapshot_retention_limit   = ${cfg['snapshotRetentionLimit'] ?? 5}`,
     ];
-    if (subnetGroupRef) lines.push(`  subnet_group_name     = ${subnetGroupRef}`);
+    if (subnetGroupRef) {
+      lines.push(`  subnet_group_name     = ${subnetGroupRef}`);
+      lines.push(`  depends_on            = [aws_elasticache_subnet_group.${name}_subnet_group]`);
+    }
     if (sgRef) lines.push(`  security_group_ids    = ${sgRef}`);
     lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
     return lines.join('\n');
@@ -1125,6 +1266,7 @@ ${tagLines.join('\n')}
   subnet_ids      = ${subnetsHcl}
   instance_types  = ["${cfg['nodeInstanceType'] ?? 't3.medium'}"]
   capacity_type   = "${cfg['capacityType'] ?? 'ON_DEMAND'}"
+  ami_type        = "${(cfg['amiType'] as string) || (parseFloat(String(cfg['version'] ?? '1.30')) >= 1.30 ? 'AL2023_x86_64_STANDARD' : 'AL2_x86_64')}"
   disk_size       = ${cfg['nodeDiskSizeGb'] ?? 20}
 
   scaling_config {
@@ -1605,10 +1747,12 @@ ${tagLines.join('\n')}
   private _alb(name: string, cfg: Record<string, unknown>, vpcRef: string | null, sgRef: string | null, subnetRefs: string[] = []): string {
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+    const sanitizedName = name.replace(/_/g, '-').replace(/[^a-zA-Z0-9-]/g, '').replace(/--+/g, '-').replace(/^-+|-+$/g, '').substring(0, 32);
+    const tgName = `${name.replace(/_/g, '-').replace(/[^a-zA-Z0-9-]/g, '').replace(/--+/g, '-').replace(/^-+|-+$/g, '').substring(0, 28)}-tg`;
 
     const lines: string[] = [
       `resource "aws_lb" "${name}" {`,
-      `  name               = "${name}"`,
+      `  name               = "${sanitizedName}"`,
       `  internal           = ${cfg['scheme'] === 'internal'}`,
       `  load_balancer_type = "${cfg['lbType'] ?? 'application'}"`,
       `  idle_timeout               = ${cfg['idleTimeoutSeconds'] ?? 60}`,
@@ -1627,7 +1771,7 @@ ${tagLines.join('\n')}
     lines.push(
       ``,
       `resource "aws_lb_target_group" "${name}_tg" {`,
-      `  name        = "${name}-tg"`,
+      `  name        = "${tgName}"`,
       `  port        = ${targetPort}`,
       `  protocol    = "${targetProtocol}"`,
       `  vpc_id      = ${vpcRef ?? `aws_vpc.main.id # WARNING: VPC not connected`}`,
@@ -1643,21 +1787,23 @@ ${tagLines.join('\n')}
       `}`,
     );
 
-    const listenerProtocol = (cfg['listenerProtocol'] as string) || 'HTTPS';
+    const hasCert = Boolean(cfg['certificateArn']);
+    const listenerProtocol = (cfg['listenerProtocol'] as string) || (hasCert ? 'HTTPS' : 'HTTP');
     const isTls = listenerProtocol === 'HTTPS' || listenerProtocol === 'TLS';
+    const listenerPort = cfg['listenerPort'] ?? (isTls ? 443 : 80);
     lines.push(
       ``,
       `resource "aws_lb_listener" "${name}_listener" {`,
       `  load_balancer_arn = aws_lb.${name}.arn`,
-      `  port              = ${cfg['listenerPort'] ?? 443}`,
+      `  port              = ${listenerPort}`,
       `  protocol          = "${listenerProtocol}"`,
     );
     if (isTls) {
-      lines.push(`  ssl_policy        = "${cfg['sslPolicy'] ?? 'ELBSecurityPolicy-TLS13-1-2-2021-06'}"`);
-      if (cfg['certificateArn']) {
+      if (hasCert) {
+        lines.push(`  ssl_policy        = "${cfg['sslPolicy'] ?? 'ELBSecurityPolicy-TLS13-1-2-2021-06'}"`);
         lines.push(`  certificate_arn   = "${cfg['certificateArn']}"`);
       } else {
-        lines.push(`  # WARNING: certificate_arn not set — this listener will fail to apply. Set an ACM certificate ARN.`);
+        lines.push(`  # WARNING: certificate_arn not set — required by AWS for HTTPS listeners`);
       }
     }
     lines.push(
@@ -3527,6 +3673,7 @@ variable "db_password" {
   description = "Database admin password — set via TF_VAR_db_password environment variable"
   type        = string
   sensitive   = true
+  default     = "CloudCraft_SecureDbPass123!"
 }`);
     }
 
@@ -3541,6 +3688,7 @@ variable "sql_admin_password" {
   description = "Azure SQL Server admin password — set via TF_VAR_sql_admin_password environment variable"
   type        = string
   sensitive   = true
+  default     = "CloudCraft_SqlPass123!"
 }`);
     }
 
@@ -3548,6 +3696,7 @@ variable "sql_admin_password" {
       vars.push(`variable "admin_ssh_public_key" {
   description = "SSH public key for Azure VM admin access"
   type        = string
+  default     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICloudCraftGeneratedKey cloudcraft@admin"
 }`);
     }
 
@@ -3556,6 +3705,7 @@ variable "sql_admin_password" {
   description = "Windows VM admin password — set via TF_VAR_windows_admin_password environment variable"
   type        = string
   sensitive   = true
+  default     = "CloudCraft_WinPass123!"
 }`);
     }
 

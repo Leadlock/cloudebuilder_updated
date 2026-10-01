@@ -107,4 +107,52 @@ describe('AppContext dispatched-action side effects', () => {
     // point of the test.
     await waitFor(() => expect(createProject).toHaveBeenCalledWith('Regression Test Project', 'aws'));
   });
+
+  it('rekeys nodes and edges when CREATE_PROJECT is dispatched to avoid RESOURCE_ID_CONFLICT', async () => {
+    let capturedState: any = null;
+    let dispatchRef: ((action: unknown) => void) | null = null;
+    function Harness() {
+      const { state, dispatch } = useApp();
+      capturedState = state;
+      dispatchRef = dispatch as unknown as (action: unknown) => void;
+      return null;
+    }
+
+    render(
+      React.createElement(AppProvider, null, React.createElement(Harness, null)),
+    );
+
+    await waitFor(() => expect(dispatchRef).not.toBeNull());
+
+    const sharedNodes = [
+      { id: 'node-vpc', resourceType: 'aws_vpc', provider: 'aws', label: 'VPC', position: { x: 0, y: 0 }, config: {} },
+      { id: 'node-ec2', resourceType: 'aws_ec2', provider: 'aws', label: 'EC2', position: { x: 100, y: 100 }, config: {}, parentId: 'node-vpc' },
+    ] as any;
+    const sharedEdges = [
+      { id: 'edge-1', source: 'node-vpc', target: 'node-ec2', provider: 'aws' },
+    ] as any;
+
+    act(() => {
+      dispatchRef!({ type: 'CREATE_PROJECT', name: 'Project 1', provider: 'aws', nodes: sharedNodes, edges: sharedEdges });
+    });
+
+    const project1 = capturedState.projects[capturedState.projects.length - 1];
+    expect(project1).toBeDefined();
+    const p1NodeIds = project1.nodes.map((n: any) => n.id);
+    expect(p1NodeIds).not.toContain('node-vpc'); // Must be rekeyed
+
+    act(() => {
+      dispatchRef!({ type: 'CREATE_PROJECT', name: 'Project 2', provider: 'aws', nodes: sharedNodes, edges: sharedEdges });
+    });
+
+    const project2 = capturedState.projects[capturedState.projects.length - 1];
+    expect(project2).toBeDefined();
+    const p2NodeIds = project2.nodes.map((n: any) => n.id);
+
+    // Ensure Project 1 and Project 2 have disjoint, unique node IDs
+    for (const id of p1NodeIds) {
+      expect(p2NodeIds).not.toContain(id);
+    }
+  });
 });
+

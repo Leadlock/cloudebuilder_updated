@@ -133,6 +133,44 @@ describe('AiGeneratorService — Azure AI Foundry backend', () => {
     expect(azureSystemPrompt).toContain('Transparent Data Encryption');
     expect(azureSystemPrompt).not.toContain('Block Public Access');
   });
+
+  it('generates structured discovery questionnaire with gap analysis', async () => {
+    mockCreate.mockResolvedValue({
+      output_text: JSON.stringify({
+        summary: 'Identified missing scale and security specs',
+        suggestedProjectName: 'Production SaaS Platform',
+        identifiedGaps: [
+          { id: 'gap-1', title: 'WAF Missing', description: 'Public facing API needs WAF', severity: 'critical' },
+        ],
+        questions: [
+          {
+            id: 'q-1',
+            category: 'security',
+            categoryLabel: 'Security & WAF',
+            question: 'Is WAF required?',
+            options: [{ id: 'opt-1', label: 'Yes, AWS WAF', isRecommended: true }],
+            defaultOptionId: 'opt-1',
+          },
+        ],
+      }),
+    });
+
+    const result = await AiGeneratorService.generateQuestionnaire('SaaS app with Postgres', 'aws');
+    expect(result.questions).toHaveLength(1);
+    expect(result.questions[0]?.id).toBe('q-1');
+    expect(result.identifiedGaps).toHaveLength(1);
+    expect(result.suggestedProjectName).toBe('Production SaaS Platform');
+  });
+
+  it('falls back to heuristic discovery when AI questionnaire generation encounters error', async () => {
+    mockCreate.mockRejectedValueOnce(new Error('AI endpoint timeout'));
+
+    const result = await AiGeneratorService.generateQuestionnaire('SaaS app with Postgres and Redis cache', 'aws');
+    expect(result.questions.length).toBeGreaterThanOrEqual(4);
+    expect(result.identifiedGaps.length).toBeGreaterThan(0);
+    expect(result.questions.some((q) => q.category === 'security')).toBe(true);
+    expect(result.questions.some((q) => q.category === 'availability')).toBe(true);
+  });
 });
 
 describe('AiGeneratorService.generateValidatedArchitecture — compile, gate, repair', () => {
@@ -146,6 +184,24 @@ describe('AiGeneratorService.generateValidatedArchitecture — compile, gate, re
     mockCreate.mockReset();
     mockFindByEnvironment.mockClear();
     mockHistoryCreate.mockClear();
+  });
+
+  it('includes user questionnaire answers and custom requirements in the validated-generation request', async () => {
+    mockCreate.mockResolvedValue({ output_text: 'not json' });
+
+    await AiGeneratorService.generateValidatedArchitecture(
+      'SaaS web application', 'proj-1', 'env-1', 'aws',
+      { 'Security & WAF': 'Enterprise Hardened (WAF + KMS)', 'High Availability': 'Multi-AZ Active-Active' },
+      'Must follow HIPAA compliance and automated backups',
+      1,
+    );
+
+    const userPrompt = (mockCreate.mock.calls[0]![0].input as { content: string }[])[1]!.content;
+    expect(userPrompt).toContain('SaaS web application');
+    expect(userPrompt).toContain('USER SPECIFICATIONS & ANSWERS:');
+    expect(userPrompt).toContain('Security & WAF: Enterprise Hardened');
+    expect(userPrompt).toContain('High Availability: Multi-AZ Active-Active');
+    expect(userPrompt).toContain('ADDITIONAL USER REQUIREMENTS:\nMust follow HIPAA compliance and automated backups');
   });
 
   it('returns the compiled, laid-out graph when the model answers correctly first time', async () => {
@@ -178,7 +234,7 @@ describe('AiGeneratorService.generateValidatedArchitecture — compile, gate, re
   it('never returns a graph that failed the gates — it reports the remaining issues instead', async () => {
     mockCreate.mockResolvedValue({ output_text: JSON.stringify({ name: 'x', summary: 'y', resources: [{ id: 'a', type: 'aws_not_real', label: 'A' }], connections: [] }) });
 
-    const result = await AiGeneratorService.generateValidatedArchitecture('a web app', 'proj-1', 'env-1', 'aws', 3);
+    const result = await AiGeneratorService.generateValidatedArchitecture('a web app', 'proj-1', 'env-1', 'aws', undefined, undefined, 3);
 
     expect(result.ok).toBe(false);
     expect(result.graph).toBeUndefined();
@@ -271,7 +327,7 @@ describe('generateValidatedArchitecture — service notices', () => {
 
   it('carries the unsupported services on a failure too, so the route can name the real reason', async () => {
     mockCreate.mockResolvedValue({ output_text: JSON.stringify({ name: 'x', summary: 'y', resources: [{ id: 'a', type: 'aws_kinesis', label: 'A' }], connections: [] }) });
-    const result = await AiGeneratorService.generateValidatedArchitecture('real-time pipeline with Kinesis and Redshift', 'p', 'e', 'aws', 2);
+    const result = await AiGeneratorService.generateValidatedArchitecture('real-time pipeline with Kinesis and Redshift', 'p', 'e', 'aws', undefined, undefined, 2);
     expect(result.ok).toBe(false);
     expect(result.notices.unsupported.map((u) => u.service)).toEqual(['Kinesis', 'Redshift']);
   });

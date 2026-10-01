@@ -650,6 +650,19 @@ describe('Authorization', () => {
 // ── 10. Invalid requests ─────────────────────────────────────────────────────
 
 describe('Invalid requests', () => {
+  test('delete deletes existing project and removes from list', async () => {
+    const { orgId } = await seedOrg();
+    const project = await projectRepository.create({
+      name: 'To Be Deleted', provider: 'aws', region: 'us-east-1', orgId, ownerId: 'dev-user-id',
+    });
+    expect(await projectRepository.findById(project.id, orgId)).not.toBeNull();
+    const deleted = await projectRepository.delete(project.id, orgId);
+    expect(deleted).toBe(true);
+    expect(await projectRepository.findById(project.id, orgId)).toBeNull();
+    const list = await projectRepository.list(orgId);
+    expect(list.find((p) => p.id === project.id)).toBeUndefined();
+  });
+
   test('delete returns false for missing project', async () => {
     const { orgId } = await seedOrg();
     const deleted = await projectRepository.delete('no-such-project', orgId);

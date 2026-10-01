@@ -52,9 +52,12 @@ export function rekeyGraph(
       position: { ...n.position },
     } as CanvasNode;
   });
-  const outEdges = edges
-    .filter((e) => idMap.has(e.source) && idMap.has(e.target))
-    .map((e) => ({ ...e, id: `${e.id}-${randomSuffix()}`, source: idMap.get(e.source)!, target: idMap.get(e.target)! }));
+  const outEdges = edges.map((e) => ({
+    ...e,
+    id: `${e.id}-${randomSuffix()}`,
+    source: idMap.get(e.source) ?? e.source,
+    target: idMap.get(e.target) ?? e.target,
+  }));
   return { nodes: outNodes, edges: outEdges, idMap };
 }
 

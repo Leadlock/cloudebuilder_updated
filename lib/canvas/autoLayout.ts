@@ -109,38 +109,6 @@ function layoutSingleProvider(
     }
   }
 
-  // ── Multi-AZ Subnet Balancing:
-  // If a tier has 2 subnets (e.g. Subnet-1A and Subnet-1B), and Subnet-1B is empty while Subnet-1A has 2+ children,
-  // balance the secondary resource into Subnet-1B so both availability zones are properly occupied.
-  const tier1Subnets = subnetNodes.filter(isPublicSubnet);
-  const tier3Subnets = subnetNodes.filter((s) => !tier1Subnets.includes(s) && isDatabaseSubnet(s));
-  const tier2Subnets = subnetNodes.filter((s) => !tier1Subnets.includes(s) && !tier3Subnets.includes(s));
-
-  for (const tierList of [tier1Subnets, tier2Subnets, tier3Subnets]) {
-    if (tierList.length >= 2) {
-      const subA = tierList[0];
-      const subB = tierList[1];
-      const childrenA = subnetChildrenMap.get(subA.id) || [];
-      const childrenB = subnetChildrenMap.get(subB.id) || [];
-
-      if (childrenB.length === 0 && childrenA.length > 1) {
-        // Find if any child explicitly matches AZ-B or pick the second child
-        const explicitBIndex = childrenA.findIndex((c) => {
-          const text = `${c.id} ${c.label || ''} ${JSON.stringify(c.config || {})}`.toLowerCase();
-          return text.includes('az-b') || text.includes('az-2') || text.includes('zone b') || text.includes('(b)') || text.includes('redis') || text.includes('cache') || text.includes('standby') || text.includes('replica');
-        });
-
-        const moveIdx = explicitBIndex !== -1 ? explicitBIndex : childrenA.length - 1;
-        const [toMove] = childrenA.splice(moveIdx, 1);
-        if (toMove) {
-          toMove.parentId = subB.id;
-          toMove.groupId = subB.id;
-          childrenB.push(toMove);
-        }
-      }
-    }
-  }
-
   const updatedNodes: CanvasNode[] = [];
   const LEAF_CARD_W = 180;
   const LEAF_CARD_H = 100;
@@ -198,6 +166,10 @@ function layoutSingleProvider(
   // Tier 1: Public/Ingress Subnets (AZ-A, AZ-B)
   // Tier 2: Private App Subnets (AZ-A, AZ-B)
   // Tier 3: Private DB Subnets (AZ-A, AZ-B)
+  const tier1Subnets = subnetNodes.filter(isPublicSubnet);
+  const tier3Subnets = subnetNodes.filter((s) => !tier1Subnets.includes(s) && isDatabaseSubnet(s));
+  const tier2Subnets = subnetNodes.filter((s) => !tier1Subnets.includes(s) && !tier3Subnets.includes(s));
+
   const tiers = [tier1Subnets, tier2Subnets, tier3Subnets].filter((t) => t.length > 0);
   const maxCols = Math.max(1, ...tiers.map((t) => t.length));
 

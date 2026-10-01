@@ -7,7 +7,7 @@ import { azureResources } from '../resources/azure';
 import { db } from '../../src/prisma/db';
 import { generateWithRepair, type RepairAttempt } from '../ai/architectRepair';
 import type { DeploymentInput } from '../ai/architectureSpec';
-import type { CanvasNode, CanvasEdge } from '@/types';
+import type { CanvasNode, CanvasEdge, QuestionnaireResult, QuestionnaireAnswers, ArchitectureQuestion, IdentifiedGap } from '@/types';
 
 
 /** Shape of the JSON graph the LLM is prompted to emit — unverified until validateAgainstRde runs. */
@@ -115,7 +115,314 @@ export interface ValidatedGeneration {
   historyId: string;
 }
 
+/**
+ * Robust fallback heuristic generator that generates smart, contextual questions
+ * and flags architectural gaps even if Azure AI Foundry is unreachable or offline.
+ */
+function getHeuristicQuestionnaire(prompt: string, provider: 'aws' | 'azure'): QuestionnaireResult {
+  const lower = prompt.toLowerCase();
+  const isAws = provider === 'aws';
+
+  const gaps: IdentifiedGap[] = [];
+  const questions: ArchitectureQuestion[] = [];
+
+  // Gap 1: Traffic Scale & Auto-scaling
+  gaps.push({
+    id: 'gap-scale',
+    title: 'Workload Traffic & Scaling Strategy Unspecified',
+    description: 'The initial request does not specify expected concurrency or whether auto-scaling groups/container autoscaling should be provisioned.',
+    severity: 'important',
+    addressedByQuestionId: 'q-scale',
+  });
+
+  questions.push({
+    id: 'q-scale',
+    category: 'scale',
+    categoryLabel: 'Traffic & Scale',
+    question: 'What is the expected traffic scale and scaling strategy?',
+    rationale: 'Determines whether to provision elastic load balancers, auto-scaling groups, or serverless auto-concurrency.',
+    options: [
+      {
+        id: 'opt-high-scale',
+        label: 'Production High-Traffic (Auto-Scaling + ALB)',
+        description: 'Automatic horizontal scaling across instances/containers with health checks.',
+        isRecommended: true,
+        technicalImpact: isAws ? 'ALB + Auto Scaling Group / ECS Fargate autoscaling' : 'Azure Application Gateway + VMSS / AKS autoscaling',
+      },
+      {
+        id: 'opt-med-scale',
+        label: 'Steady Moderate Workload (Multi-Instance)',
+        description: 'Fixed 2-instance redundant pool behind load balancer.',
+        isRecommended: false,
+        technicalImpact: '2 worker instances balanced across availability zones',
+      },
+      {
+        id: 'opt-low-scale',
+        label: 'Cost-Optimized / Staging (Single Instance)',
+        description: 'Minimal footprint for non-critical dev/testing environments.',
+        isRecommended: false,
+        technicalImpact: 'Single node, non-HA, lowest monthly cost',
+      },
+    ],
+    defaultOptionId: 'opt-high-scale',
+  });
+
+  // Gap 2: High Availability & Multi-AZ
+  gaps.push({
+    id: 'gap-ha',
+    title: 'High Availability & Zone Redundancy Not Defined',
+    description: 'Production architectures must span at least 2 Availability Zones to prevent single points of failure (SPOF).',
+    severity: 'critical',
+    addressedByQuestionId: 'q-ha',
+  });
+
+  questions.push({
+    id: 'q-ha',
+    category: 'availability',
+    categoryLabel: 'High Availability (Multi-AZ)',
+    question: 'How resilient should the deployment be against data center outages?',
+    rationale: 'Required to meet SLA uptime targets and eliminate single points of failure.',
+    options: [
+      {
+        id: 'opt-multi-az',
+        label: 'Multi-AZ Active-Active (Recommended for 99.99% SLA)',
+        description: 'Spans Subnet AZ-A & Subnet AZ-B with standby database replication.',
+        isRecommended: true,
+        technicalImpact: isAws ? '2 Availability Zones (us-east-1a, 1b) + RDS Multi-AZ' : '2 Availability Zones + Azure SQL Zone Redundancy',
+      },
+      {
+        id: 'opt-single-az',
+        label: 'Single-AZ (Cost Sensitive)',
+        description: 'All compute and storage in a single zone.',
+        isRecommended: false,
+        technicalImpact: 'SPOF risk during cloud provider zone incidents',
+      },
+    ],
+    defaultOptionId: 'opt-multi-az',
+  });
+
+  // Gap 3: Security, WAF & Network Isolation
+  gaps.push({
+    id: 'gap-security',
+    title: 'WAF & Subnet Security Perimeter Missing',
+    description: 'Workloads handling user traffic should be shielded behind a Web Application Firewall with strict private subnet isolation.',
+    severity: 'critical',
+    addressedByQuestionId: 'q-security',
+  });
+
+  questions.push({
+    id: 'q-security',
+    category: 'security',
+    categoryLabel: 'Security & Network Isolation',
+    question: 'What level of security perimeter and network isolation is required?',
+    rationale: 'Protects user data, prevents SQL injection/DDoS, and satisfies security review gates.',
+    options: [
+      {
+        id: 'opt-sec-enterprise',
+        label: 'Enterprise Hardened (WAF + Private Subnets + KMS)',
+        description: 'Web Application Firewall (OWASP top 10), private app/data subnets, KMS customer encryption.',
+        isRecommended: true,
+        technicalImpact: isAws ? 'AWS WAF + Private VPC Subnets + KMS Keys + Strict Security Groups' : 'Azure WAF + Private VNet Subnets + Azure Key Vault + NSGs',
+      },
+      {
+        id: 'opt-sec-standard',
+        label: 'Standard (Private Subnets & Firewalls)',
+        description: 'VPC/VNet segmentation with security groups/NSGs, no WAF.',
+        isRecommended: false,
+        technicalImpact: 'Isolated subnets with default cloud encryption',
+      },
+      {
+        id: 'opt-sec-basic',
+        label: 'Basic / Direct Public Access',
+        description: 'Minimal networking restrictions (suitable only for sandbox prototypes).',
+        isRecommended: false,
+        technicalImpact: 'Publicly reachable instances (triggers security findings)',
+      },
+    ],
+    defaultOptionId: 'opt-sec-enterprise',
+  });
+
+  // Gap 4: Compute Runtime
+  const isServerlessRequested = lower.includes('lambda') || lower.includes('serverless') || lower.includes('function');
+  const isK8sRequested = lower.includes('kubernetes') || lower.includes('k8s') || lower.includes('eks') || lower.includes('aks') || lower.includes('container') || lower.includes('docker') || lower.includes('ecs');
+
+  questions.push({
+    id: 'q-compute',
+    category: 'compute',
+    categoryLabel: 'Compute Platform',
+    question: 'Which compute runtime best matches your deployment model?',
+    rationale: 'Defines how application code is hosted, updated, and scaled.',
+    options: [
+      {
+        id: 'opt-comp-containers',
+        label: isAws ? 'Managed Containers (AWS ECS Fargate)' : 'Managed Containers (Azure Container Apps / AKS)',
+        description: 'Serverless container orchestration without managing underlying VMs.',
+        isRecommended: !isServerlessRequested,
+        technicalImpact: isAws ? 'ECS Service + Task Definitions in Private Subnets' : 'AKS / Container Apps with autoscaling',
+      },
+      {
+        id: 'opt-comp-serverless',
+        label: isAws ? 'Serverless (AWS Lambda + API Gateway)' : 'Serverless (Azure Functions + API Mgmt)',
+        description: 'Event-driven, zero idle cost, instant scale per request.',
+        isRecommended: isServerlessRequested,
+        technicalImpact: isAws ? 'API Gateway + Lambda Functions' : 'API Management + Azure Functions',
+      },
+      {
+        id: 'opt-comp-vms',
+        label: isAws ? 'Virtual Machines (EC2 Instances)' : 'Virtual Machines (Azure VMs)',
+        description: 'Dedicated virtual servers with full OS control.',
+        isRecommended: false,
+        technicalImpact: isAws ? 'EC2 Auto Scaling Group' : 'Azure VM Scale Set',
+      },
+    ],
+    defaultOptionId: isServerlessRequested ? 'opt-comp-serverless' : 'opt-comp-containers',
+  });
+
+  // Gap 5: Database & Caching
+  const hasRedis = lower.includes('redis') || lower.includes('cache');
+  questions.push({
+    id: 'q-database',
+    category: 'database',
+    categoryLabel: 'Database & In-Memory Caching',
+    question: 'How should the persistence and caching tier be configured?',
+    rationale: 'Ensures data durability, fast query response times, and automated backups.',
+    options: [
+      {
+        id: 'opt-db-cache-ha',
+        label: isAws ? 'Multi-AZ Managed Database + Redis Cluster' : 'Zone-Redundant PostgreSQL/SQL + Redis Cache',
+        description: 'Primary/standby database with automated 7-day backup retention and in-memory caching.',
+        isRecommended: true,
+        technicalImpact: isAws ? 'AWS RDS Multi-AZ + ElastiCache Redis' : 'Azure Database for PostgreSQL + Azure Cache for Redis',
+      },
+      {
+        id: 'opt-db-only',
+        label: 'Managed Database Only (No In-Memory Cache)',
+        description: 'Direct queries to database without caching layer.',
+        isRecommended: false,
+        technicalImpact: 'Standard RDS / Azure SQL without Redis node',
+      },
+    ],
+    defaultOptionId: 'opt-db-cache-ha',
+  });
+
+  // Gap 6: CDN & Static Storage
+  questions.push({
+    id: 'q-storage',
+    category: 'storage',
+    categoryLabel: 'CDN & Content Delivery',
+    question: 'How should frontend assets and user uploaded media be delivered?',
+    rationale: 'Accelerates global page loads and protects origin object buckets.',
+    options: [
+      {
+        id: 'opt-cdn-storage',
+        label: isAws ? 'CloudFront CDN + S3 (Block Public Access + OAC)' : 'Azure Front Door / CDN + Storage Account (Private Origin)',
+        description: 'Global edge caching with strict Origin Access Control so bucket remains 100% private.',
+        isRecommended: true,
+        technicalImpact: isAws ? 'CloudFront Distribution + S3 Bucket (all BPA enabled)' : 'Azure Front Door + Azure Storage Account',
+      },
+      {
+        id: 'opt-storage-only',
+        label: 'Object Storage Only',
+        description: 'Direct bucket access without edge CDN caching.',
+        isRecommended: false,
+        technicalImpact: 'S3 / Blob Storage only',
+      },
+    ],
+    defaultOptionId: 'opt-cdn-storage',
+  });
+
+  return {
+    summary: `Based on your request ("${prompt.slice(0, 70)}${prompt.length > 70 ? '…' : ''}"), we identified ${gaps.length} architectural dimensions requiring clarification before generating a production-grade topology.`,
+    identifiedGaps: gaps,
+    questions,
+    suggestedProjectName: prompt.slice(0, 35).trim(),
+  };
+}
+
 export class AiGeneratorService {
+  /**
+   * Generates dynamic discovery questions and identifies architectural gaps for a given prompt.
+   * Leverages gpt-4o-mini via Azure AI Foundry with automatic heuristic fallback.
+   */
+  static async generateQuestionnaire(
+    prompt: string,
+    provider: 'aws' | 'azure' = 'aws'
+  ): Promise<QuestionnaireResult> {
+    try {
+      const systemPrompt = `You are a Principal Cloud Architect specializing in ${provider.toUpperCase()} enterprise infrastructure.
+Your task is to analyze the user's workload requirements and generate an interactive scoping questionnaire to fill any architectural gaps.
+
+Analyze the prompt for missing production details such as:
+1. Expected traffic volume, concurrency, and auto-scaling rules.
+2. High Availability (HA), Multi-AZ redundancy, and fault tolerance.
+3. Security, Web Application Firewall (WAF), DDoS protection, and subnet isolation.
+4. Compute tier (Containers / ECS / EKS / AKS vs Serverless / Lambda vs VMs / EC2).
+5. Data persistence, automated backup retention (>= 7 days), encryption at rest, and caching (Redis).
+6. CDN / Edge distribution (CloudFront / Front Door) and secure object storage with blocked public access.
+
+Output MUST be a single valid JSON object strictly matching this schema:
+{
+  "summary": "Brief explanation of gaps found and rationale for questions",
+  "suggestedProjectName": "Concise 3-5 word name for the project",
+  "identifiedGaps": [
+    {
+      "id": "gap-1",
+      "title": "Short title of missing specification",
+      "description": "Why this matters for production",
+      "severity": "critical" | "important" | "suggestion",
+      "addressedByQuestionId": "q-1"
+    }
+  ],
+  "questions": [
+    {
+      "id": "q-1",
+      "category": "scale" | "availability" | "security" | "compute" | "database" | "storage" | "network" | "observability",
+      "categoryLabel": "Human-friendly category title",
+      "question": "Clear, precise question",
+      "rationale": "Why this question is critical for the architecture",
+      "options": [
+        {
+          "id": "opt-1",
+          "label": "Option title",
+          "description": "Short explanation",
+          "isRecommended": true | false,
+          "technicalImpact": "Specific resources or settings this enables"
+        }
+      ],
+      "defaultOptionId": "opt-1"
+    }
+  ]
+}
+
+Provide 4 to 6 questions. Ensure exactly one option per question has "isRecommended": true, and "defaultOptionId" matches that option.`;
+
+      const response = await foundryClient().responses.create({
+        model: FOUNDRY_MODEL,
+        input: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Workload description: "${prompt}"\nTarget Cloud Provider: ${provider.toUpperCase()}` },
+        ],
+        text: { format: { type: 'json_object' } },
+      });
+
+      const outputText = response.output_text || '{}';
+      const parsed = JSON.parse(outputText) as Partial<QuestionnaireResult>;
+
+      if (parsed.questions && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+        return {
+          summary: parsed.summary || 'Please review and customize the following architectural specifications.',
+          suggestedProjectName: parsed.suggestedProjectName || prompt.slice(0, 35).trim(),
+          identifiedGaps: parsed.identifiedGaps || [],
+          questions: parsed.questions,
+        };
+      }
+    } catch (err) {
+      console.warn('[AiGeneratorService] Failed to generate AI questionnaire via Foundry, using heuristic discovery:', (err as Error)?.message);
+    }
+
+    return getHeuristicQuestionnaire(prompt, provider);
+  }
+
   /**
    * Generates an architecture the way the fine-tuning dataset was built: the model emits a compact
    * ArchitectureSpec, which is compiled and must pass every deploy-readiness gate (assessment,
@@ -128,6 +435,9 @@ export class AiGeneratorService {
     projectId: string,
     environmentId: string,
     provider: 'aws' | 'azure' = 'aws',
+    /** Choices from the scoping questionnaire (question → chosen option), if the user went through it. */
+    answers?: QuestionnaireAnswers,
+    requirementsSummary?: string,
     // Each pass usually clears one stage (settings, then containment, then the gates), so an untuned
     // model needs more rounds than a tuned one, which should pass first time.
     maxAttempts = 5,
@@ -135,7 +445,12 @@ export class AiGeneratorService {
     // Only add a provider hint when the request doesn't already name a cloud, so prompts that do
     // (e.g. "AWS primary with Azure DR") reach the model exactly as written.
     const namesCloud = /\b(aws|azure|multi-?cloud)\b/i.test(prompt);
-    const request = namesCloud ? prompt : `${prompt}\n\nTarget cloud: ${provider === 'azure' ? 'Azure' : 'AWS'}.`;
+    let request = namesCloud ? prompt : `${prompt}\n\nTarget cloud: ${provider === 'azure' ? 'Azure' : 'AWS'}.`;
+    if (answers && Object.keys(answers).length > 0) {
+      const list = Object.entries(answers).map(([k, v]) => `• ${k}: ${v}`).join('\n');
+      request += `\n\nUSER SPECIFICATIONS & ANSWERS:\n${list}`;
+    }
+    if (requirementsSummary) request += `\n\nADDITIONAL USER REQUIREMENTS:\n${requirementsSummary}`;
     // Ground the model in the knowledge base: closest verified example plus exact settings and placement
     // rules. Empty when the knowledge base is disabled or unavailable — generation works without it.
     const context = await buildGenerationContext(prompt, provider);
@@ -181,7 +496,7 @@ export class AiGeneratorService {
       attempts: outcome.attempts,
       // Judged against what the user asked for, not what the model produced: an unsupported service the model
       // silently swapped for another one must still be reported.
-      notices: detectServiceNotices(prompt, outcome.graph?.nodes.map((n) => n.resourceType)),
+      notices: detectServiceNotices(request, outcome.graph?.nodes.map((n) => n.resourceType)),
       sanitized,
       issues: outcome.ok ? [] : last.issues.map((i) => i.message),
       stage: last.stage,

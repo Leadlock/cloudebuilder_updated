@@ -1,12 +1,14 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
 import { ApiTerraformExecutionService, type TerraformPlanResult, type TerraformApplyStatus } from '@/lib/services/ApiTerraformExecutionService';
 import { ApiReviewService } from '@/lib/services/ApiReviewService';
 import type { ArchitectureReview } from '@/lib/services/ArchitectureReviewService';
 import type { TerraformStateBackendConfig } from '@/lib/terraform/execution/types';
 import {
-  CloudCog, Loader2, CheckCircle2, XCircle, AlertTriangle, ShieldAlert, Plus, ArrowRightLeft, Terminal,
+  CloudCog, Loader2, CheckCircle2, XCircle, AlertTriangle, ShieldAlert, Plus, ArrowRightLeft,
+  Terminal, Database, Globe, Layers, Server, Shield, Box, Activity, Cpu, Search, Clock, Zap,
+  Trash2, AlertOctagon, Flame
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -20,6 +22,38 @@ interface CloudAccount {
 type AwsBackendForm = { bucket: string; key: string; region: string; dynamodbTable: string };
 type AzureBackendForm = { resourceGroupName: string; storageAccountName: string; containerName: string; key: string };
 
+function getResourceIcon(type: string, address: string) {
+  const lower = (type + ' ' + address).toLowerCase();
+  if (lower.includes('db') || lower.includes('rds') || lower.includes('dynamo') || lower.includes('sql') || lower.includes('redis') || lower.includes('cache')) {
+    return Database;
+  }
+  if (lower.includes('cloudfront') || lower.includes('cdn') || lower.includes('dns') || lower.includes('route53')) {
+    return Globe;
+  }
+  if (lower.includes('ecs') || lower.includes('eks') || lower.includes('cluster') || lower.includes('task') || lower.includes('service')) {
+    return Layers;
+  }
+  if (lower.includes('lb') || lower.includes('load') || lower.includes('target') || lower.includes('ec2') || lower.includes('vm') || lower.includes('instance')) {
+    return Server;
+  }
+  if (lower.includes('security') || lower.includes('iam') || lower.includes('role') || lower.includes('policy') || lower.includes('waf') || lower.includes('acl')) {
+    return Shield;
+  }
+  if (lower.includes('s3') || lower.includes('bucket') || lower.includes('storage') || lower.includes('blob')) {
+    return Box;
+  }
+  if (lower.includes('log') || lower.includes('watch') || lower.includes('metric') || lower.includes('alarm') || lower.includes('auto') || lower.includes('scale')) {
+    return Activity;
+  }
+  return Cpu;
+}
+
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
 export default function TerraformExecutionPanel() {
   const { state } = useApp();
   const activeProject = useActiveProject();
@@ -29,13 +63,16 @@ export default function TerraformExecutionPanel() {
   const [latestReview, setLatestReview] = useState<ArchitectureReview | null>(null);
   const isApproved = latestReview?.status === 'approved';
 
+  const storageKey = activeProject ? `cloudcraft_tf_state_${activeProject.id}_${state.activeEnvironment}` : null;
+  const backendStorageKey = activeProject ? `cloudcraft_tf_backend_${activeProject.id}` : null;
+
   const defaultProvider: 'aws' | 'azure' = activeProject?.provider === 'azure' ? 'azure' : 'aws';
   const [backendProvider, setBackendProvider] = useState<'aws' | 'azure'>(defaultProvider);
   const [accounts, setAccounts] = useState<CloudAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [loadingAccounts, setLoadingAccounts] = useState(false);
 
-  const [awsBackend, setAwsBackend] = useState<AwsBackendForm>({ bucket: '', key: '', region: 'us-east-1', dynamodbTable: '' });
+  const [awsBackend, setAwsBackend] = useState<AwsBackendForm>({ bucket: 'cloudraft-test', key: 'cloudcraft/terraform.tfstate', region: 'eu-north-1', dynamodbTable: '' });
   const [azureBackend, setAzureBackend] = useState<AzureBackendForm>({ resourceGroupName: '', storageAccountName: '', containerName: '', key: '' });
 
   const [plan, setPlan] = useState<TerraformPlanResult | null>(null);
@@ -46,6 +83,104 @@ export default function TerraformExecutionPanel() {
   const [applyStatus, setApplyStatus] = useState<TerraformApplyStatus | null>(null);
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+
+  // Destruction state
+  const [destroying, setDestroying] = useState(false);
+  const [destroyError, setDestroyError] = useState<string | null>(null);
+  const [destroySuccess, setDestroySuccess] = useState<string | null>(null);
+  const [destroyOutputTail, setDestroyOutputTail] = useState<string | null>(null);
+  const [showDestroyModal, setShowDestroyModal] = useState(false);
+  const [destroyConfirmInput, setDestroyConfirmInput] = useState('');
+
+  // Live progress tracking
+  const [completedCount, setCompletedCount] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterMode, setFilterMode] = useState<'all' | 'completed' | 'in_progress' | 'queued'>('all');
+
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 1. Restore persistent backend and deployment state from localStorage
+  useEffect(() => {
+    if (!storageKey || typeof window === 'undefined') return;
+    try {
+      // Restore backend config
+      if (backendStorageKey) {
+        const savedBackend = localStorage.getItem(backendStorageKey);
+        if (savedBackend) {
+          const parsed = JSON.parse(savedBackend);
+          if (parsed.backendProvider) setBackendProvider(parsed.backendProvider);
+          if (parsed.selectedAccountId) setSelectedAccountId(parsed.selectedAccountId);
+          if (parsed.awsBackend) setAwsBackend(parsed.awsBackend);
+          if (parsed.azureBackend) setAzureBackend(parsed.azureBackend);
+        }
+      }
+
+      // Restore deployment/plan execution state
+      const savedState = localStorage.getItem(storageKey);
+      if (savedState) {
+        const parsed = JSON.parse(savedState);
+        if (parsed.plan) setPlan(parsed.plan);
+        if (parsed.applyJobId) setApplyJobId(parsed.applyJobId);
+        if (parsed.applyStatus) setApplyStatus(parsed.applyStatus);
+        if (parsed.applying !== undefined) setApplying(parsed.applying);
+        if (parsed.planning !== undefined) setPlanning(parsed.planning);
+        if (parsed.destroying !== undefined) setDestroying(parsed.destroying);
+        if (parsed.completedCount !== undefined) setCompletedCount(parsed.completedCount);
+        if (parsed.startedAt) {
+          setStartedAt(parsed.startedAt);
+          const elapsed = Math.max(0, Math.floor((Date.now() - parsed.startedAt) / 1000));
+          setElapsedSeconds(elapsed);
+        }
+        if (parsed.destroySuccess) setDestroySuccess(parsed.destroySuccess);
+        if (parsed.destroyError) setDestroyError(parsed.destroyError);
+        if (parsed.destroyOutputTail) setDestroyOutputTail(parsed.destroyOutputTail);
+
+        // Resume polling if job is active or in progress
+        if (parsed.applyJobId && activeProject && (!parsed.applyStatus || parsed.applyStatus.state === 'active' || parsed.applyStatus.state === 'pending' || parsed.applying)) {
+          pollApplyStatus(activeProject.id, parsed.applyJobId);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to restore Terraform execution state from localStorage', e);
+    }
+  }, [storageKey, backendStorageKey, activeProject?.id]);
+
+  // 2. Persist backend settings whenever they change
+  useEffect(() => {
+    if (!backendStorageKey || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(backendStorageKey, JSON.stringify({
+        backendProvider,
+        selectedAccountId,
+        awsBackend,
+        azureBackend,
+      }));
+    } catch {}
+  }, [backendStorageKey, backendProvider, selectedAccountId, awsBackend, azureBackend]);
+
+  // 3. Persist deployment state whenever it changes
+  useEffect(() => {
+    if (!storageKey || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({
+        plan,
+        applyJobId,
+        applyStatus,
+        applying,
+        planning,
+        destroying,
+        completedCount,
+        startedAt,
+        destroySuccess,
+        destroyError,
+        destroyOutputTail,
+      }));
+    } catch {}
+  }, [storageKey, plan, applyJobId, applyStatus, applying, planning, destroying, completedCount, startedAt, destroySuccess, destroyError, destroyOutputTail]);
 
   useEffect(() => {
     if (!activeProject) return;
@@ -62,8 +197,12 @@ export default function TerraformExecutionPanel() {
       .then((r) => r.json())
       .then((data: { ok: boolean; data: CloudAccount[] }) => {
         if (cancelled) return;
-        setAccounts(data.ok ? data.data.filter((a) => a.provider === backendProvider) : []);
-        setSelectedAccountId('');
+        const list = data.ok ? data.data.filter((a) => a.provider === backendProvider) : [];
+        setAccounts(list);
+        setSelectedAccountId((prev) => {
+          if (prev && list.some((a) => a.id === prev)) return prev;
+          return list.length > 0 ? list[0].id : '';
+        });
       })
       .catch(() => {
         if (!cancelled) setAccounts([]);
@@ -73,6 +212,58 @@ export default function TerraformExecutionPanel() {
       });
     return () => { cancelled = true; };
   }, [backendProvider]);
+
+  // Track timer and simulated progress while applying or destroying
+  useEffect(() => {
+    if (applying || destroying) {
+      if (!startedAt) {
+        const now = Date.now();
+        setStartedAt(now);
+        setElapsedSeconds(0);
+      } else {
+        setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+      }
+
+      timerRef.current = setInterval(() => {
+        setElapsedSeconds((s) => s + 1);
+      }, 1000);
+
+      const totalResources = plan?.summary.resourceChanges.length ?? 1;
+      progressTimerRef.current = setInterval(() => {
+        setCompletedCount((prev) => {
+          if (prev < Math.max(1, totalResources - 1)) {
+            return prev + 1;
+          }
+          return prev;
+        });
+      }, 2500);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    }
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    };
+  }, [applying, destroying, startedAt, plan?.summary.resourceChanges.length]);
+
+  // When apply completes successfully, set progress to 100%
+  useEffect(() => {
+    if (applyStatus?.state === 'completed') {
+      const total = plan?.summary.resourceChanges.length ?? 0;
+      setCompletedCount(total);
+      setApplying(false);
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    } else if (applyStatus?.state === 'failed') {
+      setApplying(false);
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    }
+  }, [applyStatus?.state, plan?.summary.resourceChanges.length]);
 
   if (!activeProject) return null;
 
@@ -108,6 +299,11 @@ export default function TerraformExecutionPanel() {
     setApplyStatus(null);
     setApplyJobId(null);
     setApplyError(null);
+    setDestroySuccess(null);
+    setDestroyError(null);
+    setCompletedCount(0);
+    setStartedAt(null);
+    setElapsedSeconds(0);
     try {
       const result = await ApiTerraformExecutionService.generatePlan(
         activeProject.id,
@@ -128,6 +324,10 @@ export default function TerraformExecutionPanel() {
     if (!activeProject || !plan) return;
     setApplying(true);
     setApplyError(null);
+    const now = Date.now();
+    setStartedAt(now);
+    setElapsedSeconds(0);
+    setCompletedCount(0);
     try {
       const { jobId } = await ApiTerraformExecutionService.confirmApply(activeProject.id, plan.planId, plan.planHash, currentUser);
       setApplyJobId(jobId);
@@ -138,18 +338,50 @@ export default function TerraformExecutionPanel() {
     }
   }
 
+  async function handleExecuteDestroy() {
+    if (!activeProject || !selectedAccountId || !backendReady()) return;
+    setDestroying(true);
+    setDestroyError(null);
+    setDestroySuccess(null);
+    setDestroyOutputTail(null);
+    setShowDestroyModal(false);
+    setDestroyConfirmInput('');
+    setStartedAt(Date.now());
+    setElapsedSeconds(0);
+
+    try {
+      const result = await ApiTerraformExecutionService.destroyInfrastructure(
+        activeProject.id,
+        state.activeEnvironment,
+        selectedAccountId,
+        buildBackend(),
+        currentUser,
+      );
+      setDestroySuccess(result.message || 'All cloud infrastructure resources have been destroyed.');
+      setDestroyOutputTail(result.outputTail || null);
+      setPlan(null);
+      setApplyStatus(null);
+      setApplyJobId(null);
+    } catch (err) {
+      setDestroyError(err instanceof Error ? err.message : 'Teardown failed');
+    } finally {
+      setDestroying(false);
+    }
+  }
+
   function pollApplyStatus(projectId: string, jobId: string) {
-    const interval = setInterval(async () => {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    pollIntervalRef.current = setInterval(async () => {
       try {
         const status = await ApiTerraformExecutionService.getApplyStatus(projectId, jobId, currentUser);
         setApplyStatus(status);
         if (status.state === 'completed' || status.state === 'failed' || status.state === 'unknown') {
-          clearInterval(interval);
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
           setApplying(false);
           if (status.state === 'unknown') setApplyError('Apply job could not be found — it may have expired before the worker picked it up.');
         }
       } catch (err) {
-        clearInterval(interval);
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         setApplying(false);
         setApplyError(err instanceof Error ? err.message : 'Failed to poll apply status');
       }
@@ -157,25 +389,63 @@ export default function TerraformExecutionPanel() {
   }
 
   function resetPlan() {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
     setPlan(null);
     setPlanError(null);
     setApplyJobId(null);
     setApplyStatus(null);
     setApplyError(null);
+    setApplying(false);
+    setCompletedCount(0);
+    setStartedAt(null);
+    setElapsedSeconds(0);
+    setDestroySuccess(null);
+    setDestroyError(null);
+    setDestroyOutputTail(null);
+    if (storageKey && typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {}
+    }
   }
 
   if (!isAdmin) return null;
 
+  const resourceChanges = plan?.summary.resourceChanges ?? [];
+  const totalResources = resourceChanges.length;
+  const isAllDone = applyStatus?.state === 'completed' || completedCount >= totalResources;
+  const progressPercent = totalResources > 0 ? Math.min(100, Math.round((completedCount / totalResources) * 100)) : 0;
+
+  const filteredResources = resourceChanges.filter((rc, idx) => {
+    const isDone = isAllDone || idx < completedCount;
+    const isRunning = applying && idx === completedCount;
+    const isQueued = !isDone && !isRunning;
+
+    if (filterMode === 'completed' && !isDone) return false;
+    if (filterMode === 'in_progress' && !isRunning) return false;
+    if (filterMode === 'queued' && !isQueued) return false;
+
+    if (searchQuery.trim()) {
+      return rc.address.toLowerCase().includes(searchQuery.toLowerCase()) || rc.type.toLowerCase().includes(searchQuery.toLowerCase());
+    }
+    return true;
+  });
+
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
+
   return (
     <div className="mt-6 bg-gray-800/50 border border-emerald-900/40 rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-1">
-        <CloudCog className="w-4 h-4 text-emerald-400" />
-        <h3 className="text-white font-semibold text-sm">Real Infrastructure Deployment</h3>
-        <span className="text-[10px] px-2 py-0.5 bg-emerald-900/40 text-emerald-300 border border-emerald-800 rounded-full font-medium">Live</span>
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <CloudCog className="w-4 h-4 text-emerald-400" />
+          <h3 className="text-white font-semibold text-sm">Real Infrastructure Deployment</h3>
+          <span className="text-[10px] px-2 py-0.5 bg-emerald-900/40 text-emerald-300 border border-emerald-800 rounded-full font-medium">Live</span>
+        </div>
       </div>
       <p className="text-gray-500 text-xs mb-4">
-        Runs actual <code className="text-gray-400">terraform plan</code> / <code className="text-gray-400">apply</code> against a connected cloud account.
-        Destroy actions are always refused. A remote state backend is required.
+        Runs actual <code className="text-gray-400">terraform plan</code>, <code className="text-gray-400">apply</code>, or <code className="text-gray-400">destroy</code> against a connected cloud account using your remote state backend.
       </p>
 
       {!isApproved ? (
@@ -252,15 +522,85 @@ export default function TerraformExecutionPanel() {
             )}
           </div>
 
-          {!plan && (
-            <button
-              onClick={handleGeneratePlan}
-              disabled={!selectedAccountId || !backendReady() || planning}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white transition-colors"
-            >
-              {planning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRightLeft className="w-3.5 h-3.5" />}
-              {planning ? 'Generating plan…' : 'Generate Terraform Plan'}
-            </button>
+          {/* Main Action Buttons */}
+          {!plan && !destroying && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                onClick={handleGeneratePlan}
+                disabled={!selectedAccountId || !backendReady() || planning}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white transition-colors"
+              >
+                {planning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRightLeft className="w-3.5 h-3.5" />}
+                {planning ? 'Generating plan…' : 'Generate Terraform Plan'}
+              </button>
+
+              <button
+                onClick={() => setShowDestroyModal(true)}
+                disabled={!selectedAccountId || !backendReady() || planning || destroying}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-rose-950/70 hover:bg-rose-900 border border-rose-800/80 disabled:opacity-40 disabled:cursor-not-allowed text-rose-300 transition-colors"
+                title="Tear down and destroy all cloud infrastructure provisioned for this project"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                Teardown / Terminate All Services
+              </button>
+            </div>
+          )}
+
+          {/* Destroying Active State Banner */}
+          {destroying && (
+            <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-500/40 text-white space-y-2.5 animate-pulse shadow-xl">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 text-rose-400 animate-spin" />
+                  <span className="font-semibold text-rose-200">Tearing Down Infrastructure in {backendProvider.toUpperCase()}...</span>
+                </div>
+                <div className="flex items-center gap-1 text-rose-300 font-mono text-xs">
+                  <Clock className="w-3.5 h-3.5 animate-spin" /> {formatDuration(elapsedSeconds)}
+                </div>
+              </div>
+              <p className="text-[11px] text-gray-300">
+                Running <code className="text-rose-300 font-mono">terraform destroy</code> against your remote state. This will safely terminate VPCs, subnets, compute, and databases.
+              </p>
+            </div>
+          )}
+
+          {/* Destroy Success Banner */}
+          {destroySuccess && (
+            <div className="p-4 rounded-xl bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 text-xs shadow-xl space-y-2">
+              <div className="flex items-center gap-2 font-semibold text-sm">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <span>All Infrastructure Successfully Terminated!</span>
+              </div>
+              <p className="text-[11px] text-emerald-300/90">{destroySuccess}</p>
+              {destroyOutputTail && (
+                <details className="mt-2 bg-gray-950/80 rounded-lg p-2 border border-emerald-900/40">
+                  <summary className="cursor-pointer text-emerald-400/90 font-medium">View Teardown Log Output</summary>
+                  <div className="mt-2 bg-black rounded-lg p-2.5 flex items-start gap-2 max-h-40 overflow-y-auto">
+                    <Terminal className="w-3.5 h-3.5 text-gray-500 mt-0.5 shrink-0" />
+                    <pre className="text-[10px] text-gray-300 font-mono whitespace-pre-wrap">{destroyOutputTail}</pre>
+                  </div>
+                </details>
+              )}
+              <button onClick={resetPlan} className="mt-2 px-3 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white font-medium text-xs transition-colors">
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {/* Destroy Error Banner */}
+          {destroyError && (
+            <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs shadow-lg space-y-2">
+              <div className="flex items-center gap-2 font-semibold">
+                <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>Teardown encountered an issue</span>
+              </div>
+              <p className="text-[11px] text-rose-300/90 bg-black/40 p-2 rounded border border-rose-900/30 font-mono">
+                {destroyError}
+              </p>
+              <button onClick={() => setShowDestroyModal(true)} className="text-xs text-rose-400 hover:text-rose-200 underline font-medium">
+                Try again
+              </button>
+            </div>
           )}
 
           {planError && (
@@ -270,72 +610,342 @@ export default function TerraformExecutionPanel() {
           )}
 
           {plan && (
-            <div className="bg-gray-900 border border-gray-700 rounded-xl p-3">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-white text-xs font-semibold">Plan Ready</p>
-                <span className="font-mono text-[10px] text-gray-500">hash: {plan.planHash.slice(0, 12)}…</span>
+            <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 shadow-xl">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-3 border-b border-gray-800 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <p className="text-white text-xs font-bold uppercase tracking-wider">
+                    {applying ? 'Live Deployment In Progress' : isAllDone ? 'Deployment Completed' : 'Plan Ready for Apply'}
+                  </p>
+                </div>
+                <span className="font-mono text-[10px] text-gray-500 bg-gray-950 px-2 py-0.5 rounded border border-gray-800">
+                  SHA: {plan.planHash.slice(0, 10)}…
+                </span>
               </div>
-              <div className="flex gap-3 text-xs mb-3">
-                <span className="flex items-center gap-1 text-emerald-400"><Plus className="w-3 h-3" /> {plan.summary.toAdd} to add</span>
-                <span className="flex items-center gap-1 text-amber-400">~ {plan.summary.toChange} to change</span>
-                <span className="text-gray-500">0 to destroy (blocked by policy)</span>
+
+              {/* Summary Stats */}
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs mb-3 bg-gray-950/60 p-2.5 rounded-lg border border-gray-800">
+                <div className="flex gap-3">
+                  <span className="flex items-center gap-1 text-emerald-400 font-medium"><Plus className="w-3.5 h-3.5" /> {plan.summary.toAdd} to add</span>
+                  <span className="flex items-center gap-1 text-amber-400 font-medium">~ {plan.summary.toChange} to change</span>
+                  <span className="text-gray-500">0 to destroy (blocked)</span>
+                </div>
+                {applying && (
+                  <div className="flex items-center gap-2 text-xs text-indigo-300 font-mono">
+                    <Clock className="w-3.5 h-3.5 animate-spin" /> Elapsed: {formatDuration(elapsedSeconds)}
+                  </div>
+                )}
               </div>
-              {plan.summary.resourceChanges.length > 0 && (
-                <div className="max-h-32 overflow-y-auto bg-gray-950 rounded-lg p-2 mb-3">
-                  {plan.summary.resourceChanges.map((rc) => (
-                    <p key={rc.address} className="font-mono text-[11px] text-gray-400">
-                      <span className={rc.actions.includes('create') ? 'text-emerald-400' : 'text-amber-400'}>
-                        {rc.actions.includes('create') ? '+' : '~'}
-                      </span> {rc.address}
-                    </p>
-                  ))}
+
+              {/* Overall Progress Bar (Shown while applying or completed) */}
+              {(applying || applyJobId) && (
+                <div className="mb-4 bg-gray-950 border border-gray-800 rounded-xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-300 font-semibold flex items-center gap-1.5">
+                      {isAllDone ? (
+                        <>
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          <span className="text-emerald-300">All {totalResources} Services Provisioned</span>
+                        </>
+                      ) : (
+                        <>
+                          <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                          <span>Provisioning Infrastructure ({completedCount} of {totalResources} Complete)</span>
+                        </>
+                      )}
+                    </span>
+                    <span className="font-bold text-xs text-white">{progressPercent}%</span>
+                  </div>
+
+                  {/* Animated Progress Bar */}
+                  <div className="w-full bg-gray-900 rounded-full h-2.5 overflow-hidden p-0.5 border border-gray-800">
+                    <div
+                      style={{ width: `${progressPercent}%` }}
+                      className={clsx(
+                        'h-full rounded-full transition-all duration-500 ease-out shadow-sm',
+                        isAllDone
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-emerald-500/30'
+                          : 'bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 animate-pulse'
+                      )}
+                    />
+                  </div>
                 </div>
               )}
 
+              {/* Search & Filter for Services */}
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <p className="text-gray-400 text-xs font-semibold">
+                  Target Cloud Services ({resourceChanges.length})
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <div className="relative">
+                    <Search className="w-3 h-3 text-gray-500 absolute left-2 top-2" />
+                    <input
+                      placeholder="Search service..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="bg-gray-950 border border-gray-800 rounded-lg pl-6 pr-2 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 w-32 sm:w-40"
+                    />
+                  </div>
+                  <div className="flex bg-gray-950 border border-gray-800 rounded-lg p-0.5 text-[10px]">
+                    <button
+                      onClick={() => setFilterMode('all')}
+                      className={clsx('px-2 py-0.5 rounded font-medium transition-colors', filterMode === 'all' ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300')}
+                    >
+                      All
+                    </button>
+                    {(applying || applyJobId) && (
+                      <>
+                        <button
+                          onClick={() => setFilterMode('completed')}
+                          className={clsx('px-2 py-0.5 rounded font-medium transition-colors', filterMode === 'completed' ? 'bg-emerald-950 text-emerald-300' : 'text-gray-500 hover:text-gray-300')}
+                        >
+                          Done
+                        </button>
+                        <button
+                          onClick={() => setFilterMode('in_progress')}
+                          className={clsx('px-2 py-0.5 rounded font-medium transition-colors', filterMode === 'in_progress' ? 'bg-blue-950 text-blue-300' : 'text-gray-500 hover:text-gray-300')}
+                        >
+                          Active
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Resource-by-Resource Live Status List */}
+              {resourceChanges.length > 0 && (
+                <div className="max-h-60 overflow-y-auto bg-gray-950 rounded-xl p-2 mb-3 border border-gray-800 space-y-1.5 custom-scrollbar">
+                  {filteredResources.map((rc) => {
+                    const originalIdx = resourceChanges.findIndex((r) => r.address === rc.address);
+                    const isDone = isAllDone || originalIdx < completedCount;
+                    const isRunning = applying && originalIdx === completedCount;
+                    const isQueued = !isDone && !isRunning;
+                    const Icon = getResourceIcon(rc.type, rc.address);
+
+                    return (
+                      <div
+                        key={rc.address}
+                        className={clsx(
+                          'flex items-center justify-between p-2 rounded-lg border text-xs transition-all',
+                          isDone
+                            ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200'
+                            : isRunning
+                            ? 'bg-blue-950/40 border-blue-500/50 text-blue-200 shadow-sm shadow-blue-500/10'
+                            : 'bg-gray-900/40 border-gray-800/80 text-gray-400'
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
+                          <div
+                            className={clsx(
+                              'w-6 h-6 rounded-md flex items-center justify-center shrink-0 border',
+                              isDone
+                                ? 'bg-emerald-900/40 border-emerald-500/40 text-emerald-300'
+                                : isRunning
+                                ? 'bg-blue-900/40 border-blue-500/50 text-blue-300'
+                                : 'bg-gray-800 border-gray-700 text-gray-500'
+                            )}
+                          >
+                            <Icon className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className={clsx('font-mono text-[11px] truncate font-medium', isDone ? 'text-emerald-200' : isRunning ? 'text-white' : 'text-gray-300')}>
+                              {rc.address}
+                            </p>
+                            {/* Individual Mini Progress Bar for each item */}
+                            <div className="w-full bg-gray-900 rounded-full h-1 mt-1 overflow-hidden">
+                              <div
+                                className={clsx(
+                                  'h-full transition-all duration-300',
+                                  isDone
+                                    ? 'w-full bg-emerald-400'
+                                    : isRunning
+                                    ? 'w-2/3 bg-blue-400 animate-pulse'
+                                    : 'w-0 bg-gray-700'
+                                )}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Status Badges with Ticks */}
+                        <div className="shrink-0 flex items-center gap-1.5">
+                          {isDone ? (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-900/50 border border-emerald-500/40 text-emerald-300 text-[10px] font-semibold">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Done
+                            </span>
+                          ) : isRunning ? (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-900/60 border border-blue-500/50 text-blue-300 text-[10px] font-semibold animate-pulse">
+                              <Loader2 className="w-3 h-3 animate-spin text-blue-400" /> Applying
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-900 border border-gray-800 text-gray-500 text-[10px]">
+                              <Clock className="w-3 h-3" /> Queued
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Action Buttons */}
               {!applyJobId ? (
-                <div className="flex gap-2">
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleConfirmApply}
+                      disabled={applying}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white transition-all shadow-lg shadow-emerald-600/20"
+                    >
+                      {applying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                      Confirm &amp; Apply to AWS
+                    </button>
+                    <button onClick={resetPlan} className="px-3 py-2 rounded-lg text-xs font-medium bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400">
+                      Discard
+                    </button>
+                  </div>
                   <button
-                    onClick={handleConfirmApply}
-                    disabled={applying}
-                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 disabled:opacity-60 text-white transition-colors"
+                    onClick={() => setShowDestroyModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-rose-400 hover:text-rose-200 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900/60 transition-colors"
                   >
-                    {applying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                    Confirm &amp; Apply This Plan
-                  </button>
-                  <button onClick={resetPlan} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400">
-                    Discard
+                    <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Teardown
                   </button>
                 </div>
               ) : (
-                <div>
-                  {(!applyStatus || applyStatus.state === 'pending' || applyStatus.state === 'active') && (
-                    <div className="flex items-center gap-2 text-blue-300 text-xs">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Applying to {state.activeEnvironment}…
-                    </div>
-                  )}
+                <div className="pt-2">
                   {applyStatus?.state === 'completed' && (
-                    <div className="p-3 rounded-lg bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 text-xs">
-                      <div className="flex items-center gap-2 mb-1"><CheckCircle2 className="w-4 h-4" /> {applyStatus.output?.message}</div>
+                    <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 text-xs shadow-lg">
+                      <div className="flex items-center gap-2 mb-1.5 font-semibold text-sm">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                        <span>All Infrastructure Successfully Provisioned in AWS!</span>
+                      </div>
+                      <p className="text-[11px] text-emerald-400/90">{applyStatus.output?.message}</p>
                       {applyStatus.output?.outputTail && (
-                        <details className="mt-2">
-                          <summary className="cursor-pointer text-emerald-400/80">View terraform output</summary>
-                          <div className="mt-1 bg-gray-950 rounded-lg p-2 flex items-start gap-2">
-                            <Terminal className="w-3.5 h-3.5 text-gray-600 mt-0.5 shrink-0" />
-                            <pre className="text-[11px] text-gray-300 font-mono whitespace-pre-wrap">{applyStatus.output.outputTail}</pre>
+                        <details className="mt-2.5 bg-gray-950/80 rounded-lg p-2 border border-emerald-900/40">
+                          <summary className="cursor-pointer text-emerald-400/90 font-medium">View Live Terraform Console Output</summary>
+                          <div className="mt-2 bg-black rounded-lg p-2.5 flex items-start gap-2 max-h-40 overflow-y-auto">
+                            <Terminal className="w-3.5 h-3.5 text-gray-500 mt-0.5 shrink-0" />
+                            <pre className="text-[10px] text-gray-300 font-mono whitespace-pre-wrap">{applyStatus.output.outputTail}</pre>
                           </div>
                         </details>
                       )}
-                      <button onClick={resetPlan} className="mt-2 text-[11px] text-emerald-400/80 hover:text-emerald-300 underline">Start a new deployment</button>
+                      <div className="mt-3 flex items-center justify-between">
+                        <button onClick={resetPlan} className="px-3 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white font-medium text-xs transition-colors">
+                          Start a new deployment
+                        </button>
+                        <button
+                          onClick={() => setShowDestroyModal(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 font-semibold text-xs transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Teardown All Services
+                        </button>
+                      </div>
                     </div>
                   )}
                   {(applyStatus?.state === 'failed' || applyError) && (
-                    <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs">
-                      <div className="flex items-center gap-2 mb-1"><XCircle className="w-4 h-4" /> {applyStatus?.output?.message ?? applyError}</div>
-                      <button onClick={resetPlan} className="mt-1 text-[11px] text-rose-400/80 hover:text-rose-300 underline">Re-plan and try again</button>
+                    <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs shadow-lg">
+                      <div className="flex items-center gap-2 mb-1.5 font-semibold">
+                        <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                        <span>Deployment encountered an issue</span>
+                      </div>
+                      <p className="text-[11px] text-rose-300/90 bg-black/40 p-2 rounded border border-rose-900/30 font-mono">
+                        {applyStatus?.output?.message ?? applyError}
+                      </p>
+                      <div className="mt-2.5 flex items-center justify-between">
+                        <button onClick={resetPlan} className="text-xs text-rose-400 hover:text-rose-200 underline font-medium">
+                          Re-plan and try again
+                        </button>
+                        <button
+                          onClick={() => setShowDestroyModal(true)}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 font-medium text-[11px]"
+                        >
+                          <Trash2 className="w-3 h-3" /> Teardown partially created resources
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Teardown Safety Confirmation Modal */}
+          {showDestroyModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+              <div className="bg-gray-900 border border-rose-500/50 rounded-2xl p-5 max-w-md w-full shadow-2xl shadow-rose-950/50 space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-950/80 border border-rose-500/50 flex items-center justify-center text-rose-400 shrink-0">
+                    <AlertOctagon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-white font-bold text-sm">Terminate All Cloud Infrastructure</h4>
+                    <p className="text-gray-400 text-xs mt-0.5">
+                      This action will run <code className="text-rose-300 font-mono">terraform destroy</code> against your live cloud account.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-gray-950/80 rounded-xl p-3 border border-gray-800 text-xs space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Project:</span>
+                    <span className="text-white font-medium">{activeProject.name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Account:</span>
+                    <span className="text-white font-medium">{selectedAccount?.name ?? 'Connected Cloud Account'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Remote State:</span>
+                    <span className="text-emerald-400 font-mono text-[11px]">{backendProvider === 'aws' ? awsBackend.bucket : azureBackend.storageAccountName}</span>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-rose-950/30 border border-rose-900/50 rounded-xl text-rose-300 text-xs space-y-2">
+                  <p className="font-semibold flex items-center gap-1.5">
+                    <Flame className="w-4 h-4 text-rose-400" /> Irreversible Action
+                  </p>
+                  <p className="text-[11px] text-rose-300/80 leading-relaxed">
+                    All VPCs, subnets, compute instances, database clusters, load balancers, and caches provisioned for this project will be deleted.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-gray-400 text-xs">
+                    Type <span className="text-white font-bold font-mono">DESTROY</span> to confirm:
+                  </label>
+                  <input
+                    type="text"
+                    value={destroyConfirmInput}
+                    onChange={(e) => setDestroyConfirmInput(e.target.value)}
+                    placeholder="DESTROY"
+                    className="w-full bg-black/60 border border-gray-700 rounded-lg px-3 py-2 text-white font-mono text-xs focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-gray-800">
+                  <button
+                    onClick={() => {
+                      setShowDestroyModal(false);
+                      setDestroyConfirmInput('');
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleExecuteDestroy}
+                    disabled={destroyConfirmInput !== 'DESTROY' || destroying}
+                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white transition-all shadow-lg shadow-rose-600/30"
+                  >
+                    {destroying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    Confirm &amp; Destroy All Services
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

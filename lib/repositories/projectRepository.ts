@@ -6,7 +6,8 @@
  * - Never returns raw DB rows — always maps to clean domain objects.
  * - Never performs authorization; that belongs in the route handler.
  */
-import { db } from '@/src/prisma/db';
+import { db, rawTransaction } from '@/src/prisma/db';
+import { mockProjects } from '@/lib/mockData';
 import { randomUUID as uuidv4 } from 'crypto';
 import type { CloudProvider, Region, Environment } from '@/types';
 
@@ -142,8 +143,69 @@ export const projectRepository = {
 
   async delete(id: string, orgId: string): Promise<boolean> {
     const existing = await db.orm.public.Project.where({ id, orgId }).first();
-    if (!existing) return false;
-    await db.orm.public.Project.where({ id, orgId }).delete();
+    if (!existing) {
+      const mockIdx = mockProjects.findIndex((p) => p.id === id);
+      if (mockIdx >= 0) {
+        mockProjects.splice(mockIdx, 1);
+        return true;
+      }
+      return false;
+    }
+
+    try {
+      if (typeof rawTransaction === 'function') {
+        await rawTransaction(async (query) => {
+          const envsRes = await query('SELECT "id" FROM "environment" WHERE "projectId" = $1', [id]);
+          const envIds = (envsRes.rows as Array<{ id: string }>).map((r) => r.id);
+
+          if (envIds.length > 0) {
+            const archRes = await query('SELECT "id" FROM "architecture" WHERE "environmentId" = ANY($1::text[])', [envIds]);
+            const archIds = (archRes.rows as Array<{ id: string }>).map((r) => r.id);
+            if (archIds.length > 0) {
+              await query('DELETE FROM "architectureConnection" WHERE "architectureId" = ANY($1::text[])', [archIds]);
+              await query('DELETE FROM "architectureResource" WHERE "architectureId" = ANY($1::text[])', [archIds]);
+              await query('DELETE FROM "architectureVersion" WHERE "architectureId" = ANY($1::text[])', [archIds]);
+              await query('DELETE FROM "securityFinding" WHERE "scanId" IN (SELECT "id" FROM "securityScan" WHERE "architectureId" = ANY($1::text[]))', [archIds]);
+              await query('DELETE FROM "securityScan" WHERE "architectureId" = ANY($1::text[])', [archIds]);
+              await query('DELETE FROM "costEstimate" WHERE "architectureId" = ANY($1::text[])', [archIds]);
+              await query('DELETE FROM "archOptimization" WHERE "architectureId" = ANY($1::text[])', [archIds]);
+              await query('DELETE FROM "terraformGeneration" WHERE "architectureId" = ANY($1::text[])', [archIds]);
+              await query('DELETE FROM "wellArchitectedFinding" WHERE "assessmentId" IN (SELECT "id" FROM "wellArchitectedAssessment" WHERE "architectureId" = ANY($1::text[]))', [archIds]);
+              await query('DELETE FROM "wellArchitectedAssessment" WHERE "architectureId" = ANY($1::text[])', [archIds]);
+              await query('DELETE FROM "aiGenerationHistory" WHERE "architectureId" = ANY($1::text[])', [archIds]);
+              await query('DELETE FROM "complianceFinding" WHERE "assessmentId" IN (SELECT "id" FROM "complianceAssessment" WHERE "architectureId" = ANY($1::text[]))', [archIds]);
+              await query('DELETE FROM "complianceAssessment" WHERE "architectureId" = ANY($1::text[])', [archIds]);
+              await query('DELETE FROM "exportJob" WHERE "architectureId" = ANY($1::text[])', [archIds]);
+              await query('DELETE FROM "architecture" WHERE "id" = ANY($1::text[])', [archIds]);
+            }
+            await query('DELETE FROM "environment" WHERE "id" = ANY($1::text[])', [envIds]);
+          }
+
+          await query('DELETE FROM "architectureVersion" WHERE "projectId" = $1', [id]);
+          await query('DELETE FROM "securityScan" WHERE "projectId" = $1', [id]);
+          await query('DELETE FROM "costEstimate" WHERE "projectId" = $1', [id]);
+          await query('DELETE FROM "archOptimization" WHERE "projectId" = $1', [id]);
+          await query('DELETE FROM "terraformGeneration" WHERE "projectId" = $1', [id]);
+          await query('DELETE FROM "wellArchitectedAssessment" WHERE "projectId" = $1', [id]);
+          await query('DELETE FROM "aiGenerationHistory" WHERE "projectId" = $1', [id]);
+          await query('DELETE FROM "complianceAssessment" WHERE "projectId" = $1', [id]);
+          await query('DELETE FROM "exportJob" WHERE "projectId" = $1', [id]);
+          await query('DELETE FROM "gitOperation" WHERE "projectId" = $1', [id]);
+          await query('DELETE FROM "githubConnection" WHERE "projectId" = $1', [id]);
+          await query('DELETE FROM "findingReview" WHERE "projectId" = $1', [id]);
+          await query('DELETE FROM "project" WHERE "id" = $1 AND "orgId" = $2', [id, orgId]);
+        });
+      } else {
+        await db.orm.public.Project.where({ id, orgId }).delete();
+      }
+    } catch {
+      await db.orm.public.Project.where({ id, orgId }).delete();
+    }
+
+    const mockIdx = mockProjects.findIndex((p) => p.id === id);
+    if (mockIdx >= 0) {
+      mockProjects.splice(mockIdx, 1);
+    }
     return true;
   },
 };

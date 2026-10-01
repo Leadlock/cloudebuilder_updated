@@ -53,6 +53,15 @@ export const draftRepository = {
   ): Promise<{ draft: DurableDraft; conflict?: boolean; serverRevision?: number }> {
     const current = _draftStore.get(key);
 
+    // Strict revision check if draft already exists
+    if (current && data.revision !== undefined && data.revision < current.revision) {
+      return {
+        draft: current,
+        conflict: true,
+        serverRevision: current.revision,
+      };
+    }
+
     const scaleProfile: ScaleProfile = data.scaleProfile ?? current?.scaleProfile ?? {
       expectedUsers: 10000,
       requestsPerSecond: 50,
@@ -66,16 +75,6 @@ export const draftRepository = {
     const providerMode: ProviderMode = data.providerMode ?? current?.providerMode ?? 'AWS';
     const canonical = toCanonicalGraph(data.nodes, data.edges, { scaleProfile, providerMode });
     const hash = canonical.hash;
-
-    // Strict revision check if draft already exists
-    if (current && data.revision !== undefined && data.revision < current.revision) {
-      return {
-        draft: current,
-        conflict: true,
-        serverRevision: current.revision,
-      };
-    }
-
     const newRevision = current
       ? Math.max(current.revision, data.revision ?? current.revision) + 1
       : 1;

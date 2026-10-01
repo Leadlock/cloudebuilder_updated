@@ -152,7 +152,7 @@ export default function ImportPanel() {
     setSelectedRegions([]);
     setAllRegionsSelected(true);
     try {
-      const res = await fetch(`/api/cloud-accounts/${accountId}/regions`);
+      const res = await fetch(`/api/cloud-accounts/${accountId}/regions`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json() as { ok: boolean; data?: { regions: string[] } };
         if (data.ok && data.data?.regions?.length) {
@@ -168,7 +168,7 @@ export default function ImportPanel() {
 
   async function fetchAccounts(provider: string) {
     try {
-      const res = await fetch(`/api/cloud-accounts?provider=${provider}`);
+      const res = await fetch(`/api/cloud-accounts?provider=${provider}`, { credentials: 'include' });
       if (!res.ok) return;
       const data = await res.json() as { ok: boolean; data: CloudAccount[] };
       if (data.ok) {
@@ -208,12 +208,16 @@ export default function ImportPanel() {
     try {
       const res = await fetch('/api/cloud-accounts', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider: 'aws',
           name: accountName || `AWS (${awsForm.region})`,
           // Credentials go directly to backend — never stored in React context
-          credentials: awsForm,
+          credentials: {
+            ...awsForm,
+            externalId: awsForm.externalId.trim(),
+          },
         }),
       });
       const data = await res.json() as { ok: boolean; data: CloudAccount; error?: { message: string } };
@@ -244,6 +248,7 @@ export default function ImportPanel() {
     try {
       const res = await fetch('/api/cloud-accounts', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider: 'azure',
@@ -271,7 +276,10 @@ export default function ImportPanel() {
 
   async function validateAccount(accountId: string) {
     try {
-      await fetch(`/api/cloud-accounts/${accountId}/validate`, { method: 'POST' });
+      await fetch(`/api/cloud-accounts/${accountId}/validate`, {
+        method: 'POST',
+        credentials: 'include',
+      });
     } catch {
       // Non-fatal at connection time — status will be shown in account list
     }
@@ -288,6 +296,7 @@ export default function ImportPanel() {
       const targetRegions = allRegionsSelected ? undefined : selectedRegions;
       const res = await fetch(`/api/cloud-accounts/${accountId}/discover`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           regions: targetRegions && targetRegions.length > 0 ? targetRegions : undefined,
@@ -320,7 +329,7 @@ export default function ImportPanel() {
       }
 
       try {
-        const res = await fetch(`/api/cloud-accounts/${accountId}/discovery?runId=${runId}`);
+        const res = await fetch(`/api/cloud-accounts/${accountId}/discovery?runId=${runId}`, { credentials: 'include' });
         const data = await res.json() as { ok: boolean; data: DiscoveryRun };
         if (!data.ok) return;
 
@@ -372,6 +381,7 @@ export default function ImportPanel() {
         try {
           const res = await fetch(`/api/cloud-accounts/${selectedAccountId}/discovery/import`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               runId: discoveryRun.id,
@@ -381,7 +391,18 @@ export default function ImportPanel() {
           });
           const data = await res.json() as { ok: boolean; data?: { nodes: CanvasNode[]; edges: CanvasEdge[] }; error?: { message: string } };
           if (data.ok && data.data) {
-            dispatch({ type: 'UPDATE_CANVAS', nodes: data.data.nodes, edges: data.data.edges });
+            let updatedName = activeProject.name;
+            const discoveryNameMatch = activeProject.name.match(/^Discovered — (AWS|AZURE|Multi) \(\d+ resources\)$/i);
+            if (discoveryNameMatch) {
+              updatedName = `Discovered — ${provider.toUpperCase()} (${data.data.nodes.length} resources)`;
+            }
+            dispatch({
+              type: 'UPDATE_CANVAS',
+              nodes: data.data.nodes,
+              edges: data.data.edges,
+              bumpCanvasKey: true,
+              name: updatedName,
+            });
             dispatch({ type: 'SET_VIEW', view: 'canvas' });
             return;
           }
@@ -396,8 +417,27 @@ export default function ImportPanel() {
       const currentEdges = currentProjectEnv?.edges ?? [];
 
       const nodeMap = new Map<string, CanvasNode>();
-      for (const n of currentNodes) nodeMap.set(n.id, n);
-      for (const n of nodes) nodeMap.set(n.id, n);
+      const cloudIdToNodeId = new Map<string, string>();
+      for (const n of currentNodes) {
+        nodeMap.set(n.id, n);
+        const cloudId = (n.config?.['resourceId'] as string) || (n.config?.['arn'] as string) || (n.config?.['providerResourceId'] as string);
+        if (cloudId) cloudIdToNodeId.set(cloudId, n.id);
+      }
+      for (const n of nodes) {
+        const cloudId = (n.config?.['resourceId'] as string) || (n.config?.['arn'] as string) || (n.config?.['providerResourceId'] as string);
+        const matchedExistingId = cloudId ? cloudIdToNodeId.get(cloudId) : undefined;
+        if (matchedExistingId && matchedExistingId !== n.id) {
+          const existingNode = nodeMap.get(matchedExistingId)!;
+          nodeMap.set(matchedExistingId, {
+            ...existingNode,
+            label: n.label,
+            config: { ...existingNode.config, ...n.config },
+            importState: 'imported',
+          });
+        } else {
+          nodeMap.set(n.id, n);
+        }
+      }
 
       const edgeMap = new Map<string, CanvasEdge>();
       for (const e of currentEdges) edgeMap.set(`${e.source}->${e.target}`, e);
@@ -406,7 +446,19 @@ export default function ImportPanel() {
       const mergedNodes = [...nodeMap.values()];
       const mergedEdges = [...edgeMap.values()];
 
-      dispatch({ type: 'UPDATE_CANVAS', nodes: mergedNodes, edges: mergedEdges });
+      let updatedName = activeProject.name;
+      const discoveryNameMatch = activeProject.name.match(/^Discovered — (AWS|AZURE|Multi) \(\d+ resources\)$/i);
+      if (discoveryNameMatch) {
+        updatedName = `Discovered — ${provider.toUpperCase()} (${mergedNodes.length} resources)`;
+      }
+
+      dispatch({
+        type: 'UPDATE_CANVAS',
+        nodes: mergedNodes,
+        edges: mergedEdges,
+        bumpCanvasKey: true,
+        name: updatedName,
+      });
       dispatch({ type: 'SET_VIEW', view: 'canvas' });
       apiArchitectureService.saveCanvas(activeProject.id, mergedNodes, mergedEdges, activeEnvironment).catch(() => {});
       return;
@@ -419,6 +471,7 @@ export default function ImportPanel() {
       nodes,
       edges,
     });
+    dispatch({ type: 'SET_VIEW', view: 'canvas' });
   }
 
   // ── Simulated file import (unchanged) ─────────────────────────────────

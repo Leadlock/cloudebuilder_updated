@@ -24,7 +24,7 @@ import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId } from '@/lib/api/phase2d';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
 import { discoveryRepository } from '@/lib/repositories/discoveryRepository';
-import { enqueueDiscoveryJob } from '@/lib/jobs/discoveryJob';
+import { enqueueDiscoveryJob, processDiscoveryJob } from '@/lib/jobs/discoveryJob';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,8 +67,18 @@ export async function POST(
     // Create the run record in 'pending' state
     const run = await discoveryRepository.create(id);
 
-    // Durably enqueue the job — persisted in Postgres before we respond.
-    await enqueueDiscoveryJob({ runId: run.id, accountId: id, orgId, regions });
+    // Durably enqueue the job (if pg-boss queue is active)
+    try {
+      await enqueueDiscoveryJob({ runId: run.id, accountId: id, orgId, regions });
+    } catch (queueErr) {
+      console.warn('[Discover] pg-boss enqueue failed, continuing with in-process execution:', queueErr);
+    }
+
+    // Execute discovery in-process asynchronously so scan completes immediately
+    // without stalling if a standalone worker process is not running.
+    processDiscoveryJob({ runId: run.id, accountId: id, orgId, regions }).catch((err) => {
+      console.error('[Discover] In-process execution error:', err);
+    });
 
     return created({ runId: run.id, status: 'pending' });
   } catch (err) {

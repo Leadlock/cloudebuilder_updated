@@ -84,8 +84,9 @@ export default function TopBar() {
         {activeProject && (
           <>
             <button
-              className="text-gray-400 hover:text-white flex items-center gap-1.5 truncate text-xs shrink-0 max-w-[90px] sm:max-w-[140px]"
+              className="text-gray-300 hover:text-white flex items-center gap-1.5 truncate text-xs shrink-0 max-w-[140px] sm:max-w-[280px] font-medium"
               onClick={() => dispatch({ type: 'SET_VIEW', view: 'canvas' })}
+              title={`Active Project: ${activeProject.name}`}
             >
               <span className={clsx('w-2 h-2 rounded-full shrink-0', activeProject.provider === 'aws' ? 'bg-orange-400' : activeProject.provider === 'azure' ? 'bg-blue-400' : 'bg-purple-400')} />
               <span className="truncate">{activeProject.name}</span>

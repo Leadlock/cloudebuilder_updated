@@ -46,7 +46,6 @@ import ConnectionInspector from './ConnectionInspector';
 import CanvasToolbar from './CanvasToolbar';
 import AddResourceModal from './AddResourceModal';
 import CanvasStartModal from './CanvasStartModal';
-import ImportTemplateModal from './ImportTemplateModal';
 import AiPromptPanel from '../panels/AiPromptPanel';
 import CompliancePanel from '../panels/CompliancePanel';
 import GitOpsPanel from '../panels/GitOpsPanel';
@@ -55,9 +54,8 @@ import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedServ
 import { architectureAutoFixEngine } from '@/lib/engines/autofix/ArchitectureAutoFixEngine';
 import { scaleAdvisorEngine } from '@/lib/engines/ai/ScaleAdvisorEngine';
 import { toCanonicalGraph, validateCanonicalArchitecture } from '@/lib/domain/canonicalArchitecture';
-import { instantiateTemplate } from '@/lib/domain/instantiateTemplate';
-import { CloudProvider, ProviderMode, ScaleProfile, Region, ArchitectureTemplate, providerModeToCloudProvider, cloudProviderToProviderMode, isNodeCompatibleWithProviderMode, inferNodeProvider } from '@/types';
-import { AlertTriangle, Check, X, Sparkles, Bot, ShieldCheck, GitMerge, Download, Loader2, Wrench, Search, Plus, Trash2, LayoutGrid } from 'lucide-react';
+import { CloudProvider, ProviderMode, ScaleProfile, Region, providerModeToCloudProvider, cloudProviderToProviderMode, isNodeCompatibleWithProviderMode, inferNodeProvider } from '@/types';
+import { AlertTriangle, Check, X, Sparkles, Bot, ShieldCheck, GitMerge, Download, Loader2, Wrench, Search, Plus, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 
 const nodeTypes = {
@@ -622,69 +620,11 @@ export default function InfraCanvas() {
     });
   }, [edges, activeProject]);
 
-  const syncToStore = useCallback((newNodes?: Node[], newEdges?: Edge[]) => {
-    const resolvedNodes = newNodes ?? nodes;
-    const resolvedEdges = newEdges ?? edges;
-    const cn: CanvasNode[] = resolvedNodes.map((n) => {
-      const existing = activeProject?.nodes.find((cn) => cn.id === n.id);
-      return {
-        id: n.id,
-        type: n.type ?? 'cloudNode',
-        resourceType: n.data.resourceType,
-        provider: (existing?.provider ?? (activeProject?.provider === 'multi' ? 'aws' : (activeProject?.provider ?? 'aws'))) as 'aws' | 'azure',
-        label: n.data.label,
-        position: n.position,
-        config: existing?.config ?? {},
-        groupId: n.data.groupId ?? existing?.groupId,
-        width: n.data.width ?? existing?.width,
-        height: n.data.height ?? existing?.height,
-      } as CanvasNode;
-    });
-    const validNodeIdSet = new Set(cn.map((n) => n.id));
-    const seenEdgeKeys = new Set<string>();
-    const ce: CanvasEdge[] = [];
-
-    for (const e of resolvedEdges) {
-      if (!validNodeIdSet.has(e.source) || !validNodeIdSet.has(e.target)) {
-        continue;
-      }
-      const existing = activeProject?.edges.find((item) => item.id === e.id);
-      const data = (e.data || {}) as Record<string, unknown>;
-      const relType = (data.relationshipType as RelationshipType) || existing?.relationshipType || 'NETWORK_FLOW';
-      if (relType === 'CONTAINS') {
-        continue;
-      }
-      const key = `${e.source}:${relType}:${e.target}`;
-      if (seenEdgeKeys.has(key)) {
-        continue;
-      }
-      seenEdgeKeys.add(key);
-
-      ce.push({
-        id: e.id && e.id.includes(':') ? e.id : key,
-        source: e.source,
-        target: e.target,
-        label: e.label as string | undefined,
-        edgeType: (e.type as CanvasEdge['edgeType']) || existing?.edgeType || 'network',
-        relationshipType: relType,
-        protocol: (data.protocol as string) || existing?.protocol,
-        port: (data.port as string | number) || existing?.port,
-        networkScope: (data.networkScope as any) || existing?.networkScope,
-        direction: (data.direction as any) || existing?.direction || 'unidirectional',
-        inferred: (data.inferred as boolean) ?? existing?.inferred ?? false,
-        validationStatus: (data.validationStatus as any) || existing?.validationStatus || 'valid',
-        reason: (data.reason as string) || existing?.reason,
-      });
-    }
-    dispatch({ type: 'UPDATE_CANVAS', nodes: cn, edges: ce });
-  }, [activeProject, dispatch, nodes, edges]);
-
-  // Save as Project Modal, Discard Modal, and Import Template Modal States
+  // Save as Project Modal & Discard Modal States
   const [showSaveProjectModal, setShowSaveProjectModal] = useState(false);
   const [saveProjectName, setSaveProjectName] = useState('');
   const [saveProjectProvider, setSaveProjectProvider] = useState<CloudProvider>('aws');
   const [showDiscardModal, setShowDiscardModal] = useState(false);
-  const [showImportTemplateModal, setShowImportTemplateModal] = useState(false);
 
   const handleSaveClick = useCallback(() => {
     const isDraft = !state.activeProjectId || state.activeProjectId === 'draft-project';
@@ -766,49 +706,6 @@ export default function InfraCanvas() {
     setTimeout(() => setBannerMessage(null), 3000);
   }, [state.activeProjectId, nodes, edges, pushHistory, setNodes, setEdges, dispatch]);
 
-  const handleImportTemplate = useCallback((template: ArchitectureTemplate, mode: 'replace' | 'append') => {
-    const { nodes: templateNodes, edges: templateEdges } = instantiateTemplate(template, {});
-    const rfTemplateNodes = toReactFlowNodes(templateNodes);
-    const rfTemplateEdges = toReactFlowEdges(templateEdges);
-
-    if (mode === 'replace' || nodes.length === 0) {
-      pushHistory(nodes, edges);
-      setNodes(rfTemplateNodes);
-      setEdges(rfTemplateEdges);
-      syncToStore(rfTemplateNodes, rfTemplateEdges);
-      setBannerMessage({
-        text: `Loaded "${template.name}" template with ${templateNodes.length} cloud resources!`,
-        type: 'success',
-      });
-    } else {
-      // Find bounding box / max X of current nodes to place imported template without overlapping
-      const maxX = nodes.reduce((max, n) => Math.max(max, n.position.x + ((n.data as any)?.width || 200)), 0);
-      const offsetX = maxX > 0 ? maxX + 100 : 350;
-
-      const offsetRfNodes = rfTemplateNodes.map((n) => ({
-        ...n,
-        position: {
-          x: n.position.x + offsetX,
-          y: n.position.y,
-        },
-      }));
-
-      const mergedNodes = [...nodes, ...offsetRfNodes];
-      const mergedEdges = [...edges, ...rfTemplateEdges];
-
-      pushHistory(nodes, edges);
-      setNodes(mergedNodes);
-      setEdges(mergedEdges);
-      syncToStore(mergedNodes, mergedEdges);
-      setBannerMessage({
-        text: `Imported "${template.name}" into canvas (+${templateNodes.length} resources)!`,
-        type: 'success',
-      });
-    }
-    setShowImportTemplateModal(false);
-    setTimeout(() => setBannerMessage(null), 3500);
-  }, [nodes, edges, pushHistory, setNodes, setEdges, syncToStore]);
-
   useEffect(() => {
     if (!showFindings || !activeProject) return;
     let isCancelled = false;
@@ -857,9 +754,14 @@ export default function InfraCanvas() {
     const projectChanged = activeProject.id !== prevProjectRef.current;
     const envChanged = state.activeEnvironment !== prevEnvRef.current;
     const keyChanged = state.canvasKey !== prevCanvasKey.current;
-    const nodesCountMismatch = activeProject.nodes.length > 0 && nodes.length === 0;
+    const currentResourceNodeIds = new Set(
+      nodes.filter((n) => n.id !== 'aws-cloud' && n.id !== 'az-cloud' && n.type !== 'azBoundaryNode').map((n) => n.id)
+    );
+    const hasExternalNodeDiff =
+      activeProject.nodes.length !== currentResourceNodeIds.size ||
+      activeProject.nodes.some((n) => !currentResourceNodeIds.has(n.id));
 
-    if (projectChanged || envChanged || keyChanged || nodesCountMismatch) {
+    if (projectChanged || envChanged || keyChanged || hasExternalNodeDiff) {
       prevProjectRef.current = activeProject.id;
       prevEnvRef.current = state.activeEnvironment;
       prevCanvasKey.current = state.canvasKey;
@@ -879,7 +781,7 @@ export default function InfraCanvas() {
         }, 80);
       }
     }
-  }, [activeProject, state.activeEnvironment, state.canvasKey, setNodes, setEdges, nodes.length]);
+  }, [activeProject, state.activeEnvironment, state.canvasKey, setNodes, setEdges, nodes]);
 
   // ── Canvas Start Modal Callback ─────────────────────────────────────────────
   const handleStartModalComplete = useCallback((options: {
@@ -990,8 +892,6 @@ export default function InfraCanvas() {
         edges: laidOut.edges,
       });
 
-      setTimeout(() => reactFlowInstance.current?.fitView({ padding: 0.25, maxZoom: 0.85, duration: 250 }), 60);
-
       const fixCount = fixResult.changesApplied.length;
       setBannerMessage({
         text: `✓ Architecture fixed (${fixCount} repair${fixCount === 1 ? '' : 's'} applied) — Changes saved`,
@@ -1020,7 +920,6 @@ export default function InfraCanvas() {
     setNodes(toReactFlowNodes(laidOut.nodes));
     setEdges(toReactFlowEdges(laidOut.edges, laidOut.nodes));
     dispatch({ type: 'UPDATE_CANVAS', nodes: laidOut.nodes, edges: laidOut.edges });
-    setTimeout(() => reactFlowInstance.current?.fitView({ padding: 0.25, maxZoom: 0.85, duration: 250 }), 60);
 
     const added = `AI added ${newNodes.length} resource${newNodes.length === 1 ? '' : 's'} to the architecture`;
     // Something the user needs to know (a service CloudCraft can't model, values still to fill in) stays up longer.
@@ -1101,6 +1000,63 @@ export default function InfraCanvas() {
     });
     setTimeout(() => setBannerMessage(null), 3500);
   }, [activeProject, dispatch]);
+
+  const syncToStore = useCallback((newNodes?: Node[], newEdges?: Edge[]) => {
+    const resolvedNodes = newNodes ?? nodes;
+    const resolvedEdges = newEdges ?? edges;
+    const cn: CanvasNode[] = resolvedNodes.map((n) => {
+      const existing = activeProject?.nodes.find((cn) => cn.id === n.id);
+      return {
+        id: n.id,
+        type: n.type ?? 'cloudNode',
+        resourceType: n.data.resourceType,
+        provider: (existing?.provider ?? (activeProject?.provider === 'multi' ? 'aws' : (activeProject?.provider ?? 'aws'))) as 'aws' | 'azure',
+        label: n.data.label,
+        position: n.position,
+        config: existing?.config ?? {},
+        groupId: n.data.groupId ?? existing?.groupId,
+        width: n.data.width ?? existing?.width,
+        height: n.data.height ?? existing?.height,
+      } as CanvasNode;
+    });
+    const validNodeIdSet = new Set(cn.map((n) => n.id));
+    const seenEdgeKeys = new Set<string>();
+    const ce: CanvasEdge[] = [];
+
+    for (const e of resolvedEdges) {
+      if (!validNodeIdSet.has(e.source) || !validNodeIdSet.has(e.target)) {
+        continue;
+      }
+      const existing = activeProject?.edges.find((item) => item.id === e.id);
+      const data = (e.data || {}) as Record<string, unknown>;
+      const relType = (data.relationshipType as RelationshipType) || existing?.relationshipType || 'NETWORK_FLOW';
+      if (relType === 'CONTAINS') {
+        continue;
+      }
+      const key = `${e.source}:${relType}:${e.target}`;
+      if (seenEdgeKeys.has(key)) {
+        continue;
+      }
+      seenEdgeKeys.add(key);
+
+      ce.push({
+        id: e.id && e.id.includes(':') ? e.id : key,
+        source: e.source,
+        target: e.target,
+        label: e.label as string | undefined,
+        edgeType: (e.type as CanvasEdge['edgeType']) || existing?.edgeType || 'network',
+        relationshipType: relType,
+        protocol: (data.protocol as string) || existing?.protocol,
+        port: (data.port as string | number) || existing?.port,
+        networkScope: (data.networkScope as any) || existing?.networkScope,
+        direction: (data.direction as any) || existing?.direction || 'unidirectional',
+        inferred: (data.inferred as boolean) ?? existing?.inferred ?? false,
+        validationStatus: (data.validationStatus as any) || existing?.validationStatus || 'valid',
+        reason: (data.reason as string) || existing?.reason,
+      });
+    }
+    dispatch({ type: 'UPDATE_CANVAS', nodes: cn, edges: ce });
+  }, [activeProject, dispatch, nodes, edges]);
 
   // ── Smart Connect with Pre-Connection Validation ─────────────────────────────
   const onConnect = useCallback((connection: Connection) => {
@@ -1588,12 +1544,12 @@ export default function InfraCanvas() {
     setNodes(rfNodes);
     setEdges(rfEdges);
     syncToStore(rfNodes, rfEdges);
-    setTimeout(() => reactFlowInstance.current?.fitView({ padding: 0.25, maxZoom: 0.85, duration: 250 }), 60);
+    setTimeout(() => reactFlowInstance.current?.fitView({ padding: 0.15 }), 60);
   }, [nodes, edges, setNodes, setEdges, syncToStore, pushHistory, getCanvasNodes, getCanvasEdges]);
 
   // ── Toolbar Controls ─────────────────────────────────────────────────────────
   const handleFitView = useCallback(() => {
-    reactFlowInstance.current?.fitView({ padding: 0.25, maxZoom: 0.85, duration: 250 });
+    reactFlowInstance.current?.fitView({ padding: 0.15 });
   }, []);
 
   const handleZoomIn = useCallback(() => {
@@ -1899,7 +1855,6 @@ export default function InfraCanvas() {
           onDeleteSelected={handleDeleteSelected}
           onCopy={handleCopy}
           onOpenAddModal={() => setIsAddModalOpen(true)}
-          onOpenImportTemplate={() => setShowImportTemplateModal(true)}
           onDiscard={() => setShowDiscardModal(true)}
           providerMode={activeProject?.providerMode || (activeProject ? cloudProviderToProviderMode(activeProject.provider) : 'AWS')}
           onSelectProviderMode={handleRequestProviderModeChange}
@@ -2360,15 +2315,6 @@ export default function InfraCanvas() {
           </div>
         </div>
       )}
-
-      {/* Import Architecture Template Modal */}
-      <ImportTemplateModal
-        isOpen={showImportTemplateModal}
-        hasExistingNodes={nodes.length > 0}
-        activeCurrency={state.displayCurrency || 'USD'}
-        onClose={() => setShowImportTemplateModal(false)}
-        onImport={handleImportTemplate}
-      />
 
       {/* Floating Status Notification Banner */}
       {bannerMessage && (
