@@ -2145,6 +2145,7 @@ class AzureTerraformGenerator {
 
     const explicitRg = resources.find((r) => r.resourceType === 'azure_resource_group');
     const explicitVnet = resources.find((r) => r.resourceType === 'azure_vnet');
+    const allAzureSubnets = resources.filter((r) => r.resourceType === 'azure_subnet');
 
     // If there is no explicit Resource Group on the canvas, synthesize a default root one
     if (!explicitRg) {
@@ -2203,7 +2204,7 @@ resource "azurerm_resource_group" "main" {
             blocks.push(this._dataVm(name, cfg, rgName));
             resourceMap[r.id] = `data.azurerm_virtual_machine.${name}`;
           } else {
-            const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources);
+            const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources) || (allAzureSubnets.length > 0 ? allAzureSubnets[0] : undefined);
             const isSubnetImported = subnet && Boolean(this._cfg(subnet).imported || this._cfg(subnet).importState === 'imported');
             const subnetPrefix = isSubnetImported ? 'data.' : '';
             const subnetRef = subnet ? `${subnetPrefix}azurerm_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id` : null;
@@ -2286,7 +2287,7 @@ resource "azurerm_resource_group" "main" {
           break;
         }
         case 'azure_nic': {
-          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources);
+          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources) || (allAzureSubnets.length > 0 ? allAzureSubnets[0] : undefined);
           const isSubnetImported = subnet && Boolean(this._cfg(subnet).imported || this._cfg(subnet).importState === 'imported');
           const subnetRef = subnet ? `${isSubnetImported ? 'data.' : ''}azurerm_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id` : null;
           if (!subnetRef) {
@@ -2302,7 +2303,7 @@ resource "azurerm_resource_group" "main" {
           break;
         }
         case 'azure_bastion': {
-          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources);
+          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources) || (allAzureSubnets.length > 0 ? allAzureSubnets[0] : undefined);
           const subnetRef = subnet ? `azurerm_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id` : null;
           if (!subnetRef) {
             warnings.push(`Azure Bastion "${r.label}" is not connected to a subnet — it must be deployed into a subnet named "AzureBastionSubnet" and will fail to apply as generated.`);
@@ -2322,7 +2323,7 @@ resource "azurerm_resource_group" "main" {
           break;
         }
         case 'azure_vmss': {
-          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources);
+          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources) || (allAzureSubnets.length > 0 ? allAzureSubnets[0] : undefined);
           const subnetRef = subnet ? `azurerm_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id` : null;
           if (!subnetRef) {
             warnings.push(`VM Scale Set "${r.label}" is not connected to a subnet — the generated scale set will fail to apply.`);
@@ -2332,12 +2333,12 @@ resource "azurerm_resource_group" "main" {
           break;
         }
         case 'azure_app_gateway': {
-          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources);
+          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources) || (allAzureSubnets.length > 0 ? allAzureSubnets[0] : undefined);
           const subnetRef = subnet ? `azurerm_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id` : null;
           const pip = resolver.resolveParent(r.id, 'azure_public_ip', connections, resources);
           const pipRef = pip ? `azurerm_public_ip.${resolver.tfNameOf(pip.id) ?? 'main'}.id` : null;
-          if (!subnetRef || !pipRef) {
-            warnings.push(`Application Gateway "${r.label}" needs both a connected subnet and a connected Public IP — the generated resource will fail to apply without both.`);
+          if (!subnetRef) {
+            warnings.push(`Application Gateway "${r.label}" needs a connected subnet — the generated resource will fail to apply without one.`);
           }
           blocks.push(this._appGateway(name, cfg, rgName, rgLoc, subnetRef, pipRef));
           resourceMap[r.id] = `azurerm_application_gateway.${name}`;
@@ -2346,7 +2347,10 @@ resource "azurerm_resource_group" "main" {
         case 'azure_nat': {
           const pip = resolver.resolveParent(r.id, 'azure_public_ip', connections, resources);
           const pipRef = pip ? `azurerm_public_ip.${resolver.tfNameOf(pip.id) ?? 'main'}.id` : null;
-          const subnets = resolver.resolveParents(r.id, 'azure_subnet', connections, resources);
+          let subnets = resolver.resolveParents(r.id, 'azure_subnet', connections, resources);
+          if (subnets.length === 0 && allAzureSubnets.length > 0) {
+            subnets = [allAzureSubnets[0]];
+          }
           const subnetRefs = subnets.map((s) => `azurerm_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`);
           blocks.push(this._natAzure(name, cfg, rgName, rgLoc, pipRef, subnetRefs));
           resourceMap[r.id] = `azurerm_nat_gateway.${name}`;
@@ -2593,6 +2597,19 @@ data "azurerm_network_security_group" "${name}" {
     serverName = serverName.replace(/^-+|-+$/g, '').slice(0, 63);
     if (!serverName) serverName = 'sql-server';
 
+    const tierRaw = (cfg['tier'] as string) || 'S0';
+    const skuMap: Record<string, string> = {
+      'Basic': 'Basic',
+      'Standard': 'S0',
+      'Premium': 'P1',
+      'GeneralPurpose': 'GP_Gen5_2',
+      'General Purpose': 'GP_Gen5_2',
+      'BusinessCritical': 'BC_Gen5_2',
+      'Business Critical': 'BC_Gen5_2',
+      'Hyperscale': 'HS_Gen5_2',
+    };
+    const skuName = skuMap[tierRaw] ?? tierRaw;
+
     const parts: string[] = [
       `resource "azurerm_mssql_server" "${name}_server" {
   name                         = "${serverName}"
@@ -2608,7 +2625,7 @@ data "azurerm_network_security_group" "${name}" {
   name                        = "${(cfg['databaseName'] as string) || name}"
   server_id                   = azurerm_mssql_server.${name}_server.id
   max_size_gb                 = ${cfg['maxSizeGb'] ?? 250}
-  sku_name                    = "${cfg['tier'] ?? 'S0'}"
+  sku_name                    = "${skuName}"
   zone_redundant               = ${cfg['zoneRedundant'] === true}
   read_scale                   = ${cfg['readScale'] === true}
   storage_account_type         = "${cfg['requestedBackupStorageRedundancy'] ?? 'Geo'}"
@@ -2877,16 +2894,41 @@ data "azurerm_network_security_group" "${name}" {
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
 
-    const parts: string[] = [
+    const parts: string[] = [];
+    let publicIpRef = pipRef;
+    if (!isInternal && !publicIpRef) {
+      parts.push(`resource "azurerm_public_ip" "${name}_pip" {
+  name                = "${name}-pip"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+  allocation_method   = "Static"
+  sku                 = "${cfg['sku'] ?? 'Standard'}"
+  tags = {
+    Name      = "${name}-pip"
+    ManagedBy = "CloudCraft"
+  }
+}`);
+      publicIpRef = `azurerm_public_ip.${name}_pip.id`;
+    }
+
+    const frontendBlock = isInternal
+      ? `  frontend_ip_configuration {
+    name                          = "${name}-frontend"
+    private_ip_address_allocation = "Dynamic"
+  }`
+      : `  frontend_ip_configuration {
+    name                 = "${name}-frontend"
+    public_ip_address_id          = ${publicIpRef}
+  }`;
+
+    parts.push(
       `resource "azurerm_lb" "${name}" {
   name                = "${name}"
   resource_group_name = ${rgName}
   location            = ${rgLoc}
   sku                 = "${cfg['sku'] ?? 'Standard'}"
 
-  frontend_ip_configuration {
-    name                 = "${name}-frontend"${isInternal ? `\n    private_ip_address_allocation = "Dynamic"` : `\n    public_ip_address_id          = ${pipRef ?? 'azurerm_public_ip.main.id # WARNING: no Public IP connected'}`}
-  }
+${frontendBlock}
 
   tags = {
     Name      = "${name}"
@@ -2914,7 +2956,7 @@ ${tagLines.join('\n')}
   backend_address_pool_ids       = [azurerm_lb_backend_address_pool.${name}_backend.id]
   probe_id                       = azurerm_lb_probe.${name}_probe.id
 }`,
-    ];
+    );
     return parts.join('\n\n');
   }
 
@@ -3245,6 +3287,23 @@ ${tagLines.join('\n')}
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
 
+    const parts: string[] = [];
+    let publicIpRef = pipRef;
+    if (!publicIpRef) {
+      parts.push(`resource "azurerm_public_ip" "${name}_pip" {
+  name                = "${name}-pip"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  tags = {
+    Name      = "${name}-pip"
+    ManagedBy = "CloudCraft"
+  }
+}`);
+      publicIpRef = `azurerm_public_ip.${name}_pip.id`;
+    }
+
     const lines: string[] = [
       `resource "azurerm_application_gateway" "${name}" {`,
       `  name                = "${name}"`,
@@ -3272,7 +3331,7 @@ ${tagLines.join('\n')}
       `  }`,
       `  frontend_ip_configuration {`,
       `    name                 = "${name}-feip"`,
-      `    public_ip_address_id = ${pipRef ?? 'azurerm_public_ip.main.id # WARNING: Public IP not connected'}`,
+      `    public_ip_address_id = ${publicIpRef}`,
       `  }`,
       `  backend_address_pool {`,
       `    name = "${name}-backend"`,
@@ -3303,12 +3362,30 @@ ${tagLines.join('\n')}
       lines.push(`  waf_configuration {`, `    enabled          = true`, `    firewall_mode    = "${cfg['wafMode'] ?? 'Prevention'}"`, `    rule_set_type    = "OWASP"`, `    rule_set_version = "3.2"`, `  }`);
     }
     lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
-    return lines.join('\n');
+    parts.push(lines.join('\n'));
+    return parts.join('\n\n');
   }
 
   private _natAzure(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string, pipRef: string | null, subnetRefs: string[]): string {
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+
+    const parts: string[] = [];
+    let publicIpRef = pipRef;
+    if (!publicIpRef) {
+      parts.push(`resource "azurerm_public_ip" "${name}_pip" {
+  name                = "${name}-pip"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  tags = {
+    Name      = "${name}-pip"
+    ManagedBy = "CloudCraft"
+  }
+}`);
+      publicIpRef = `azurerm_public_ip.${name}_pip.id`;
+    }
 
     const lines: string[] = [
       `resource "azurerm_nat_gateway" "${name}" {`,
@@ -3323,13 +3400,11 @@ ${tagLines.join('\n')}
     }
     lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
 
-    const parts = [lines.join('\n')];
-    if (pipRef) {
-      parts.push(`resource "azurerm_nat_gateway_public_ip_association" "${name}_pip_assoc" {
+    parts.push(lines.join('\n'));
+    parts.push(`resource "azurerm_nat_gateway_public_ip_association" "${name}_pip_assoc" {
   nat_gateway_id       = azurerm_nat_gateway.${name}.id
-  public_ip_address_id = ${pipRef}
+  public_ip_address_id = ${publicIpRef}
 }`);
-    }
     subnetRefs.forEach((subnetRef, i) => {
       parts.push(`resource "azurerm_subnet_nat_gateway_association" "${name}_subnet_assoc_${i + 1}" {
   subnet_id      = ${subnetRef}
