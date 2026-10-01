@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
 import AiReviewCard from './AiReviewCard';
+import type { AiWellArchitectedReview } from '@/lib/services/AiReviewService';
 import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedService';
 import type { WaAssessment, WaFinding, WaPillar, WaSeverity, ResourceState } from '@/lib/engines/wellArchitected/types';
 import {
@@ -21,6 +22,7 @@ import {
   Layers,
   ArrowRight,
   Filter,
+  Download,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -93,6 +95,8 @@ export default function WellArchitectedReview() {
   const { state, dispatch } = useApp();
   const activeProject = useActiveProject();
 
+  const [aiReview, setAiReview] = useState<{ review: AiWellArchitectedReview; nodes: unknown } | null>(null);
+  const [exporting, setExporting] = useState<'pdf' | 'html' | 'json' | null>(null);
   const [assessment, setAssessment] = useState<WaAssessment | null>(null);
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -180,6 +184,30 @@ export default function WellArchitectedReview() {
   }, [assessment]);
 
   const isStale = state.architectureVersion > state.lastSavedVersion;
+  const isSaved = Boolean(activeProject && activeProject.id !== 'draft-project' && state.activeProjectId === activeProject.id);
+
+  const exportReport = async (format: 'pdf' | 'html' | 'json') => {
+    setExporting(format);
+    setError(null);
+    try {
+      // The AI commentary is included only when it was written for the design that is open now.
+      const ai = aiReview && aiReview.nodes === activeProject?.nodes ? aiReview.review : null;
+      const { blob, filename } = await apiWellArchitectedService.downloadReport(format, ai ? {
+        summary: ai.summary,
+        pillars: ai.pillars.map((p) => ({ pillar: p.key, assessment: p.assessment, topFixes: p.topFixes.map((f) => ({ ruleId: f.ruleId, fix: f.fix })) })),
+        plan: ai.plan.map((s) => ({ ruleId: s.ruleId, action: s.action })),
+        suggestions: ai.suggestions,
+      } : undefined);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Report export failed');
+    } finally {
+      setExporting(null);
+    }
+  };
 
   if (!activeProject) {
     return (
@@ -239,6 +267,18 @@ export default function WellArchitectedReview() {
         </div>
 
         <div className="flex items-center gap-3">
+          {(['pdf', 'html'] as const).map((fmt) => (
+            <button
+              key={fmt}
+              onClick={() => void exportReport(fmt)}
+              disabled={!isSaved || isStale || exporting !== null}
+              title={!isSaved ? 'Save the project to export a report' : isStale ? 'Save your changes first — reports are generated from the saved architecture' : `Export the Well-Architected report as ${fmt.toUpperCase()}`}
+              data-testid={`wa-export-${fmt}`}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 disabled:opacity-40"
+            >
+              <Download className="w-4 h-4" />{exporting === fmt ? 'Generating…' : fmt.toUpperCase()}
+            </button>
+          ))}
           <button
             onClick={handleRunAnalysis}
             disabled={analyzing}
@@ -347,7 +387,8 @@ export default function WellArchitectedReview() {
         </div>
       </div>
 
-      <AiReviewCard nodes={activeProject.nodes} edges={activeProject.edges} mode="well-architected" />
+      <AiReviewCard nodes={activeProject.nodes} edges={activeProject.edges} mode="well-architected" onReview={(r, n) => setAiReview({ review: r as AiWellArchitectedReview, nodes: n })} />
+      {aiReview && aiReview.nodes === activeProject.nodes && <p className="text-[11px] text-slate-500 -mt-4">The AI review above will be included in the PDF and HTML export as a separately labelled section.</p>}
 
       {/* Critical Findings Alert Banner (if any) */}
       {criticalFindings.length > 0 && (

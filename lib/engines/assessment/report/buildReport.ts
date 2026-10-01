@@ -6,7 +6,7 @@
  * shows identical content and a report regenerated from the same scan ID
  * does not change when the architecture changes later.
  */
-import type { AiCommentary } from '@/lib/ai/reportCommentary';
+import type { AiCommentary, AiWaCommentary } from '@/lib/ai/reportCommentary';
 import { getResourceDefinition } from '@/lib/resources';
 import { EVIDENCE_AVAILABILITY, EVIDENCE_CLASS_LABEL } from '../evidenceAvailability';
 import { RULES_BY_ID } from '../rules';
@@ -126,6 +126,8 @@ export interface AssessmentReport {
   comparison?: ComparisonSummary;
   /** Optional AI wording, added by the route after the report is built — never part of scores or the content hash. */
   aiCommentary?: AiCommentary;
+  /** Same idea for the Well-Architected report (pillar by pillar). */
+  aiWaCommentary?: AiWaCommentary;
   appendix: {
     rules: { id: string; provider: string; service: string; title: string; severity: Severity; version: string; references: string }[];
     references: SourceReference[];

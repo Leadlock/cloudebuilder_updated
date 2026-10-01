@@ -36,6 +36,7 @@ import { POST as scanPost, GET as scanGet } from '@/app/api/projects/[id]/securi
 import { POST as reviewPost } from '@/app/api/projects/[id]/finding-reviews/route';
 import { DELETE as reviewDelete } from '@/app/api/projects/[id]/finding-reviews/[reviewId]/route';
 import { POST as reportPost } from '@/app/api/projects/[id]/assessment-report/route';
+import { POST as waReportPost } from '@/app/api/projects/[id]/well-architected-report/route';
 import { findingIdFor } from '@/lib/engines/assessment/AssessmentEngine';
 
 const now = '2026-09-24T10:00:00.000Z';
@@ -195,5 +196,61 @@ describe('Assessment report API', () => {
   test('unknown snapshot IDs return 404', async () => {
     const res = await reportPost(req('/api/projects/proj-a/assessment-report', 'owner-a', { format: 'json', scanId: '7a1c0e55-0000-4000-8000-000000000000' }), params('proj-a'));
     expect(res.status).toBe(404);
+  });
+});
+
+describe('Well-Architected report API', () => {
+  const url = '/api/projects/proj-a/well-architected-report';
+
+  test('PDF and HTML are produced from the same snapshot, pillar by pillar, and are not the security report', async () => {
+    const pdf = await waReportPost(req(url, 'owner-a', { format: 'pdf' }), params('proj-a'));
+    expect(pdf.status).toBe(200);
+    expect(pdf.headers.get('Content-Disposition')).toContain('cloudcraft-well-architected-');
+    expect(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString()).toBe('%PDF-');
+
+    const html = await waReportPost(req(url, 'owner-a', { format: 'html' }), params('proj-a'));
+    const text = await html.text();
+    expect(text).toContain('Well-Architected Review');
+    expect(text).toContain('Pillar Reviews');
+    expect(text).toContain('Improvement Roadmap');
+    expect(text).not.toContain('SOC 1 Readiness Analysis');           // that belongs to the security report
+    expect(text).not.toContain('AI-generated commentary');           // none supplied
+    expect(text).not.toContain('super-secret-value');
+  }, 30_000);
+
+  test('AI commentary is validated: made-up rules and pillars are dropped, pillar text for thin pillars is fixed', async () => {
+    const json = await waReportPost(req(url, 'owner-a', { format: 'json' }), params('proj-a'));
+    const body = await json.json() as { data: { report: { waPillars: { key: string; evaluable: boolean; findingIds: string[] }[] }; scanId: string } };
+    const pillars = body.data.report.waPillars;
+    expect(pillars.length).toBeGreaterThan(0);
+    const withFindings = pillars.find((p) => p.evaluable && p.findingIds.length > 0)!;
+    const thin = pillars.find((p) => !p.evaluable);
+
+    const res = await waReportPost(req(url, 'owner-a', {
+      format: 'html',
+      aiCommentary: {
+        summary: 'Overall <b>fine</b>.',
+        pillars: [
+          { pillar: withFindings.key, assessment: 'Pillar commentary here.', topFixes: [{ ruleId: 'AWS-MADE-UP-999', fix: 'invented fix' }] },
+          { pillar: 'aws:not_a_pillar', assessment: 'invented pillar', topFixes: [] },
+          ...(thin ? [{ pillar: thin.key, assessment: 'This pillar is excellent!', topFixes: [] }] : []),
+        ],
+        plan: [{ ruleId: 'AWS-MADE-UP-999', action: 'invented action' }],
+        suggestions: ['Enable GuardDuty'],
+      },
+    }), params('proj-a'));
+    const text = await res.text();
+    expect(text).toContain('AI-generated commentary');
+    expect(text).toContain('Pillar commentary here.');
+    expect(text).toContain('Unverified AI suggestions');
+    expect(text).not.toContain('invented');
+    expect(text).not.toContain('<b>fine</b>');                       // escaped
+    if (thin) { expect(text).not.toContain('This pillar is excellent!'); expect(text).toContain('too little evidence'); }
+  }, 30_000);
+
+  test('same access rules as the assessment report', async () => {
+    expect((await waReportPost(req(url, 'owner-b', { format: 'json' }), params('proj-a'))).status).toBeGreaterThanOrEqual(403);
+    const unknown = await waReportPost(req(url, 'owner-a', { format: 'json', scanId: '7a1c0e55-0000-4000-8000-000000000000' }), params('proj-a'));
+    expect(unknown.status).toBe(404);
   });
 });

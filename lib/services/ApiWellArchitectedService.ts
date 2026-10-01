@@ -168,6 +168,31 @@ class ApiWellArchitectedServiceImpl {
       return [];
     }
   }
+
+  /**
+   * Downloads the dedicated Well-Architected report (pdf / html / json) generated from the saved architecture.
+   * `aiCommentary` is the AI Well-Architected review the user is looking at; the server validates it against the report.
+   */
+  async downloadReport(
+    format: 'pdf' | 'html' | 'json',
+    aiCommentary?: { summary: string; pillars: { pillar: string; assessment?: string; topFixes: { ruleId: string; fix?: string }[] }[]; plan: { ruleId: string; action?: string }[]; suggestions: string[] },
+  ): Promise<{ blob: Blob; filename: string }> {
+    const projectId = _activeProjectId;
+    if (!projectId || projectId === 'draft-project') throw new Error('Save the project before exporting a report.');
+    const res = await fetch(`${getBaseUrl()}/api/projects/${projectId}/well-architected-report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(process.env.NODE_ENV === 'development' ? { 'x-user-id': 'dev-user-id' } : {}) },
+      body: JSON.stringify({ env: _activeEnvironment, format, ...(aiCommentary ? { aiCommentary } : {}) }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => null) as ApiError | null;
+      throw new Error(err?.error?.message ?? `Report generation failed (${res.status})`);
+    }
+    const cd = res.headers.get('Content-Disposition') ?? '';
+    const filename = /filename="([^"]+)"/.exec(cd)?.[1] ?? `cloudcraft-well-architected.${format}`;
+    const blob = format === 'json' ? new Blob([JSON.stringify(await res.json(), null, 2)], { type: 'application/json' }) : await res.blob();
+    return { blob, filename };
+  }
 }
 
 export const apiWellArchitectedService = new ApiWellArchitectedServiceImpl();

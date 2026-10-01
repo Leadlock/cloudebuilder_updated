@@ -13,13 +13,13 @@ import { VERIFICATION_LABEL } from '@/lib/engines/assessment/references';
 
 type Doc = PDFKit.PDFDocument;
 
-const C = {
+export const C = {
   navy: '#0B2545', accent: '#1F5FAD', text: '#1F2937', muted: '#64748B', rule: '#D6DEE8', zebra: '#F4F7FA', box: '#EEF3F9',
   sev: { CRITICAL: '#9F1239', HIGH: '#C2410C', MEDIUM: '#A16207', LOW: '#1D4ED8', INFORMATIONAL: '#475569' } as Record<Severity, string>,
   pass: '#15803D', fail: '#B91C1C', warn: '#A16207', na: '#64748B',
 };
-const PAGE = { w: 595.28, h: 841.89, m: 54, top: 72, bottom: 64 };
-const CONTENT_W = PAGE.w - PAGE.m * 2;
+export const PAGE = { w: 595.28, h: 841.89, m: 54, top: 72, bottom: 64 };
+export const CONTENT_W = PAGE.w - PAGE.m * 2;
 
 /** Standard PDF fonts are WinAnsi-encoded; map characters they cannot render. */
 export function pdfSafe(s: unknown): string {
@@ -30,9 +30,9 @@ export function pdfSafe(s: unknown): string {
     .replace(/[^\x00-\xFF–—‘’“”•…€™]/g, '?');
 }
 
-interface Col { header: string; width: number; align?: 'left' | 'center' | 'right'; render?: (row: string[], i: number) => { color?: string; bold?: boolean } }
+export interface Col { header: string; width: number; align?: 'left' | 'center' | 'right'; render?: (row: string[], i: number) => { color?: string; bold?: boolean } }
 
-class Writer {
+export class Writer {
   sections: { title: string; page: number; level: number }[] = [];
   constructor(public doc: Doc, public report: AssessmentReport) {}
 
@@ -152,11 +152,11 @@ class Writer {
   }
 }
 
-const sevColor = (row: string[], i: number) => ({ color: C.sev[row[i] as Severity] ?? C.text, bold: true });
-const statusColor = (v: string) => (/^(Pass|No issues|Technical evidence)/.test(v) ? C.pass : /^(Gap|Fail|Critical|Gaps)/.test(v) ? C.fail : /^(Warning|Issues|Partial)/.test(v) ? C.warn : C.na);
-const fmtDate = (iso: string) => new Date(iso).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
-const scoreText = (s: number | null) => (s === null ? 'Not scored' : `${s}/100`);
-const human = (s: string) => s.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase());
+export const sevColor = (row: string[], i: number) => ({ color: C.sev[row[i] as Severity] ?? C.text, bold: true });
+export const statusColor = (v: string) => (/^(Pass|No issues|Technical evidence)/.test(v) ? C.pass : /^(Gap|Fail|Critical|Gaps)/.test(v) ? C.fail : /^(Warning|Issues|Partial)/.test(v) ? C.warn : C.na);
+export const fmtDate = (iso: string) => new Date(iso).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+export const scoreText = (s: number | null) => (s === null ? 'Not scored' : `${s}/100`);
+export const human = (s: string) => s.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase());
 
 // ─── Architecture diagram ─────────────────────────────────────────────────────
 
@@ -265,15 +265,57 @@ function recTable(w: Writer, groups: RecommendationGroup[], empty: string) {
 
 // ─── Main renderer ────────────────────────────────────────────────────────────
 
-export async function renderReportPdf(report: AssessmentReport): Promise<Buffer> {
+/** Fills the contents page with real page numbers and stamps the running header/footer on every page but the cover. */
+export function finishPdf(w: Writer, tocPage: number, title: string): void {
+  const doc = w.doc;
+  const m = w.report.meta;
+  // ── TOC (with real page numbers) ──
+  doc.switchToPage(tocPage);
+  doc.y = PAGE.top; doc.x = PAGE.m;
+  doc.font('Helvetica-Bold').fontSize(18).fillColor(C.navy).text('Contents', PAGE.m, PAGE.top);
+  doc.moveDown(0.8);
+  for (const s of w.sections) {
+    const indent = s.level === 1 ? 0 : 16;
+    doc.font(s.level === 1 ? 'Helvetica-Bold' : 'Helvetica').fontSize(s.level === 1 ? 10.5 : 9).fillColor(C.text);
+    const y = doc.y;
+    if (y > PAGE.h - PAGE.bottom - 20) break;
+    doc.text(pdfSafe(s.title), PAGE.m + indent, y, { width: CONTENT_W - 60 - indent, lineBreak: false, ellipsis: true });
+    doc.text(String(s.page + 1), PAGE.m + CONTENT_W - 40, y, { width: 40, align: 'right' });
+    doc.y = y + (s.level === 1 ? 17 : 14);
+  }
+
+  // ── Running header/footer with page numbers ──
+  const range = doc.bufferedPageRange();
+  for (let i = range.start; i < range.start + range.count; i++) {
+    doc.switchToPage(i);
+    if (i === range.start) continue; // cover
+    const bottomMargin = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
+    doc.font('Helvetica').fontSize(7.5).fillColor(C.muted);
+    doc.text(pdfSafe(`${title} — ${m.projectName}`), PAGE.m, 30, { width: CONTENT_W * 0.7, lineBreak: false, ellipsis: true });
+    doc.text(pdfSafe(`${m.environment} · Rev ${m.architectureRevision}`), PAGE.m + CONTENT_W * 0.7, 30, { width: CONTENT_W * 0.3, align: 'right', lineBreak: false });
+    doc.moveTo(PAGE.m, 44).lineTo(PAGE.m + CONTENT_W, 44).lineWidth(0.4).strokeColor(C.rule).stroke();
+    doc.moveTo(PAGE.m, PAGE.h - 44).lineTo(PAGE.m + CONTENT_W, PAGE.h - 44).lineWidth(0.4).strokeColor(C.rule).stroke();
+    doc.text(pdfSafe(`${m.reportId} · Ruleset ${m.rulesetVersion} · Design-time assessment — not an audit opinion`), PAGE.m, PAGE.h - 38, { width: CONTENT_W * 0.75, lineBreak: false, ellipsis: true });
+    doc.text(`Page ${i + 1} of ${range.count}`, PAGE.m + CONTENT_W * 0.75, PAGE.h - 38, { width: CONTENT_W * 0.25, align: 'right', lineBreak: false });
+    doc.page.margins.bottom = bottomMargin;
+  }
+}
+
+/** Creates the A4 document, its Writer and the promise that resolves with the finished file. */
+export async function openPdf(report: AssessmentReport, opts: { title: string; subject: string }) {
   const PDFDocument = (await import('pdfkit')).default;
   const doc = new PDFDocument({ size: 'A4', margins: { top: PAGE.top, bottom: PAGE.bottom - 20, left: PAGE.m, right: PAGE.m }, bufferPages: true, autoFirstPage: true, info: {
-    Title: `${report.meta.title} — ${report.meta.projectName}`, Author: 'CloudCraft', Subject: 'Architecture & Security Assessment (design-time)', Keywords: `${report.meta.reportId} ruleset ${report.meta.rulesetVersion}`,
+    Title: `${opts.title} — ${report.meta.projectName}`, Author: 'CloudCraft', Subject: opts.subject, Keywords: `${report.meta.reportId} ruleset ${report.meta.rulesetVersion}`,
   } });
   const chunks: Buffer[] = [];
   doc.on('data', (c: Buffer) => chunks.push(c));
   const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
-  const w = new Writer(doc, report);
+  return { doc, w: new Writer(doc, report), done };
+}
+
+export async function renderReportPdf(report: AssessmentReport): Promise<Buffer> {
+  const { doc, w, done } = await openPdf(report, { title: report.meta.title, subject: 'Architecture & Security Assessment (design-time)' });
   const m = report.meta;
   const ex = report.executive;
 
@@ -503,37 +545,7 @@ export async function renderReportPdf(report: AssessmentReport): Promise<Buffer>
   w.h1('Appendix E', 'Limitations');
   w.bullets(report.appendix.limitations);
 
-  // ── TOC (with real page numbers) ──
-  doc.switchToPage(tocPage);
-  doc.y = PAGE.top; doc.x = PAGE.m;
-  doc.font('Helvetica-Bold').fontSize(18).fillColor(C.navy).text('Contents', PAGE.m, PAGE.top);
-  doc.moveDown(0.8);
-  for (const s of w.sections) {
-    const indent = s.level === 1 ? 0 : 16;
-    doc.font(s.level === 1 ? 'Helvetica-Bold' : 'Helvetica').fontSize(s.level === 1 ? 10.5 : 9).fillColor(C.text);
-    const y = doc.y;
-    if (y > PAGE.h - PAGE.bottom - 20) break;
-    doc.text(pdfSafe(s.title), PAGE.m + indent, y, { width: CONTENT_W - 60 - indent, lineBreak: false, ellipsis: true });
-    doc.text(String(s.page + 1), PAGE.m + CONTENT_W - 40, y, { width: 40, align: 'right' });
-    doc.y = y + (s.level === 1 ? 17 : 14);
-  }
-
-  // ── Running header/footer with page numbers ──
-  const range = doc.bufferedPageRange();
-  for (let i = range.start; i < range.start + range.count; i++) {
-    doc.switchToPage(i);
-    if (i === range.start) continue; // cover
-    const bottomMargin = doc.page.margins.bottom;
-    doc.page.margins.bottom = 0;
-    doc.font('Helvetica').fontSize(7.5).fillColor(C.muted);
-    doc.text(pdfSafe(`${m.title} — ${m.projectName}`), PAGE.m, 30, { width: CONTENT_W * 0.7, lineBreak: false, ellipsis: true });
-    doc.text(pdfSafe(`${m.environment} · Rev ${m.architectureRevision}`), PAGE.m + CONTENT_W * 0.7, 30, { width: CONTENT_W * 0.3, align: 'right', lineBreak: false });
-    doc.moveTo(PAGE.m, 44).lineTo(PAGE.m + CONTENT_W, 44).lineWidth(0.4).strokeColor(C.rule).stroke();
-    doc.moveTo(PAGE.m, PAGE.h - 44).lineTo(PAGE.m + CONTENT_W, PAGE.h - 44).lineWidth(0.4).strokeColor(C.rule).stroke();
-    doc.text(pdfSafe(`${m.reportId} · Ruleset ${m.rulesetVersion} · Design-time assessment — not an audit opinion`), PAGE.m, PAGE.h - 38, { width: CONTENT_W * 0.75, lineBreak: false, ellipsis: true });
-    doc.text(`Page ${i + 1} of ${range.count}`, PAGE.m + CONTENT_W * 0.75, PAGE.h - 38, { width: CONTENT_W * 0.25, align: 'right', lineBreak: false });
-    doc.page.margins.bottom = bottomMargin;
-  }
+  finishPdf(w, tocPage, m.title);
 
   doc.end();
   return done;

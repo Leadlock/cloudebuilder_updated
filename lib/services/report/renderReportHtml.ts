@@ -8,19 +8,39 @@ import type { AssessmentReport, RecommendationGroup } from '@/lib/engines/assess
 import type { Finding, Severity } from '@/lib/engines/assessment/types';
 import { VERIFICATION_LABEL } from '@/lib/engines/assessment/references';
 
-const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-const SEV: Record<Severity, string> = { CRITICAL: '#9F1239', HIGH: '#C2410C', MEDIUM: '#A16207', LOW: '#1D4ED8', INFORMATIONAL: '#475569' };
-const human = (s: string) => s.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase());
-const score = (s: number | null) => (s === null ? 'Not scored' : `${s}/100`);
-const date = (iso: string) => new Date(iso).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
-const statusClass = (v: string) => (/^(Pass|No issues|Technical evidence)/.test(v) ? 'ok' : /^(Gap|Critical|Gaps)/.test(v) ? 'bad' : /^(Warning|Issues|Partial)/.test(v) ? 'warn' : 'na');
+/** Shared stylesheet for every CloudCraft HTML report. */
+export const REPORT_CSS = `
+:root{--navy:#0B2545;--accent:#1F5FAD;--text:#1F2937;--muted:#64748B;--rule:#D6DEE8;--zebra:#F4F7FA}
+body{font:14px/1.55 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:var(--text);background:#fff;margin:0}
+main{max-width:960px;margin:0 auto;padding:32px 20px}
+section{margin:0 0 40px;page-break-before:always}section:first-child{page-break-before:auto}
+h1{font-size:30px;color:#fff;margin:4px 0}h2{color:var(--navy);border-bottom:2px solid var(--accent);padding-bottom:4px}h3{color:var(--navy);margin-top:22px}h4{margin:18px 0 4px}
+.cover{background:var(--navy);color:#dbe6f3;padding:32px;border-radius:6px}.cover table td{color:var(--text);background:#fff}.brand{letter-spacing:4px;color:#9FB6D3;margin:0}.project{font-size:18px}.badge{display:inline-block;background:#F59E0B;color:var(--navy);font-weight:700;padding:4px 10px;border-radius:4px;font-size:12px;margin-bottom:14px}
+table{border-collapse:collapse;width:100%;margin:8px 0 14px;font-size:12.5px}th{background:var(--navy);color:#fff;text-align:left;padding:6px}td{padding:6px;border-bottom:1px solid var(--rule);vertical-align:top}tbody tr:nth-child(even) td{background:var(--zebra)}
+.pill{display:inline-block;color:#fff;font-size:11px;font-weight:700;padding:1px 7px;border-radius:3px}
+.muted{color:var(--muted)}.ok{color:#15803D}.bad{color:#B91C1C}.warn{color:#A16207}.na{color:var(--muted)}
+.callout{padding:12px 14px;border-left:4px solid var(--accent);background:#EEF3F9;margin:12px 0}.callout.warn{border-color:#B45309}.callout.bad{border-color:#B91C1C}
+.counts{display:flex;gap:10px;flex-wrap:wrap}.counts div{border:1px solid var(--rule);border-radius:6px;padding:8px 14px;text-align:center;min-width:90px}.counts b{display:block;font-size:22px}.counts span{font-size:11px;color:var(--muted)}
+.finding{border:1px solid var(--rule);border-left:4px solid;border-radius:4px;padding:12px 16px;margin:14px 0;page-break-inside:avoid}.finding h4{margin:6px 0;color:var(--navy);font-size:16px}
+.finding dl{display:grid;grid-template-columns:170px 1fr;gap:2px 10px;margin:6px 0}.finding dt{color:var(--muted);font-weight:600}.finding dd{margin:0}.review{color:#6D28D9}
+code{font-size:12px;background:#F1F5F9;padding:1px 4px;border-radius:3px;word-break:break-all}
+footer{color:var(--muted);font-size:12px;border-top:1px solid var(--rule);padding-top:10px}
+@media print{main{max-width:none}a{color:inherit}}
+`;
 
-function table(headers: string[], rows: string[][], empty = 'None.'): string {
+export const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+export const SEV: Record<Severity, string> = { CRITICAL: '#9F1239', HIGH: '#C2410C', MEDIUM: '#A16207', LOW: '#1D4ED8', INFORMATIONAL: '#475569' };
+export const human = (s: string) => s.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase());
+export const score = (s: number | null) => (s === null ? 'Not scored' : `${s}/100`);
+export const date = (iso: string) => new Date(iso).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+export const statusClass = (v: string) => (/^(Pass|No issues|Technical evidence)/.test(v) ? 'ok' : /^(Gap|Critical|Gaps)/.test(v) ? 'bad' : /^(Warning|Issues|Partial)/.test(v) ? 'warn' : 'na');
+
+export function table(headers: string[], rows: string[][], empty = 'None.'): string {
   if (rows.length === 0) return `<p class="muted">${esc(empty)}</p>`;
   return `<table><thead><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
-const sevBadge = (s: Severity) => `<span class="pill" style="background:${SEV[s]}">${s}</span>`;
-const list = (items: string[], empty = 'None.') => (items.length ? `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>` : `<p class="muted">${esc(empty)}</p>`);
+export const sevBadge = (s: Severity) => `<span class="pill" style="background:${SEV[s]}">${s}</span>`;
+export const list = (items: string[], empty = 'None.') => (items.length ? `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>` : `<p class="muted">${esc(empty)}</p>`);
 
 function recTable(groups: RecommendationGroup[], empty: string) {
   return table(['Rule', 'Severity', 'Recommendation', 'Affected resources', 'Auto-Fix'],
@@ -147,22 +167,7 @@ export function renderReportHtml(r: AssessmentReport): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(m.title)} — ${esc(m.projectName)}</title>
 <style>
-:root{--navy:#0B2545;--accent:#1F5FAD;--text:#1F2937;--muted:#64748B;--rule:#D6DEE8;--zebra:#F4F7FA}
-body{font:14px/1.55 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:var(--text);background:#fff;margin:0}
-main{max-width:960px;margin:0 auto;padding:32px 20px}
-section{margin:0 0 40px;page-break-before:always}section:first-child{page-break-before:auto}
-h1{font-size:30px;color:#fff;margin:4px 0}h2{color:var(--navy);border-bottom:2px solid var(--accent);padding-bottom:4px}h3{color:var(--navy);margin-top:22px}h4{margin:18px 0 4px}
-.cover{background:var(--navy);color:#dbe6f3;padding:32px;border-radius:6px}.cover table td{color:var(--text);background:#fff}.brand{letter-spacing:4px;color:#9FB6D3;margin:0}.project{font-size:18px}.badge{display:inline-block;background:#F59E0B;color:var(--navy);font-weight:700;padding:4px 10px;border-radius:4px;font-size:12px;margin-bottom:14px}
-table{border-collapse:collapse;width:100%;margin:8px 0 14px;font-size:12.5px}th{background:var(--navy);color:#fff;text-align:left;padding:6px}td{padding:6px;border-bottom:1px solid var(--rule);vertical-align:top}tbody tr:nth-child(even) td{background:var(--zebra)}
-.pill{display:inline-block;color:#fff;font-size:11px;font-weight:700;padding:1px 7px;border-radius:3px}
-.muted{color:var(--muted)}.ok{color:#15803D}.bad{color:#B91C1C}.warn{color:#A16207}.na{color:var(--muted)}
-.callout{padding:12px 14px;border-left:4px solid var(--accent);background:#EEF3F9;margin:12px 0}.callout.warn{border-color:#B45309}.callout.bad{border-color:#B91C1C}
-.counts{display:flex;gap:10px;flex-wrap:wrap}.counts div{border:1px solid var(--rule);border-radius:6px;padding:8px 14px;text-align:center;min-width:90px}.counts b{display:block;font-size:22px}.counts span{font-size:11px;color:var(--muted)}
-.finding{border:1px solid var(--rule);border-left:4px solid;border-radius:4px;padding:12px 16px;margin:14px 0;page-break-inside:avoid}.finding h4{margin:6px 0;color:var(--navy);font-size:16px}
-.finding dl{display:grid;grid-template-columns:170px 1fr;gap:2px 10px;margin:6px 0}.finding dt{color:var(--muted);font-weight:600}.finding dd{margin:0}.review{color:#6D28D9}
-code{font-size:12px;background:#F1F5F9;padding:1px 4px;border-radius:3px;word-break:break-all}
-footer{color:var(--muted);font-size:12px;border-top:1px solid var(--rule);padding-top:10px}
-@media print{main{max-width:none}a{color:inherit}}
+${REPORT_CSS}
 </style></head><body><main>${sections.join('\n')}
 <footer>${esc(m.reportId)} · Ruleset ${esc(m.rulesetVersion)} · Architecture revision ${m.architectureRevision} · Design-time assessment — not an audit opinion.</footer></main></body></html>`;
 }
