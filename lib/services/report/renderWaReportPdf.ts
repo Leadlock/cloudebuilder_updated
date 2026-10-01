@@ -40,11 +40,14 @@ function recTable(w: Writer, groups: RecommendationGroup[], empty: string) {
 
 function pillarSection(w: Writer, p: WaPillarView, ai: AssessmentReport['aiWaCommentary']) {
   w.h2(`${p.label} — ${p.status}`, true);
-  w.p(`${p.framework} · Score ${scoreText(p.score)} (${p.rating}) · Coverage ${pct(p.coveragePct)} — ${p.evaluated} of ${p.applicable} applicable checks evaluated · ${p.failed} failed · ${p.warnings} warnings · ${p.passed} passed`, { size: 8.5, color: statusColor(p.status) });
+  w.p(p.evaluable
+    ? `${p.framework} · Score ${scoreText(p.score)} (${p.rating}) · Coverage ${pct(p.coveragePct)} — ${p.evaluated} of ${p.applicable} applicable checks evaluated · ${p.failed} failed · ${p.warnings} warnings · ${p.passed} passed`
+    : `${p.framework} · Not scored — ${p.evaluated} of ${p.applicable} applicable checks could be evaluated`, { size: 8.5, color: statusColor(p.status) });
   if (!p.evaluable) w.box('Insufficient evidence', 'Too few checks could be evaluated for this pillar to be scored. This is not a pass — add the relevant resources or settings, or supply discovered configuration.', '#B45309');
   if (p.strengths.length) { w.h3('What the design does well'); w.bullets(p.strengths, { size: 9 }); }
   const aiPillar = ai?.pillars.find((x) => x.key === p.key);
-  if (aiPillar?.assessment) {
+  // Only the model's own wording is labelled AI commentary; thin-evidence pillars already carry the fixed notice above.
+  if (p.evaluable && aiPillar?.assessment) {
     w.box('AI commentary', `${aiPillar.assessment}${aiPillar.topFixes.map((f) => `\n- ${f.title} (${f.severity}): ${f.fix}`).join('')}`, C.accent);
   }
   if (p.findings.length) p.findings.forEach((f) => pillarFindingBlock(w, f));

@@ -26,10 +26,10 @@ function pillarFinding(f: Finding): string {
 function pillarSection(p: WaPillarView, ai: AssessmentReport['aiWaCommentary']): string {
   const aiPillar = ai?.pillars.find((x) => x.key === p.key);
   return `<h3 class="${statusClass(p.status)}">${esc(p.label)} <span class="muted">— ${esc(p.status)}</span></h3>
-  <p class="muted">${esc(p.framework)} · Score ${score(p.score)} (${esc(p.rating)}) · Coverage ${pct(p.coveragePct)} — ${p.evaluated} of ${p.applicable} applicable checks evaluated · ${p.failed} failed · ${p.warnings} warnings · ${p.passed} passed</p>
+  <p class="muted">${p.evaluable ? `${esc(p.framework)} · Score ${score(p.score)} (${esc(p.rating)}) · Coverage ${pct(p.coveragePct)} — ${p.evaluated} of ${p.applicable} applicable checks evaluated · ${p.failed} failed · ${p.warnings} warnings · ${p.passed} passed` : `${esc(p.framework)} · Not scored — ${p.evaluated} of ${p.applicable} applicable checks could be evaluated`}</p>
   ${p.evaluable ? '' : '<div class="callout warn"><b>Insufficient evidence.</b> Too few checks could be evaluated for this pillar to be scored. This is not a pass — add the relevant resources or settings, or supply discovered configuration.</div>'}
   ${p.strengths.length ? `<p><b>What the design does well</b></p>${list(p.strengths)}` : ''}
-  ${aiPillar && aiPillar.assessment ? `<div class="callout"><b>AI commentary:</b> ${esc(aiPillar.assessment)}${aiPillar.topFixes.length ? `<ul>${aiPillar.topFixes.map((f) => `<li>${esc(f.title)} (${esc(f.severity)}) — ${esc(f.fix)}</li>`).join('')}</ul>` : ''}</div>` : ''}
+  ${p.evaluable && aiPillar && aiPillar.assessment ? `<div class="callout"><b>AI commentary:</b> ${esc(aiPillar.assessment)}${aiPillar.topFixes.length ? `<ul>${aiPillar.topFixes.map((f) => `<li>${esc(f.title)} (${esc(f.severity)}) — ${esc(f.fix)}</li>`).join('')}</ul>` : ''}</div>` : ''}
   ${p.findings.length ? p.findings.map(pillarFinding).join('') : (p.evaluable ? '<p class="muted">No open findings in the evaluated checks.</p>' : '')}`;
 }
 

@@ -245,7 +245,7 @@ describe('Well-Architected report API', () => {
     expect(text).toContain('Unverified AI suggestions');
     expect(text).not.toContain('invented');
     expect(text).not.toContain('<b>fine</b>');                       // escaped
-    if (thin) { expect(text).not.toContain('This pillar is excellent!'); expect(text).toContain('too little evidence'); }
+    if (thin) { expect(text).not.toContain('This pillar is excellent!'); expect(text).toContain('Insufficient evidence'); expect(text).toContain('Too few checks could be evaluated'); }
   }, 30_000);
 
   test('same access rules as the assessment report', async () => {

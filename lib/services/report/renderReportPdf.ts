@@ -386,6 +386,7 @@ export async function renderReportPdf(report: AssessmentReport): Promise<Buffer>
   w.h3('Immediate priorities'); w.bullets(ex.immediatePriorities, { empty: 'No immediate (critical/high required) remediation items.' });
   if (report.aiCommentary) {
     const ai = report.aiCommentary;
+    w.ensure(200); // keep the heading, notice and first lines together
     w.h3('AI-generated commentary');
     w.box('AI-generated', `${COMMENTARY_DISCLAIMER} Generated ${fmtDate(ai.generatedAt)}.`, '#B45309');
     if (ai.summary) w.p(ai.summary);
