@@ -66,7 +66,11 @@ export default function TerraformExecutionPanel() {
   const storageKey = activeProject ? `cloudcraft_tf_state_${activeProject.id}_${state.activeEnvironment}` : null;
   const backendStorageKey = activeProject ? `cloudcraft_tf_backend_${activeProject.id}` : null;
 
-  const defaultProvider: 'aws' | 'azure' = activeProject?.provider === 'azure' ? 'azure' : 'aws';
+  const defaultProvider: 'aws' | 'azure' =
+    activeProject?.provider === 'azure' ||
+    (activeProject?.nodes && activeProject.nodes.some((n) => n.resourceType.startsWith('azure_') || n.provider === 'azure'))
+      ? 'azure'
+      : 'aws';
   const [backendProvider, setBackendProvider] = useState<'aws' | 'azure'>(defaultProvider);
   const [accounts, setAccounts] = useState<CloudAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
@@ -456,22 +460,28 @@ export default function TerraformExecutionPanel() {
       ) : (
         <div className="space-y-4">
           {/* Provider + account selection */}
-          {activeProject.provider === 'multi' && (
-            <div className="flex gap-2">
-              {(['aws', 'azure'] as const).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setBackendProvider(p)}
-                  className={clsx(
-                    'px-3 py-1 rounded-lg text-xs font-medium border transition-colors',
-                    backendProvider === p ? 'bg-emerald-700 border-emerald-600 text-white' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600',
-                  )}
-                >
-                  {p.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <span className="text-gray-400 text-xs font-medium">Target Cloud:</span>
+            {(['aws', 'azure'] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => {
+                  setBackendProvider(p);
+                  resetPlan();
+                }}
+                className={clsx(
+                  'px-3 py-1 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5',
+                  backendProvider === p
+                    ? (p === 'aws' ? 'bg-orange-950/80 border-orange-500 text-orange-300 ring-1 ring-orange-500/40' : 'bg-blue-950/80 border-blue-500 text-blue-300 ring-1 ring-blue-500/40')
+                    : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200',
+                )}
+              >
+                <span className={clsx('w-1.5 h-1.5 rounded-full', p === 'aws' ? 'bg-orange-400' : 'bg-blue-400')} />
+                {p.toUpperCase()}
+              </button>
+            ))}
+          </div>
 
           <div>
             <label htmlFor="tf-account" className="block text-gray-400 text-xs mb-1">Cloud Account</label>
