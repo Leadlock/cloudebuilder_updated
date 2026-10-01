@@ -57,6 +57,8 @@ jest.mock('@/lib/cloud/credentials/resolveExecutionCredentials', () => ({
   }),
 }));
 
+jest.mock('@/lib/terraform/execution/audit', () => ({ recordTerraformAudit: jest.fn().mockResolvedValue(undefined) }));
+
 jest.mock('@/lib/services/ArchitectureReviewService', () => ({
   ArchitectureReviewService: {
     getLatestReview: jest.fn(),

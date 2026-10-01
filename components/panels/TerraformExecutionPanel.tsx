@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
-import { ApiTerraformExecutionService, type TerraformPlanResult, type TerraformApplyStatus, type TerraformDestroyPreview } from '@/lib/services/ApiTerraformExecutionService';
+import { ApiTerraformExecutionService, type TerraformPlanResult, type TerraformApplyStatus, type TerraformDestroyPreview, type TerraformRunSnapshot } from '@/lib/services/ApiTerraformExecutionService';
 import { ApiReviewService } from '@/lib/services/ApiReviewService';
 import type { ArchitectureReview } from '@/lib/services/ArchitectureReviewService';
 import type { TerraformStateBackendConfig } from '@/lib/terraform/execution/types';
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import TerraformLimitsBar from './TerraformLimitsBar';
+import TerraformErrorBox from './TerraformErrorBox';
 
 interface CloudAccount {
   id: string;
@@ -100,6 +101,9 @@ export default function TerraformExecutionPanel() {
   const [destroyPreview, setDestroyPreview] = useState<TerraformDestroyPreview | null>(null);
   const [destroyPreviewLoading, setDestroyPreviewLoading] = useState(false);
   const [destroyPreviewError, setDestroyPreviewError] = useState<string | null>(null);
+  // The background teardown: its live output and final result. The run id is remembered so a reload can pick it up again.
+  const [destroyRun, setDestroyRun] = useState<TerraformRunSnapshot | null>(null);
+  const destroyPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [destroyConfirmInput, setDestroyConfirmInput] = useState('');
 
   // Live progress tracking
@@ -113,6 +117,38 @@ export default function TerraformExecutionPanel() {
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // 1. Restore persistent backend and deployment state from localStorage
+  const destroyRunKey = (projectId: string) => `cloudcraft_tf_destroy_run_${projectId}`;
+
+  function pollDestroyRun(projectId: string, runId: string) {
+    if (destroyPollRef.current) clearInterval(destroyPollRef.current);
+    const stop = () => { if (destroyPollRef.current) clearInterval(destroyPollRef.current); try { localStorage.removeItem(destroyRunKey(projectId)); } catch { /* storage unavailable */ } };
+    const tick = async () => {
+      try {
+        const snap = await ApiTerraformExecutionService.getDestroyRun(projectId, runId, currentUser);
+        setDestroyRun(snap);
+        if (snap.state === 'running') return;
+        stop();
+        setDestroying(false);
+        if (snap.state === 'succeeded') {
+          setDestroySuccess(snap.message ?? 'The planned resources were destroyed.');
+          setDestroyOutputTail(snap.logTail.join('\n') || null);
+          setPlan(null); setApplyStatus(null); setApplyJobId(null);
+        } else {
+          setDestroyError(snap.error ?? 'Teardown failed');
+        }
+      } catch (err) {
+        if ((err as { status?: number }).status === 404) {
+          stop();
+          setDestroying(false);
+          setDestroyError('CloudCraft lost track of this teardown (the server was restarted while it ran). Check the cloud console for what was removed, then run a new preview.');
+        }
+        // any other error is a brief network problem: keep polling
+      }
+    };
+    void tick();
+    destroyPollRef.current = setInterval(tick, 2000);
+  }
+
   // Declared before the effects that use it.
   function pollApplyStatus(projectId: string, jobId: string) {
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
@@ -157,7 +193,6 @@ export default function TerraformExecutionPanel() {
         if (parsed.applyStatus) setApplyStatus(parsed.applyStatus);
         if (parsed.applying !== undefined) setApplying(parsed.applying);
         if (parsed.planning !== undefined) setPlanning(parsed.planning);
-        if (parsed.destroying !== undefined) setDestroying(parsed.destroying);
         if (parsed.completedCount !== undefined) setCompletedCount(parsed.completedCount);
         if (parsed.startedAt) {
           setStartedAt(parsed.startedAt);
@@ -243,6 +278,15 @@ export default function TerraformExecutionPanel() {
   }, [backendProvider]);
 
   // Track timer and simulated progress while applying or destroying
+  useEffect(() => {
+    if (!activeProject) return;
+    let runId: string | null = null;
+    try { runId = localStorage.getItem(destroyRunKey(activeProject.id)); } catch { /* storage unavailable */ }
+    if (runId) { setDestroying(true); pollDestroyRun(activeProject.id, runId); }
+    return () => { if (destroyPollRef.current) clearInterval(destroyPollRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProject?.id]);
+
   useEffect(() => {
     if (applying || destroying) {
       if (!startedAt) {
@@ -384,35 +428,25 @@ export default function TerraformExecutionPanel() {
   }
 
   async function handleExecuteDestroy() {
-    if (!activeProject || !selectedAccountId || !backendReady() || !destroyPreview) return;
-    const confirmationToken = destroyPreview.confirmationToken;
+    if (!activeProject || !selectedAccountId || !backendReady() || !destroyPreview?.confirmationToken || !destroyPreview.planId) return;
+    const { confirmationToken, planId } = destroyPreview;
     setDestroyPreview(null);   // a token is single-use
     setDestroying(true);
     setDestroyError(null);
     setDestroySuccess(null);
     setDestroyOutputTail(null);
+    setDestroyRun(null);
     setShowDestroyModal(false);
     setDestroyConfirmInput('');
     setStartedAt(Date.now());
     setElapsedSeconds(0);
 
     try {
-      const result = await ApiTerraformExecutionService.destroyInfrastructure(
-        activeProject.id,
-        state.activeEnvironment,
-        selectedAccountId,
-        buildBackend(),
-        currentUser,
-        confirmationToken,
-      );
-      setDestroySuccess(result.message || 'All cloud infrastructure resources have been destroyed.');
-      setDestroyOutputTail(result.outputTail || null);
-      setPlan(null);
-      setApplyStatus(null);
-      setApplyJobId(null);
+      const { runId } = await ApiTerraformExecutionService.startDestroy(activeProject.id, state.activeEnvironment, selectedAccountId, buildBackend(), currentUser, confirmationToken, planId);
+      try { localStorage.setItem(destroyRunKey(activeProject.id), runId); } catch { /* storage unavailable */ }
+      pollDestroyRun(activeProject.id, runId);   // the teardown now runs in the background; this watches it
     } catch (err) {
-      setDestroyError(err instanceof Error ? err.message : 'Teardown failed');
-    } finally {
+      setDestroyError(err instanceof Error ? err.message : 'Teardown failed to start');
       setDestroying(false);
     }
   }
@@ -603,8 +637,11 @@ export default function TerraformExecutionPanel() {
                 </div>
               </div>
               <p className="text-[11px] text-gray-300">
-                Running <code className="text-rose-300 font-mono">terraform destroy</code> against your remote state. This will safely terminate VPCs, subnets, compute, and databases.
+                Running the destroy plan you reviewed against your remote state. It keeps running on the server if you leave this page. Azure and AWS delete resources one at a time, so several minutes is normal.
               </p>
+              <pre className="bg-black/60 rounded-lg p-2 text-[10px] text-gray-300 font-mono whitespace-pre-wrap max-h-44 overflow-y-auto" data-testid="destroy-live-log">
+                {destroyRun && destroyRun.logTail.length > 0 ? destroyRun.logTail.slice(-14).join('\n') : 'Starting…'}
+              </pre>
             </div>
           )}
 
@@ -633,34 +670,23 @@ export default function TerraformExecutionPanel() {
 
           {/* Destroy Error Banner */}
           {destroyError && (
-            <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs shadow-lg space-y-2">
-              <div className="flex items-center gap-2 font-semibold">
-                <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>Teardown encountered an issue</span>
-              </div>
-              <p className="text-[11px] text-rose-300/90 bg-black/40 p-2 rounded border border-rose-900/30 font-mono">
-                {destroyError}
-              </p>
-              <div className="flex items-center gap-3">
-                <button onClick={openDestroyModal} className="text-xs text-rose-400 hover:text-rose-200 underline font-medium">
-                  Try again
-                </button>
-                <button onClick={() => setDestroyError(null)} className="text-xs text-gray-400 hover:text-gray-200 underline font-medium">
-                  Dismiss
-                </button>
-              </div>
-            </div>
+            <TerraformErrorBox
+              message={destroyError}
+              fallbackTitle="Teardown encountered an issue"
+              onRetry={openDestroyModal}
+              onDismiss={() => setDestroyError(null)}
+              lock={activeProject && selectedAccountId && backendReady() ? { projectId: activeProject.id, cloudAccountId: selectedAccountId, stateBackend: buildBackend(), user: currentUser } : undefined}
+            />
           )}
 
           {planError && (
-            <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 shrink-0" /> <span>{planError}</span>
-              </div>
-              <button onClick={() => setPlanError(null)} className="text-xs text-gray-400 hover:text-gray-200 underline font-medium">
-                Dismiss
-              </button>
-            </div>
+            <TerraformErrorBox
+              message={planError}
+              fallbackTitle="The plan could not be generated"
+              onRetry={handleGeneratePlan}
+              onDismiss={() => setPlanError(null)}
+              lock={activeProject && selectedAccountId && backendReady() ? { projectId: activeProject.id, cloudAccountId: selectedAccountId, stateBackend: buildBackend(), user: currentUser } : undefined}
+            />
           )}
 
           {plan && (
@@ -995,16 +1021,17 @@ export default function TerraformExecutionPanel() {
                 </div>
 
                 <div className="bg-gray-950/80 rounded-xl p-3 border border-gray-800 text-xs space-y-1.5" data-testid="destroy-preview">
-                  {destroyPreviewLoading && <p className="text-gray-400 flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" />Listing what would be removed…</p>}
-                  {destroyPreviewError && <p className="text-rose-300">{destroyPreviewError}</p>}
-                  {destroyPreview && (
+                  {destroyPreviewLoading && <p className="text-gray-400 flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" />Planning the teardown against your real state — this takes a minute or two…</p>}
+                  {destroyPreviewError && <TerraformErrorBox message={destroyPreviewError} fallbackTitle="The teardown could not be prepared" lock={activeProject && selectedAccountId && backendReady() ? { projectId: activeProject.id, cloudAccountId: selectedAccountId, stateBackend: buildBackend(), user: currentUser } : undefined} />}
+                  {destroyPreview?.status === 'nothing_to_destroy' && <p className="text-emerald-300">The remote state holds no resources, so there is nothing to destroy.</p>}
+                  {destroyPreview?.status === 'confirmation_required' && (
                     <>
-                      <p className="text-white font-medium">{destroyPreview.resourceCount} resource{destroyPreview.resourceCount === 1 ? '' : 's'} from this project will be removed:</p>
-                      <ul className="max-h-28 overflow-y-auto text-[11px] text-gray-300 space-y-0.5">
-                        {destroyPreview.resources.map((r, i) => <li key={`${r.label}-${i}`}>{r.label || '(unnamed)'} <span className="text-gray-500 font-mono">{r.resourceType}</span></li>)}
+                      <p className="text-white font-medium">{destroyPreview.resourceCount} resource{destroyPreview.resourceCount === 1 ? '' : 's'} in your remote state will be destroyed:</p>
+                      <ul className="max-h-36 overflow-y-auto text-[11px] text-gray-300 space-y-0.5 font-mono">
+                        {destroyPreview.resources.map((r) => <li key={r.address}>{r.address} <span className="text-gray-500">({r.type})</span></li>)}
                         {destroyPreview.resourceCount > destroyPreview.resources.length && <li className="text-gray-500">…and {destroyPreview.resourceCount - destroyPreview.resources.length} more</li>}
                       </ul>
-                      <p className="text-[10px] text-gray-500">This confirmation expires in 5 minutes and works once.</p>
+                      <p className="text-[10px] text-gray-500">This is the real plan Terraform made from your state. Confirming runs exactly this plan; the confirmation expires in 5 minutes and works once.</p>
                     </>
                   )}
                 </div>
@@ -1043,7 +1070,7 @@ export default function TerraformExecutionPanel() {
                   </button>
                   <button
                     onClick={handleExecuteDestroy}
-                    disabled={destroyConfirmInput !== 'DESTROY' || destroying || !destroyPreview}
+                    disabled={destroyConfirmInput !== 'DESTROY' || destroying || !destroyPreview?.confirmationToken}
                     className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white transition-all shadow-lg shadow-rose-600/30"
                   >
                     {destroying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}

@@ -25,6 +25,8 @@ export interface DestroyBinding {
   stateBackend: unknown;
   /** What the destroy would remove, as seen in the preview. */
   resources: { id: string; resourceType: string }[];
+  /** Hash of the saved `plan -destroy` the user reviewed; the confirmation only works for exactly that plan. */
+  planHash?: string;
 }
 
 interface ConfirmPayload { kind: typeof KIND; jti: string; exp: number; bind: string }
@@ -33,7 +35,7 @@ const used = new Map<string, number>(); // jti → expiry
 
 function bindingHash(b: DestroyBinding): string {
   const resources = [...b.resources].sort((x, y) => x.id.localeCompare(y.id)).map((r) => `${r.id}:${r.resourceType}`);
-  return createHash('sha256').update(JSON.stringify([b.userId, b.orgId, b.projectId, b.environment, b.cloudAccountId, b.stateBackend, resources])).digest('hex');
+  return createHash('sha256').update(JSON.stringify([b.userId, b.orgId, b.projectId, b.environment, b.cloudAccountId, b.stateBackend, resources, b.planHash ?? null])).digest('hex');
 }
 
 function prune(now: number): void {

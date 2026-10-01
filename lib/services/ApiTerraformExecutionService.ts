@@ -33,12 +33,33 @@ export interface TerraformApplyStatus {
   output: ApplyJobOutput | null;
 }
 
+/** Result of the teardown preview: a real `terraform plan -destroy` of what the state holds. */
 export interface TerraformDestroyPreview {
-  status: 'confirmation_required';
-  confirmationToken: string;
-  expiresAt: string;
+  status: 'confirmation_required' | 'nothing_to_destroy';
+  confirmationToken?: string;
+  expiresAt?: string;
+  planId?: string;
   resourceCount: number;
-  resources: { label: string; resourceType: string }[];
+  resources: { address: string; type: string }[];
+}
+
+/** Live view of a background teardown. */
+export interface TerraformRunSnapshot {
+  runId: string;
+  state: 'running' | 'succeeded' | 'failed';
+  startedAt: string;
+  elapsedSeconds: number;
+  logTail: string[];
+  message?: string;
+  error?: string;
+}
+
+/** What "Check lock" found. */
+export interface TerraformLockInspection {
+  locked: boolean;
+  lock?: { id: string; who?: string; operation?: string; createdAt?: string; ageMinutes?: number; path?: string };
+  releasable?: boolean;
+  reason?: string;
 }
 
 export interface TerraformExecutionStatus {
@@ -132,23 +153,49 @@ export class ApiTerraformExecutionService {
     return data.data;
   }
 
-  /** Step 2: runs the destroy. `confirmationToken` comes from previewDestroy and is single-use. */
-  static async destroyInfrastructure(
+  /** Step 2: starts the destroy of exactly the previewed plan, in the background. Returns a run id at once. */
+  static async startDestroy(
     projectId: string,
     environment: string,
     cloudAccountId: string,
     stateBackend: TerraformStateBackendConfig,
-    user?: { id: string; role?: string },
-    confirmationToken?: string,
-  ): Promise<{ status: string; message: string; outputTail?: string }> {
+    user: { id: string; role?: string } | undefined,
+    confirmationToken: string,
+    planId: string,
+  ): Promise<{ status: 'started'; runId: string }> {
     const res = await fetch(`/api/projects/${projectId}/terraform/destroy`, {
       method: 'POST',
       headers: authHeaders(user),
       credentials: 'include',
-      body: JSON.stringify({ environment, cloudAccountId, stateBackend, ...(confirmationToken ? { confirmationToken } : {}) }),
+      body: JSON.stringify({ environment, cloudAccountId, stateBackend, confirmationToken, planId }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(parseErrorMessage(data, `Teardown failed (${res.status})`));
+    if (!res.ok) throw new Error(parseErrorMessage(data, `Teardown failed to start (${res.status})`));
     return data.data;
+  }
+
+  /** Progress and the live tail of Terraform's output for a background teardown. */
+  static async getDestroyRun(projectId: string, runId: string, user?: { id: string; role?: string }): Promise<TerraformRunSnapshot> {
+    const res = await fetch(`/api/projects/${projectId}/terraform/destroy?runId=${encodeURIComponent(runId)}`, { headers: authHeaders(user), credentials: 'include' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw Object.assign(new Error(parseErrorMessage(data, `Failed to read teardown progress (${res.status})`)), { status: res.status });
+    return data.data;
+  }
+
+  private static async lockCall(projectId: string, body: Record<string, unknown>, user?: { id: string; role?: string }) {
+    const res = await fetch(`/api/projects/${projectId}/terraform/unlock`, { method: 'POST', headers: authHeaders(user), credentials: 'include', body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(parseErrorMessage(data, `Lock request failed (${res.status})`));
+    return data.data;
+  }
+
+  /** "Check lock": who holds the state lock, since when, and whether CloudCraft is willing to release it. Changes nothing. */
+  static async inspectLock(projectId: string, cloudAccountId: string, stateBackend: TerraformStateBackendConfig, user?: { id: string; role?: string }): Promise<TerraformLockInspection> {
+    return this.lockCall(projectId, { action: 'inspect', cloudAccountId, stateBackend }, user);
+  }
+
+  /** "Release lock": only succeeds when the server re-checks that it is that lock and it is safe. */
+  static async releaseLock(projectId: string, cloudAccountId: string, stateBackend: TerraformStateBackendConfig, lockId: string, user?: { id: string; role?: string }): Promise<{ released: true }> {
+    return this.lockCall(projectId, { action: 'release', cloudAccountId, stateBackend, lockId }, user);
   }
 }

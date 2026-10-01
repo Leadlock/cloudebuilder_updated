@@ -35,9 +35,20 @@ import { renderBackendConfig } from './backendConfig';
 import { assertSafeHcl } from '@/lib/engines/terraform/hclSafety';
 import { terraformSecretVars } from './secretVars';
 import { decideAutoUnlock, describeHeldLock, isStateLockError, type LockedOperation } from './stateLock';
+import { initWithRetry, validateConfiguration } from './runSupport';
+import { acquireProjectLock, releaseProjectLock } from './projectLock';
+import { startRun, type RunHandle } from './runRegistry';
+import { savePreparedDestroy, peekPreparedDestroy, takePreparedDestroy, type PreparedDestroyPlan } from './destroyPlans';
+import { recordTerraformAudit } from './audit';
 import { evaluatePlanGuardrails, PlanGuardrailError, type PlanJsonForGuardrails } from './planGuardrails';
 import { savePlan, getPlan, deletePlan, planTtlMs } from './planStore';
 import type { PlanRecord, PlanResourceAction, PlanSummary, TerraformStateBackendConfig } from './types';
+
+/** A valid, non-empty zip with an index.js, used as the package for placeholder AWS Lambda functions. */
+const LAMBDA_PLACEHOLDER_ZIP = Buffer.from(
+  'UEsDBBQAAAAAAAAAAABSXXJzQQAAAEEAAAAIAAAAaW5kZXguanNleHBvcnRzLmhhbmRsZXIgPSBhc3luYyAoKSA9PiAoeyBzdGF0dXNDb2RlOiAyMDAsIGJvZHk6ICJPSyIgfSk7ClBLAQIUABQAAAAAAAAAAABSXXJzQQAAAEEAAAAIAAAAAAAAAAAAAAAAAAAAAABpbmRleC5qc1BLBQYAAAAAAQABADYAAABnAAAAAAA=',
+  'base64',
+);
 
 export class PlanBlockedError extends Error {
   constructor(public readonly destroyedAddresses: string[]) {
@@ -189,11 +200,6 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
     assertSafeHcl([...generated.files, { filename: 'backend.tf', content: planBackendHcl }]);
     await writeFile(join(workDir, 'backend.tf'), planBackendHcl, 'utf-8');
 
-    // Valid non-empty zip archive containing index.js for AWS Lambda placeholder packages
-    const LAMBDA_PLACEHOLDER_ZIP = Buffer.from(
-      'UEsDBBQAAAAAAAAAAABSXXJzQQAAAEEAAAAIAAAAaW5kZXguanNleHBvcnRzLmhhbmRsZXIgPSBhc3luYyAoKSA9PiAoeyBzdGF0dXNDb2RlOiAyMDAsIGJvZHk6ICJPSyIgfSk7ClBLAQIUABQAAAAAAAAAAABSXXJzQQAAAEEAAAAIAAAAAAAAAAAAAAAAAAAAAABpbmRleC5qc1BLBQYAAAAAAQABADYAAABnAAAAAAA=',
-      'base64',
-    );
     await writeFile(join(workDir, 'placeholder.zip'), LAMBDA_PLACEHOLDER_ZIP);
 
     const rawEnv = await resolveExecutionCredentials(credentials);
@@ -202,7 +208,8 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
       ...rawEnv,
     };
 
-    await runTerraform(['init', '-input=false', '-no-color'], { cwd: workDir, env });
+    await initWithRetry(workDir, env);
+    await validateConfiguration(workDir, env);   // a configuration Terraform will reject fails here, in seconds
 
     // -detailed-exitcode: 0 = no changes, 2 = changes present, 1 = error (thrown by runTerraform).
     await handleStateLockAndRetry(
@@ -354,101 +361,156 @@ export interface ExecuteDestroyInput {
   projectName: string;
 }
 
-export async function executeDestroy(input: ExecuteDestroyInput): Promise<{ message: string; outputTail: string }> {
-  if (input.user.role !== 'admin') {
-    const err = new Error('Forbidden: Only Administrators can destroy infrastructure.') as Error & { statusCode: number };
-    err.statusCode = 403;
-    throw err;
-  }
+// ─── Teardown ─────────────────────────────────────────────────────────────────
+//
+// Two steps, like apply: PREPARE runs `terraform plan -destroy` and lists exactly what is in the state and would be
+// removed; RUN executes that same saved plan in the background, with live output. If the state changed in between,
+// Terraform refuses the stale plan instead of destroying something the user did not see.
 
-  if (!input.stateBackend?.provider) {
-    const err = new Error('Teardown blocked: a remote Terraform state backend configuration is required.') as Error & { statusCode: number };
-    err.statusCode = 400;
-    throw err;
-  }
+let sleepImpl = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => sleepImpl(ms);
+/** For tests: replace the real wait between retries. */
+export function _setSleepForTests(fn: (ms: number) => Promise<void>): void { sleepImpl = fn; }
 
+function httpError(message: string, statusCode: number): Error & { statusCode: number } {
+  const err = new Error(message) as Error & { statusCode: number };
+  err.statusCode = statusCode;
+  return err;
+}
+
+/** Errors that mean "a dependent resource is still shutting down" — worth waiting for and trying again. */
+function isTransientInUse(message: string): boolean {
+  return message.includes('CacheSubnetGroupInUse') || message.includes('DBSubnetGroupInUse') || message.includes('DependencyViolation')
+    || message.includes('in use by a cache cluster') || message.includes('network interface');
+}
+
+async function destroyEnvironment(input: { cloudAccountId: string; orgId: string; stateBackend: TerraformStateBackendConfig; user: { role: string } }): Promise<Record<string, string>> {
+  if (input.user.role !== 'admin') throw httpError('Forbidden: Only Administrators can destroy infrastructure.', 403);
+  if (!input.stateBackend?.provider) throw httpError('Teardown blocked: a remote Terraform state backend configuration is required.', 400);
   const credentialsJson = await cloudAccountRepository.getCredentials(input.cloudAccountId, input.orgId);
-  if (!credentialsJson) {
-    const err = new Error('CloudAccount credentials not found') as Error & { statusCode: number };
-    err.statusCode = 404;
-    throw err;
-  }
+  if (!credentialsJson) throw httpError('CloudAccount credentials not found', 404);
+  const rawEnv = await resolveExecutionCredentials(JSON.parse(credentialsJson) as CloudCredentials);
+  return { ...terraformSecretVars(), ...rawEnv };
+}
 
-  const credentials = JSON.parse(credentialsJson) as CloudCredentials;
-  const rawEnv = await resolveExecutionCredentials(credentials);
-  const env: Record<string, string> = {
-    ...terraformSecretVars(),
-    ...rawEnv,
-  };
+async function writeTerraformFiles(workDir: string, generated: { files: { filename: string; content: string }[] }, stateBackend: TerraformStateBackendConfig): Promise<void> {
+  for (const file of generated.files) await writeFile(join(workDir, file.filename), file.content, 'utf-8');
+  const backendHcl = renderBackendConfig(stateBackend);
+  assertSafeHcl([...generated.files, { filename: 'backend.tf', content: backendHcl }]);
+  await writeFile(join(workDir, 'backend.tf'), backendHcl, 'utf-8');
+  await writeFile(join(workDir, 'placeholder.zip'), LAMBDA_PLACEHOLDER_ZIP);
+}
 
+export interface PreparedDestroy {
+  /** Null when the state holds nothing to destroy. */
+  planId: string | null;
+  planHash: string | null;
+  resources: { address: string; type: string }[];
+}
+
+/**
+ * Step 1: `terraform plan -destroy`. Takes a minute or two (it initialises Terraform and reads the real state), changes
+ * nothing, and keeps the saved plan for ten minutes so the confirmation can run exactly it.
+ */
+export async function prepareDestroy(input: ExecuteDestroyInput, onOutput?: (chunk: string) => void): Promise<PreparedDestroy> {
+  const env = await destroyEnvironment(input);
   const generated = terraformGenerator.generate({
-    architectureId: input.architectureId,
-    projectId: input.projectId,
-    resources: input.resources,
-    connections: input.connections,
-    projectName: input.projectName,
+    architectureId: input.architectureId, projectId: input.projectId, resources: input.resources, connections: input.connections, projectName: input.projectName,
   });
 
   const workDir = await mkdtemp(join(tmpdir(), 'cloudcraft-tf-destroy-'));
+  let keep = false;
   try {
-    for (const file of generated.files) {
-      await writeFile(join(workDir, file.filename), file.content, 'utf-8');
-    }
-    const backendHcl = renderBackendConfig(input.stateBackend);
-    assertSafeHcl([...generated.files, { filename: 'backend.tf', content: backendHcl }]);
-    await writeFile(join(workDir, 'backend.tf'), backendHcl, 'utf-8');
-    const LAMBDA_PLACEHOLDER_ZIP = Buffer.from(
-      'UEsDBBQAAAAAAAAAAABSXXJzQQAAAEEAAAAIAAAAaW5kZXguanNleHBvcnRzLmhhbmRsZXIgPSBhc3luYyAoKSA9PiAoeyBzdGF0dXNDb2RlOiAyMDAsIGJvZHk6ICJPSyIgfSk7ClBLAQIUABQAAAAAAAAAAABSXXJzQQAAAEEAAAAIAAAAAAAAAAAAAAAAAAAAAABpbmRleC5qc1BLBQYAAAAAAQABADYAAABnAAAAAAA=',
-      'base64',
+    await writeTerraformFiles(workDir, generated, input.stateBackend);
+    await initWithRetry(workDir, env, { onOutput });
+    await validateConfiguration(workDir, env);
+
+    await handleStateLockAndRetry(
+      () => runTerraform(['plan', '-destroy', '-input=false', '-no-color', '-out=tfplan'], { cwd: workDir, env, timeoutMs: 15 * 60 * 1000, onOutput }),
+      workDir, env, 'destroy',
     );
-    await writeFile(join(workDir, 'placeholder.zip'), LAMBDA_PLACEHOLDER_ZIP);
+    const { stdout } = await runTerraform(['show', '-json', 'tfplan'], { cwd: workDir, env });
+    const planJson = JSON.parse(stdout) as PlanJsonForGuardrails;
+    const resources = (planJson.resource_changes ?? [])
+      .filter((rc) => (rc.mode ?? 'managed') === 'managed' && rc.change.actions.includes('delete'))
+      .map((rc) => ({ address: rc.address, type: rc.type }));
+    if (resources.length === 0) return { planId: null, planHash: null, resources: [] };
 
-    await runTerraform(['init', '-input=false', '-no-color'], {
-      cwd: workDir,
-      env,
-      timeoutMs: 5 * 60 * 1000,
+    const planHash = createHash('sha256').update(await readFile(join(workDir, 'tfplan'))).digest('hex');
+    const planId = randomUUID();
+    await savePreparedDestroy({
+      planId, planHash, workDir, orgId: input.orgId, projectId: input.projectId, userId: input.user.id,
+      environment: input.environment, cloudAccountId: input.cloudAccountId, stateBackend: input.stateBackend, resources,
     });
+    keep = true;
+    return { planId, planHash, resources };
+  } finally {
+    if (!keep) await rm(workDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
 
-    let destroyResult: { stdout: string; stderr: string } | null = null;
+export interface StartDestroyInput {
+  planId: string;
+  planHash: string;
+  orgId: string;
+  projectId: string;
+  cloudAccountId: string;
+  stateBackend: TerraformStateBackendConfig;
+  user: { id: string; name: string; email: string; role: string };
+}
+
+/**
+ * Step 2: runs the prepared plan in the background and returns a run id at once. One teardown or apply at a time per
+ * project; the plan can be used only once.
+ */
+export async function startDestroyRun(input: StartDestroyInput): Promise<{ runId: string }> {
+  const env = await destroyEnvironment(input);
+  const prepared = peekPreparedDestroy(input.planId);
+  if (!prepared) throw httpError('The destroy preview has expired or was already used. Preview it again.', 404);
+  if (prepared.planHash !== input.planHash || prepared.orgId !== input.orgId || prepared.projectId !== input.projectId || prepared.userId !== input.user.id) {
+    throw httpError('This preview does not match the request. Preview it again.', 409);
+  }
+  if (!acquireProjectLock(input.projectId)) throw httpError('Another Terraform apply or teardown is already running for this project. Wait for it to finish.', 409);
+  const taken = takePreparedDestroy(input.planId);
+  if (!taken) { releaseProjectLock(input.projectId); throw httpError('The destroy preview was just used. Preview it again.', 409); }
+
+  const run = startRun({ runId: randomUUID(), orgId: input.orgId, projectId: input.projectId, kind: 'destroy' });
+  void runDestroyPlan({ run, prepared: taken, env, userId: input.user.id });
+  return { runId: run.runId };
+}
+
+async function runDestroyPlan(args: { run: RunHandle; prepared: PreparedDestroyPlan; env: Record<string, string>; userId: string }): Promise<void> {
+  const { run, prepared, env, userId } = args;
+  const audit = { action: 'destroy' as const, orgId: prepared.orgId, projectId: prepared.projectId, userId, planId: prepared.planId, planHash: prepared.planHash };
+  try {
+    run.append(`[CloudCraft] Destroying ${prepared.resources.length} resource(s) from the plan you reviewed.\n`);
     const maxAttempts = 3;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    for (let attempt = 1; ; attempt++) {
       try {
-        destroyResult = await handleStateLockAndRetry(
-          () =>
-            runTerraform(['destroy', '-auto-approve', '-input=false', '-no-color'], {
-              cwd: workDir,
-              env,
-              timeoutMs: 25 * 60 * 1000,
-            }),
-          workDir,
-          env,
-          'destroy',
+        await handleStateLockAndRetry(
+          () => runTerraform(['apply', '-input=false', '-no-color', 'tfplan'], { cwd: prepared.workDir, env, timeoutMs: 45 * 60 * 1000, onOutput: run.append }),
+          prepared.workDir, env, 'destroy',
         );
-        break; // Successfully destroyed all resources
+        break;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        const isTransientInUse =
-          msg.includes('CacheSubnetGroupInUse') ||
-          msg.includes('DBSubnetGroupInUse') ||
-          msg.includes('DependencyViolation') ||
-          msg.includes('in use by a cache cluster') ||
-          msg.includes('network interface');
-
-        if (attempt < maxAttempts && isTransientInUse) {
-          // Wait 20 seconds for AWS async termination of dependent cluster/database nodes before retrying
-          await new Promise((r) => setTimeout(r, 20000));
-        } else {
-          throw err;
+        if (attempt < maxAttempts && isTransientInUse(msg)) {
+          run.append('\n[CloudCraft] A dependent resource is still shutting down. Waiting 20 seconds, then planning what is left and trying again.\n');
+          await sleep(20_000);
+          await runTerraform(['plan', '-destroy', '-input=false', '-no-color', '-out=tfplan'], { cwd: prepared.workDir, env, timeoutMs: 15 * 60 * 1000, onOutput: run.append });
+          continue;
         }
+        throw err;
       }
     }
-
-    return {
-      message: 'All cloud infrastructure resources have been successfully destroyed from the connected account.',
-      outputTail: (destroyResult?.stdout || '').slice(-4000),
-    };
+    run.finish(true, 'The planned resources were destroyed.');
+    await recordTerraformAudit({ ...audit, outcome: 'succeeded' });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    run.finish(false, message);
+    await recordTerraformAudit({ ...audit, outcome: 'failed', detail: message }).catch(() => undefined);
   } finally {
-    await rm(workDir, { recursive: true, force: true }).catch(() => {});
+    releaseProjectLock(prepared.projectId);
+    await rm(prepared.workDir, { recursive: true, force: true }).catch(() => {});
   }
 }
