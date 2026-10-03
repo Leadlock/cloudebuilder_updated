@@ -4,6 +4,8 @@ Reference designs. Each sample below passed every deploy-readiness gate.
 
 ## aws-three-tier — three-tier web application on EC2 Auto Scaling
 Use when: VM-based web apps that need OS-level control; two Auto Scaling groups in private app subnets behind a WAF-protected ALB.
+Typical requests: a classic three-tier web application on virtual machines; a load-balanced web app on EC2 with a relational database; an auto-scaling VM-based web tier with a managed database.
+Summary: An internet-facing Application Load Balancer protected by AWS WAF distributes traffic to Auto Scaling groups in two private app subnets; data stays in isolated data subnets. Sized for the medium tier and deployed in us-east-1 across two availability zones where the service is zonal.
 Resources: aws_cloud_boundary, aws_vpc, aws_igw, aws_subnet, aws_nat, aws_alb, aws_route53, aws_cloudfront, aws_waf, aws_auto_scaling, aws_rds, aws_elasticache, aws_s3, aws_sg, aws_cloudwatch.
 Values you must supply before deploying: Application Load Balancer.certificateArn.
 Sample design (JSON):
@@ -11,6 +13,8 @@ Sample design (JSON):
 
 ## aws-ecs — containerised web application on ECS Fargate
 Use when: Containerised services without managing a cluster (Fargate).
+Typical requests: a containerised web application on ECS Fargate; a Docker-based service on ECS behind a load balancer; containers on Fargate with a managed database.
+Summary: Fargate services run in private app subnets behind a WAF-protected Application Load Balancer and reach data stores over the VPC network. Sized for the medium tier and deployed in us-east-1 across two availability zones where the service is zonal.
 Resources: aws_cloud_boundary, aws_vpc, aws_igw, aws_subnet, aws_nat, aws_alb, aws_route53, aws_cloudfront, aws_waf, aws_ecs, aws_rds, aws_elasticache, aws_s3, aws_iam, aws_cloudwatch.
 Values you must supply before deploying: Application Load Balancer.certificateArn, Web Service A.containerImage, Web Service B.containerImage.
 Sample design (JSON):
@@ -18,6 +22,8 @@ Sample design (JSON):
 
 ## aws-eks — Kubernetes platform on EKS
 Use when: Kubernetes platforms and microservices; private control-plane endpoint.
+Typical requests: a Kubernetes platform on EKS; a microservices platform running on EKS; a private EKS cluster for our services.
+Summary: A private-endpoint EKS cluster with control-plane logging sits behind a WAF-protected load balancer; data stores live in isolated data subnets. Sized for the medium tier and deployed in us-east-1 across two availability zones where the service is zonal.
 Resources: aws_cloud_boundary, aws_vpc, aws_igw, aws_subnet, aws_nat, aws_alb, aws_route53, aws_cloudfront, aws_waf, aws_eks, aws_rds, aws_elasticache, aws_s3, aws_iam, aws_cloudwatch.
 Values you must supply before deploying: Ingress Application Load Balancer.certificateArn.
 Sample design (JSON):
@@ -25,6 +31,8 @@ Sample design (JSON):
 
 ## aws-serverless — serverless web application and API
 Use when: Event-driven APIs and static sites with unpredictable load.
+Typical requests: a serverless web application with an API; a Lambda-based API with a static front end; a fully serverless backend with DynamoDB.
+Summary: CloudFront serves the static site from S3 and routes API calls to Lambda behind a WAF; state lives in DynamoDB, with an optional queue-driven worker. Sized for the medium tier and deployed in us-east-1 across two availability zones where the service is zonal.
 Resources: aws_cloud_boundary, aws_route53, aws_cloudfront, aws_waf, aws_s3, aws_lambda, aws_iam, aws_dynamodb, aws_cloudwatch.
 No account-specific values required.
 Sample design (JSON):
@@ -32,6 +40,8 @@ Sample design (JSON):
 
 ## azure-three-tier — three-tier web application on Virtual Machine Scale Sets
 Use when: VM-based web apps on Azure using VM Scale Sets behind a WAF Application Gateway.
+Typical requests: a classic three-tier web application on virtual machines; a load-balanced web app on VM scale sets with Azure SQL; an auto-scaling VM-based web tier with a managed database.
+Summary: A WAF-enabled Application Gateway distributes traffic to a VM Scale Set in a private app subnet; data services reject public network access. Sized for the medium tier and deployed in eastus with zone-redundant data services.
 Resources: azure_cloud_boundary, azure_vnet, azure_subnet, azure_app_gateway, azure_vmss, azure_front_door, azure_waf, azure_sql, azure_redis, azure_storage, azure_key_vault, azure_nsg.
 No account-specific values required.
 Sample design (JSON):
@@ -39,6 +49,8 @@ Sample design (JSON):
 
 ## azure-app-service — web application on Azure App Service
 Use when: PaaS web apps that do not need VM control.
+Typical requests: a web application on Azure App Service; a PaaS web app with a managed database; an App Service based website with SQL.
+Summary: App Service serves the application behind Front Door with a WAF policy; data services accept private traffic only. Sized for the medium tier and deployed in eastus with zone-redundant data services.
 Resources: azure_cloud_boundary, azure_vnet, azure_subnet, azure_app_service, azure_front_door, azure_waf, azure_sql, azure_redis, azure_storage, azure_key_vault, azure_nsg.
 No account-specific values required.
 Sample design (JSON):
@@ -46,6 +58,8 @@ Sample design (JSON):
 
 ## azure-serverless — serverless API on Azure Functions
 Use when: Event-driven APIs on Azure Functions with Cosmos DB.
+Typical requests: a serverless API on Azure Functions; an event-driven backend using Functions and Cosmos DB; a Functions-based API with a static site.
+Summary: Azure Functions handles requests behind Front Door and WAF, persisting state in Cosmos DB with continuous backup. Sized for the medium tier and deployed in eastus with zone-redundant data services.
 Resources: azure_cloud_boundary, azure_vnet, azure_subnet, azure_functions, azure_front_door, azure_waf, azure_cosmos_db, azure_storage, azure_key_vault, azure_nsg.
 No account-specific values required.
 Sample design (JSON):
@@ -53,13 +67,17 @@ Sample design (JSON):
 
 ## azure-aks — Kubernetes platform on AKS
 Use when: Kubernetes platforms on Azure; private cluster.
+Typical requests: a Kubernetes platform on AKS; a microservices platform running on AKS; a private AKS cluster for our services.
+Summary: A private AKS cluster with RBAC and autoscaling sits behind a WAF-enabled Application Gateway; data services accept private traffic only. Sized for the medium tier and deployed in eastus with zone-redundant data services.
 Resources: azure_cloud_boundary, azure_vnet, azure_subnet, azure_app_gateway, azure_aks, azure_front_door, azure_waf, azure_sql, azure_redis, azure_storage, azure_key_vault, azure_nsg.
 No account-specific values required.
 Sample design (JSON):
 {"name":"Storefront on Azure — Kubernetes on AKS","summary":"A private AKS cluster with RBAC and autoscaling sits behind a WAF-enabled Application Gateway; data services accept private traffic only. Sized for the medium tier and deployed in eastus with zone-redundant data services.","resources":[{"id":"azure-cloud","type":"azure_cloud_boundary","label":"Azure — eastus","config":{"region":"eastus"}},{"id":"vnet","type":"azure_vnet","label":"Production VNet","parent":"azure-cloud","config":{"addressSpace":"10.110.0.0/16"}},{"id":"web-subnet","type":"azure_subnet","label":"Web Subnet","parent":"vnet","config":{"addressPrefix":"10.110.0.0/24"}},{"id":"app-subnet","type":"azure_subnet","label":"App Subnet","parent":"vnet","config":{"addressPrefix":"10.110.10.0/24"}},{"id":"data-subnet","type":"azure_subnet","label":"Data Subnet","parent":"vnet","config":{"addressPrefix":"10.110.20.0/24"}},{"id":"agw","type":"azure_app_gateway","label":"Ingress Application Gateway (WAF v2)","parent":"web-subnet","config":{"name":"storefront-agw","sku":"WAF_v2","wafEnabled":true,"wafMode":"Prevention","autoscaleEnabled":true,"minCapacity":2,"maxCapacity":5}},{"id":"aks","type":"azure_aks","label":"AKS Cluster","parent":"app-subnet","config":{"name":"storefront-aks","dnsPrefix":"storefront","nodeVmSize":"Standard_D4s_v3","nodeCount":3,"minNodeCount":3,"maxNodeCount":8,"enableAutoScaling":true,"skuTier":"Standard","privateClusterEnabled":true,"networkPlugin":"azure","rbacEnabled":true}},{"id":"fd","type":"azure_front_door","label":"Front Door","parent":"azure-cloud","config":{"name":"storefront-fd","sku":"Standard_AzureFrontDoor","httpsOnly":true,"originHostName":"storefront.example.com"}},{"id":"fd-waf","type":"azure_waf","label":"Front Door WAF Policy","parent":"azure-cloud","config":{"name":"storefrontfdwaf","mode":"Prevention"}},{"id":"sql","type":"azure_sql","label":"Azure SQL Database","parent":"data-subnet","config":{"name":"storefront-sql","tier":"GeneralPurpose","maxSizeGb":128,"zoneRedundant":true,"publicNetworkAccess":false,"allowAzureServices":false,"minimumTlsVersion":"1.2","auditingEnabled":true,"threatDetectionEnabled":true,"requestedBackupStorageRedundancy":"Zone"}},{"id":"redis","type":"azure_redis","label":"Redis Cache","parent":"data-subnet","config":{"name":"storefront-redis","sku":"Standard","family":"C","capacity":2,"enableNonSslPort":false,"publicNetworkAccessEnabled":false,"minimumTlsVersion":"1.2"}},{"id":"storage","type":"azure_storage","label":"Assets Storage Account","parent":"azure-cloud","config":{"name":"storefrontassets","sku":"Standard_ZRS","httpsOnly":true,"allowBlobPublicAccess":false,"minimumTlsVersion":"TLS1_2","networkDefaultAction":"Deny","blobVersioningEnabled":true,"blobSoftDeleteRetentionDays":14}},{"id":"vault","type":"azure_key_vault","label":"Key Vault","parent":"azure-cloud","config":{"name":"storefront-kv","sku":"standard","enableRbacAuthorization":true,"publicNetworkAccessEnabled":false,"networkAclsDefaultAction":"Deny","purgeProtectionEnabled":true,"softDeleteRetentionDays":90}},{"id":"nsg-web","type":"azure_nsg","label":"Web NSG","parent":"vnet","config":{"allowHttp":false,"allowHttps":true}},{"id":"nsg-app","type":"azure_nsg","label":"App NSG","parent":"vnet","config":{"allowHttp":true,"allowHttps":false,"sourceCidr":"10.0.0.0/8"}},{"id":"nsg-data","type":"azure_nsg","label":"Data NSG","parent":"vnet","config":{"allowHttp":false,"allowHttps":false,"sourceCidr":"10.0.0.0/8"}}],"connections":[{"from":"agw","to":"aks"},{"from":"fd-waf","to":"fd"},{"from":"fd","to":"agw"},{"from":"aks","to":"sql"},{"from":"aks","to":"redis"},{"from":"aks","to":"storage"},{"from":"aks","to":"vault"},{"from":"nsg-web","to":"web-subnet"},{"from":"nsg-app","to":"app-subnet"},{"from":"nsg-data","to":"data-subnet"}]}
 
 ## aws-static-site — static website on S3 and CloudFront
-Use when: Marketing sites, documentation and single-page apps: no servers, S3 origin behind CloudFront and a WAF.
+Use when: Static website, marketing site, landing page, documentation site or single-page app (SPA) served from S3 behind a CDN (CloudFront) and a WAF: static hosting, no servers, no containers, no database.
+Typical requests: a static website on S3 and CloudFront; a marketing site or SPA served from S3 behind a CDN; a serverless static front end with a WAF.
+Summary: Route 53 sends visitors to CloudFront, which serves the site from a private S3 bucket behind a WAF. No servers to patch and no network to run; sized by CloudFront price class (medium tier), deployed with us-east-1 as the origin region.
 Resources: aws_cloud_boundary, aws_route53, aws_cloudfront, aws_waf, aws_s3.
 No account-specific values required.
 Sample design (JSON):
@@ -67,6 +85,8 @@ Sample design (JSON):
 
 ## aws-event-driven — event-driven processing with SQS and Lambda
 Use when: Background processing of uploads or events: S3 and SQS buffer the work, Lambda workers write results to DynamoDB.
+Typical requests: an event-driven pipeline that processes uploaded files with a queue and Lambda workers; asynchronous processing using S3, SQS and Lambda; a queue-buffered serverless worker pipeline.
+Summary: An ingest function stores incoming files in S3 and queues the work in SQS; worker functions drain the queue, write results to DynamoDB and processed output to S3. The queue absorbs bursts and retries failures. Sized for the medium tier in us-east-1.
 Resources: aws_cloud_boundary, aws_s3, aws_lambda, aws_sqs, aws_dynamodb, aws_iam, aws_cloudwatch.
 No account-specific values required.
 Sample design (JSON):
@@ -74,13 +94,17 @@ Sample design (JSON):
 
 ## aws-lambda-private-api — private Lambda API behind a load balancer
 Use when: APIs on Lambda that must reach a private relational database; an ALB with WAF invokes functions in private subnets.
+Typical requests: a Lambda API that runs inside the VPC and reaches a private database; Lambda functions behind an ALB with a PostgreSQL database; a private serverless API with no public database endpoint.
+Summary: A WAF-protected Application Load Balancer invokes Lambda functions that run in private app subnets, so they can reach a Multi-AZ PostgreSQL database in isolated data subnets without any public endpoint. Outbound calls go through NAT gateways. Sized for the medium tier in us-east-1.
 Resources: aws_cloud_boundary, aws_vpc, aws_igw, aws_subnet, aws_nat, aws_alb, aws_route53, aws_waf, aws_lambda, aws_rds, aws_s3, aws_iam, aws_sg, aws_cloudwatch.
 Values you must supply before deploying: Application Load Balancer.certificateArn.
 Sample design (JSON):
 {"name":"Storefront on AWS — private Lambda API behind a load balancer","summary":"A WAF-protected Application Load Balancer invokes Lambda functions that run in private app subnets, so they can reach a Multi-AZ PostgreSQL database in isolated data subnets without any public endpoint. Outbound calls go through NAT gateways. Sized for the medium tier in us-east-1.","resources":[{"id":"aws-cloud","type":"aws_cloud_boundary","label":"AWS — us-east-1"},{"id":"vpc","type":"aws_vpc","label":"Production VPC","parent":"aws-cloud","config":{"cidrBlock":"10.10.0.0/16"}},{"id":"igw","type":"aws_igw","label":"Internet Gateway","parent":"vpc"},{"id":"public-a","type":"aws_subnet","label":"Public Subnet A","parent":"vpc","config":{"cidrBlock":"10.10.0.0/24","availabilityZone":"us-east-1a"}},{"id":"public-b","type":"aws_subnet","label":"Public Subnet B","parent":"vpc","config":{"cidrBlock":"10.10.1.0/24","availabilityZone":"us-east-1b"}},{"id":"app-a","type":"aws_subnet","label":"App Subnet A","parent":"vpc","config":{"cidrBlock":"10.10.10.0/24","availabilityZone":"us-east-1a"}},{"id":"app-b","type":"aws_subnet","label":"App Subnet B","parent":"vpc","config":{"cidrBlock":"10.10.11.0/24","availabilityZone":"us-east-1b"}},{"id":"data-a","type":"aws_subnet","label":"Data Subnet A","parent":"vpc","config":{"cidrBlock":"10.10.20.0/24","availabilityZone":"us-east-1a"}},{"id":"data-b","type":"aws_subnet","label":"Data Subnet B","parent":"vpc","config":{"cidrBlock":"10.10.21.0/24","availabilityZone":"us-east-1b"}},{"id":"nat-a","type":"aws_nat","label":"NAT Gateway A","parent":"public-a"},{"id":"nat-b","type":"aws_nat","label":"NAT Gateway B","parent":"public-b"},{"id":"alb","type":"aws_alb","label":"Application Load Balancer","parent":"public-a","config":{"certificateArn":"arn:aws:acm:us-east-1:123456789012:certificate/REPLACE-WITH-YOUR-CERTIFICATE-ID","deletionProtection":true}},{"id":"r53","type":"aws_route53","label":"Route 53 DNS","parent":"aws-cloud","config":{"domainName":"storefront.example.com"}},{"id":"waf-alb","type":"aws_waf","label":"Regional WAF","parent":"aws-cloud","config":{"scope":"REGIONAL","defaultAction":"ALLOW","managedRuleGroups":["AWSManagedRulesCommonRuleSet","AWSManagedRulesKnownBadInputsRuleSet"],"rateLimitEnabled":true}},{"id":"fn-a","type":"aws_lambda","label":"API Function A","parent":"app-a","config":{"memorySize":512,"timeout":15,"tracingMode":"Active","runtime":"nodejs22.x"}},{"id":"fn-b","type":"aws_lambda","label":"API Function B","parent":"app-b","config":{"memorySize":512,"timeout":15,"tracingMode":"Active","runtime":"nodejs22.x"}},{"id":"rds","type":"aws_rds","label":"PostgreSQL Multi-AZ Database","parent":"data-a","config":{"instanceClass":"db.m5.large","allocatedStorage":200,"iamDatabaseAuthenticationEnabled":true,"monitoringInterval":"60"}},{"id":"assets","type":"aws_s3","label":"Assets Bucket","parent":"aws-cloud","config":{"bucketName":"storefront-assets-us-east-1"}},{"id":"lambda-role","type":"aws_iam","label":"Lambda Execution Role","parent":"aws-cloud","config":{"trustedService":"lambda.amazonaws.com"}},{"id":"sg-alb","type":"aws_sg","label":"Load Balancer Security Group","parent":"vpc","config":{"allowHttp":false,"allowHttps":true}},{"id":"sg-db","type":"aws_sg","label":"Database Security Group","parent":"vpc","config":{"allowHttp":false,"allowHttps":false,"sourceCidr":"10.0.0.0/8"}},{"id":"cloudwatch","type":"aws_cloudwatch","label":"CloudWatch Alarms","config":{"namespace":"AWS/Lambda","metricName":"Errors","threshold":1,"comparisonOperator":"GreaterThanOrEqualToThreshold"}}],"connections":[{"from":"nat-a","to":"igw"},{"from":"nat-b","to":"igw"},{"from":"r53","to":"alb"},{"from":"igw","to":"alb"},{"from":"waf-alb","to":"alb"},{"from":"alb","to":"fn-a"},{"from":"alb","to":"fn-b"},{"from":"fn-a","to":"rds"},{"from":"fn-a","to":"assets"},{"from":"fn-a","to":"nat-a"},{"from":"lambda-role","to":"fn-a"},{"from":"fn-b","to":"rds"},{"from":"fn-b","to":"assets"},{"from":"fn-b","to":"nat-b"},{"from":"lambda-role","to":"fn-b"},{"from":"sg-alb","to":"alb"},{"from":"sg-db","to":"rds"},{"from":"cloudwatch","to":"alb"},{"from":"cloudwatch","to":"fn-a"},{"from":"cloudwatch","to":"fn-b"},{"from":"cloudwatch","to":"rds"}]}
 
 ## azure-static-site — static website on Blob storage and Front Door
-Use when: Marketing sites, documentation and single-page apps on Azure: Blob storage origin behind Front Door and a WAF policy.
+Use when: Static website, marketing site, landing page, documentation site or single-page app (SPA) on Azure served from Blob storage behind a CDN (Front Door) and a WAF policy: static hosting, no servers, no containers, no database.
+Typical requests: a static website on Azure Blob storage with Front Door; a marketing site or SPA served from Azure behind a CDN; a static front end with a WAF on Azure.
+Summary: Front Door with a WAF policy in Prevention mode serves the site from a Blob storage account that denies direct network access. No servers to manage; deployed in eastus (medium tier).
 Resources: azure_cloud_boundary, azure_storage, azure_front_door, azure_waf.
 No account-specific values required.
 Sample design (JSON):
@@ -88,13 +112,17 @@ Sample design (JSON):
 
 ## azure-functions-private-api — private Functions API behind Application Gateway
 Use when: APIs on Azure Functions that must reach a private Azure SQL database; Application Gateway WAF in front, Functions inside the VNet.
+Typical requests: an Azure Functions API inside the VNet with an Azure SQL database; Functions behind an Application Gateway WAF with private data services; a private serverless API on Azure.
+Summary: A WAF-enabled Application Gateway fronts an Azure Functions app that runs inside the VNet with public access disabled; Azure SQL, storage and Key Vault accept private traffic only. Deployed in eastus.
 Resources: azure_cloud_boundary, azure_vnet, azure_subnet, azure_app_gateway, azure_functions, azure_sql, azure_storage, azure_key_vault, azure_nsg.
 No account-specific values required.
 Sample design (JSON):
 {"name":"Storefront on Azure — private Functions API behind Application Gateway","summary":"A WAF-enabled Application Gateway fronts an Azure Functions app that runs inside the VNet with public access disabled; Azure SQL, storage and Key Vault accept private traffic only. Deployed in eastus.","resources":[{"id":"azure-cloud","type":"azure_cloud_boundary","label":"Azure — eastus","config":{"region":"eastus"}},{"id":"vnet","type":"azure_vnet","label":"Production VNet","parent":"azure-cloud","config":{"addressSpace":"10.110.0.0/16"}},{"id":"web-subnet","type":"azure_subnet","label":"Web Subnet","parent":"vnet","config":{"addressPrefix":"10.110.0.0/24"}},{"id":"app-subnet","type":"azure_subnet","label":"App Subnet","parent":"vnet","config":{"addressPrefix":"10.110.10.0/24"}},{"id":"data-subnet","type":"azure_subnet","label":"Data Subnet","parent":"vnet","config":{"addressPrefix":"10.110.20.0/24"}},{"id":"agw","type":"azure_app_gateway","label":"Application Gateway (WAF v2)","parent":"web-subnet","config":{"name":"storefront-agw","sku":"WAF_v2","wafEnabled":true,"wafMode":"Prevention","autoscaleEnabled":true,"minCapacity":2,"maxCapacity":5}},{"id":"func","type":"azure_functions","label":"API Function App","parent":"app-subnet","config":{"name":"storefront-api","runtime":"node","osType":"Linux","planType":"EP1","alwaysOn":true,"httpsOnly":true,"minimumTlsVersion":"1.2","publicNetworkAccess":false}},{"id":"sql","type":"azure_sql","label":"Azure SQL Database","parent":"data-subnet","config":{"name":"storefront-sql","tier":"GeneralPurpose","maxSizeGb":32,"zoneRedundant":true,"publicNetworkAccess":false,"allowAzureServices":false,"minimumTlsVersion":"1.2","auditingEnabled":true,"threatDetectionEnabled":true,"requestedBackupStorageRedundancy":"Zone"}},{"id":"storage","type":"azure_storage","label":"Assets Storage Account","parent":"azure-cloud","config":{"name":"storefrontassets","sku":"Standard_ZRS","httpsOnly":true,"allowBlobPublicAccess":false,"minimumTlsVersion":"TLS1_2","networkDefaultAction":"Deny","blobVersioningEnabled":true,"blobSoftDeleteRetentionDays":14}},{"id":"vault","type":"azure_key_vault","label":"Key Vault","parent":"azure-cloud","config":{"name":"storefront-kv","sku":"standard","enableRbacAuthorization":true,"publicNetworkAccessEnabled":false,"networkAclsDefaultAction":"Deny","purgeProtectionEnabled":true,"softDeleteRetentionDays":90}},{"id":"nsg-web","type":"azure_nsg","label":"Web NSG","parent":"vnet","config":{"allowHttp":false,"allowHttps":true}},{"id":"nsg-app","type":"azure_nsg","label":"App NSG","parent":"vnet","config":{"allowHttp":true,"allowHttps":false,"sourceCidr":"10.0.0.0/8"}},{"id":"nsg-data","type":"azure_nsg","label":"Data NSG","parent":"vnet","config":{"allowHttp":false,"allowHttps":false,"sourceCidr":"10.0.0.0/8"}}],"connections":[{"from":"agw","to":"func"},{"from":"func","to":"sql"},{"from":"func","to":"storage"},{"from":"func","to":"vault"},{"from":"nsg-web","to":"web-subnet"},{"from":"nsg-app","to":"app-subnet"},{"from":"nsg-data","to":"data-subnet"}]}
 
 ## multi-aws-azure-dr — AWS primary with Azure disaster recovery
-Use when: AWS primary with a scaled-down Azure standby and DNS failover.
+Use when: Multi-cloud disaster recovery (DR): AWS primary with a scaled-down Azure standby, DNS failover (fail over from AWS to Azure) and asset replication.
+Typical requests: an AWS primary site with a warm disaster-recovery site on Azure; a multi-cloud DR setup: run on AWS, fail over to Azure; AWS production with an Azure standby for resilience.
+Summary: AWS runs production; a scaled-down Azure stack stands by and keeps a copy of the assets in sync. Route 53 health checks fail traffic over to the Azure Application Gateway. Sized for the medium tier; AWS in us-east-1, Azure in westeurope.
 Resources: aws_cloud_boundary, aws_vpc, aws_igw, aws_subnet, aws_nat, aws_alb, aws_route53, aws_waf, aws_auto_scaling, aws_rds, aws_elasticache, aws_s3, aws_sg, aws_cloudwatch, azure_cloud_boundary, azure_vnet, azure_subnet, azure_app_gateway, azure_vmss, azure_sql, azure_storage, azure_key_vault, azure_nsg.
 Values you must supply before deploying: Application Load Balancer.certificateArn.
 Sample design (JSON):
@@ -102,6 +130,8 @@ Sample design (JSON):
 
 ## multi-active-active — active-active web application across AWS and Azure
 Use when: Two clouds serving traffic at once via weighted DNS.
+Typical requests: an active-active web application spread across AWS and Azure; a multi-cloud web app with one global entry point; a vendor-diverse deployment serving traffic from both AWS and Azure.
+Summary: Route 53 splits traffic between an AWS stack and an Azure stack that run the same workload; the Azure tier synchronises shared assets with S3. Sized for the medium tier; AWS in us-east-1, Azure in westeurope.
 Resources: aws_cloud_boundary, aws_vpc, aws_igw, aws_subnet, aws_nat, aws_alb, aws_route53, aws_waf, aws_auto_scaling, aws_rds, aws_elasticache, aws_s3, aws_sg, aws_cloudwatch, azure_cloud_boundary, azure_vnet, azure_subnet, azure_app_gateway, azure_vmss, azure_sql, azure_redis, azure_storage, azure_key_vault, azure_nsg.
 Values you must supply before deploying: Application Load Balancer.certificateArn.
 Sample design (JSON):

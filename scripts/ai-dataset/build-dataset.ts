@@ -18,6 +18,7 @@ import { hardenSpec } from './harden';
 import { awsThreeTier, awsEcs, awsEks, awsServerless } from './awsPatterns';
 import { azureThreeTier, azureAppService, azureServerless, azureAks } from './azurePatterns';
 import { multiAwsAzureDr, multiActiveActive } from './multiPatterns';
+import { awsStaticSite, awsEventDriven, awsLambdaPrivateApi, azureStaticSite, azureFunctionsPrivateApi } from './morePatterns';
 import { AWS_REGIONS, AZURE_REGIONS } from './builder';
 import { APP_NAMES, PROMPT_STYLES, promptFor, vagueRequirements, type Database, type PromptStyle, type Requirements, type Scale } from './requirements';
 
@@ -33,6 +34,11 @@ const PATTERNS: PatternDef[] = [
   { id: 'azure-app-service', provider: 'azure', fn: azureAppService, target: 50, dims: ['region', 'scale', 'db', 'cache', 'cdn', 'regulated'], fixed: { queue: false } },
   { id: 'azure-serverless', provider: 'azure', fn: azureServerless, target: 30, dims: ['region', 'scale', 'cdn', 'regulated'], fixed: { db: 'nosql', cache: false, queue: false } },
   { id: 'azure-aks', provider: 'azure', fn: azureAks, target: 50, dims: ['region', 'scale', 'db', 'cache', 'cdn', 'regulated'], fixed: { queue: false } },
+  { id: 'aws-static-site', provider: 'aws', fn: awsStaticSite, target: 12, dims: ['region', 'scale'], fixed: { db: 'none', cache: false, cdn: true, queue: false } },
+  { id: 'aws-event-driven', provider: 'aws', fn: awsEventDriven, target: 12, dims: ['region', 'scale'], fixed: { db: 'nosql', cache: false, cdn: false, queue: false } },
+  { id: 'aws-lambda-private-api', provider: 'aws', fn: awsLambdaPrivateApi, target: 12, dims: ['region', 'scale'], fixed: { db: 'postgres', cache: false, cdn: false, queue: false } },
+  { id: 'azure-static-site', provider: 'azure', fn: azureStaticSite, target: 6, dims: ['region', 'regulated'], fixed: { db: 'none', cache: false, cdn: true, queue: false } },
+  { id: 'azure-functions-private-api', provider: 'azure', fn: azureFunctionsPrivateApi, target: 3, dims: ['region'], fixed: { db: 'postgres', cache: false, cdn: false, queue: false } },
   { id: 'multi-aws-azure-dr', provider: 'multi', fn: multiAwsAzureDr, target: 40, dims: ['region', 'regionB', 'scale', 'db', 'cache', 'regulated'], fixed: { cdn: false, queue: false } },
   { id: 'multi-active-active', provider: 'multi', fn: multiActiveActive, target: 40, dims: ['region', 'regionB', 'scale', 'db', 'cache', 'regulated'], fixed: { cdn: false, queue: false } },
 ];

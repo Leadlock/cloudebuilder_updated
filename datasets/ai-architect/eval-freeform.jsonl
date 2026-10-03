@@ -22,3 +22,13 @@
 {"id":"free-22","requirements":{"pattern":"aws-ecs","provider":"aws"},"prompt":"I need something for ~50k users on AWS, containers."}
 {"id":"free-23","requirements":{"pattern":"azure-app-service","provider":"azure"},"prompt":"azure web app with a database"}
 {"id":"free-24","requirements":{"pattern":"aws-three-tier","provider":"aws"},"prompt":"Give me a production-ready AWS architecture for a booking platform, 100k users, eu-central-1, with cache and a queue."}
+{"id":"free-25","requirements":{"pattern":"aws-static-site","provider":"aws"},"prompt":"We need a marketing website for our product launch on AWS, just static pages, fast for visitors worldwide."}
+{"id":"free-26","requirements":{"pattern":"aws-static-site","provider":"aws"},"prompt":"Host our React single-page app on AWS behind a CDN. No servers please."}
+{"id":"free-27","requirements":{"pattern":"aws-event-driven","provider":"aws"},"prompt":"Users upload CSV files and each one has to be processed in the background on AWS, serverless."}
+{"id":"free-28","requirements":{"pattern":"aws-event-driven","provider":"aws"},"prompt":"Queue plus Lambda workers writing results to DynamoDB, buffered so traffic spikes do not hurt us. AWS."}
+{"id":"free-29","requirements":{"pattern":"aws-lambda-private-api","provider":"aws"},"prompt":"Lambda API behind a load balancer on AWS that talks to a private Postgres database inside the VPC."}
+{"id":"free-30","requirements":{"pattern":"aws-lambda-private-api","provider":"aws"},"prompt":"Our compliance team says the database must not be reachable from the internet. We use Lambda for the API, on AWS."}
+{"id":"free-31","requirements":{"pattern":"azure-static-site","provider":"azure"},"prompt":"Static documentation site on Azure with Front Door and a WAF."}
+{"id":"free-32","requirements":{"pattern":"azure-static-site","provider":"azure"},"prompt":"Host our single page app on Azure blob storage behind a CDN, nothing else."}
+{"id":"free-33","requirements":{"pattern":"azure-functions-private-api","provider":"azure"},"prompt":"Azure Functions API that has to sit inside our VNet with a private SQL database, behind an application gateway."}
+{"id":"free-34","requirements":{"pattern":"azure-functions-private-api","provider":"azure"},"prompt":"Serverless on Azure but nothing public except the gateway, with a SQL database underneath."}

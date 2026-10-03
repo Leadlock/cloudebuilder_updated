@@ -44,7 +44,13 @@ export function chunkById(id: string): KbChunk | undefined {
 }
 
 /** The exact text that is embedded (shared with the script that builds the vectors file). */
-export const embeddingText = (c: KbChunk): string => `${c.title}\n${c.text}`;
+// A pattern's long JSON sample is left out of what is embedded: it is mostly ids and settings, and it drowns the description
+// (use-when, resources, summary), so multi-cloud requests were matching single-cloud patterns. The model still receives the full text.
+const SAMPLE_MARKER = '\nSample design (JSON):';
+export const embeddingText = (c: KbChunk): string => {
+  const cut = c.metadata.kind === 'pattern' ? c.text.indexOf(SAMPLE_MARKER) : -1;
+  return `${c.title}\n${cut >= 0 ? c.text.slice(0, cut) : c.text}`;
+};
 export const embeddingHash = (c: KbChunk): string => createHash('sha1').update(embeddingText(c)).digest('hex');
 
 // ─── Vectors ──────────────────────────────────────────────────────────────────
@@ -94,7 +100,7 @@ export function _resetKnowledgeBaseCacheForTests(): void {
 
 export interface SearchOptions { kinds?: KbKind[]; providers?: string[]; k?: number }
 
-function candidates(opts: SearchOptions): KbChunk[] {
+export function candidates(opts: SearchOptions): KbChunk[] {
   return loadChunks().filter((c) =>
     (!opts.kinds || opts.kinds.includes(c.metadata.kind)) &&
     (!opts.providers || !c.metadata.provider || opts.providers.includes(c.metadata.provider)));
@@ -163,7 +169,7 @@ function assemble(intro: string, sections: { heading: string; chunks: KbChunk[] 
   return seen.size ? out : '';
 }
 
-const providersFor = (prompt: string, fallback: 'aws' | 'azure'): string[] => {
+export const providersFor = (prompt: string, fallback: 'aws' | 'azure'): string[] => {
   const aws = /\baws\b|amazon/i.test(prompt); const azure = /\bazure\b/i.test(prompt);
   if ((aws && azure) || /multi-?cloud/i.test(prompt)) return ['aws', 'azure', 'multi'];
   return [aws ? 'aws' : azure ? 'azure' : fallback];

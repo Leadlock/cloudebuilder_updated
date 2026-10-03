@@ -3,7 +3,10 @@ import { sanitizeSpecInput, describeSanitized } from '@/lib/ai/specSanitizer';
 import { evaluateSpec, parseSpec } from '@/lib/ai/architectureSpec';
 
 // A design from the training set — verified to pass every deploy-readiness gate.
-const good = JSON.parse((JSON.parse(readFileSync('datasets/ai-architect/validation.jsonl', 'utf8').split('\n')[0]!) as { messages: { content: string }[] }).messages[2]!.content);
+// A design from the dataset that has a load-balancer WAF (the test below removes it). Not "the first row": which design comes first changes whenever the dataset is rebuilt.
+const good = JSON.parse(readFileSync('datasets/ai-architect/validation.jsonl', 'utf8').split('\n').filter(Boolean)
+  .map((l) => (JSON.parse(l) as { messages: { content: string }[] }).messages[2]!.content)
+  .find((c) => c.trim().startsWith('{') && c.includes('"id":"waf-alb"'))!);
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
 const spec = (config: Record<string, unknown>, type = 'aws_subnet') => ({

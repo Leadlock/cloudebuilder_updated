@@ -100,12 +100,12 @@ const PATTERN_FNS: Record<string, { fn: (r: Requirements) => ArchitectureSpec; r
   'azure-app-service': { fn: azureAppService, req: { provider: 'azure', region: 'eastus' }, when: 'PaaS web apps that do not need VM control.' },
   'azure-serverless': { fn: azureServerless, req: { provider: 'azure', region: 'eastus', db: 'nosql', cache: false }, when: 'Event-driven APIs on Azure Functions with Cosmos DB.' },
   'azure-aks': { fn: azureAks, req: { provider: 'azure', region: 'eastus' }, when: 'Kubernetes platforms on Azure; private cluster.' },
-  'aws-static-site': { fn: awsStaticSite, req: { db: 'none', cache: false }, when: 'Marketing sites, documentation and single-page apps: no servers, S3 origin behind CloudFront and a WAF.' },
+  'aws-static-site': { fn: awsStaticSite, req: { db: 'none', cache: false }, when: 'Static website, marketing site, landing page, documentation site or single-page app (SPA) served from S3 behind a CDN (CloudFront) and a WAF: static hosting, no servers, no containers, no database.' },
   'aws-event-driven': { fn: awsEventDriven, req: { db: 'nosql', cache: false, cdn: false }, when: 'Background processing of uploads or events: S3 and SQS buffer the work, Lambda workers write results to DynamoDB.' },
   'aws-lambda-private-api': { fn: awsLambdaPrivateApi, req: { db: 'postgres', cache: false, cdn: false }, when: 'APIs on Lambda that must reach a private relational database; an ALB with WAF invokes functions in private subnets.' },
-  'azure-static-site': { fn: azureStaticSite, req: { provider: 'azure', region: 'eastus', db: 'none', cache: false }, when: 'Marketing sites, documentation and single-page apps on Azure: Blob storage origin behind Front Door and a WAF policy.' },
+  'azure-static-site': { fn: azureStaticSite, req: { provider: 'azure', region: 'eastus', db: 'none', cache: false }, when: 'Static website, marketing site, landing page, documentation site or single-page app (SPA) on Azure served from Blob storage behind a CDN (Front Door) and a WAF policy: static hosting, no servers, no containers, no database.' },
   'azure-functions-private-api': { fn: azureFunctionsPrivateApi, req: { provider: 'azure', region: 'eastus', db: 'postgres', cache: false, cdn: false }, when: 'APIs on Azure Functions that must reach a private Azure SQL database; Application Gateway WAF in front, Functions inside the VNet.' },
-  'multi-aws-azure-dr': { fn: multiAwsAzureDr, req: { provider: 'multi', cdn: false }, when: 'AWS primary with a scaled-down Azure standby and DNS failover.' },
+  'multi-aws-azure-dr': { fn: multiAwsAzureDr, req: { provider: 'multi', cdn: false }, when: 'Multi-cloud disaster recovery (DR): AWS primary with a scaled-down Azure standby, DNS failover (fail over from AWS to Azure) and asset replication.' },
   'multi-active-active': { fn: multiActiveActive, req: { provider: 'multi', cdn: false }, when: 'Two clouds serving traffic at once via weighted DNS.' },
 };
 const usedPairs = new Map<string, number>();
@@ -127,7 +127,7 @@ function patternSection(): string {
     if (!ev.ok) throw new Error(`pattern sample ${id} failed gates: ${ev.issues.map((i) => i.message).join('; ')}`);
     const placeholders = (ev.deploymentInputs ?? []).map((d) => `${d.resourceLabel}.${d.setting}`);
     const text = [
-      `## ${id} — ${PATTERN_TEXT[id].title}`, `Use when: ${p.when}`,
+      `## ${id} — ${PATTERN_TEXT[id].title}`, `Use when: ${p.when}`, `Typical requests: ${PATTERN_TEXT[id].phrases.join('; ')}.`, `Summary: ${spec.summary}`,
       `Resources: ${spec.resources.map((r) => r.type).filter((t, i, a) => a.indexOf(t) === i).join(', ')}.`,
       placeholders.length ? `Values you must supply before deploying: ${placeholders.join(', ')}.` : 'No account-specific values required.',
       'Sample design (JSON):', JSON.stringify(spec),

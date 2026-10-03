@@ -2,7 +2,7 @@ import { evaluateSpec, CATALOG_TYPES } from '@/lib/ai/architectureSpec';
 import { hardenSpec } from '../scripts/ai-dataset/harden';
 import { awsStaticSite, awsEventDriven, awsLambdaPrivateApi, azureStaticSite, azureFunctionsPrivateApi } from '../scripts/ai-dataset/morePatterns';
 import { PATTERN_TEXT, type Requirements } from '../scripts/ai-dataset/requirements';
-import { embeddingHash, loadChunks } from '@/lib/ai/knowledgeBase';
+import { embeddingHash, embeddingText, loadChunks } from '@/lib/ai/knowledgeBase';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -43,6 +43,15 @@ describe('the generated knowledge base', () => {
     for (const t of CATALOG_TYPES) expect(ids).toContain(`catalog-${t}`);
     const alb = chunks.find((c) => c.id === 'catalog-aws_alb')!;
     expect(alb.text).toMatch(/Assessment rules that check this type: .*\(/);
+  });
+
+  it('embeds a pattern\'s description, not its JSON sample (the sample drowned multi-cloud requests), while the model still gets the full text', () => {
+    const multi = chunks.find((c) => c.id === 'pattern-multi-active-active')!;
+    expect(multi.text).toContain('Sample design (JSON):');
+    expect(embeddingText(multi)).not.toContain('Sample design (JSON):');
+    expect(embeddingText(multi)).toMatch(/Typical requests:.*active-active/is);
+    const rule = chunks.find((c) => c.metadata.kind === 'rule')!;
+    expect(embeddingText(rule)).toBe(`${rule.title}\n${rule.text}`);            // other kinds are embedded whole
   });
 
   it('has an up-to-date vector for every chunk (otherwise search silently falls back to keywords)', () => {
