@@ -21,5 +21,11 @@ Use Auto Scaling groups or VM Scale Sets rather than a fixed count of single ins
 ## Settings
 Only set configuration keys that exist for the resource type, with values from the listed options. Unknown keys and invalid values are rejected before any other check runs. Account-specific values (TLS certificate ARNs, container images) are written as REPLACE-WITH-YOUR-* placeholders and must be supplied before deployment.
 
+## One boundary per cloud
+A design has at most one AWS cloud boundary and one Azure cloud boundary. Two AWS regions, or two Azure regions, cannot be drawn in one design: the layout and the overlap gate reject it. For high availability inside one cloud use two availability zones (AWS) or zone-redundant services (Azure). Cross-region or cross-cloud resilience is modelled only with the multi-cloud patterns (AWS plus Azure). If the user asks for two regions of the same cloud, design the primary region and say in the summary that the second region and data replication must be added separately.
+
+## Static sites and event-driven workloads
+Static content needs no network: use S3 or Blob storage as a private origin behind CloudFront or Front Door with a WAF, and no compute. Background work uses a queue between a producer and workers so bursts are buffered and failures retried (SQS with Lambda or Auto Scaling workers on AWS). Azure has no queue in the catalog, so Azure async designs use Functions with Cosmos DB or storage, and the summary should say so.
+
 ## Known limits of the catalog
 The catalog has no API Gateway, EventBridge, Kinesis, SNS, Service Bus, Event Hubs, Azure Monitor or Log Analytics resources. Azure relational databases are modelled as Azure SQL only. Cross-cloud connections are accepted only from compute to compute/storage/SQL, or through gateway/CDN/edge services. Do not invent resource types to fill those gaps; state the limitation in the summary instead.

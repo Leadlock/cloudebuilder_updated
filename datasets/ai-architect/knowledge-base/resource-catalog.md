@@ -6,6 +6,7 @@ Every resource type the CloudCraft canvas, validator and Terraform generator und
 Provider: aws; category: networking.
 Container. May contain: aws_subnet, aws_igw, aws_nat, aws_sg, aws_route_table, aws_nacl.
 Allowed parent(s): aws_cloud_boundary.
+Assessment rules that check this type: AWS-VPC-002 (medium), AWS-VPC-003 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-vpc"
 - cidrBlock (cidr); default "10.0.0.0/16"
@@ -16,6 +17,7 @@ Settings:
 Provider: aws; category: networking.
 Container. May contain: aws_ec2, aws_rds, aws_alb, aws_nat, aws_lambda, aws_ecs, aws_auto_scaling, aws_elasticache, aws_nacl.
 Allowed parent(s): aws_vpc.
+Assessment rules that check this type: AWS-VPC-001 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-subnet"
 - cidrBlock (cidr); default "10.0.1.0/24"
@@ -25,6 +27,7 @@ Settings:
 ## aws_ec2 — EC2 Instance
 Provider: aws; category: compute.
 Allowed parent(s): aws_subnet.
+Assessment rules that check this type: AWS-EC2-001 (medium), AWS-EC2-002 (medium), AWS-EC2-003 (high), AWS-EC2-010 (low), AWS-COST-001 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-ec2"
 - os (select one of [Ubuntu 24.04 LTS, Amazon Linux 2023, Debian 12 Bookworm, Red Hat Enterprise Linux 9, Windows Server 2022 Base]); default "Ubuntu 24.04 LTS"
@@ -50,6 +53,7 @@ Settings:
 ## aws_s3 — S3 Bucket
 Provider: aws; category: storage.
 Allowed parent(s): aws_cloud_boundary.
+Assessment rules that check this type: AWS-S3-001 (critical), AWS-S3-002 (low), AWS-S3-003 (low), AWS-S3-004 (medium), AWS-S3-005 (low), AWS-S3-006 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-s3"
 - bucketName (text); default "my-bucket"
@@ -75,6 +79,7 @@ Settings:
 ## aws_rds — RDS Instance
 Provider: aws; category: database.
 Allowed parent(s): aws_subnet.
+Assessment rules that check this type: AWS-RDS-001 (critical), AWS-RDS-002 (high), AWS-RDS-003 (low), AWS-RDS-004 (low), AWS-RDS-005 (medium), AWS-RDS-006 (medium), AWS-RDS-007 (high), AWS-RDS-008 (low), AWS-RDS-009 (low), AWS-COST-001 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-rds"
 - engine (select one of [postgres, mysql, aurora-postgresql, aurora-mysql, mariadb]); default "postgres"
@@ -115,6 +120,7 @@ Settings:
 ## aws_cloudfront — CloudFront
 Provider: aws; category: networking.
 Allowed parent(s): aws_cloud_boundary.
+Assessment rules that check this type: AWS-CF-001 (medium), AWS-CF-002 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-cdn"
 - priceClass (select one of [PriceClass_100, PriceClass_200, PriceClass_All]); default "PriceClass_100"
@@ -138,6 +144,7 @@ Settings:
 ## aws_alb — Load Balancer
 Provider: aws; category: loadbalancing.
 Allowed parent(s): aws_subnet.
+Assessment rules that check this type: AWS-ELB-001 (medium), AWS-ELB-002 (medium), AWS-ELB-003 (medium), AWS-ELB-004 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-alb"
 - lbType (select one of [application, network, gateway]); default "application"
@@ -157,6 +164,7 @@ Settings:
 ## aws_auto_scaling — Auto Scaling
 Provider: aws; category: compute.
 Allowed parent(s): aws_subnet.
+Assessment rules that check this type: AWS-ASG-001 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-asg"
 - instanceType (text); default "t3.medium"
@@ -174,6 +182,7 @@ Settings:
 ## aws_lambda — Lambda
 Provider: aws; category: compute.
 Allowed parent(s): aws_subnet.
+Assessment rules that check this type: AWS-LAMBDA-001 (low), AWS-SUS-001 (informational). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-lambda"
 - runtime (select one of [nodejs20.x, nodejs22.x, python3.13, python3.12, java21, provided.al2023, dotnet8]); default "nodejs20.x"
@@ -193,6 +202,7 @@ Settings:
 ## aws_ecs — ECS Service
 Provider: aws; category: compute.
 Allowed parent(s): aws_subnet.
+Assessment rules that check this type: AWS-ECS-001 (high). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-ecs"
 - containerImage (text); default "nginx:latest"
@@ -212,6 +222,7 @@ Settings:
 ## aws_eks — EKS Cluster
 Provider: aws; category: compute.
 No container: omit "parent".
+Assessment rules that check this type: AWS-EKS-001 (high), AWS-EKS-002 (medium), AWS-EKS-003 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-eks"
 - version (text); default "1.30"
@@ -256,6 +267,7 @@ Settings:
 ## aws_nacl — Network ACL
 Provider: aws; category: security.
 Allowed parent(s): aws_vpc, aws_subnet.
+Assessment rules that check this type: AWS-NACL-001 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-nacl"
 - allowAllInbound (boolean); default false
@@ -271,6 +283,7 @@ Settings:
 ## aws_sg — Security Group
 Provider: aws; category: security.
 Allowed parent(s): aws_vpc.
+Assessment rules that check this type: AWS-SG-001 (high), AWS-SG-002 (high). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-sg"
 - description (text); default ""
@@ -286,6 +299,7 @@ Settings:
 ## aws_iam — IAM Role
 Provider: aws; category: security.
 Allowed parent(s): aws_cloud_boundary.
+Assessment rules that check this type: AWS-IAM-001 (high). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-ec2-role"
 - trustedService (select one of [ec2.amazonaws.com, lambda.amazonaws.com, ecs-tasks.amazonaws.com, eks.amazonaws.com, rds.amazonaws.com, events.amazonaws.com]); default "ec2.amazonaws.com"
@@ -296,6 +310,7 @@ Settings:
 ## aws_kms — KMS Key
 Provider: aws; category: security.
 No container: omit "parent".
+Assessment rules that check this type: AWS-KMS-001 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-kms-key"
 - enableKeyRotation (boolean); default true
@@ -324,6 +339,7 @@ Settings:
 ## aws_ebs — EBS Volume
 Provider: aws; category: storage.
 No container: omit "parent".
+Assessment rules that check this type: AWS-EBS-001 (medium), AWS-EBS-002 (low), AWS-COST-001 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-ebs"
 - availabilityZone (text); default "us-east-1a"
@@ -340,6 +356,7 @@ Settings:
 ## aws_dynamodb — DynamoDB
 Provider: aws; category: database.
 No container: omit "parent".
+Assessment rules that check this type: AWS-DDB-001 (informational), AWS-DDB-002 (medium), AWS-DDB-003 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-table"
 - partitionKeyName (text); default "id"
@@ -379,6 +396,7 @@ Settings:
 ## aws_waf — AWS WAF
 Provider: aws; category: security.
 Allowed parent(s): aws_cloud_boundary.
+Assessment rules that check this type: AWS-WAF-001 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-waf-acl"
 - scope (select one of [REGIONAL, CLOUDFRONT]); default "REGIONAL"
@@ -393,6 +411,7 @@ Settings:
 ## aws_elasticache — ElastiCache Redis
 Provider: aws; category: database.
 Allowed parent(s): aws_subnet.
+Assessment rules that check this type: AWS-ELC-001 (medium), AWS-ELC-002 (medium), AWS-ELC-003 (medium), AWS-ELC-004 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-redis-cache"
 - engine (select one of [redis, valkey]); default "redis"
@@ -410,6 +429,7 @@ Settings:
 ## aws_sqs — SQS Queue
 Provider: aws; category: messaging.
 Allowed parent(s): aws_cloud_boundary.
+Assessment rules that check this type: AWS-SQS-001 (medium), AWS-SQS-002 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-app-queue"
 - fifoQueue (boolean); default false
@@ -460,6 +480,7 @@ Settings:
 ## azure_vm — Virtual Machine
 Provider: azure; category: compute.
 Allowed parent(s): azure_subnet.
+Assessment rules that check this type: AZ-VM-001 (medium), AZ-VM-002 (low), AZ-VM-010 (medium), AZ-VM-011 (low), AZ-VM-020 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-vm"
 - osType (select one of [Linux, Windows]); default "Linux"
@@ -479,6 +500,7 @@ Settings:
 ## azure_storage — Storage Account
 Provider: azure; category: storage.
 Allowed parent(s): azure_resource_group, azure_cloud_boundary.
+Assessment rules that check this type: AZ-STG-001 (high), AZ-STG-002 (high), AZ-STG-003 (medium), AZ-STG-004 (medium), AZ-STG-005 (low), AZ-STG-006 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "mystorageacct"
 - sku (select one of [Standard_LRS, Standard_ZRS, Standard_GRS, Premium_LRS]); default "Standard_LRS"
@@ -494,6 +516,7 @@ Settings:
 ## azure_sql — Azure SQL
 Provider: azure; category: database.
 Allowed parent(s): azure_resource_group, azure_subnet, azure_cloud_boundary.
+Assessment rules that check this type: AZ-SQL-001 (high), AZ-SQL-002 (high), AZ-SQL-003 (medium), AZ-SQL-004 (medium), AZ-SQL-005 (medium), AZ-SQL-006 (medium), AZ-SQL-010 (medium), AZ-SQL-011 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-sql"
 - tier (select one of [Basic, Standard, Premium, GeneralPurpose, BusinessCritical, GP_Gen5_2, GP_Gen5_8, BC_Gen5_16]); default "Standard"
@@ -512,6 +535,7 @@ Settings:
 ## azure_cosmos_db — Cosmos DB
 Provider: azure; category: database.
 No container: omit "parent".
+Assessment rules that check this type: AZ-COS-001 (high), AZ-COS-010 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-cosmos"
 - kind (select one of [GlobalDocumentDB, MongoDB]); default "GlobalDocumentDB"
@@ -538,6 +562,7 @@ Settings:
 ## azure_app_gateway — App Gateway
 Provider: azure; category: loadbalancing.
 Allowed parent(s): azure_subnet.
+Assessment rules that check this type: AZ-AGW-001 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-app-gateway"
 - sku (select one of [Standard_v2, WAF_v2]); default "Standard_v2"
@@ -563,6 +588,7 @@ Settings:
 ## azure_nsg — Network Security Group
 Provider: azure; category: security.
 Allowed parent(s): azure_vnet.
+Assessment rules that check this type: AZ-NSG-001 (high), AZ-NSG-002 (high). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-nsg"
 - description (text); default ""
@@ -589,6 +615,7 @@ Settings:
 ## azure_bastion — Azure Bastion
 Provider: azure; category: security.
 Allowed parent(s): azure_vnet.
+Assessment rules that check this type: AZ-BAS-001 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-bastion"
 - sku (select one of [Basic, Standard]); default "Standard"
@@ -603,6 +630,7 @@ Settings:
 ## azure_key_vault — Key Vault
 Provider: azure; category: security.
 Allowed parent(s): azure_resource_group, azure_cloud_boundary.
+Assessment rules that check this type: AZ-KV-001 (medium), AZ-KV-002 (medium), AZ-KV-003 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-vault"
 - sku (select one of [standard, premium]); default "standard"
@@ -617,6 +645,7 @@ Settings:
 ## azure_functions — Functions
 Provider: azure; category: compute.
 Allowed parent(s): azure_subnet.
+Assessment rules that check this type: AZ-FUNC-001 (medium), AZ-FUNC-002 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-func"
 - runtime (select one of [node, python, dotnet, java, powershell]); default "node"
@@ -636,6 +665,7 @@ Settings:
 ## azure_app_service — App Service
 Provider: azure; category: compute.
 No container: omit "parent".
+Assessment rules that check this type: AZ-APP-001 (medium), AZ-APP-002 (medium), AZ-APP-003 (medium), AZ-APP-010 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-webapp"
 - osType (select one of [Linux, Windows]); default "Linux"
@@ -656,6 +686,7 @@ Settings:
 ## azure_aks — AKS Cluster
 Provider: azure; category: compute.
 Allowed parent(s): azure_subnet.
+Assessment rules that check this type: AZ-AKS-001 (high), AZ-AKS-002 (medium), AZ-AKS-010 (low), AZ-AKS-030 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-aks"
 - dnsPrefix (text); default "my-aks"
@@ -685,6 +716,7 @@ Settings:
 ## azure_nic — Network Interface
 Provider: azure; category: networking.
 Allowed parent(s): azure_subnet.
+Assessment rules that check this type: AZ-NIC-001 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-nic"
 - privateIpAllocationMethod (select one of [Dynamic, Static]); default "Dynamic"
@@ -695,6 +727,7 @@ Settings:
 ## azure_front_door — Front Door
 Provider: azure; category: networking.
 Allowed parent(s): azure_cloud_boundary.
+Assessment rules that check this type: AZ-AFD-001 (medium), AZ-AFD-002 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-frontdoor"
 - sku (select one of [Standard_AzureFrontDoor, Premium_AzureFrontDoor]); default "Standard_AzureFrontDoor"
@@ -707,6 +740,7 @@ Settings:
 ## azure_waf — Azure WAF
 Provider: azure; category: security.
 Allowed parent(s): azure_cloud_boundary.
+Assessment rules that check this type: AZ-WAF-001 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-azure-waf"
 - mode (select one of [Prevention, Detection]); default "Prevention"
@@ -719,6 +753,7 @@ Settings:
 ## azure_redis — Azure Redis
 Provider: azure; category: database.
 Allowed parent(s): azure_subnet.
+Assessment rules that check this type: AZ-RED-001 (medium), AZ-RED-002 (medium), AZ-RED-003 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-redis"
 - sku (select one of [Basic, Standard, Premium]); default "Standard"
@@ -733,6 +768,7 @@ Settings:
 ## azure_vmss — VM Scale Set
 Provider: azure; category: compute.
 Allowed parent(s): azure_subnet.
+Assessment rules that check this type: AZ-VMSS-001 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-vmss"
 - osType (select one of [Linux, Windows]); default "Linux"

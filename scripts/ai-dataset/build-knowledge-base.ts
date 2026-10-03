@@ -16,6 +16,7 @@ import { hardenSpec } from './harden';
 import { awsThreeTier, awsEcs, awsEks, awsServerless } from './awsPatterns';
 import { azureThreeTier, azureAppService, azureServerless, azureAks } from './azurePatterns';
 import { multiAwsAzureDr, multiActiveActive } from './multiPatterns';
+import { awsStaticSite, awsEventDriven, awsLambdaPrivateApi, azureStaticSite, azureFunctionsPrivateApi } from './morePatterns';
 import { PATTERN_TEXT, type Requirements } from './requirements';
 
 interface Chunk { id: string; title: string; text: string; metadata: Record<string, string> }
@@ -32,6 +33,8 @@ function catalogSection(): string {
     if (r.isContainer) lines.push(`Container. May contain: ${(r.allowedChildren ?? []).join(', ') || 'nothing'}.`);
     const parents = allResources.filter((p) => p.allowedChildren?.includes(r.type)).map((p) => p.type);
     lines.push(parents.length ? `Allowed parent(s): ${parents.join(', ')}.` : r.isContainer ? 'Top-level container.' : 'No container: omit "parent".');
+    const rules = ALL_RULES.filter((x) => x.resourceTypes?.includes(r.type));
+    if (rules.length) lines.push(`Assessment rules that check this type: ${rules.map((x) => `${x.id} (${x.severity.toLowerCase()})`).join(', ')}. Satisfy them in the design instead of leaving them to fail.`);
     lines.push('Settings:');
     for (const f of r.configSchema) {
       const opts = f.options?.length ? ` one of [${f.options.map((o) => o.value).join(', ')}]` : '';
@@ -97,6 +100,11 @@ const PATTERN_FNS: Record<string, { fn: (r: Requirements) => ArchitectureSpec; r
   'azure-app-service': { fn: azureAppService, req: { provider: 'azure', region: 'eastus' }, when: 'PaaS web apps that do not need VM control.' },
   'azure-serverless': { fn: azureServerless, req: { provider: 'azure', region: 'eastus', db: 'nosql', cache: false }, when: 'Event-driven APIs on Azure Functions with Cosmos DB.' },
   'azure-aks': { fn: azureAks, req: { provider: 'azure', region: 'eastus' }, when: 'Kubernetes platforms on Azure; private cluster.' },
+  'aws-static-site': { fn: awsStaticSite, req: { db: 'none', cache: false }, when: 'Marketing sites, documentation and single-page apps: no servers, S3 origin behind CloudFront and a WAF.' },
+  'aws-event-driven': { fn: awsEventDriven, req: { db: 'nosql', cache: false, cdn: false }, when: 'Background processing of uploads or events: S3 and SQS buffer the work, Lambda workers write results to DynamoDB.' },
+  'aws-lambda-private-api': { fn: awsLambdaPrivateApi, req: { db: 'postgres', cache: false, cdn: false }, when: 'APIs on Lambda that must reach a private relational database; an ALB with WAF invokes functions in private subnets.' },
+  'azure-static-site': { fn: azureStaticSite, req: { provider: 'azure', region: 'eastus', db: 'none', cache: false }, when: 'Marketing sites, documentation and single-page apps on Azure: Blob storage origin behind Front Door and a WAF policy.' },
+  'azure-functions-private-api': { fn: azureFunctionsPrivateApi, req: { provider: 'azure', region: 'eastus', db: 'postgres', cache: false, cdn: false }, when: 'APIs on Azure Functions that must reach a private Azure SQL database; Application Gateway WAF in front, Functions inside the VNet.' },
   'multi-aws-azure-dr': { fn: multiAwsAzureDr, req: { provider: 'multi', cdn: false }, when: 'AWS primary with a scaled-down Azure standby and DNS failover.' },
   'multi-active-active': { fn: multiActiveActive, req: { provider: 'multi', cdn: false }, when: 'Two clouds serving traffic at once via weighted DNS.' },
 };
@@ -139,6 +147,8 @@ const GUIDELINES: { title: string; text: string }[] = [
   { title: 'Data protection', text: 'Databases and caches are never publicly accessible, are encrypted, and are Multi-AZ / zone-redundant where the setting exists. Storage disables public access and defaults network access to Deny. Key Vault uses RBAC, purge protection and a Deny network default.' },
   { title: 'Compute', text: 'Use Auto Scaling groups or VM Scale Sets rather than a fixed count of single instances. Enable health checks against the load balancer. Container and Kubernetes clusters use private endpoints.' },
   { title: 'Settings', text: 'Only set configuration keys that exist for the resource type, with values from the listed options. Unknown keys and invalid values are rejected before any other check runs. Account-specific values (TLS certificate ARNs, container images) are written as REPLACE-WITH-YOUR-* placeholders and must be supplied before deployment.' },
+  { title: 'One boundary per cloud', text: 'A design has at most one AWS cloud boundary and one Azure cloud boundary. Two AWS regions, or two Azure regions, cannot be drawn in one design: the layout and the overlap gate reject it. For high availability inside one cloud use two availability zones (AWS) or zone-redundant services (Azure). Cross-region or cross-cloud resilience is modelled only with the multi-cloud patterns (AWS plus Azure). If the user asks for two regions of the same cloud, design the primary region and say in the summary that the second region and data replication must be added separately.' },
+  { title: 'Static sites and event-driven workloads', text: 'Static content needs no network: use S3 or Blob storage as a private origin behind CloudFront or Front Door with a WAF, and no compute. Background work uses a queue between a producer and workers so bursts are buffered and failures retried (SQS with Lambda or Auto Scaling workers on AWS). Azure has no queue in the catalog, so Azure async designs use Functions with Cosmos DB or storage, and the summary should say so.' },
   { title: 'Known limits of the catalog', text: 'The catalog has no API Gateway, EventBridge, Kinesis, SNS, Service Bus, Event Hubs, Azure Monitor or Log Analytics resources. Azure relational databases are modelled as Azure SQL only. Cross-cloud connections are accepted only from compute to compute/storage/SQL, or through gateway/CDN/edge services. Do not invent resource types to fill those gaps; state the limitation in the summary instead.' },
 ];
 function guidelinesSection(): string {
