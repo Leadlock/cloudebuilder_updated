@@ -45,7 +45,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
     const { denied } = access;
     const { limit, windowMs, windowMinutes } = planLimit();
-    const budget = peekRateLimit(planRateKey(identity.userId), limit, windowMs);
+    const budget = await peekRateLimit(planRateKey(identity.userId), limit, windowMs);
 
     return ok({
       enabled: denied === null,

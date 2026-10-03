@@ -37,7 +37,7 @@ export async function loadAssessmentReport(
 ): Promise<LoadedReport | { response: NextResponse }> {
   const identity = extractIdentity(req);
   if (!identity) return { response: unauthorized() };
-  const rl = checkRateLimit(`${identity.userId}:${rateLimitKey}`, RATE_LIMITS.ANALYSIS.limit, RATE_LIMITS.ANALYSIS.windowMs);
+  const rl = await checkRateLimit(`${identity.userId}:${rateLimitKey}`, RATE_LIMITS.ANALYSIS.limit, RATE_LIMITS.ANALYSIS.windowMs);
   if (!rl.allowed) return { response: tooManyRequests(rl.retryAfterSeconds) };
 
   const orgId = await resolveOrgId(req, identity.userId);

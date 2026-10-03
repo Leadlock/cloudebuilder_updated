@@ -69,7 +69,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // ── Step 1: preview with a real `terraform plan -destroy` ────────────────────────────────────────────────────
     if (!confirmationToken) {
       const { limit, windowMs } = planLimit();
-      const rl = checkRateLimit(planRateKey(identity.userId), limit, windowMs);   // a destroy preview is a plan: it counts as one
+      const rl = await checkRateLimit(planRateKey(identity.userId), limit, windowMs);   // a destroy preview is a plan: it counts as one
       if (!rl.allowed) {
         await recordTerraformAudit({ action: 'destroy', outcome: 'denied', orgId, projectId, userId: identity.userId, detail: 'rate limited' });
         return tooManyRequests(rl.retryAfterSeconds);

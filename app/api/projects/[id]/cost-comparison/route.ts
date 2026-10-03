@@ -41,7 +41,7 @@ export async function POST(
 
     // This route runs TWO full cost estimations per call (current + translated
     // provider) — twice the cost of /cost-estimates, which already rate-limits.
-    const rl = checkRateLimit(`${identity.userId}:cost-comparison`, RATE_LIMITS.ANALYSIS.limit, RATE_LIMITS.ANALYSIS.windowMs);
+    const rl = await checkRateLimit(`${identity.userId}:cost-comparison`, RATE_LIMITS.ANALYSIS.limit, RATE_LIMITS.ANALYSIS.windowMs);
     if (!rl.allowed) return tooManyRequests(rl.retryAfterSeconds);
 
     const { id: projectId } = await params;

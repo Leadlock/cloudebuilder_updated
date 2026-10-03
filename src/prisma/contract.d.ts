@@ -33,7 +33,7 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'e93966cf06f92708de12b9327127d88570069c17c200b479d2ce101bf690e4ad'>;
+  StorageHashBase<'9a378bfb3956a6c13c2d39384fbf698f46960cc34c36f05733459ec1ece6b866'>;
 export type ExecutionHash =
   ExecutionHashBase<'f2cabb7b653b19c268fbfec23ecf7ec67c4f7687b2f0915b17f47f99cf2edae3'>;
 export type ProfileHash =
@@ -458,6 +458,19 @@ export type FieldOutputTypes = {
       readonly orgId: CodecTypes['pg/text@1']['output'];
       readonly ownerId: CodecTypes['pg/text@1']['output'];
     };
+    readonly RateLimitBucket: {
+      readonly key: CodecTypes['pg/text@1']['output'];
+      readonly count: CodecTypes['pg/int4@1']['output'];
+      readonly windowStartMs: CodecTypes['pg/float8@1']['output'];
+      readonly expiresAtMs: CodecTypes['pg/float8@1']['output'];
+    };
+    readonly RevokedSession: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly kind: CodecTypes['pg/text@1']['output'];
+      readonly userId: CodecTypes['pg/text@1']['output'] | null;
+      readonly revokedAtMs: CodecTypes['pg/float8@1']['output'];
+      readonly expiresAtMs: CodecTypes['pg/float8@1']['output'];
+    };
     readonly SecurityFinding: {
       readonly id: CodecTypes['pg/text@1']['output'];
       readonly scanId: CodecTypes['pg/text@1']['output'];
@@ -772,6 +785,19 @@ export type FieldInputTypes = {
       readonly updatedAt: CodecTypes['pg/text@1']['input'];
       readonly orgId: CodecTypes['pg/text@1']['input'];
       readonly ownerId: CodecTypes['pg/text@1']['input'];
+    };
+    readonly RateLimitBucket: {
+      readonly key: CodecTypes['pg/text@1']['input'];
+      readonly count: CodecTypes['pg/int4@1']['input'];
+      readonly windowStartMs: CodecTypes['pg/float8@1']['input'];
+      readonly expiresAtMs: CodecTypes['pg/float8@1']['input'];
+    };
+    readonly RevokedSession: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly kind: CodecTypes['pg/text@1']['input'];
+      readonly userId: CodecTypes['pg/text@1']['input'] | null;
+      readonly revokedAtMs: CodecTypes['pg/float8@1']['input'];
+      readonly expiresAtMs: CodecTypes['pg/float8@1']['input'];
     };
     readonly SecurityFinding: {
       readonly id: CodecTypes['pg/text@1']['input'];
@@ -1088,6 +1114,19 @@ export type StorageColumnTypes = {
       readonly tags: CodecTypes['pg/text@1']['output'];
       readonly updatedAt: CodecTypes['pg/text@1']['output'];
     };
+    readonly rateLimitBucket: {
+      readonly count: CodecTypes['pg/int4@1']['output'];
+      readonly expiresAtMs: CodecTypes['pg/float8@1']['output'];
+      readonly key: CodecTypes['pg/text@1']['output'];
+      readonly windowStartMs: CodecTypes['pg/float8@1']['output'];
+    };
+    readonly revokedSession: {
+      readonly expiresAtMs: CodecTypes['pg/float8@1']['output'];
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly kind: CodecTypes['pg/text@1']['output'];
+      readonly revokedAtMs: CodecTypes['pg/float8@1']['output'];
+      readonly userId: CodecTypes['pg/text@1']['output'] | null;
+    };
     readonly securityFinding: {
       readonly createdAt: CodecTypes['pg/text@1']['output'];
       readonly description: CodecTypes['pg/text@1']['output'];
@@ -1402,6 +1441,19 @@ export type StorageColumnInputTypes = {
       readonly region: CodecTypes['pg/text@1']['input'];
       readonly tags: CodecTypes['pg/text@1']['input'];
       readonly updatedAt: CodecTypes['pg/text@1']['input'];
+    };
+    readonly rateLimitBucket: {
+      readonly count: CodecTypes['pg/int4@1']['input'];
+      readonly expiresAtMs: CodecTypes['pg/float8@1']['input'];
+      readonly key: CodecTypes['pg/text@1']['input'];
+      readonly windowStartMs: CodecTypes['pg/float8@1']['input'];
+    };
+    readonly revokedSession: {
+      readonly expiresAtMs: CodecTypes['pg/float8@1']['input'];
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly kind: CodecTypes['pg/text@1']['input'];
+      readonly revokedAtMs: CodecTypes['pg/float8@1']['input'];
+      readonly userId: CodecTypes['pg/text@1']['input'] | null;
     };
     readonly securityFinding: {
       readonly createdAt: CodecTypes['pg/text@1']['input'];
@@ -3282,6 +3334,85 @@ type ContractBase = Omit<
                 },
               ];
             };
+            readonly rateLimitBucket: {
+              columns: {
+                readonly key: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly count: {
+                  readonly nativeType: 'int4';
+                  readonly codecId: 'pg/int4@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/int4@1', 0>;
+                  };
+                };
+                readonly windowStartMs: {
+                  readonly nativeType: 'float8';
+                  readonly codecId: 'pg/float8@1';
+                  readonly nullable: false;
+                };
+                readonly expiresAtMs: {
+                  readonly nativeType: 'float8';
+                  readonly codecId: 'pg/float8@1';
+                  readonly nullable: false;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['key'] };
+              uniques: readonly [];
+              indexes: readonly [
+                {
+                  readonly name: 'rateLimitBucket_expiresAtMs_idx_89d46aa4';
+                  readonly prefix: 'rateLimitBucket_expiresAtMs_idx';
+                  readonly columns: readonly ['expiresAtMs'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [];
+            };
+            readonly revokedSession: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly kind: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly userId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly revokedAtMs: {
+                  readonly nativeType: 'float8';
+                  readonly codecId: 'pg/float8@1';
+                  readonly nullable: false;
+                };
+                readonly expiresAtMs: {
+                  readonly nativeType: 'float8';
+                  readonly codecId: 'pg/float8@1';
+                  readonly nullable: false;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [];
+              indexes: readonly [
+                {
+                  readonly name: 'revokedSession_expiresAtMs_idx_89d46aa4';
+                  readonly prefix: 'revokedSession_expiresAtMs_idx';
+                  readonly columns: readonly ['expiresAtMs'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [];
+            };
             readonly securityFinding: {
               columns: {
                 readonly id: {
@@ -4072,6 +4203,14 @@ type ContractBase = Omit<
     readonly terraformAuditEvent: {
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'TerraformAuditEvent';
+    };
+    readonly rateLimitBucket: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'RateLimitBucket';
+    };
+    readonly revokedSession: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'RevokedSession';
     };
   };
   readonly domain: {
@@ -5877,6 +6016,73 @@ type ContractBase = Omit<
                 readonly updatedAt: { readonly column: 'updatedAt' };
                 readonly orgId: { readonly column: 'orgId' };
                 readonly ownerId: { readonly column: 'ownerId' };
+              };
+            };
+          };
+          readonly RateLimitBucket: {
+            readonly fields: {
+              readonly key: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly count: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/int4@1' };
+              };
+              readonly windowStartMs: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/float8@1' };
+              };
+              readonly expiresAtMs: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/float8@1' };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: {
+              readonly table: 'rateLimitBucket';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly key: { readonly column: 'key' };
+                readonly count: { readonly column: 'count' };
+                readonly windowStartMs: { readonly column: 'windowStartMs' };
+                readonly expiresAtMs: { readonly column: 'expiresAtMs' };
+              };
+            };
+          };
+          readonly RevokedSession: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly kind: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly userId: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly revokedAtMs: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/float8@1' };
+              };
+              readonly expiresAtMs: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/float8@1' };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: {
+              readonly table: 'revokedSession';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly kind: { readonly column: 'kind' };
+                readonly userId: { readonly column: 'userId' };
+                readonly revokedAtMs: { readonly column: 'revokedAtMs' };
+                readonly expiresAtMs: { readonly column: 'expiresAtMs' };
               };
             };
           };

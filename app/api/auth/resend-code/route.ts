@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.ok) return parsed.response;
 
     const { email } = parsed.data;
-    const limited = limitAuthAttempt(req, 'resend', email);
+    const limited = await limitAuthAttempt(req, 'resend', email);
     if (limited) return limited;
 
     try {

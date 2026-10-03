@@ -18,28 +18,28 @@ beforeEach(() => { KEYS.forEach((k) => { saved[k] = env[k]; delete env[k]; }); }
 afterEach(() => { KEYS.forEach((k) => { if (saved[k] === undefined) delete env[k]; else env[k] = saved[k]; }); });
 
 describe('peekRateLimit', () => {
-  it('reports what is left without using any of it', () => {
+  it('reports what is left without using any of it', async () => {
     const key = `peek-${Date.now()}`;
-    expect(peekRateLimit(key, 6, 60_000)).toEqual({ limit: 6, remaining: 6, used: 0, resetsInSeconds: 0 });
-    checkRateLimit(key, 6, 60_000); checkRateLimit(key, 6, 60_000);
-    for (let i = 0; i < 5; i++) expect(peekRateLimit(key, 6, 60_000).remaining).toBe(4);   // looking never spends
-    const p = peekRateLimit(key, 6, 60_000);
+    expect(await peekRateLimit(key, 6, 60_000)).toEqual({ limit: 6, remaining: 6, used: 0, resetsInSeconds: 0 });
+    await checkRateLimit(key, 6, 60_000); await checkRateLimit(key, 6, 60_000);
+    for (let i = 0; i < 5; i++) expect((await peekRateLimit(key, 6, 60_000)).remaining).toBe(4);   // looking never spends
+    const p = await peekRateLimit(key, 6, 60_000);
     expect(p.used).toBe(2);
     expect(p.resetsInSeconds).toBeGreaterThan(55);
     expect(p.resetsInSeconds).toBeLessThanOrEqual(60);
     // and it agrees with what checkRateLimit will actually allow
-    for (let i = 0; i < 4; i++) expect(checkRateLimit(key, 6, 60_000).allowed).toBe(true);
-    expect(peekRateLimit(key, 6, 60_000).remaining).toBe(0);
-    expect(checkRateLimit(key, 6, 60_000).allowed).toBe(false);
+    for (let i = 0; i < 4; i++) expect((await checkRateLimit(key, 6, 60_000)).allowed).toBe(true);
+    expect((await peekRateLimit(key, 6, 60_000)).remaining).toBe(0);
+    expect((await checkRateLimit(key, 6, 60_000)).allowed).toBe(false);
   });
 
-  it('shows a full budget again once the window has passed', () => {
+  it('shows a full budget again once the window has passed', async () => {
     const key = `peek-expire-${Date.now()}`;
     const real = Date.now;
-    checkRateLimit(key, 3, 1000);
+    await checkRateLimit(key, 3, 1000);
     try {
       Date.now = () => real() + 1500;
-      expect(peekRateLimit(key, 3, 1000)).toEqual({ limit: 3, remaining: 3, used: 0, resetsInSeconds: 0 });
+      expect(await peekRateLimit(key, 3, 1000)).toEqual({ limit: 3, remaining: 3, used: 0, resetsInSeconds: 0 });
     } finally { Date.now = real; }
   });
 });
@@ -99,7 +99,7 @@ describe('GET /api/projects/[id]/terraform/status', () => {
     signedIn('u-count');
     env.CLOUDCRAFT_TERRAFORM_ORG_IDS = 'org-s';
     const { limit, windowMs } = planLimit();
-    checkRateLimit(planRateKey('u-count'), limit, windowMs); checkRateLimit(planRateKey('u-count'), limit, windowMs);
+    await checkRateLimit(planRateKey('u-count'), limit, windowMs); await checkRateLimit(planRateKey('u-count'), limit, windowMs);
     for (let i = 0; i < 4; i++) {
       const body = await (await call()).json() as { data: { enabled: boolean; plans: { limit: number; remaining: number; resetsInSeconds: number; windowMinutes: number } } };
       expect(body.data.enabled).toBe(true);
@@ -116,7 +116,7 @@ describe('GET /api/projects/[id]/terraform/status', () => {
     for (let i = 0; i < 3; i++) expect((await call(id)).status).toBe(200);
     expect(mockResolveOrg).toHaveBeenCalledTimes(1);                               // three more polls, no more database lookups
     const { limit, windowMs } = planLimit();
-    checkRateLimit(planRateKey('u-cache'), limit, windowMs);
+    await checkRateLimit(planRateKey('u-cache'), limit, windowMs);
     expect((await (await call(id)).json() as { data: { plans: { remaining: number } } }).data.plans.remaining).toBe(5);   // plans left is never cached
 
     mockOrgRole.mockResolvedValue(null);                                           // a refusal is not remembered

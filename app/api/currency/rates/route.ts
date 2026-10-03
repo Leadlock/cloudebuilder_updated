@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     // proxy-reported client IP, same best-effort-only caveat documented on
     // checkRateLimit itself (an IP behind a shared NAT/proxy shares a budget).
     const clientKey = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'anonymous';
-    const rl = checkRateLimit(`${clientKey}:currency-rates`, RATE_LIMITS.ANALYSIS.limit, RATE_LIMITS.ANALYSIS.windowMs);
+    const rl = await checkRateLimit(`${clientKey}:currency-rates`, RATE_LIMITS.ANALYSIS.limit, RATE_LIMITS.ANALYSIS.windowMs);
     if (!rl.allowed) return tooManyRequests(rl.retryAfterSeconds);
 
     const { searchParams } = new URL(req.url);

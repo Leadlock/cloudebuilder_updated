@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     const { token, password, name } = parsed.data;
 
     // Invite tokens are random, but the route also sets passwords: keep guessing and scripted use in check.
-    const limited = limitAuthAttempt(req, 'invite');
+    const limited = await limitAuthAttempt(req, 'invite');
     if (limited) return limited;
 
     const invite = await orgRepository.findInviteByToken(token);

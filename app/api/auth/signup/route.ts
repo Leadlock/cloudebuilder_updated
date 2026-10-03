@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
     const { email, password, name, orgName } = parsed.data;
 
-    const limited = limitAuthAttempt(req, 'signup', email);
+    const limited = await limitAuthAttempt(req, 'signup', email);
     if (limited) return limited;
 
     if (!isPasswordStrongEnough(password)) {

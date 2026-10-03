@@ -45,7 +45,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       await recordTerraformAudit({ action: 'unlock', outcome: 'denied', orgId, projectId, userId: identity.userId, detail: denied });
       return forbidden(denied);
     }
-    const rl = checkRateLimit(`${identity.userId}:terraform-unlock`, 20, 10 * 60_000);
+    const rl = await checkRateLimit(`${identity.userId}:terraform-unlock`, 20, 10 * 60_000);
     if (!rl.allowed) return tooManyRequests(rl.retryAfterSeconds);
 
     const ctx = await resolveArchitecture(projectId, orgId, 'production');

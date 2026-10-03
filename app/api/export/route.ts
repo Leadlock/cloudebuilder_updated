@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Rendering PNG/PDF is CPU- and memory-heavy, so it is rate limited per user.
-    const rl = checkRateLimit(`${session.user.id}:export`, 20, 60_000);
+    const rl = await checkRateLimit(`${session.user.id}:export`, 20, 60_000);
     if (!rl.allowed) {
       return NextResponse.json({ error: 'Too many exports — please wait a moment and try again.' }, { status: 429, headers: rl.retryAfterSeconds ? { 'Retry-After': String(rl.retryAfterSeconds) } : undefined });
     }

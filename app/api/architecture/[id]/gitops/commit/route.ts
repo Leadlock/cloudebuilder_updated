@@ -64,7 +64,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     const identity = extractIdentity(req);
     if (!identity) return fail('Unauthorized', 401);
 
-    const rl = checkRateLimit(`${identity.userId}:gitops-commit`, 10, 10 * 60_000);
+    const rl = await checkRateLimit(`${identity.userId}:gitops-commit`, 10, 10 * 60_000);
     if (!rl.allowed) {
       const res = fail('Too many commits — please slow down and try again shortly.', 429);
       if (rl.retryAfterSeconds) res.headers.set('Retry-After', String(rl.retryAfterSeconds));

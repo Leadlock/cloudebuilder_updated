@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     const { email, password } = parsed.data;
 
     // Rate limits: per client address, and per (address, email) for failed attempts.
-    const limited = limitAuthAttempt(req, 'login', email) ?? loginLocked(req, email);
+    const limited = await limitAuthAttempt(req, 'login', email) ?? await loginLocked(req, email);
     if (limited) return limited;
 
     // 1. Try AWS Cognito first
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
         name: cognitoAuth.name,
       });
 
-      clearLoginFailures(req, email);
+      await clearLoginFailures(req, email);
       const session = AuthService.createSession(user);
 
       const response = NextResponse.json({
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
       // is wrong — never because Cognito is down or throttling.
       const user = localLoginFallbackAllowed(cognitoErr?.name) ? await AuthService.authenticate(email, password) : null;
       if (user) {
-        clearLoginFailures(req, email);
+        await clearLoginFailures(req, email);
         const session = AuthService.createSession(user);
         const response = NextResponse.json({
           success: true,
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (cognitoErr.name === 'NotAuthorizedException' || cognitoErr.name === 'UserNotFoundException') {
-        recordLoginFailure(req, email);
+        await recordLoginFailure(req, email);
         return unauthorized('Invalid email or password');
       }
 

@@ -13,6 +13,7 @@ export async function POST(req: NextRequest) {
     const token = cookieToken || bearerToken;
     if (token) {
       AuthService.revokeSession(token);
+      await AuthService.flushRevocations();   // answer only once every server instance can learn about it
     }
 
     const response = NextResponse.json({ success: true, message: 'Logged out successfully' });

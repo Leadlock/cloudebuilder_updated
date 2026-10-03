@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     const { email, code, name, orgName } = parsed.data;
 
     // A verification code is short: limit guesses per (address, email) so it cannot be brute-forced.
-    const limited = limitAuthAttempt(req, 'confirm', email);
+    const limited = await limitAuthAttempt(req, 'confirm', email);
     if (limited) return limited;
 
     try {

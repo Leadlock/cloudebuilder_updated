@@ -61,7 +61,7 @@ export async function POST(
     }
     // A plan runs terraform on the server; keep it from being used as a resource-exhaustion lever.
     const { limit, windowMs } = planLimit();
-    const rl = checkRateLimit(planRateKey(identity.userId), limit, windowMs);
+    const rl = await checkRateLimit(planRateKey(identity.userId), limit, windowMs);
     if (!rl.allowed) {
       await recordTerraformAudit({ action: 'plan', outcome: 'denied', orgId, projectId, userId: identity.userId, detail: 'rate limited' });
       return tooManyRequests(rl.retryAfterSeconds);

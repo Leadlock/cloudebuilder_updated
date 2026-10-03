@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const rl = checkRateLimit(`${session.user.id}:ai-generate`, RATE_LIMITS.AI_GENERATE.limit, RATE_LIMITS.AI_GENERATE.windowMs);
+    const rl = await checkRateLimit(`${session.user.id}:ai-generate`, RATE_LIMITS.AI_GENERATE.limit, RATE_LIMITS.AI_GENERATE.windowMs);
     if (!rl.allowed) {
       return NextResponse.json(
         { error: 'Too many AI generation requests — please slow down and try again shortly.' },

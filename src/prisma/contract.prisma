@@ -569,3 +569,28 @@ model TerraformAuditEvent {
   @@index([orgId, createdAt])
   @@index([projectId, createdAt])
 }
+
+// One row per rate-limit key (user + route, or IP + auth action). Shared by every server instance so a limit is global,
+// not multiplied by the number of instances. Times are epoch milliseconds from the DATABASE clock (no clock skew between
+// instances). Rows are deleted once expiresAtMs has passed.
+model RateLimitBucket {
+  key           String @id
+  count         Int    @default(0)
+  windowStartMs Float
+  expiresAtMs   Float
+
+  @@index([expiresAtMs])
+}
+
+// Sessions that were signed out. Session tokens are stateless, so a logout is only effective if every server instance
+// knows about it. id is sha256(token) for one token (kind = token) or "user:<userId>" for "every session issued up to
+// revokedAtMs" (kind = user). Rows are deleted once expiresAtMs has passed (the token could not be used any more anyway).
+model RevokedSession {
+  id          String @id
+  kind        String
+  userId      String?
+  revokedAtMs Float
+  expiresAtMs Float
+
+  @@index([expiresAtMs])
+}

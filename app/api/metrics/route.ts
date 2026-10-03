@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
 
-    const rl = checkRateLimit(`${identity.userId}:metrics`, RATE_LIMITS.ANALYSIS.limit, RATE_LIMITS.ANALYSIS.windowMs);
+    const rl = await checkRateLimit(`${identity.userId}:metrics`, RATE_LIMITS.ANALYSIS.limit, RATE_LIMITS.ANALYSIS.windowMs);
     if (!rl.allowed) return tooManyRequests(rl.retryAfterSeconds);
 
     const parsed = await parseBody(req, RequestSchema);

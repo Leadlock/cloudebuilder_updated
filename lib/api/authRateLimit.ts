@@ -54,9 +54,9 @@ export function clientIp(req: NextRequest): string {
 const norm = (email: string) => email.trim().toLowerCase();
 
 type Limit = { limit: number; windowMs: number };
-function consume(entries: [string, Limit][]): NextResponse | null {
+async function consume(entries: [string, Limit][]): Promise<NextResponse | null> {
   for (const [key, l] of entries) {
-    const r = checkRateLimit(key, l.limit, l.windowMs);
+    const r = await checkRateLimit(key, l.limit, l.windowMs);
     if (!r.allowed) return tooManyRequests(r.retryAfterSeconds);
   }
   return null;
@@ -65,7 +65,7 @@ function consume(entries: [string, Limit][]): NextResponse | null {
 export type AuthAction = 'login' | 'signup' | 'resend' | 'confirm' | 'invite';
 
 /** Spends one attempt from the limits for this action. Returns the 429 response to send, or null when allowed. */
-export function limitAuthAttempt(req: NextRequest, action: AuthAction, email?: string): NextResponse | null {
+export async function limitAuthAttempt(req: NextRequest, action: AuthAction, email?: string): Promise<NextResponse | null> {
   const ip = clientIp(req);
   const e = email ? norm(email) : '';
   switch (action) {
@@ -80,17 +80,17 @@ export function limitAuthAttempt(req: NextRequest, action: AuthAction, email?: s
 const failureKey = (req: NextRequest, email: string) => `auth:login-fail:${clientIp(req)}:${norm(email)}`;
 
 /** True-ish check before trying a password: refuses when this address has already failed too often for this email. */
-export function loginLocked(req: NextRequest, email: string): NextResponse | null {
+export async function loginLocked(req: NextRequest, email: string): Promise<NextResponse | null> {
   const { limit, windowMs } = AUTH_LIMITS.loginFailures;
-  const p = peekRateLimit(failureKey(req, email), limit, windowMs);
+  const p = await peekRateLimit(failureKey(req, email), limit, windowMs);
   return p.remaining === 0 ? tooManyRequests(p.resetsInSeconds) : null;
 }
 
-export function recordLoginFailure(req: NextRequest, email: string): void {
+export async function recordLoginFailure(req: NextRequest, email: string): Promise<void> {
   const { limit, windowMs } = AUTH_LIMITS.loginFailures;
-  checkRateLimit(failureKey(req, email), limit, windowMs);
+  await checkRateLimit(failureKey(req, email), limit, windowMs);
 }
 
-export function clearLoginFailures(req: NextRequest, email: string): void {
-  resetRateLimit(failureKey(req, email));
+export async function clearLoginFailures(req: NextRequest, email: string): Promise<void> {
+  await resetRateLimit(failureKey(req, email));
 }

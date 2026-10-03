@@ -16,6 +16,8 @@
  * any instance holding the same SESSION_SECRET can verify a token no
  * matter which instance minted it.
  */
+import { sharedStoreEnabled, warnSharedStore } from './sharedStore';
+import { pullRevocations, saveTokenRevocation, saveUserRevocation, PULL_OVERLAP_MS } from './revocationStore';
 import { orgRepository } from '@/lib/repositories/orgRepository';
 import { hashPassword, verifyPassword } from '@/lib/crypto/password';
 import { encodeSessionToken, decodeSessionToken } from '@/lib/crypto/sessionToken';
@@ -41,12 +43,46 @@ const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
  * Revoked sessions. Tokens are stateless, so "logout" and "sign out everywhere" are remembered here until the token
- * would have expired anyway. This is held in this server process: with several instances, a revocation takes effect on
- * the instance that handled it (and on all of them once the token expires, at most 24 hours later). Making it global needs
- * a shared store; the check is synchronous on purpose because every request path calls getSession.
+ * would have expired anyway.
+ *
+ * The check in getSession is synchronous on purpose (every request path calls it), so it reads these in-memory maps. When
+ * the shared store is on (production by default — see sharedStore.ts) they are a copy of the `revokedSession` table:
+ * a revocation is written through to the database, and every instance pulls what the others wrote every few seconds
+ * (CLOUDCRAFT_REVOCATION_SYNC_MS, default 5000). So a logout reaches all instances within seconds, not "at most 24 hours later".
+ * Two honest limits: that delay of a few seconds, and an instance that has only just started answers its very first requests
+ * before its first pull completes. If the database is unreachable the maps still work for the revocations this instance
+ * knows about, and the problem is logged.
  */
 const revokedTokens = new Map<string, number>();            // sha256(token) → token expiry (ms)
 const revokedBefore = new Map<string, number>();            // userId → sessions issued before this time are invalid
+let lastPullAttempt = 0;
+let pulledUntil = 0;                                        // database-clock time of the last successful pull
+let pullInFlight = false;
+const pendingWrites = new Set<Promise<void>>();
+const syncIntervalMs = () => { const n = Number(process.env['CLOUDCRAFT_REVOCATION_SYNC_MS']); return Number.isFinite(n) && n >= 250 ? n : 5_000; };
+
+/** Starts a refresh from the shared store if the last one is old enough. Never blocks and never throws. */
+function refreshRevocations(): void {
+  if (!sharedStoreEnabled() || pullInFlight) return;
+  const now = Date.now();
+  if (now - lastPullAttempt < syncIntervalMs()) return;
+  lastPullAttempt = now; pullInFlight = true;
+  pullRevocations(Math.max(0, pulledUntil - PULL_OVERLAP_MS))
+    .then((r) => {
+      for (const t of r.tokens) revokedTokens.set(t.id, t.expiresAtMs);
+      for (const u of r.users) revokedBefore.set(u.userId, Math.max(revokedBefore.get(u.userId) ?? 0, u.revokedAtMs));
+      pulledUntil = r.nowMs;
+    })
+    .catch((err) => warnSharedStore('session revocations', err))
+    .finally(() => { pullInFlight = false; });
+}
+
+/** Writes a revocation to the shared store; tracked so the request that caused it can wait for it (flushRevocations). */
+function persist(write: () => Promise<void>): void {
+  if (!sharedStoreEnabled()) return;
+  const p = write().catch((err) => warnSharedStore('saving a session revocation', err)).finally(() => pendingWrites.delete(p));
+  pendingWrites.add(p);
+}
 const tokenKey = (token: string) => createHash('sha256').update(token).digest('hex');
 function pruneRevocations(now: number): void {
   for (const [k, exp] of revokedTokens) if (exp < now) revokedTokens.delete(k);
@@ -124,6 +160,7 @@ export class AuthService {
     if (!payload) return null;
     if (typeof payload.exp !== 'number' || Date.now() > payload.exp) return null;
     if (!payload.sub || !payload.email) return null;
+    refreshRevocations();
     if (revokedTokens.has(tokenKey(token))) return null;
     const cutoff = revokedBefore.get(payload.sub);
     if (cutoff !== undefined && payload.iat <= cutoff) return null;
@@ -149,7 +186,9 @@ export class AuthService {
     if (!payload) return false;           // not a valid token: nothing to revoke
     const now = Date.now();
     pruneRevocations(now);
-    revokedTokens.set(tokenKey(token), typeof payload.exp === 'number' ? payload.exp : now + SESSION_TTL_MS);
+    const expiresAt = typeof payload.exp === 'number' ? payload.exp : now + SESSION_TTL_MS;
+    revokedTokens.set(tokenKey(token), expiresAt);
+    persist(() => saveTokenRevocation(tokenKey(token), expiresAt));
     return true;
   }
 
@@ -161,6 +200,12 @@ export class AuthService {
     const now = Date.now();
     pruneRevocations(now);
     revokedBefore.set(userId, now);       // every session issued up to now stops working
+    persist(() => saveUserRevocation(userId, SESSION_TTL_MS));
+  }
+
+  /** Waits until revocations made so far are stored in the shared store (a logout request awaits this before it answers). */
+  static async flushRevocations(): Promise<void> {
+    await Promise.allSettled([...pendingWrites]);
   }
 
   /**

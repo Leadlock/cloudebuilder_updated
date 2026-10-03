@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       if (hit) { const res = ok(hit); res.headers.set('X-AI-Review-Cache', 'hit'); return res; }   // answered from memory: costs nothing, uses no allowance
     }
 
-    const rl = checkRateLimit(`${identity.userId}:ai-review`, RATE_LIMITS.AI_GENERATE.limit, RATE_LIMITS.AI_GENERATE.windowMs);
+    const rl = await checkRateLimit(`${identity.userId}:ai-review`, RATE_LIMITS.AI_GENERATE.limit, RATE_LIMITS.AI_GENERATE.windowMs);
     if (!rl.allowed) return tooManyRequests(rl.retryAfterSeconds);
 
     const args = { nodes: nodes as unknown as CanvasNode[], edges: edges as unknown as CanvasEdge[], question };

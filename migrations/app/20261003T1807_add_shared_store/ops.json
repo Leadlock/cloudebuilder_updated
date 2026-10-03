@@ -1,0 +1,158 @@
+[
+  {
+    "id": "table.rateLimitBucket",
+    "label": "Create table \"rateLimitBucket\"",
+    "summary": "Creates table \"rateLimitBucket\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "rateLimitBucket"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"rateLimitBucket\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"rateLimitBucket\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"rateLimitBucket\"",
+        "sql": "CREATE TABLE \"public\".\"rateLimitBucket\" (\n  \"count\" int4 DEFAULT 0 NOT NULL,\n  \"expiresAtMs\" float8 NOT NULL,\n  \"key\" text NOT NULL,\n  \"windowStartMs\" float8 NOT NULL,\n  PRIMARY KEY (\"key\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"rateLimitBucket\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"rateLimitBucket\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.revokedSession",
+    "label": "Create table \"revokedSession\"",
+    "summary": "Creates table \"revokedSession\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "revokedSession"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"revokedSession\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"revokedSession\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"revokedSession\"",
+        "sql": "CREATE TABLE \"public\".\"revokedSession\" (\n  \"expiresAtMs\" float8 NOT NULL,\n  \"id\" text NOT NULL,\n  \"kind\" text NOT NULL,\n  \"revokedAtMs\" float8 NOT NULL,\n  \"userId\" text,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"revokedSession\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"revokedSession\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.rateLimitBucket.rateLimitBucket_expiresAtMs_idx_89d46aa4",
+    "label": "Create index \"rateLimitBucket_expiresAtMs_idx_89d46aa4\" on \"rateLimitBucket\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "rateLimitBucket_expiresAtMs_idx_89d46aa4",
+        "table": "rateLimitBucket"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"rateLimitBucket_expiresAtMs_idx_89d46aa4\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"rateLimitBucket_expiresAtMs_idx_89d46aa4\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"rateLimitBucket_expiresAtMs_idx_89d46aa4\"",
+        "sql": "CREATE INDEX \"rateLimitBucket_expiresAtMs_idx_89d46aa4\" ON \"public\".\"rateLimitBucket\" (\"expiresAtMs\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"rateLimitBucket_expiresAtMs_idx_89d46aa4\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"rateLimitBucket_expiresAtMs_idx_89d46aa4\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.revokedSession.revokedSession_expiresAtMs_idx_89d46aa4",
+    "label": "Create index \"revokedSession_expiresAtMs_idx_89d46aa4\" on \"revokedSession\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "revokedSession_expiresAtMs_idx_89d46aa4",
+        "table": "revokedSession"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"revokedSession_expiresAtMs_idx_89d46aa4\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"revokedSession_expiresAtMs_idx_89d46aa4\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"revokedSession_expiresAtMs_idx_89d46aa4\"",
+        "sql": "CREATE INDEX \"revokedSession_expiresAtMs_idx_89d46aa4\" ON \"public\".\"revokedSession\" (\"expiresAtMs\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"revokedSession_expiresAtMs_idx_89d46aa4\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"revokedSession_expiresAtMs_idx_89d46aa4\""
+        ]
+      }
+    ]
+  }
+]

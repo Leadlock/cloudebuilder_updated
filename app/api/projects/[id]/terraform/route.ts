@@ -28,7 +28,7 @@ export async function POST(
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
 
-    const rl = checkRateLimit(`${identity.userId}:terraform`, RATE_LIMITS.ANALYSIS.limit, RATE_LIMITS.ANALYSIS.windowMs);
+    const rl = await checkRateLimit(`${identity.userId}:terraform`, RATE_LIMITS.ANALYSIS.limit, RATE_LIMITS.ANALYSIS.windowMs);
     if (!rl.allowed) return tooManyRequests(rl.retryAfterSeconds);
 
     const { id: projectId } = await params;
