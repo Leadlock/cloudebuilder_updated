@@ -49,7 +49,7 @@ describe('the generated knowledge base', () => {
     const multi = chunks.find((c) => c.id === 'pattern-multi-active-active')!;
     expect(multi.text).toContain('Sample design (JSON):');
     expect(embeddingText(multi)).not.toContain('Sample design (JSON):');
-    expect(embeddingText(multi)).toMatch(/Typical requests:.*active-active/is);
+    expect(embeddingText(multi)).toMatch(/Typical requests:[^]*active-active/i);
     const rule = chunks.find((c) => c.metadata.kind === 'rule')!;
     expect(embeddingText(rule)).toBe(`${rule.title}\n${rule.text}`);            // other kinds are embedded whole
   });

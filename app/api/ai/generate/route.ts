@@ -5,6 +5,10 @@ import { CloudProvider } from '@/types';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
 import { describeNotices } from '@/lib/ai/serviceCoverage';
 import { describeSanitized } from '@/lib/ai/specSanitizer';
+import { AI_INPUT_LIMITS, checkText, checkOptionalText, checkAnswers, normalizeProvider } from '@/lib/ai/inputGuard';
+import { resolveOrgId } from '@/lib/api/phase2d';
+import { getOrgRole } from '@/lib/api/auth';
+import { resolveEnvironmentInOrg } from '@/lib/api/tenantScope';
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,20 +30,39 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
-    const { prompt, projectId, environmentId, provider, answers, requirementsSummary } = body;
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object') return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
+    const { projectId, environmentId } = body as { projectId?: unknown; environmentId?: unknown };
 
-    if (!prompt || !projectId || !environmentId) {
+    const promptCheck = checkText((body as { prompt?: unknown }).prompt, 'prompt', AI_INPUT_LIMITS.prompt);
+    if (!promptCheck.ok) return NextResponse.json({ error: promptCheck.error }, { status: 400 });
+    const summaryCheck = checkOptionalText((body as { requirementsSummary?: unknown }).requirementsSummary, 'requirementsSummary', AI_INPUT_LIMITS.requirements);
+    if (!summaryCheck.ok) return NextResponse.json({ error: summaryCheck.error }, { status: 400 });
+    const answersCheck = checkAnswers((body as { answers?: unknown }).answers);
+    if (!answersCheck.ok) return NextResponse.json({ error: answersCheck.error }, { status: 400 });
+    if (typeof projectId !== 'string' || !projectId || typeof environmentId !== 'string' || !environmentId) {
       return NextResponse.json({ error: 'Missing required parameters: prompt, projectId, environmentId' }, { status: 400 });
     }
+    const prompt = promptCheck.value;
+    const requirementsSummary = summaryCheck.value;
+    const answers = answersCheck.value;
+    const validProvider = normalizeProvider((body as { provider?: unknown }).provider);
 
-    const validProvider = (provider as 'aws' | 'azure') || 'aws';
+    // Where the generation is recorded. Only a project of the caller's OWN organisation qualifies: a project/environment id
+    // from the request body must never let a caller write into someone else's history. Anything else (a draft, an id of
+    // another organisation) still generates — it is just not recorded, and the response is the same, so nothing is revealed.
+    let record: { projectId: string; environmentId: string } | null = null;
+    const orgId = await resolveOrgId(req, session.user.id);
+    if (orgId && (await getOrgRole(session.user.id, orgId))) {
+      const scope = await resolveEnvironmentInOrg(environmentId, orgId);
+      if (scope && scope.projectId === projectId) record = scope;
+    }
 
     // Generate → compile → run every deploy-readiness gate → repair loop; saves to AIGenerationHistory.
     const result = await AiGeneratorService.generateValidatedArchitecture(
       prompt,
-      projectId,
-      environmentId,
+      record?.projectId ?? 'draft-project',
+      record?.environmentId ?? '',
       validProvider,
       answers,
       requirementsSummary
@@ -78,7 +101,7 @@ export async function POST(req: NextRequest) {
       warning: warnings.length ? warnings.join('\n') : undefined,
     });
   } catch (error: any) {
-    console.error('AI Generation Error:', error);
-    return NextResponse.json({ error: error.message || 'Failed to generate architecture' }, { status: 500 });
+    console.error('AI Generation Error:', error instanceof Error ? error.message : String(error));
+    return NextResponse.json({ error: 'Failed to generate architecture' }, { status: 500 });
   }
 }

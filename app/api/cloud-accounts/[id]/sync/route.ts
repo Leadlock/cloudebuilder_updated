@@ -12,6 +12,7 @@ import {
 } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId } from '@/lib/api/phase2d';
+import { resolveEnvironmentInOrg } from '@/lib/api/tenantScope';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
 import { architectureRepository, toCanvas } from '@/lib/repositories/architectureRepository';
 import { infrastructureSyncService } from '@/lib/cloud/sync/InfrastructureSyncService';
@@ -53,7 +54,9 @@ export async function POST(
       return badRequest('environmentId is required');
     }
 
-    const arch = await architectureRepository.findByEnvironment(environmentId);
+    const target = typeof environmentId === 'string' ? await resolveEnvironmentInOrg(environmentId, orgId) : null;
+    if (!target) return notFound('ArchitectureEnvironment');
+    const arch = await architectureRepository.findByEnvironment(target.environmentId);
     if (!arch) {
       return notFound('ArchitectureEnvironment');
     }

@@ -88,6 +88,12 @@ const environmentSaveLocks = new Map<string, Promise<DbArchitecture>>();
 
 export const architectureRepository = {
 
+  /** The environment an architecture belongs to (used to work out which organisation owns it). */
+  async environmentIdOf(architectureId: string): Promise<string | null> {
+    const row = await db.orm.public.Architecture.where({ id: architectureId }).select('environmentId').first();
+    return row ? row.environmentId : null;
+  },
+
   async findByEnvironment(environmentId: string): Promise<DbArchitecture | null> {
     const row = await db.orm.public.Architecture
       .where({ environmentId })

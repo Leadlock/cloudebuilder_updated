@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ExportService, type ExportInput, type ExportFormat } from '@/lib/services/ExportService';
 import { AuthService } from '@/lib/api/authService';
+import { checkRateLimit } from '@/lib/api/rateLimit';
+import { sanitizeExportInput } from '@/lib/services/exportInput';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,8 +39,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { format, title, version, theme, nodes, edges } = body;
+    // Rendering PNG/PDF is CPU- and memory-heavy, so it is rate limited per user.
+    const rl = checkRateLimit(`${session.user.id}:export`, 20, 60_000);
+    if (!rl.allowed) {
+      return NextResponse.json({ error: 'Too many exports — please wait a moment and try again.' }, { status: 429, headers: rl.retryAfterSeconds ? { 'Retry-After': String(rl.retryAfterSeconds) } : undefined });
+    }
+
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object') return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
+    const { format } = body;
 
     // Validate
     if (!format || !['svg', 'png', 'pdf'].includes(format)) {
@@ -48,27 +57,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!Array.isArray(nodes)) {
-      return NextResponse.json(
-        { error: 'nodes must be an array of CanvasNode' },
-        { status: 400 }
-      );
-    }
-
-    if (nodes.length === 0) {
-      return NextResponse.json(
-        { error: 'Cannot export an empty canvas. Add at least one resource.' },
-        { status: 400 }
-      );
-    }
-
-    const input: ExportInput = {
-      nodes,
-      edges: Array.isArray(edges) ? edges : [],
-      title: title || 'Architecture',
-      version: version || undefined,
-      theme: theme === 'dark' ? 'dark' : 'light',
-    };
+    // Bounded, well-typed input (see exportInput.ts): limits on size, text length and canvas coordinates.
+    const cleaned = sanitizeExportInput(body);
+    if (!cleaned.ok) return NextResponse.json({ error: cleaned.error }, { status: 400 });
+    const input: ExportInput = cleaned.input;
 
     // Generate real file
     const result = await ExportService.export(input, format as ExportFormat);
@@ -84,10 +76,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error('[/api/export] Error:', error);
-    return NextResponse.json(
-      { error: error?.message ?? 'Failed to export architecture' },
-      { status: 500 }
-    );
+    console.error('[/api/export] Error:', error instanceof Error ? error.message : String(error));
+    return NextResponse.json({ error: 'Failed to export architecture' }, { status: 500 });
   }
 }

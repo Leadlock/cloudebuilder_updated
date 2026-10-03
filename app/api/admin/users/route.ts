@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { ok, unauthorized, forbidden, internalError } from '@/lib/api/response';
-import { extractIdentity } from '@/lib/api/auth';
+import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { orgRepository } from '@/lib/repositories/orgRepository';
 
 export const dynamic = 'force-dynamic';
@@ -15,12 +15,14 @@ export async function GET(req: NextRequest) {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized('Authentication required');
 
-    if (identity.role !== 'admin') {
-      return forbidden('Access denied. Administrator role required.');
-    }
-
     const orgId = identity.orgIds[0];
     if (!orgId) return ok({ users: [] });
+
+    // Owner/admin of the organisation itself — not just the session's `admin` flag, which every self-registered user carries.
+    const orgRole = await getOrgRole(identity.userId, orgId);
+    if (orgRole !== 'owner' && orgRole !== 'admin') {
+      return forbidden('Access denied. Administrator role required.');
+    }
 
     const members = await orgRepository.listOrgMembers(orgId);
     return ok({ users: members });

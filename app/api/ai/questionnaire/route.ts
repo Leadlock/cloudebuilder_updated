@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AiGeneratorService } from '@/lib/services/AiGeneratorService';
 import { AuthService } from '@/lib/api/authService';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
+import { AI_INPUT_LIMITS, checkText, normalizeProvider } from '@/lib/ai/inputGuard';
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,17 +24,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
-    const { prompt, provider } = body;
-
-    if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
-      return NextResponse.json({ error: 'Missing required parameter: prompt' }, { status: 400 });
-    }
-
-    const validProvider = (provider as 'aws' | 'azure') || 'aws';
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object') return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
+    const promptCheck = checkText((body as { prompt?: unknown }).prompt, 'prompt', AI_INPUT_LIMITS.prompt);
+    if (!promptCheck.ok) return NextResponse.json({ error: promptCheck.error }, { status: 400 });
+    const validProvider = normalizeProvider((body as { provider?: unknown }).provider);
 
     const questionnaire = await AiGeneratorService.generateQuestionnaire(
-      prompt.trim(),
+      promptCheck.value.trim(),
       validProvider
     );
 
@@ -42,7 +40,7 @@ export async function POST(req: NextRequest) {
       data: questionnaire,
     });
   } catch (error: any) {
-    console.error('AI Questionnaire Error:', error);
-    return NextResponse.json({ error: error.message || 'Failed to generate questionnaire' }, { status: 500 });
+    console.error('AI Questionnaire Error:', error instanceof Error ? error.message : String(error));
+    return NextResponse.json({ error: 'Failed to generate questionnaire' }, { status: 500 });
   }
 }

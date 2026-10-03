@@ -214,6 +214,14 @@ export const projectRepository = {
 
 export const environmentRepository = {
 
+  async findById(id: string): Promise<DbEnvironment | null> {
+    const row = await db.orm.public.Environment
+      .where({ id })
+      .select('id', 'envKey', 'label', 'region', 'createdAt', 'updatedAt', 'projectId')
+      .first();
+    return row ? mapEnv(row) : null;
+  },
+
   async findByProject(projectId: string): Promise<DbEnvironment[]> {
     const rows = await db.orm.public.Environment
       .where({ projectId })

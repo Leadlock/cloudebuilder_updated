@@ -11,6 +11,7 @@ import {
 } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId } from '@/lib/api/phase2d';
+import { resolveEnvironmentInOrg } from '@/lib/api/tenantScope';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
 import { discoveryRepository } from '@/lib/repositories/discoveryRepository';
 import { discoveryImportService } from '@/lib/services/DiscoveryImportService';
@@ -44,7 +45,12 @@ export async function POST(
 
     const parsed = await parseBody(req, ImportSchema);
     if (!parsed.ok) return parsed.response;
-    const { runId, environmentId, merge } = parsed.data;
+    const { runId, environmentId: requestedEnvironment, merge } = parsed.data;
+
+    // The target must be in THIS organisation: an environment id alone must never let a caller overwrite someone else's canvas.
+    const target = await resolveEnvironmentInOrg(requestedEnvironment, orgId);
+    if (!target) return notFound('Environment');
+    const environmentId = target.environmentId;
 
     // Verify run belongs to this account
     const run = await discoveryRepository.findById(runId);

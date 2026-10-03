@@ -9,9 +9,10 @@
  *   orgId (optional in dev) — org scoping
  */
 import { NextRequest } from 'next/server';
-import { ok, forbidden, unauthorized, internalError, badRequest } from '@/lib/api/response';
+import { ok, forbidden, unauthorized, internalError, badRequest, notFound } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId } from '@/lib/api/phase2d';
+import { architectureInOrg } from '@/lib/api/tenantScope';
 import { wellArchitectedRepository } from '@/lib/repositories/wellArchitectedRepository';
 
 export const dynamic = 'force-dynamic';
@@ -36,6 +37,8 @@ export async function GET(
     if (!architectureId) {
       return badRequest('architectureId query param required');
     }
+
+    if (!(await architectureInOrg(architectureId, orgId))) return notFound('Architecture');
 
     const findings = await wellArchitectedRepository.findingsByResource(resourceId, architectureId);
 
