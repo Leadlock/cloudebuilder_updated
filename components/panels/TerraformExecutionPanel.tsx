@@ -499,7 +499,7 @@ export default function TerraformExecutionPanel() {
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
 
   return (
-    <div className="mt-6 bg-gray-800/50 border border-emerald-900/40 rounded-xl p-4">
+    <div className="bg-gray-800/50 border border-emerald-900/40 rounded-xl p-4">
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
           <CloudCog className="w-4 h-4 text-emerald-400" />
