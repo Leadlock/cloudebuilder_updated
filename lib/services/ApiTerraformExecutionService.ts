@@ -141,6 +141,24 @@ export class ApiTerraformExecutionService {
     return data.data;
   }
 
+  /** Creates the remote state storage in the user's own account (idempotent). Empty bucket name = CloudCraft picks a unique one. */
+  static async createStateBackend(
+    projectId: string,
+    cloudAccountId: string,
+    stateBackend: Record<string, unknown>,
+    user?: { id: string; role?: string },
+  ): Promise<{ bucket?: string; dynamodbTable?: string; storageAccountName?: string; steps: { what: string; outcome: 'created' | 'already-exists' }[] }> {
+    const res = await fetch(`/api/projects/${projectId}/terraform/state-backend`, {
+      method: 'POST',
+      headers: authHeaders(user),
+      credentials: 'include',
+      body: JSON.stringify({ cloudAccountId, stateBackend }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(parseErrorMessage(data, `Could not create the state storage (${res.status})`));
+    return data.data;
+  }
+
   static async confirmApply(
     projectId: string,
     planId: string,

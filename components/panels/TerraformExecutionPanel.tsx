@@ -83,7 +83,10 @@ export default function TerraformExecutionPanel() {
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [loadingAccounts, setLoadingAccounts] = useState(false);
 
-  const [awsBackend, setAwsBackend] = useState<AwsBackendForm>({ bucket: 'cloudraft-test', key: 'cloudcraft/terraform.tfstate', region: 'eu-north-1', dynamodbTable: '' });
+  const [creatingBackend, setCreatingBackend] = useState(false);
+  const [backendCreated, setBackendCreated] = useState<{ what: string; outcome: 'created' | 'already-exists' }[] | null>(null);
+  const [backendCreateError, setBackendCreateError] = useState<string | null>(null);
+  const [awsBackend, setAwsBackend] = useState<AwsBackendForm>({ bucket: '', key: 'cloudcraft/terraform.tfstate', region: 'eu-north-1', dynamodbTable: '' });
   const [azureBackend, setAzureBackend] = useState<AzureBackendForm>({ resourceGroupName: '', storageAccountName: '', containerName: '', key: '' });
 
   const [plan, setPlan] = useState<TerraformPlanResult | null>(null);
@@ -353,6 +356,31 @@ export default function TerraformExecutionPanel() {
     return Boolean(azureBackend.resourceGroupName && azureBackend.storageAccountName && azureBackend.containerName && azureBackend.key);
   }
 
+  function canCreateBackend(): boolean {
+    if (backendProvider === 'aws') return Boolean(awsBackend.region);
+    return Boolean(azureBackend.resourceGroupName && azureBackend.storageAccountName && azureBackend.containerName);
+  }
+
+  async function handleCreateStateBackend() {
+    if (!activeProject || !selectedAccountId) return;
+    setCreatingBackend(true);
+    setBackendCreateError(null);
+    setBackendCreated(null);
+    try {
+      const body = backendProvider === 'aws'
+        ? { provider: 'aws', region: awsBackend.region, ...(awsBackend.bucket ? { bucket: awsBackend.bucket } : {}), ...(awsBackend.key ? { key: awsBackend.key } : {}), ...(awsBackend.dynamodbTable ? { dynamodbTable: awsBackend.dynamodbTable } : {}) }
+        : { provider: 'azure', ...azureBackend, key: azureBackend.key || undefined };
+      const result = await ApiTerraformExecutionService.createStateBackend(activeProject.id, selectedAccountId, body, currentUser);
+      if (backendProvider === 'aws' && result.bucket) setAwsBackend((b) => ({ ...b, bucket: result.bucket!, key: b.key || 'cloudcraft/terraform.tfstate' }));
+      if (backendProvider === 'azure') setAzureBackend((b) => ({ ...b, key: b.key || 'cloudcraft/terraform.tfstate' }));
+      setBackendCreated(result.steps);
+    } catch (err) {
+      setBackendCreateError(err instanceof Error ? err.message : 'Could not create the state storage');
+    } finally {
+      setCreatingBackend(false);
+    }
+  }
+
   function buildBackend(): TerraformStateBackendConfig {
     if (backendProvider === 'aws') {
       return {
@@ -573,10 +601,10 @@ export default function TerraformExecutionPanel() {
 
           {/* State backend form */}
           <div>
-            <p className="text-gray-400 text-xs mb-1.5">Remote State Backend (must already exist — CloudCraft does not provision it)</p>
+            <p className="text-gray-400 text-xs mb-1.5">Remote State Backend — use storage you already have, or let CloudCraft create it in your account</p>
             {backendProvider === 'aws' ? (
               <div className="grid grid-cols-2 gap-2">
-                <input placeholder="S3 bucket" value={awsBackend.bucket} onChange={(e) => setAwsBackend({ ...awsBackend, bucket: e.target.value })}
+                <input placeholder="S3 bucket (leave empty to auto-name)" value={awsBackend.bucket} onChange={(e) => setAwsBackend({ ...awsBackend, bucket: e.target.value })}
                   className="bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                 <input placeholder="State key (path)" value={awsBackend.key} onChange={(e) => setAwsBackend({ ...awsBackend, key: e.target.value })}
                   className="bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
@@ -597,6 +625,30 @@ export default function TerraformExecutionPanel() {
                   className="bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
               </div>
             )}
+
+            <div className="mt-2 space-y-1.5">
+              <button
+                type="button"
+                onClick={handleCreateStateBackend}
+                disabled={!selectedAccountId || !canCreateBackend() || creatingBackend}
+                title="Creates a private, encrypted, versioned bucket (and the lock table, if you named one) in the selected account. Nothing is deleted or changed if it already exists."
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-800 hover:bg-gray-700 border border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-gray-200 transition-colors"
+              >
+                {creatingBackend ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5 text-emerald-400" />}
+                {creatingBackend ? 'Creating state storage…' : 'Create state storage for me'}
+              </button>
+              {backendCreated && (
+                <div className="rounded-lg border border-emerald-800/60 bg-emerald-950/30 px-3 py-2 text-[11px] text-emerald-200 space-y-0.5">
+                  {backendCreated.map((s) => (
+                    <p key={s.what}>{s.outcome === 'created' ? '✓ Created' : '• Already there'}: {s.what}</p>
+                  ))}
+                  <p className="text-emerald-300/70">The fields above now hold these names. You can generate the plan.</p>
+                </div>
+              )}
+              {backendCreateError && (
+                <p className="rounded-lg border border-rose-800/60 bg-rose-950/30 px-3 py-2 text-[11px] text-rose-200">{backendCreateError}</p>
+              )}
+            </div>
           </div>
 
           {activeProject && (
