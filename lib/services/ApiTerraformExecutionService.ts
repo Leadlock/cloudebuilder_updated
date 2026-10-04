@@ -7,7 +7,13 @@ function parseErrorMessage(err: unknown, fallback: string): string {
   if (typeof e.error === 'string') return e.error;
   if (typeof e.error === 'object' && e.error !== null) {
     const errorObj = e.error as Record<string, unknown>;
-    return String(errorObj.message || errorObj.code || JSON.stringify(e.error));
+    const base = String(errorObj.message || errorObj.code || JSON.stringify(e.error));
+    // A validation failure carries which fields were wrong; "Validation failed" alone tells the user nothing.
+    const fields = (errorObj.details as { fieldErrors?: Record<string, unknown> } | undefined)?.fieldErrors;
+    const reasons = fields && typeof fields === 'object'
+      ? Object.values(fields).flatMap((v) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])).slice(0, 4)
+      : [];
+    return reasons.length > 0 ? `${base}: ${reasons.join('; ')}` : base;
   }
   if (typeof e.message === 'string') return e.message;
   return fallback;

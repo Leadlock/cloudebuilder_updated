@@ -393,18 +393,18 @@ export default function TerraformExecutionPanel() {
     if (backendProvider === 'aws') {
       return {
         provider: 'aws',
-        bucket: awsBackend.bucket,
-        key: awsBackend.key,
-        region: awsBackend.region,
-        ...(awsBackend.dynamodbTable ? { dynamodbTable: awsBackend.dynamodbTable } : {}),
+        bucket: awsBackend.bucket.trim(),
+        key: awsBackend.key.trim(),
+        region: awsBackend.region.trim(),
+        ...(awsBackend.dynamodbTable.trim() ? { dynamodbTable: awsBackend.dynamodbTable.trim() } : {}),
       };
     }
     return {
       provider: 'azure',
-      resourceGroupName: azureBackend.resourceGroupName,
-      storageAccountName: azureBackend.storageAccountName,
-      containerName: azureBackend.containerName,
-      key: azureBackend.key,
+      resourceGroupName: azureBackend.resourceGroupName.trim(),
+      storageAccountName: azureBackend.storageAccountName.trim(),
+      containerName: azureBackend.containerName.trim(),
+      key: azureBackend.key.trim(),
     };
   }
 
