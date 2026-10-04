@@ -15,6 +15,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { DynamoDBClient, DescribeTableCommand, CreateTableCommand, waitUntilTableExists } from '@aws-sdk/client-dynamodb';
 import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
+import { STATE_BUCKET_PREFIX, STATE_LOCK_TABLE_PREFIX } from '@/lib/cloud/stateStoragePolicy';
 
 export interface StateBackendResult {
   /** The names to use (filled in when the caller left the bucket name empty). */
@@ -46,7 +47,7 @@ const errStatus = (e: unknown): number => (e as { $metadata?: { httpStatusCode?:
 /** The provider's raw error mentions ARNs and request ids; the user needs the cause and the fix. */
 function explainAwsAccessDenied(action: string): StateBackendError {
   return new StateBackendError(
-    `AWS refused "${action}". The role CloudCraft uses is read-only by default, so it cannot create storage. Either add s3:CreateBucket, s3:PutBucketVersioning, s3:PutEncryptionConfiguration, s3:PutBucketPublicAccessBlock, s3:PutBucketPolicy (and dynamodb:CreateTable, dynamodb:DescribeTable for the lock table) to that role, or create the bucket yourself in the AWS console and enter its name here.`,
+    `AWS refused "${action}". The role CloudCraft uses is read-only by default, so it cannot create storage. Add the "Extra policy for state storage" shown in Cloud Accounts → Connect an AWS account (step 2) to that role — it covers buckets named ${STATE_BUCKET_PREFIX}* and lock tables named ${STATE_LOCK_TABLE_PREFIX}*, so leave the bucket name empty or use those prefixes — or create the bucket yourself in the AWS console and enter its name here.`,
     403,
   );
 }

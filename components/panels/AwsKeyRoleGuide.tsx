@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { Copy, Check, Wand2, ShieldCheck } from 'lucide-react';
 import { buildTrustPolicy, buildAssumeRolePolicy, generateExternalId } from '@/lib/cloud/trustPolicy';
 import { buildDiscoveryPolicy } from '@/lib/cloud/discoveryPolicy';
+import { buildStateStoragePolicy, STATE_BUCKET_PREFIX, STATE_LOCK_TABLE_PREFIX } from '@/lib/cloud/stateStoragePolicy';
 
 const ROLE_ARN_RE = /^arn:aws:iam::(\d{12}):role\/[\w+=,.@/-]{1,64}$/;
 const ACCOUNT_RE = /^\d{12}$/;
@@ -91,6 +92,11 @@ export default function AwsKeyRoleGuide({ roleArn, externalId, onExternalId }: {
               To also run <strong>Terraform</strong>, add permissions for the resources it will create or delete — only if you want that.
             </p>
             <CopyBlock label="Read-only policy for discovery" text={buildDiscoveryPolicy()} />
+            <p className="text-gray-500 leading-relaxed pt-1">
+              <strong>Optional — let CloudCraft create the Terraform state storage for you.</strong> The &ldquo;Create state storage for me&rdquo; button needs this extra inline policy on the role.
+              It only covers buckets named <span className="font-mono text-gray-300">{STATE_BUCKET_PREFIX}*</span> and lock tables named <span className="font-mono text-gray-300">{STATE_LOCK_TABLE_PREFIX}*</span> (leave the bucket name empty and CloudCraft picks a matching one); it cannot touch any other bucket or table and cannot delete either.
+            </p>
+            <CopyBlock label="Extra policy for state storage (optional)" text={buildStateStoragePolicy()} />
           </div>
 
           <div className="space-y-2">
