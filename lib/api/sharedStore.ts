@@ -42,7 +42,7 @@ export function sharedStoreEnabled(): boolean {
 export function sharedDb(): Queryable {
   if (override) return override;
   if (!global.__cloudcraft_shared_pool__) {
-    global.__cloudcraft_shared_pool__ = new Pool({ connectionString: process.env['DATABASE_URL'], max: 4, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 3_000 });
+    global.__cloudcraft_shared_pool__ = new Pool({ connectionString: process.env['DATABASE_URL'], max: 10, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 5_000 });
     // An idle client erroring (e.g. the server restarted) must not crash the process.
     global.__cloudcraft_shared_pool__.on('error', (err) => console.warn('[shared-store] idle connection error:', err.message));
   }

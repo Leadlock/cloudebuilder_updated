@@ -132,6 +132,20 @@ describe('checkRateLimit (shared database store)', () => {
     expect((await checkRateLimit('r', 1, 60_000)).allowed).toBe(true);
   });
 
+  it('if the database fails MID-WAY (say a burst exhausts the pool) the fallback continues from the real count instead of handing out a second budget', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const { pool } = await freshDb();
+    let broken = false;
+    _setSharedDbForTests({ query: async (sql, params) => { if (broken) throw new Error('timeout exceeded when trying to connect'); return pool.query(sql, params); } });
+    const key = `midway-${Date.now()}`;
+    expect((await checkRateLimit(key, 3, 60_000)).allowed).toBe(true);
+    expect((await checkRateLimit(key, 3, 60_000)).allowed).toBe(true);
+    expect((await checkRateLimit(key, 3, 60_000)).allowed).toBe(true);        // the budget of 3 is spent through the database
+    broken = true;
+    expect((await checkRateLimit(key, 3, 60_000)).allowed).toBe(false);       // the 4th is refused — not allowed "3 more" from a fresh local count
+    warn.mockRestore();
+  });
+
   it('if the database is unreachable it falls back to counting in-process: degraded, never open and never an error', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     _setSharedDbForTests({ query: async () => { throw new Error('connection refused'); } });

@@ -110,10 +110,14 @@ async function sharedPeek(key: string, limit: number, windowMs: number): Promise
  * `key` should uniquely identify the caller for this route (e.g. `${userId}:ai-generate`).
  */
 export async function checkRateLimit(key: string, limit: number, windowMs: number): Promise<RateLimitResult> {
+  // This instance always counts what it sees, even when the database is in charge. If the database then cannot be reached
+  // (say, a burst of requests exhausts the connection pool), the fallback carries on from the real local count instead of
+  // starting again from zero — otherwise a burst, exactly when limiting matters, would hand out a second budget.
+  const local = memoryCheck(key, limit, windowMs);
   if (sharedStoreEnabled()) {
     try { return await sharedCheck(key, limit, windowMs); } catch (err) { warnSharedStore('rate limit', err); }
   }
-  return memoryCheck(key, limit, windowMs);
+  return local;
 }
 
 /** Forgets a caller's counter, e.g. after a successful login clears earlier failed attempts. */

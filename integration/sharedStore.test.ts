@@ -72,7 +72,7 @@ describe('revoked sessions on real Postgres', () => {
     await saveTokenRevocation(id, Date.now() + 60_000);
     await saveTokenRevocation(id, Date.now() + 60_000);                       // saving twice is harmless
     await saveUserRevocation(userId, 60_000);
-    await admin.query(`INSERT INTO "revokedSession" VALUES ($1, 'token', NULL, extract(epoch from now()) * 1000, extract(epoch from now()) * 1000 - 5000)`, [`it-${run}-expired`]);
+    await admin.query(`INSERT INTO "revokedSession" ("id", "kind", "userId", "revokedAtMs", "expiresAtMs") VALUES ($1, 'token', NULL, extract(epoch from now()) * 1000, extract(epoch from now()) * 1000 - 5000)`, [`it-${run}-expired`]);
     const pulled = await pullRevocations(0);
     expect(pulled.tokens.filter((t) => t.id === id)).toHaveLength(1);
     expect(pulled.tokens.some((t) => t.id === `it-${run}-expired`)).toBe(false);
