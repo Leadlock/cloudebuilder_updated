@@ -14,6 +14,7 @@
  * - Adapters are disposed immediately after execution.
  * - Only sanitized metadata without secrets flows through this layer.
  */
+import { isAwsCredentials, isAzureCredentials } from '../types';
 import type { CloudCredentials, AccountValidationResult } from '../types';
 import type {
   DiscoveredTopology,
@@ -27,7 +28,7 @@ export class CloudInfrastructureDiscoveryService {
    * Validate account credentials and verify required read-only permissions.
    */
   async validateAccount(credentials: CloudCredentials): Promise<AccountValidationResult> {
-    if ('roleArn' in credentials) {
+    if (isAwsCredentials(credentials)) {
       const adapter = new AwsDiscoveryAdapter(credentials);
       try {
         return await adapter.validateAccount();
@@ -36,7 +37,7 @@ export class CloudInfrastructureDiscoveryService {
       }
     }
 
-    if ('tenantId' in credentials) {
+    if (isAzureCredentials(credentials)) {
       const adapter = new AzureDiscoveryAdapter(credentials);
       try {
         return await adapter.validateAccount();
@@ -52,7 +53,7 @@ export class CloudInfrastructureDiscoveryService {
    * Dynamically discover accessible regions for the account.
    */
   async discoverRegions(credentials: CloudCredentials): Promise<string[]> {
-    if ('roleArn' in credentials) {
+    if (isAwsCredentials(credentials)) {
       const adapter = new AwsDiscoveryAdapter(credentials);
       try {
         return await adapter.discoverRegions();
@@ -61,7 +62,7 @@ export class CloudInfrastructureDiscoveryService {
       }
     }
 
-    if ('tenantId' in credentials) {
+    if (isAzureCredentials(credentials)) {
       const adapter = new AzureDiscoveryAdapter(credentials);
       try {
         return await adapter.discoverRegions();
@@ -80,7 +81,7 @@ export class CloudInfrastructureDiscoveryService {
     credentials: CloudCredentials,
     options: DiscoveryOptions = {},
   ): Promise<DiscoveredTopology> {
-    if ('roleArn' in credentials) {
+    if (isAwsCredentials(credentials)) {
       const adapter = new AwsDiscoveryAdapter(credentials);
       try {
         return await adapter.discoverTopology(options);
@@ -89,7 +90,7 @@ export class CloudInfrastructureDiscoveryService {
       }
     }
 
-    if ('tenantId' in credentials) {
+    if (isAzureCredentials(credentials)) {
       const adapter = new AzureDiscoveryAdapter(credentials);
       try {
         return await adapter.discoverTopology(options);

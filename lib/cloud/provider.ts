@@ -8,6 +8,7 @@
  * - Adapters NEVER log credentials, secrets, or tokens.
  * - All public methods return sanitised data only.
  */
+import { isAwsCredentials, isAzureCredentials } from './types';
 import type {
   CloudCredentials,
   DiscoveryResult,
@@ -67,11 +68,11 @@ export interface InfrastructureDiscoveryProvider extends CloudProviderAdapter {
 export async function createDiscoveryProvider(
   credentials: CloudCredentials,
 ): Promise<InfrastructureDiscoveryProvider> {
-  if ('roleArn' in credentials) {
+  if (isAwsCredentials(credentials)) {
     const { AwsDiscoveryAdapter } = await import('./adapters/awsAdapter');
     return new AwsDiscoveryAdapter(credentials);
   }
-  if ('tenantId' in credentials) {
+  if (isAzureCredentials(credentials)) {
     const { AzureDiscoveryAdapter } = await import('./adapters/azureAdapter');
     return new AzureDiscoveryAdapter(credentials);
   }

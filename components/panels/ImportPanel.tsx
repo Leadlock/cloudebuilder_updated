@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import AwsConnectGuide from './AwsConnectGuide';
+import AwsAccessKeyGuide from './AwsAccessKeyGuide';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -119,6 +120,9 @@ export default function ImportPanel() {
   // and POSTed directly to the backend. They are never stored in React context
   // or any persistent client-side store.
   const [awsForm, setAwsForm] = useState({ roleArn: '', externalId: '', region: 'us-east-1' });
+  // How to connect an AWS account: an IAM role (recommended; can also run Terraform) or a read-only access key (quick; discovery only).
+  const [awsMethod, setAwsMethod] = useState<'role' | 'access-key'>('role');
+  const [awsKeyForm, setAwsKeyForm] = useState({ accessKeyId: '', secretAccessKey: '' });
   const [azureForm, setAzureForm] = useState({
     tenantId: '', clientId: '', clientSecret: '', subscriptionId: '',
   });
@@ -147,6 +151,8 @@ export default function ImportPanel() {
     setPolling(false);
     setError(null);
     setAwsForm({ roleArn: '', externalId: '', region: 'us-east-1' });
+    setAwsMethod('role');
+    setAwsKeyForm({ accessKeyId: '', secretAccessKey: '' });
     setAzureForm({ tenantId: '', clientId: '', clientSecret: '', subscriptionId: '' });
     setAccountName('');
     setConnecting(false);
@@ -252,8 +258,9 @@ export default function ImportPanel() {
   // ── Step: connect new account ──────────────────────────────────────────
 
   async function handleConnectAws() {
-    if (!awsForm.roleArn || !awsForm.externalId) {
-      setError('Role ARN and External ID are required');
+    const useKey = awsMethod === 'access-key';
+    if (useKey ? (!awsKeyForm.accessKeyId.trim() || !awsKeyForm.secretAccessKey.trim()) : (!awsForm.roleArn || !awsForm.externalId)) {
+      setError(useKey ? 'Access key ID and Secret access key are required' : 'Role ARN and External ID are required');
       return;
     }
     setConnecting(true);
@@ -267,20 +274,21 @@ export default function ImportPanel() {
           provider: 'aws',
           name: accountName || `AWS (${awsForm.region})`,
           // Credentials go directly to backend — never stored in React context
-          credentials: {
-            ...awsForm,
-            externalId: awsForm.externalId.trim(),
-          },
+          credentials: useKey
+            ? { accessKeyId: awsKeyForm.accessKeyId.trim(), secretAccessKey: awsKeyForm.secretAccessKey.trim(), region: awsForm.region }
+            : { ...awsForm, externalId: awsForm.externalId.trim() },
         }),
       });
+      // The secret is cleared from the form as soon as it has been sent (it is never shown again).
+      if (useKey) setAwsKeyForm({ accessKeyId: '', secretAccessKey: '' });
       const data = await res.json() as { ok: boolean; data: CloudAccount; error?: { message: string } };
       if (!data.ok) {
         setError(data.error?.message ?? 'Failed to connect account');
         return;
       }
-      // Validate immediately
+      // Validate immediately, then show the saved result (valid, or why not)
       await validateAccount(data.data.id);
-      setAccounts((prev) => [...prev, data.data]);
+      await fetchAccounts('aws');
       setSelectedAccountId(data.data.id);
       // Clear sensitive form fields immediately after POST
       setAwsForm({ roleArn: '', externalId: '', region: 'us-east-1' });
@@ -671,6 +679,7 @@ export default function ImportPanel() {
                           {typeof acct.identity === 'object' && acct.identity !== null
                             ? (acct.identity.accountId as string ?? acct.identity.subscriptionId as string ?? '')
                             : ''}
+                          {acct.identity?.authMethod === 'access-key' ? ' · access key · discovery only' : ''}
                         </p>
                       </div>
                       <span className={clsx(
@@ -813,15 +822,42 @@ export default function ImportPanel() {
 
               {selected === 'aws' && (
                 <div className="space-y-3">
-                  <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-3 text-xs text-blue-300">
-                    <p className="font-medium mb-1">Required: IAM Cross-Account Role</p>
-                    <p className="text-blue-400">Create an IAM role in your AWS account with <strong>ReadOnlyAccess</strong> and add CloudCraft as a trusted principal. Credentials are stored server-side only.</p>
+                  {awsMethod === 'role' && (
+                    <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-3 text-xs text-blue-300">
+                      <p className="font-medium mb-1">IAM cross-account role (recommended)</p>
+                      <p className="text-blue-400">Create an IAM role in your AWS account with <strong>ReadOnlyAccess</strong> and add CloudCraft as a trusted principal. Credentials are stored server-side only.</p>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="How to connect">
+                    {([
+                      ['role', 'IAM role', 'Recommended. Also lets CloudCraft run Terraform.'],
+                      ['access-key', 'Access key', 'Quick, read-only. Discovery only.'],
+                    ] as const).map(([value, title, hint]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={awsMethod === value}
+                        onClick={() => setAwsMethod(value)}
+                        className={clsx(
+                          'text-left rounded-lg border px-3 py-2 transition-colors',
+                          awsMethod === value ? 'border-blue-500 bg-blue-900/20' : 'border-gray-700 hover:bg-gray-700/40',
+                        )}
+                      >
+                        <p className="text-white text-xs font-semibold">{title}</p>
+                        <p className="text-gray-400 text-[11px] leading-snug">{hint}</p>
+                      </button>
+                    ))}
                   </div>
-                  <AwsConnectGuide
-                    externalId={awsForm.externalId}
-                    roleArn={awsForm.roleArn}
-                    onExternalId={(value) => setAwsForm((f) => ({ ...f, externalId: value }))}
-                  />
+                  {awsMethod === 'role' ? (
+                    <AwsConnectGuide
+                      externalId={awsForm.externalId}
+                      roleArn={awsForm.roleArn}
+                      onExternalId={(value) => setAwsForm((f) => ({ ...f, externalId: value }))}
+                    />
+                  ) : (
+                    <AwsAccessKeyGuide />
+                  )}
                   <input
                     type="text"
                     placeholder="Account name (optional)"
@@ -829,20 +865,45 @@ export default function ImportPanel() {
                     onChange={(e) => setAccountName(e.target.value)}
                     className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
                   />
-                  <input
-                    type="text"
-                    placeholder="Role ARN (arn:aws:iam::123456789012:role/CloudCraftReadOnly)"
-                    value={awsForm.roleArn}
-                    onChange={(e) => setAwsForm((f) => ({ ...f, roleArn: e.target.value }))}
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                  />
-                  <input
-                    type="text"
-                    placeholder="External ID (shared secret)"
-                    value={awsForm.externalId}
-                    onChange={(e) => setAwsForm((f) => ({ ...f, externalId: e.target.value }))}
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                  />
+                  {awsMethod === 'role' ? (
+                    <>
+                      <input
+                        type="text"
+                        placeholder="Role ARN (arn:aws:iam::123456789012:role/CloudCraftReadOnly)"
+                        value={awsForm.roleArn}
+                        onChange={(e) => setAwsForm((f) => ({ ...f, roleArn: e.target.value }))}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                      />
+                      <input
+                        type="text"
+                        placeholder="External ID (shared secret)"
+                        value={awsForm.externalId}
+                        onChange={(e) => setAwsForm((f) => ({ ...f, externalId: e.target.value }))}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        placeholder="Access key ID (AKIA…)"
+                        value={awsKeyForm.accessKeyId}
+                        onChange={(e) => setAwsKeyForm((f) => ({ ...f, accessKeyId: e.target.value }))}
+                        autoComplete="off"
+                        spellCheck={false}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm font-mono placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                      />
+                      <input
+                        type="password"
+                        placeholder="Secret access key (shown once by AWS; never shown again here)"
+                        value={awsKeyForm.secretAccessKey}
+                        onChange={(e) => setAwsKeyForm((f) => ({ ...f, secretAccessKey: e.target.value }))}
+                        autoComplete="new-password"
+                        spellCheck={false}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm font-mono placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                      />
+                    </>
+                  )}
                   <select
                     value={awsForm.region}
                     onChange={(e) => setAwsForm((f) => ({ ...f, region: e.target.value }))}

@@ -118,6 +118,8 @@ export const cloudAccountRepository = {
     provider: string;
     name: string;
     credentialsJson: string;
+    /** Plain, non-secret facts about the account (for example how it signs in). Defaults to {}. */
+    identityJson?: string;
   }): Promise<DbCloudAccount> {
     const ts = now();
     const id = uuidv4();
@@ -129,7 +131,7 @@ export const cloudAccountRepository = {
       provider: input.provider,
       name: input.name,
       credentialsJson: credentialsEnc,
-      identityJson: '{}',
+      identityJson: input.identityJson ?? '{}',
       status: 'pending',
       lastValidatedAt: null,
       createdAt: ts,

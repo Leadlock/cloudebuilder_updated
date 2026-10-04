@@ -30,12 +30,15 @@
  * any API response.
  */
 import { STSClient, AssumeRoleCommand } from '@aws-sdk/client-sts';
+import { isAwsRoleCredentials } from '@/lib/cloud/types';
+import { assertTerraformCapable } from '@/lib/cloud/terraformCapability';
 import type { CloudCredentials } from '@/lib/cloud/types';
 
 export async function resolveExecutionCredentials(
   credentials: CloudCredentials,
 ): Promise<Record<string, string>> {
-  if ('roleArn' in credentials) {
+  assertTerraformCapable(credentials);     // defence in depth: an access key never becomes Terraform's environment
+  if (isAwsRoleCredentials(credentials)) {
     const stsClient = new STSClient({ region: credentials.region });
     const assumed = await stsClient.send(
       new AssumeRoleCommand({

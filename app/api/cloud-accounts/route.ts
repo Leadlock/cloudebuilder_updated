@@ -10,6 +10,7 @@ import {
 import { extractIdentity, getOrgRole, resolveOrgIds } from '@/lib/api/auth';
 import { orgRepository } from '@/lib/repositories/orgRepository';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
+import { authMethodOf, isAwsCredentials, type CloudCredentials } from '@/lib/cloud/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +54,26 @@ const AwsCredentialsSchema = z.object({
     .optional(),
 });
 
+/**
+ * Access-key connection (discovery only). Long-term IAM user keys: the key id starts AKIA and is 20 characters, the secret is
+ * exactly 40 characters of base64. Temporary keys (ASIA…) need a session token and are not accepted.
+ */
+const AwsKeyCredentialsSchema = z.object({
+  accessKeyId: z
+    .string()
+    .regex(/^AKIA[A-Z0-9]{16}$/, 'accessKeyId must be a long-term IAM access key ID (20 characters, starting AKIA)'),
+  secretAccessKey: z
+    .string()
+    .regex(/^[A-Za-z0-9/+=]{40}$/, 'secretAccessKey must be the 40-character secret access key'),
+  region: z
+    .string()
+    .regex(AWS_REGION_RE, 'region must be a valid AWS region identifier (e.g. us-east-1)'),
+  additionalRegions: z
+    .array(z.string().regex(AWS_REGION_RE, 'Each additionalRegion must be a valid AWS region identifier'))
+    .max(20)
+    .optional(),
+});
+
 const AzureCredentialsSchema = z.object({
   tenantId: z
     .string()
@@ -73,7 +94,7 @@ const CreateCloudAccountSchema = z.object({
   orgId:       z.string().min(1).optional(),
   provider:    z.enum(['aws', 'azure']),
   name:        z.string().min(1).max(120),
-  credentials: z.union([AwsCredentialsSchema, AzureCredentialsSchema]),
+  credentials: z.union([AwsCredentialsSchema, AwsKeyCredentialsSchema, AzureCredentialsSchema]),
 });
 
 // ─── Route handlers ───────────────────────────────────────────────────────────
@@ -137,6 +158,10 @@ export async function POST(req: NextRequest) {
     const role = await getOrgRole(identity.userId, orgId);
     if (!role || role === 'viewer') return forbidden();
 
+    // The credentials must belong to the cloud they are saved under.
+    const creds = body.credentials as CloudCredentials;
+    if ((body.provider === 'aws') !== isAwsCredentials(creds)) return badRequest('The credentials do not match the selected cloud provider.');
+
     // Serialize credentials for storage — never log this value
     const credentialsJson = JSON.stringify(body.credentials);
 
@@ -145,6 +170,7 @@ export async function POST(req: NextRequest) {
       provider: body.provider,
       name: body.name,
       credentialsJson,
+      identityJson: JSON.stringify({ authMethod: authMethodOf(creds) }),   // how it signs in — not a secret; the list shows what it may be used for
     });
 
     // account is the safe shape — credentials are not included

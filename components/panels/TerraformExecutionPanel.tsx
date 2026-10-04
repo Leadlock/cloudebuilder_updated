@@ -79,6 +79,7 @@ export default function TerraformExecutionPanel() {
       : 'aws';
   const [backendProvider, setBackendProvider] = useState<'aws' | 'azure'>(defaultProvider);
   const [accounts, setAccounts] = useState<CloudAccount[]>([]);
+  const [discoveryOnlyCount, setDiscoveryOnlyCount] = useState(0);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [loadingAccounts, setLoadingAccounts] = useState(false);
 
@@ -265,7 +266,10 @@ export default function TerraformExecutionPanel() {
       .then((r) => r.json())
       .then((data: { ok: boolean; data: CloudAccount[] }) => {
         if (cancelled) return;
-        const list = data.ok ? data.data.filter((a) => a.provider === backendProvider) : [];
+        const ofProvider = data.ok ? data.data.filter((a) => a.provider === backendProvider) : [];
+        // An account connected with an access key is for discovery only; Terraform needs a role.
+        const list = ofProvider.filter((a) => (a as { identity?: { authMethod?: string } }).identity?.authMethod !== 'access-key');
+        setDiscoveryOnlyCount(ofProvider.length - list.length);
         setAccounts(list);
         setSelectedAccountId((prev) => {
           if (prev && list.some((a) => a.id === prev)) return prev;
@@ -551,7 +555,7 @@ export default function TerraformExecutionPanel() {
             {loadingAccounts ? (
               <div className="flex items-center gap-2 text-gray-500 text-xs"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading connected accounts…</div>
             ) : accounts.length === 0 ? (
-              <p className="text-gray-600 text-xs">No connected {backendProvider.toUpperCase()} accounts. Connect one from the Import panel first.</p>
+              <p className="text-gray-600 text-xs">No connected {backendProvider.toUpperCase()} accounts that can run Terraform. Connect one with an IAM role from the Import panel first.{discoveryOnlyCount > 0 ? ` (${discoveryOnlyCount} account${discoveryOnlyCount === 1 ? '' : 's'} connected with an access key ${discoveryOnlyCount === 1 ? 'is' : 'are'} for discovery only.)` : ''}</p>
             ) : (
               <select
                 id="tf-account"

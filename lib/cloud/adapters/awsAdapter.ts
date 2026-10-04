@@ -102,7 +102,7 @@ import { Route53Client, ListHostedZonesCommand, ListResourceRecordSetsCommand } 
 import { CloudWatchClient, DescribeAlarmsCommand } from '@aws-sdk/client-cloudwatch';
 import { WAFV2Client, ListWebACLsCommand, GetWebACLCommand } from '@aws-sdk/client-wafv2';
 import type {
-  AwsRoleCredentials,
+  AwsCredentials,
   DiscoveredResource,
   DiscoveryResult,
   AccountValidationResult,
@@ -196,33 +196,40 @@ function now(): string {
 export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
   readonly provider = 'aws' as const;
 
-  private readonly _credentials: AwsRoleCredentials;
+  private readonly _credentials: AwsCredentials;
   private _sessionCredentials: {
     accessKeyId: string;
     secretAccessKey: string;
-    sessionToken: string;
+    sessionToken?: string;
   } | null = null;
 
-  constructor(credentials: AwsRoleCredentials) {
+  constructor(credentials: AwsCredentials) {
     this._credentials = credentials;
   }
 
-  // ── STS role assumption ──────────────────────────────────────────────────
+  // ── Credentials for the SDK clients: an assumed role's session, or a read-only IAM user's key ──────
 
   private async _assumeRole(): Promise<{
     accessKeyId: string;
     secretAccessKey: string;
-    sessionToken: string;
+    sessionToken?: string;
   }> {
     if (this._sessionCredentials) return this._sessionCredentials;
 
-    const stsClient = new STSClient({ region: this._credentials.region });
+    // Access-key connection: the key is used as it is — nothing to assume, and no AWS identity needed on the CloudCraft server.
+    const own = this._credentials;
+    if ('accessKeyId' in own) {
+      this._sessionCredentials = { accessKeyId: own.accessKeyId, secretAccessKey: own.secretAccessKey };
+      return this._sessionCredentials;
+    }
+
+    const stsClient = new STSClient({ region: own.region });
     const assumed = await retryWithBackoff(() =>
       stsClient.send(
         new AssumeRoleCommand({
-          RoleArn: this._credentials.roleArn,
+          RoleArn: own.roleArn,
           RoleSessionName: 'cloudcraft-discovery',
-          ExternalId: this._credentials.externalId,
+          ExternalId: own.externalId,
           DurationSeconds: 3600,
         }),
       ),
@@ -476,6 +483,11 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
           missingPermissions: REQUIRED_AWS_PERMISSIONS,
           error: 'STS GetCallerIdentity returned incomplete response',
         };
+      }
+
+      // A root-user key can do anything in the account. It must never be handed to a tool that only needs to read.
+      if ('accessKeyId' in this._credentials && /:root$/.test(identity.Arn)) {
+        return { valid: false, permissionsOk: false, missingPermissions: [], error: 'ROOT_ACCESS_KEY: the access key belongs to the account root user' };
       }
 
       // Lightweight check
@@ -2769,6 +2781,7 @@ function buildSummary(resources: Array<DiscoveredResource | CloudResource>): Rec
 
 function sanitiseAwsError(message: string): string {
   return message
+    .replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, '[access key id]')
     .replace(/\s*\(Service:[^)]*\)/gi, '')
     .replace(/\s*Request ID:\s*[0-9a-f-]+/gi, '')
     .replace(/arn:[a-z0-9*-]+:[a-z0-9*-]+:[^:\s]*:[^:\s]*:[^\s,)]+/gi, '[arn]')

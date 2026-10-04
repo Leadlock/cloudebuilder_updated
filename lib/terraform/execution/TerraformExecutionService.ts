@@ -27,6 +27,7 @@ import { terraformGenerator } from '@/lib/engines/terraform/TerraformGenerator';
 import { ArchitectureReviewService } from '@/lib/services/ArchitectureReviewService';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
 import { resolveExecutionCredentials } from '@/lib/cloud/credentials/resolveExecutionCredentials';
+import { assertTerraformCapable } from '@/lib/cloud/terraformCapability';
 import type { CloudCredentials } from '@/lib/cloud/types';
 import type { CanvasNode, CanvasEdge } from '@/types';
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
@@ -181,7 +182,8 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
     throw err;
   }
   const credentials = JSON.parse(credentialsJson) as CloudCredentials;
-  const provider: 'aws' | 'azure' = 'roleArn' in credentials ? 'aws' : 'azure';
+  assertTerraformCapable(credentials);       // an account connected with an access key is for discovery only
+  const provider: 'aws' | 'azure' = 'tenantId' in credentials ? 'azure' : 'aws';
 
   const generated = terraformGenerator.generate({
     architectureId: input.architectureId,

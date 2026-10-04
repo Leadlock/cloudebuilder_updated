@@ -14,7 +14,7 @@ import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId } from '@/lib/api/phase2d';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
 import { createDiscoveryProvider } from '@/lib/cloud/provider';
-import type { CloudCredentials } from '@/lib/cloud/types';
+import { authMethodOf, type CloudCredentials } from '@/lib/cloud/types';
 import { explainValidationFailure } from '@/lib/cloud/validationExplain';
 import { getServerAwsIdentity } from '@/lib/cloud/serverIdentity';
 
@@ -63,7 +63,7 @@ export async function POST(
     // Persist validation outcome (status + identity, no credentials)
     const newStatus = validationResult.valid ? 'active' : 'invalid';
     // When it fails, keep the reason (in plain words) with the account so the list can show it without checking again.
-    const why = validationResult.valid ? null : explainValidationFailure(account.provider, validationResult.error, validationResult.missingPermissions ?? []);
+    const why = validationResult.valid ? null : explainValidationFailure(account.provider, validationResult.error, validationResult.missingPermissions ?? [], authMethodOf(credentials));
     if (why && account.provider === 'aws' && /refused to let CloudCraft assume/i.test(why.reason)) {
       // The usual cause is a trust policy that names a different identity — so say which one the server really is.
       const server = await getServerAwsIdentity();
@@ -71,6 +71,7 @@ export async function POST(
     }
     const identityJson = JSON.stringify({
       ...(validationResult.identity ?? {}),
+      authMethod: authMethodOf(credentials),
       ...(why ? { validationReason: why.reason, validationFix: why.fix } : {}),
     });
 

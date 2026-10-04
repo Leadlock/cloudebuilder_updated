@@ -15,6 +15,25 @@ export interface ValidationExplanation {
 
 type Rule = { when: RegExp; reason: string; fix: string };
 
+/** Reasons that only make sense for an account connected with an access key (no role, no server identity involved). */
+const ACCESS_KEY_RULES: Rule[] = [
+  {
+    when: /ROOT_ACCESS_KEY/,
+    reason: 'That access key belongs to the AWS account\'s root user, and CloudCraft refuses root keys.',
+    fix: 'Create a dedicated IAM user with only the read-only policy, make an access key for it, and connect the account with that key. Then delete the root key in AWS.',
+  },
+  {
+    when: /InvalidClientTokenId|security token included in the request is invalid|SignatureDoesNotMatch|Access Key Id you provided does not exist|InvalidAccessKeyId/i,
+    reason: 'AWS does not accept this access key.',
+    fix: 'Check the Access key ID and the Secret access key (the secret is shown only once, when the key is created) and that the key is Active in IAM. Delete this account and connect it again with the right key.',
+  },
+  {
+    when: /AccessDenied|UnauthorizedOperation|not authorized to perform/i,
+    reason: 'The access key is valid, but its IAM user is not allowed to read your resources.',
+    fix: 'Attach the read-only policy (or the AWS ReadOnlyAccess policy) to that IAM user, then check again.',
+  },
+];
+
 const AWS_RULES: Rule[] = [
   {
     when: /could not load credentials|CredentialsProviderError|Missing credentials in config/i,
@@ -86,13 +105,18 @@ const AZURE_RULES: Rule[] = [
   },
 ];
 
-export function explainValidationFailure(provider: string, error: string | null | undefined, missingPermissions: string[] = []): ValidationExplanation {
-  const text = (error ?? '').trim();
+export function explainValidationFailure(provider: string, error: string | null | undefined, missingPermissions: string[] = [], authMethod?: string): ValidationExplanation {
+  // Never repeat an access key id in a message, even one AWS echoed back.
+  const text = (error ?? '').replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, '[access key id]').trim();
   if (text) {
-    for (const rule of provider === 'azure' ? AZURE_RULES : AWS_RULES) if (rule.when.test(text)) return { reason: rule.reason, fix: rule.fix };
+    const rules = provider === 'azure' ? AZURE_RULES : authMethod === 'access-key' ? [...ACCESS_KEY_RULES, ...AWS_RULES.filter((r) => /ENOTFOUND/.test(r.when.source))] : AWS_RULES;
+    for (const rule of rules) if (rule.when.test(text)) return { reason: rule.reason, fix: rule.fix };
   }
   if (!text && missingPermissions.length > 0) {
     const shown = missingPermissions.slice(0, 3).join(', ');
+    if (authMethod === 'access-key') {
+      return { reason: `The access key works, but its IAM user cannot read your resources (for example ${shown}).`, fix: 'Attach the read-only policy (or the AWS ReadOnlyAccess policy) to that IAM user, then check again.' };
+    }
     return provider === 'azure'
       ? { reason: 'CloudCraft signed in, but it cannot read the subscription\'s resources.', fix: 'Give the service principal the Reader role on the subscription, then check again.' }
       : {
