@@ -34,11 +34,32 @@ const ACCESS_KEY_RULES: Rule[] = [
   },
 ];
 
+/** Your own access key assumes your own role: what can go wrong is in the key, the key's permission to assume, or the role's trust. */
+const KEY_ROLE_RULES: Rule[] = [
+  ACCESS_KEY_RULES[0]!,
+  ACCESS_KEY_RULES[1]!,
+  {
+    when: /not authorized to perform:?\s*sts:AssumeRole|is not authorized to assume|AccessDenied.{0,80}AssumeRole|AssumeRole.{0,80}AccessDenied/i,
+    reason: 'AWS refused to let your access key assume the role.',
+    fix: 'Check three things: the key\'s IAM user is allowed to call sts:AssumeRole on this role; the role\'s trust policy trusts that user (or your AWS account); and, if you entered an External ID, the trust policy requires exactly the same one.',
+  },
+  {
+    when: /RoleArn|Member must satisfy regular expression pattern|not a valid (role )?arn|ValidationError/i,
+    reason: 'The role ARN does not look valid.',
+    fix: 'Copy the ARN from the role\'s page in IAM. It looks like arn:aws:iam::123456789012:role/CloudCraftReadOnly.',
+  },
+  {
+    when: /ENOTFOUND|ETIMEDOUT|ECONNREFUSED|ECONNRESET|EAI_AGAIN|getaddrinfo|socket hang up|timed out/i,
+    reason: 'CloudCraft could not reach AWS.',
+    fix: 'Check the server\'s internet connection and any proxy or firewall rules, then check again.',
+  },
+];
+
 const AWS_RULES: Rule[] = [
   {
     when: /could not load credentials|CredentialsProviderError|Missing credentials in config/i,
     reason: 'The CloudCraft server has no AWS credentials of its own, so it cannot start the connection to your account.',
-    fix: 'Give the server an AWS identity that is allowed to assume your role (an access key in AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or an instance/task role), restart it, then check again. Your role and External ID have not been tested yet.',
+    fix: 'Give the server an AWS identity that is allowed to assume your role (an access key in AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or an instance/task role), restart it, then check again. Your role and External ID have not been tested yet. Or skip the server setup: delete this account and connect it again with your own access key and role.',
   },
   {
     when: /InvalidClientTokenId|security token included in the request is invalid|SignatureDoesNotMatch|Access Key Id you provided does not exist/i,
@@ -109,7 +130,7 @@ export function explainValidationFailure(provider: string, error: string | null 
   // Never repeat an access key id in a message, even one AWS echoed back.
   const text = (error ?? '').replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, '[access key id]').trim();
   if (text) {
-    const rules = provider === 'azure' ? AZURE_RULES : authMethod === 'access-key' ? [...ACCESS_KEY_RULES, ...AWS_RULES.filter((r) => /ENOTFOUND/.test(r.when.source))] : AWS_RULES;
+    const rules = provider === 'azure' ? AZURE_RULES : authMethod === 'key-and-role' ? KEY_ROLE_RULES : authMethod === 'access-key' ? [...ACCESS_KEY_RULES, ...AWS_RULES.filter((r) => /ENOTFOUND/.test(r.when.source))] : AWS_RULES;
     for (const rule of rules) if (rule.when.test(text)) return { reason: rule.reason, fix: rule.fix };
   }
   if (!text && missingPermissions.length > 0) {

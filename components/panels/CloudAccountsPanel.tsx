@@ -24,6 +24,13 @@ interface Account {
   lastValidatedAt?: string | null;
 }
 
+const METHOD_LABEL: Record<string, string> = {
+  'key-and-role': 'access key + IAM role',
+  'access-key': 'access key only',
+  role: 'IAM role (server identity)',
+  'service-principal': 'service principal',
+};
+
 function ago(iso: string | null | undefined): string {
   if (!iso) return 'not checked yet';
   const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
@@ -47,11 +54,11 @@ function AccountRow({ account, checking, onRecheck, onDelete }: { account: Accou
             <span className={clsx('text-[10px] font-bold px-1.5 py-0.5 rounded', account.provider === 'aws' ? 'bg-orange-900/50 text-orange-300' : 'bg-blue-900/50 text-blue-300')}>{account.provider.toUpperCase()}</span>
           </div>
           <p className="text-gray-500 text-xs">
-            {who ? `${who} · ` : ''}{method === 'access-key' ? 'access key' : method === 'role' ? 'IAM role' : method === 'service-principal' ? 'service principal' : ''}{method ? ' · ' : ''}{ago(account.lastValidatedAt)}
+            {who ? `${who} · ` : ''}{METHOD_LABEL[method ?? ''] ?? ''}{method ? ' · ' : ''}{ago(account.lastValidatedAt)}
           </p>
           <p className="flex items-center gap-1 text-[11px] text-gray-400">
             <ShieldCheck className="w-3 h-3" />
-            {terraform ? 'Discovery and Terraform' : 'Discovery only — Terraform needs an IAM role'}
+            {terraform ? 'Discovery and Terraform' : 'Discovery only — reconnect with an access key and an IAM role to run Terraform'}
           </p>
         </div>
         <div className="flex items-center gap-1 shrink-0">

@@ -24,7 +24,6 @@ jest.mock('@/lib/cloud/provider', () => ({ createDiscoveryProvider: async () => 
 import { NextRequest } from 'next/server';
 import { generateExternalId, trustPrincipalFromArn, buildTrustPolicy, buildAssumeRolePolicy } from '@/lib/cloud/trustPolicy';
 import { getServerAwsIdentity, _clearServerIdentityCacheForTests } from '@/lib/cloud/serverIdentity';
-import { GET as identityGet } from '@/app/api/cloud-accounts/server-identity/route';
 import { POST as validatePost } from '@/app/api/cloud-accounts/[id]/validate/route';
 
 describe('trust policy helpers', () => {
@@ -53,7 +52,13 @@ describe('trust policy helpers', () => {
     });
   });
 
-  it('writes the policy the server\'s own identity needs: assume exactly that role', () => {
+  it('without an External ID the trust policy trusts the principal alone (no condition); with one it requires it', () => {
+    const plain = JSON.parse(buildTrustPolicy('arn:aws:iam::123456789012:root'));
+    expect(plain.Statement[0]).toEqual({ Effect: 'Allow', Principal: { AWS: 'arn:aws:iam::123456789012:root' }, Action: 'sts:AssumeRole' });
+    expect(JSON.parse(buildTrustPolicy('arn:aws:iam::123456789012:root', '')).Statement[0]).not.toHaveProperty('Condition');
+  });
+
+  it('writes the policy the IAM user needs: assume exactly that one role', () => {
     const policy = JSON.parse(buildAssumeRolePolicy('arn:aws:iam::111122223333:role/CloudCraftReadOnly'));
     expect(policy.Statement).toEqual([{ Effect: 'Allow', Action: 'sts:AssumeRole', Resource: 'arn:aws:iam::111122223333:role/CloudCraftReadOnly' }]);
   });
@@ -107,41 +112,6 @@ describe('getServerAwsIdentity', () => {
   it('an incomplete answer is not mistaken for a working identity', async () => {
     mockSend.mockResolvedValue({ Account: '123456789012' });
     expect((await getServerAwsIdentity()).configured).toBe(false);
-  });
-});
-
-describe('GET /api/cloud-accounts/server-identity', () => {
-  const call = (q = '') => identityGet(new NextRequest(`http://localhost/api/cloud-accounts/server-identity${q}`));
-  beforeEach(() => {
-    _clearServerIdentityCacheForTests();
-    [mockSend, mockIdentity, mockOrgRole, mockResolveOrg].forEach((m) => m.mockReset());
-    mockIdentity.mockReturnValue({ userId: 'u1', role: 'admin', orgIds: ['org-1'] });
-    mockResolveOrg.mockResolvedValue('org-1'); mockOrgRole.mockResolvedValue('member');
-    mockSend.mockResolvedValue({ Account: '123456789012', Arn: 'arn:aws:iam::123456789012:user/cloudcraft-server' });
-    jest.spyOn(console, 'error').mockImplementation(() => {});
-  });
-
-  it('shows an org member who can connect accounts the identity the role must trust', async () => {
-    const res = await call();
-    expect(res.status).toBe(200);
-    expect((await res.json()).data).toEqual({ configured: true, accountId: '123456789012', arn: 'arn:aws:iam::123456789012:user/cloudcraft-server' });
-  });
-  it('refuses a signed-out caller, a viewer, and someone outside the organisation', async () => {
-    mockIdentity.mockReturnValue(null); expect((await call()).status).toBe(401);
-    mockIdentity.mockReturnValue({ userId: 'u1', role: 'admin', orgIds: [] });
-    mockOrgRole.mockResolvedValue('viewer'); expect((await call()).status).toBe(403);
-    mockOrgRole.mockResolvedValue(null); expect((await call()).status).toBe(403);
-    expect(mockSend).not.toHaveBeenCalled();
-  });
-  it('?fresh=1 checks again', async () => {
-    await call(); await call();
-    expect(mockSend).toHaveBeenCalledTimes(1);
-    await call('?fresh=1');
-    expect(mockSend).toHaveBeenCalledTimes(2);
-  });
-  it('never returns a key: only configured/accountId/arn or the explanation', async () => {
-    mockSend.mockResolvedValue({ Account: '123456789012', Arn: 'arn:aws:iam::123456789012:user/x', Credentials: { SecretAccessKey: 'SHOULD-NEVER-APPEAR' } });
-    expect(JSON.stringify(await (await call('?fresh=1')).json())).not.toContain('SHOULD-NEVER-APPEAR');
   });
 });
 

@@ -26,9 +26,26 @@ export interface AwsRoleCredentials {
 }
 
 /**
- * AWS access-key credentials: a long-lived key of a READ-ONLY IAM user, used directly (no role to assume). The quick way to connect
- * an account without giving the CloudCraft server an AWS identity of its own. CloudCraft uses these for DISCOVERY ONLY — never to
- * run Terraform (a stored key that could change infrastructure would be a permanent standing risk; that needs the role method).
+ * The user's OWN access key plus the user's OWN role: the key belongs to an IAM user in their account whose only permission is to
+ * assume that role, and the role carries the real permissions (read-only for discovery, more for Terraform). CloudCraft signs in with
+ * the key and assumes the role, so everything it does runs on short-lived role credentials — and no AWS account of CloudCraft's own
+ * is involved anywhere. This is how accounts are connected.
+ */
+export interface AwsKeyRoleCredentials {
+  accessKeyId: string;
+  secretAccessKey: string;
+  roleArn: string;
+  /** Optional: if the role's trust policy requires one. */
+  externalId?: string;
+  region: string;
+  /** Optional: additional regions to discover in */
+  additionalRegions?: string[];
+}
+
+/**
+ * AWS access-key credentials with NO role: a long-lived key of a read-only IAM user, used directly. Accounts connected earlier this way
+ * keep working, for DISCOVERY ONLY — never to run Terraform (a stored key that could change infrastructure would be a permanent
+ * standing risk; Terraform needs a role, so that its credentials are temporary).
  */
 export interface AwsKeyCredentials {
   accessKeyId: string;
@@ -48,18 +65,22 @@ export interface AzureSpCredentials {
   subscriptionId: string;
 }
 
-export type AwsCredentials = AwsRoleCredentials | AwsKeyCredentials;
-export type CloudCredentials = AwsRoleCredentials | AwsKeyCredentials | AzureSpCredentials;
+export type AwsCredentials = AwsRoleCredentials | AwsKeyRoleCredentials | AwsKeyCredentials;
+export type CloudCredentials = AwsCredentials | AzureSpCredentials;
 
-export const isAwsRoleCredentials = (c: CloudCredentials): c is AwsRoleCredentials => 'roleArn' in c;
-export const isAwsKeyCredentials = (c: CloudCredentials): c is AwsKeyCredentials => 'accessKeyId' in c;
-export const isAwsCredentials = (c: CloudCredentials): c is AwsCredentials => isAwsRoleCredentials(c) || isAwsKeyCredentials(c);
+/** Legacy: a role assumed with the CloudCraft server's own AWS identity (no key in the credentials). */
+export const isAwsRoleCredentials = (c: CloudCredentials): c is AwsRoleCredentials => 'roleArn' in c && !('accessKeyId' in c);
+/** The user's own key + the user's own role (how accounts are connected now). */
+export const isAwsKeyRoleCredentials = (c: CloudCredentials): c is AwsKeyRoleCredentials => 'accessKeyId' in c && 'roleArn' in c;
+/** A key with no role (older connections): discovery only. */
+export const isAwsKeyCredentials = (c: CloudCredentials): c is AwsKeyCredentials => 'accessKeyId' in c && !('roleArn' in c);
+export const isAwsCredentials = (c: CloudCredentials): c is AwsCredentials => 'roleArn' in c || 'accessKeyId' in c;
 export const isAzureCredentials = (c: CloudCredentials): c is AzureSpCredentials => 'tenantId' in c;
 
 /** How an account signs in. Stored (as a plain label) with the account so the UI can say what it may be used for. */
-export type AuthMethod = 'role' | 'access-key' | 'service-principal';
+export type AuthMethod = 'key-and-role' | 'role' | 'access-key' | 'service-principal';
 export function authMethodOf(c: CloudCredentials): AuthMethod {
-  return isAwsRoleCredentials(c) ? 'role' : isAwsKeyCredentials(c) ? 'access-key' : 'service-principal';
+  return isAwsKeyRoleCredentials(c) ? 'key-and-role' : isAwsRoleCredentials(c) ? 'role' : isAwsKeyCredentials(c) ? 'access-key' : 'service-principal';
 }
 
 // ─── Discovered resource (semantic model) ────────────────────────────────────

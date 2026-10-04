@@ -30,20 +30,23 @@ export function trustPrincipalFromArn(arn: string): string {
   return account ? `arn:${account[1]}:iam::${account[2]}:root` : arn;
 }
 
-/** The role's trust policy, ready to paste into IAM → Roles → (your role) → Trust relationships → Edit trust policy. */
-export function buildTrustPolicy(principalArn: string, externalId: string): string {
+/**
+ * The role's trust policy, ready to paste into IAM → Roles → (your role) → Trust relationships → Edit trust policy. With an
+ * External ID it also requires that value; without one it trusts the principal alone.
+ */
+export function buildTrustPolicy(principalArn: string, externalId?: string): string {
   return JSON.stringify({
     Version: '2012-10-17',
     Statement: [{
       Effect: 'Allow',
       Principal: { AWS: principalArn },
       Action: 'sts:AssumeRole',
-      Condition: { StringEquals: { 'sts:ExternalId': externalId } },
+      ...(externalId ? { Condition: { StringEquals: { 'sts:ExternalId': externalId } } } : {}),
     }],
   }, null, 2);
 }
 
-/** What the CloudCraft server's own AWS identity needs so it may assume the role (an inline policy on that user or role). */
+/** What the IAM user needs so it may assume the role (an inline policy on that user): one permission, on that one role. */
 export function buildAssumeRolePolicy(roleArn: string): string {
   return JSON.stringify({
     Version: '2012-10-17',

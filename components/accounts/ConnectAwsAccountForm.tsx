@@ -1,32 +1,28 @@
 'use client';
 /**
- * Connect an AWS account: with an IAM role (recommended; can also run Terraform) or a read-only access key (quick; discovery only).
- * Used by the Cloud Accounts tab and by the Import screen, so both behave identically.
+ * Connect an AWS account the way it is done in the user's own account: their access key signs in and assumes their role.
+ * No AWS account or identity of CloudCraft's is involved. Used by the Cloud Accounts tab and by the Import screen.
  *
  * Secrets go straight to the server and are cleared from the form as soon as they have been sent — they are never kept in React
  * state beyond typing, never shown again, and never stored in the browser.
  */
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import clsx from 'clsx';
-import AwsConnectGuide from '@/components/panels/AwsConnectGuide';
-import AwsAccessKeyGuide from '@/components/panels/AwsAccessKeyGuide';
+import AwsKeyRoleGuide from '@/components/panels/AwsKeyRoleGuide';
 
 const REGIONS = ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2', 'eu-west-1', 'eu-central-1', 'ap-southeast-1', 'ap-northeast-1'];
 const INPUT = 'w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500';
 
 export default function ConnectAwsAccountForm({ onConnected }: { onConnected: (accountId: string) => void | Promise<void> }) {
-  const [method, setMethod] = useState<'role' | 'access-key'>('role');
-  const [role, setRole] = useState({ roleArn: '', externalId: '', region: 'us-east-1' });
-  const [keys, setKeys] = useState({ accessKeyId: '', secretAccessKey: '' });
+  const [form, setForm] = useState({ accessKeyId: '', secretAccessKey: '', roleArn: '', externalId: '', region: 'us-east-1' });
   const [name, setName] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function connect() {
-    const useKey = method === 'access-key';
-    if (useKey ? (!keys.accessKeyId.trim() || !keys.secretAccessKey.trim()) : (!role.roleArn.trim() || !role.externalId.trim())) {
-      setError(useKey ? 'Access key ID and Secret access key are required' : 'Role ARN and External ID are required');
+    const f = { ...form, accessKeyId: form.accessKeyId.trim(), secretAccessKey: form.secretAccessKey.trim(), roleArn: form.roleArn.trim(), externalId: form.externalId.trim() };
+    if (!f.accessKeyId || !f.secretAccessKey || !f.roleArn) {
+      setError('Access key ID, Secret access key and Role ARN are required');
       return;
     }
     setConnecting(true);
@@ -38,14 +34,15 @@ export default function ConnectAwsAccountForm({ onConnected }: { onConnected: (a
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider: 'aws',
-          name: name.trim() || `AWS (${role.region})`,
-          credentials: useKey
-            ? { accessKeyId: keys.accessKeyId.trim(), secretAccessKey: keys.secretAccessKey.trim(), region: role.region }
-            : { roleArn: role.roleArn.trim(), externalId: role.externalId.trim(), region: role.region },
+          name: name.trim() || `AWS (${f.region})`,
+          credentials: {
+            accessKeyId: f.accessKeyId, secretAccessKey: f.secretAccessKey, roleArn: f.roleArn, region: f.region,
+            ...(f.externalId ? { externalId: f.externalId } : {}),
+          },
         }),
       });
       // The secret is cleared as soon as it has been sent.
-      if (useKey) setKeys({ accessKeyId: '', secretAccessKey: '' });
+      setForm((v) => ({ ...v, accessKeyId: '', secretAccessKey: '' }));
       const data = await res.json().catch(() => ({})) as { ok?: boolean; data?: { id: string }; error?: { message?: string } };
       if (!res.ok || !data.ok || !data.data) {
         setError(data.error?.message ?? 'Failed to connect the account');
@@ -53,7 +50,7 @@ export default function ConnectAwsAccountForm({ onConnected }: { onConnected: (a
       }
       // Check the connection right away, so the list shows the result (connected, or why not).
       await fetch(`/api/cloud-accounts/${data.data.id}/validate`, { method: 'POST', credentials: 'include' }).catch(() => undefined);
-      setRole({ roleArn: '', externalId: '', region: role.region });
+      setForm((v) => ({ ...v, roleArn: '', externalId: '' }));
       setName('');
       await onConnected(data.data.id);
     } catch (err) {
@@ -65,52 +62,14 @@ export default function ConnectAwsAccountForm({ onConnected }: { onConnected: (a
 
   return (
     <div className="space-y-3" data-testid="connect-aws-form">
-      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="How to connect">
-        {([
-          ['role', 'IAM role', 'Recommended. Also lets CloudCraft run Terraform.'],
-          ['access-key', 'Access key', 'Quick, read-only. Discovery only.'],
-        ] as const).map(([value, title, hint]) => (
-          <button
-            key={value}
-            type="button"
-            role="radio"
-            aria-checked={method === value}
-            onClick={() => setMethod(value)}
-            className={clsx('text-left rounded-lg border px-3 py-2 transition-colors', method === value ? 'border-blue-500 bg-blue-900/20' : 'border-gray-700 hover:bg-gray-700/40')}
-          >
-            <p className="text-white text-xs font-semibold">{title}</p>
-            <p className="text-gray-400 text-[11px] leading-snug">{hint}</p>
-          </button>
-        ))}
-      </div>
-
-      {method === 'role' ? (
-        <>
-          <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-3 text-xs text-blue-300">
-            <p className="font-medium mb-1">IAM cross-account role (recommended)</p>
-            <p className="text-blue-400">Create an IAM role in your AWS account with <strong>ReadOnlyAccess</strong> and add CloudCraft as a trusted principal. Credentials are stored server-side only.</p>
-          </div>
-          <AwsConnectGuide externalId={role.externalId} roleArn={role.roleArn} onExternalId={(value) => setRole((f) => ({ ...f, externalId: value }))} />
-        </>
-      ) : (
-        <AwsAccessKeyGuide />
-      )}
+      <AwsKeyRoleGuide roleArn={form.roleArn} externalId={form.externalId} onExternalId={(value) => setForm((v) => ({ ...v, externalId: value }))} />
 
       <input type="text" placeholder="Account name (optional)" value={name} onChange={(e) => setName(e.target.value)} className={INPUT} />
-
-      {method === 'role' ? (
-        <>
-          <input type="text" placeholder="Role ARN (arn:aws:iam::123456789012:role/CloudCraftReadOnly)" value={role.roleArn} onChange={(e) => setRole((f) => ({ ...f, roleArn: e.target.value }))} className={INPUT} />
-          <input type="text" placeholder="External ID (shared secret)" value={role.externalId} onChange={(e) => setRole((f) => ({ ...f, externalId: e.target.value }))} className={INPUT} />
-        </>
-      ) : (
-        <>
-          <input type="text" placeholder="Access key ID (AKIA…)" value={keys.accessKeyId} onChange={(e) => setKeys((f) => ({ ...f, accessKeyId: e.target.value }))} autoComplete="off" spellCheck={false} className={`${INPUT} font-mono`} />
-          <input type="password" placeholder="Secret access key (shown once by AWS; never shown again here)" value={keys.secretAccessKey} onChange={(e) => setKeys((f) => ({ ...f, secretAccessKey: e.target.value }))} autoComplete="new-password" spellCheck={false} className={`${INPUT} font-mono`} />
-        </>
-      )}
-
-      <select value={role.region} onChange={(e) => setRole((f) => ({ ...f, region: e.target.value }))} aria-label="Region" className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+      <input type="text" placeholder="Access key ID (AKIA…)" value={form.accessKeyId} onChange={(e) => setForm((v) => ({ ...v, accessKeyId: e.target.value }))} autoComplete="off" spellCheck={false} className={`${INPUT} font-mono`} />
+      <input type="password" placeholder="Secret access key (shown once by AWS; never shown again here)" value={form.secretAccessKey} onChange={(e) => setForm((v) => ({ ...v, secretAccessKey: e.target.value }))} autoComplete="new-password" spellCheck={false} className={`${INPUT} font-mono`} />
+      <input type="text" placeholder="Role ARN (arn:aws:iam::123456789012:role/CloudCraftRole)" value={form.roleArn} onChange={(e) => setForm((v) => ({ ...v, roleArn: e.target.value }))} autoComplete="off" spellCheck={false} className={INPUT} />
+      <input type="text" placeholder="External ID (optional — only if the role requires one)" value={form.externalId} onChange={(e) => setForm((v) => ({ ...v, externalId: e.target.value }))} autoComplete="off" spellCheck={false} className={INPUT} />
+      <select value={form.region} onChange={(e) => setForm((v) => ({ ...v, region: e.target.value }))} aria-label="Region" className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
         {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
       </select>
 

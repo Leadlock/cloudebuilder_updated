@@ -52,10 +52,10 @@ const AwsCredentialsSchema = z.object({
     .array(z.string().regex(AWS_REGION_RE, 'Each additionalRegion must be a valid AWS region identifier'))
     .max(20)
     .optional(),
-});
+}).strict();
 
 /**
- * Access-key connection (discovery only). Long-term IAM user keys: the key id starts AKIA and is 20 characters, the secret is
+ * Access-key connection with NO role (discovery only; kept for connections made earlier). Long-term IAM user keys: the key id starts AKIA and is 20 characters, the secret is
  * exactly 40 characters of base64. Temporary keys (ASIA…) need a session token and are not accepted.
  */
 const AwsKeyCredentialsSchema = z.object({
@@ -72,7 +72,34 @@ const AwsKeyCredentialsSchema = z.object({
     .array(z.string().regex(AWS_REGION_RE, 'Each additionalRegion must be a valid AWS region identifier'))
     .max(20)
     .optional(),
-});
+}).strict();   // strict: a key + role body that fails its own schema must NOT fall through and be saved as a key alone with the role dropped
+
+/**
+ * The user's own access key + the user's own role (how accounts are connected now). The key's IAM user only needs permission to
+ * assume the role; the role carries the permissions. The External ID is optional (only if the role's trust policy requires it).
+ */
+const AwsKeyRoleCredentialsSchema = z.object({
+  accessKeyId: z
+    .string()
+    .regex(/^AKIA[A-Z0-9]{16}$/, 'accessKeyId must be a long-term IAM access key ID (20 characters, starting AKIA)'),
+  secretAccessKey: z
+    .string()
+    .regex(/^[A-Za-z0-9/+=]{40}$/, 'secretAccessKey must be the 40-character secret access key'),
+  roleArn: z
+    .string()
+    .regex(AWS_ROLE_ARN_RE, 'roleArn must be a valid IAM Role ARN (arn:aws:iam::<12-digit-account>:role/<name>)'),
+  externalId: z
+    .string()
+    .regex(AWS_EXTERNAL_ID_RE, 'externalId must be 2–1224 printable ASCII characters with no surrounding whitespace')
+    .optional(),
+  region: z
+    .string()
+    .regex(AWS_REGION_RE, 'region must be a valid AWS region identifier (e.g. us-east-1)'),
+  additionalRegions: z
+    .array(z.string().regex(AWS_REGION_RE, 'Each additionalRegion must be a valid AWS region identifier'))
+    .max(20)
+    .optional(),
+}).strict();
 
 const AzureCredentialsSchema = z.object({
   tenantId: z
@@ -88,13 +115,14 @@ const AzureCredentialsSchema = z.object({
   subscriptionId: z
     .string()
     .regex(UUID_RE, 'subscriptionId must be a valid UUID'),
-});
+}).strict();
 
 const CreateCloudAccountSchema = z.object({
   orgId:       z.string().min(1).optional(),
   provider:    z.enum(['aws', 'azure']),
   name:        z.string().min(1).max(120),
-  credentials: z.union([AwsCredentialsSchema, AwsKeyCredentialsSchema, AzureCredentialsSchema]),
+  // Most specific first: a key + role must not be read as a key alone or as a role alone.
+  credentials: z.union([AwsKeyRoleCredentialsSchema, AwsKeyCredentialsSchema, AwsCredentialsSchema, AzureCredentialsSchema]),
 });
 
 // ─── Route handlers ───────────────────────────────────────────────────────────

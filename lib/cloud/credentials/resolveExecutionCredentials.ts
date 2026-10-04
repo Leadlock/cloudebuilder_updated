@@ -30,7 +30,7 @@
  * any API response.
  */
 import { STSClient, AssumeRoleCommand } from '@aws-sdk/client-sts';
-import { isAwsRoleCredentials } from '@/lib/cloud/types';
+import { isAwsKeyRoleCredentials, isAwsRoleCredentials } from '@/lib/cloud/types';
 import { assertTerraformCapable } from '@/lib/cloud/terraformCapability';
 import type { CloudCredentials } from '@/lib/cloud/types';
 
@@ -38,13 +38,16 @@ export async function resolveExecutionCredentials(
   credentials: CloudCredentials,
 ): Promise<Record<string, string>> {
   assertTerraformCapable(credentials);     // defence in depth: an access key never becomes Terraform's environment
-  if (isAwsRoleCredentials(credentials)) {
-    const stsClient = new STSClient({ region: credentials.region });
+  if (isAwsRoleCredentials(credentials) || isAwsKeyRoleCredentials(credentials)) {
+    // The user's own key signs in (a legacy role-only connection uses the server's ambient identity); the role is assumed either way,
+    // so Terraform only ever runs on short-lived credentials.
+    const signIn = isAwsKeyRoleCredentials(credentials) ? { credentials: { accessKeyId: credentials.accessKeyId, secretAccessKey: credentials.secretAccessKey } } : {};
+    const stsClient = new STSClient({ region: credentials.region, ...signIn });
     const assumed = await stsClient.send(
       new AssumeRoleCommand({
         RoleArn: credentials.roleArn,
         RoleSessionName: 'cloudcraft-terraform-execution',
-        ExternalId: credentials.externalId,
+        ExternalId: credentials.externalId || undefined,
         DurationSeconds: 3600,
       }),
     );

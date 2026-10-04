@@ -10,7 +10,7 @@ import { isAwsKeyCredentials } from '@/lib/cloud/types';
 import type { AwsKeyCredentials, CloudCredentials } from '@/lib/cloud/types';
 
 export const ACCESS_KEY_NOT_FOR_TERRAFORM =
-  'This account was connected with an access key, which CloudCraft uses only to read (discover) your resources. To run Terraform, connect the account with an IAM role instead.';
+  'This account was connected with an access key alone, which CloudCraft uses only to read (discover) your resources. To run Terraform, connect the account again with an access key and an IAM role: the role does the work, on temporary credentials.';
 
 /** Throws (HTTP 400) if the account cannot be used to run Terraform. */
 export function assertTerraformCapable(credentials: CloudCredentials): asserts credentials is Exclude<CloudCredentials, AwsKeyCredentials> {

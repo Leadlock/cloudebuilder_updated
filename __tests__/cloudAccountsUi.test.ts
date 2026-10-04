@@ -16,26 +16,44 @@ const noop = async () => undefined;
 describe('Connect AWS form', () => {
   const markup = html(createElement(ConnectAwsAccountForm, { onConnected: noop }));
 
-  it('offers the IAM role (recommended) and the read-only access key, with the role selected first', () => {
-    expect(markup).toContain('IAM role');
-    expect(markup).toContain('Recommended. Also lets CloudCraft run Terraform.');
-    expect(markup).toContain('Access key');
-    expect(markup).toContain('Quick, read-only. Discovery only.');
-    expect(markup).toMatch(/aria-checked="true"[^>]*>\s*<p[^>]*>IAM role/);
+  it('is about the user\'s own account: their key and their role, with nothing of CloudCraft\'s to set up or trust', () => {
+    expect(markup).toContain('Connect your own AWS account');
+    expect(markup).toContain('nothing of CloudCraft');
+    expect(markup).toContain('temporary role credentials');
+    expect(markup).not.toMatch(/CloudCraft (server )?signs in to AWS/i);
+    expect(markup).not.toContain('Checking how CloudCraft signs in to AWS');
+    expect(markup).not.toContain('no AWS credentials of its own');
   });
 
-  it('starts with the role fields (Role ARN, External ID) and none of the access-key fields', () => {
-    expect(markup).toContain('Role ARN (arn:aws:iam::123456789012:role/CloudCraftReadOnly)');
-    expect(markup).toContain('External ID (shared secret)');
-    expect(markup).not.toContain('Access key ID (AKIA');
-    expect(markup).not.toContain('Secret access key');
-  });
-
-  it('has a region, an account name, the connect button, and a way to check the server\'s AWS sign-in first', () => {
-    expect(markup).toContain('Account name (optional)');
+  it('asks for the access key, its secret (masked), the role ARN, an OPTIONAL External ID and a region — in one form, no method to choose', () => {
+    expect(markup).toContain('Access key ID (AKIA');
+    expect(markup).toMatch(/type="password"[^>]*placeholder="Secret access key/);
+    expect(markup).toContain('Role ARN (arn:aws:iam::123456789012:role/CloudCraftRole)');
+    expect(markup).toContain('External ID (optional');
     expect(markup).toContain('aria-label="Region"');
+    expect(markup).toContain('Account name (optional)');
     expect(markup).toContain('Connect AWS Account');
-    expect(markup).toContain('Checking how CloudCraft signs in to AWS');     // the guide starts by asking the server who it is
+    expect(markup).not.toContain('role="radiogroup"');
+  });
+
+  it('keeps the secret from being autofilled or spell-checked', () => {
+    expect(markup).toMatch(/autoComplete="new-password"/);
+  });
+
+  it('walks through the four steps in the user\'s own AWS account and writes the policies for them', () => {
+    expect(markup).toContain('How to set it up in AWS (4 short steps)');
+    for (const step of ['1. Create the role', '2. Give the role its permissions', '3. Create an IAM user that may only assume the role', '4. Create the user']) expect(markup).toContain(step);
+    expect(markup).toContain('Trust policy for the role');
+    expect(markup).toContain('Read-only policy for discovery');
+    expect(markup).toContain('Inline policy for the user');
+    expect(markup).toContain('CloudCraftDiscoveryReadOnly');
+    expect(markup).toContain('sts:AssumeRole');
+  });
+
+  it('before an account ID is known the policies carry a clear placeholder, and the trust policy trusts the user\'s OWN account (not anyone else\'s)', () => {
+    expect(markup).toContain('&lt;YOUR-12-DIGIT-ACCOUNT-ID&gt;');
+    expect(markup).toContain('arn:aws:iam::&lt;YOUR-12-DIGIT-ACCOUNT-ID&gt;:root');
+    expect(markup).toContain('Generate an External ID (optional)');
   });
 });
 

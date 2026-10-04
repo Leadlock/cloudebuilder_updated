@@ -160,7 +160,7 @@ describe('an access key never runs Terraform', () => {
     }
     expect(() => assertTerraformCapable(role)).not.toThrow();
     expect(() => assertTerraformCapable(azure)).not.toThrow();
-    expect(ACCESS_KEY_NOT_FOR_TERRAFORM).toMatch(/connect the account with an IAM role/i);
+    expect(ACCESS_KEY_NOT_FOR_TERRAFORM).toMatch(/access key and an IAM role/i);
   });
 
   it('the environment Terraform would run with is never built from a key (defence in depth)', async () => {

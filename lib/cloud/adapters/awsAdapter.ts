@@ -101,6 +101,7 @@ import {
 import { Route53Client, ListHostedZonesCommand, ListResourceRecordSetsCommand } from '@aws-sdk/client-route-53';
 import { CloudWatchClient, DescribeAlarmsCommand } from '@aws-sdk/client-cloudwatch';
 import { WAFV2Client, ListWebACLsCommand, GetWebACLCommand } from '@aws-sdk/client-wafv2';
+import { isAwsKeyCredentials, isAwsKeyRoleCredentials } from '../types';
 import type {
   AwsCredentials,
   DiscoveredResource,
@@ -216,20 +217,22 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
   }> {
     if (this._sessionCredentials) return this._sessionCredentials;
 
-    // Access-key connection: the key is used as it is — nothing to assume, and no AWS identity needed on the CloudCraft server.
     const own = this._credentials;
-    if ('accessKeyId' in own) {
+    // A key with no role (older connections): used as it is — nothing to assume.
+    if (isAwsKeyCredentials(own)) {
       this._sessionCredentials = { accessKeyId: own.accessKeyId, secretAccessKey: own.secretAccessKey };
       return this._sessionCredentials;
     }
 
-    const stsClient = new STSClient({ region: own.region });
+    // The user's own key signs in; a legacy role-only connection uses the server's ambient identity instead.
+    const signIn = isAwsKeyRoleCredentials(own) ? { credentials: { accessKeyId: own.accessKeyId, secretAccessKey: own.secretAccessKey } } : {};
+    const stsClient = new STSClient({ region: own.region, ...signIn });
     const assumed = await retryWithBackoff(() =>
       stsClient.send(
         new AssumeRoleCommand({
           RoleArn: own.roleArn,
           RoleSessionName: 'cloudcraft-discovery',
-          ExternalId: own.externalId,
+          ExternalId: own.externalId || undefined,
           DurationSeconds: 3600,
         }),
       ),
@@ -463,6 +466,18 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
 
   async validateAccount(): Promise<AccountValidationResult> {
     try {
+      // A root-user key can do anything in the account. It must never be handed to a tool that only needs to read — checked on the
+      // key itself, before any role is assumed with it.
+      if ('accessKeyId' in this._credentials) {
+        const key = this._credentials;
+        const keyIdentity = await retryWithBackoff(() =>
+          new STSClient({ region: key.region, credentials: { accessKeyId: key.accessKeyId, secretAccessKey: key.secretAccessKey } }).send(new GetCallerIdentityCommand({})),
+        );
+        if (keyIdentity.Arn && /:root$/.test(keyIdentity.Arn)) {
+          return { valid: false, permissionsOk: false, missingPermissions: [], error: 'ROOT_ACCESS_KEY: the access key belongs to the account root user' };
+        }
+      }
+
       const creds = await this._assumeRole();
       const stsClient = new STSClient({
         region: this._credentials.region,
@@ -485,10 +500,6 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         };
       }
 
-      // A root-user key can do anything in the account. It must never be handed to a tool that only needs to read.
-      if ('accessKeyId' in this._credentials && /:root$/.test(identity.Arn)) {
-        return { valid: false, permissionsOk: false, missingPermissions: [], error: 'ROOT_ACCESS_KEY: the access key belongs to the account root user' };
-      }
 
       // Lightweight check
       const ec2 = await this._makeEc2Client(this._credentials.region);
