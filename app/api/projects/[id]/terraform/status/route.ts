@@ -14,6 +14,7 @@ import { peekRateLimit } from '@/lib/api/rateLimit';
 import { planLimit, planRateKey } from '@/lib/terraform/execution/limits';
 import { isProjectLocked } from '@/lib/terraform/execution/projectLock';
 import { TtlCache } from '@/lib/api/ttlCache';
+import { APPLY_WORKER, APPLY_WORKER_COMMAND, workerStatus } from '@/lib/terraform/execution/applyProgress';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +53,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       ...(denied ? { reason: denied } : {}),
       plans: { limit, remaining: budget.remaining, resetsInSeconds: budget.resetsInSeconds, windowMinutes },
       applyRunning: isProjectLocked(projectId),
+      applyWorker: { ...workerStatus(APPLY_WORKER), command: APPLY_WORKER_COMMAND },
     });
   } catch (err) {
     console.error('[GET /api/projects/:id/terraform/status]', err instanceof Error ? err.message : String(err));

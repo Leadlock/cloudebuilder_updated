@@ -14,6 +14,7 @@ import clsx from 'clsx';
 import TerraformLimitsBar from './TerraformLimitsBar';
 import TerraformErrorBox from './TerraformErrorBox';
 import TerraformApprovalBar, { TerraformApprovalInbox } from './TerraformApprovalBar';
+import TerraformWorkerNotice from './TerraformWorkerNotice';
 
 interface CloudAccount {
   id: string;
@@ -94,6 +95,7 @@ export default function TerraformExecutionPanel() {
   const [planError, setPlanError] = useState<string | null>(null);
 
   const [applyJobId, setApplyJobId] = useState<string | null>(null);
+  const [applyRunId, setApplyRunId] = useState<string | null>(null);
   const [applyStatus, setApplyStatus] = useState<TerraformApplyStatus | null>(null);
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
@@ -158,11 +160,11 @@ export default function TerraformExecutionPanel() {
   }
 
   // Declared before the effects that use it.
-  function pollApplyStatus(projectId: string, jobId: string) {
+  function pollApplyStatus(projectId: string, jobId: string, runId?: string | null) {
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     pollIntervalRef.current = setInterval(async () => {
       try {
-        const status = await ApiTerraformExecutionService.getApplyStatus(projectId, jobId, currentUser);
+        const status = await ApiTerraformExecutionService.getApplyStatus(projectId, jobId, currentUser, runId);
         setApplyStatus(status);
         if (status.state === 'completed' || status.state === 'failed' || status.state === 'unknown') {
           if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
@@ -174,7 +176,7 @@ export default function TerraformExecutionPanel() {
         setApplying(false);
         setApplyError(err instanceof Error ? err.message : 'Failed to poll apply status');
       }
-    }, 3000);
+    }, 2000);
   }
 
   useEffect(() => {
@@ -198,6 +200,7 @@ export default function TerraformExecutionPanel() {
         const parsed = JSON.parse(savedState);
         if (parsed.plan) setPlan(parsed.plan);
         if (parsed.applyJobId) setApplyJobId(parsed.applyJobId);
+        if (parsed.applyRunId) setApplyRunId(parsed.applyRunId);
         if (parsed.applyStatus) setApplyStatus(parsed.applyStatus);
         if (parsed.applying !== undefined) setApplying(parsed.applying);
         if (parsed.planning !== undefined) setPlanning(parsed.planning);
@@ -213,7 +216,7 @@ export default function TerraformExecutionPanel() {
 
         // Resume polling if job is active or in progress
         if (parsed.applyJobId && activeProject && (!parsed.applyStatus || parsed.applyStatus.state === 'active' || parsed.applyStatus.state === 'pending' || parsed.applying)) {
-          pollApplyStatus(activeProject.id, parsed.applyJobId);
+          pollApplyStatus(activeProject.id, parsed.applyJobId, parsed.applyRunId);
         }
       }
     } catch (e) {
@@ -241,6 +244,7 @@ export default function TerraformExecutionPanel() {
       localStorage.setItem(storageKey, JSON.stringify({
         plan,
         applyJobId,
+        applyRunId,
         applyStatus,
         applying,
         planning,
@@ -252,7 +256,7 @@ export default function TerraformExecutionPanel() {
         destroyOutputTail,
       }));
     } catch {}
-  }, [storageKey, plan, applyJobId, applyStatus, applying, planning, destroying, completedCount, startedAt, destroySuccess, destroyError, destroyOutputTail]);
+  }, [storageKey, plan, applyJobId, applyRunId, applyStatus, applying, planning, destroying, completedCount, startedAt, destroySuccess, destroyError, destroyOutputTail]);
 
   useEffect(() => {
     if (!activeProject) return;
@@ -312,15 +316,18 @@ export default function TerraformExecutionPanel() {
         setElapsedSeconds((s) => s + 1);
       }, 1000);
 
+      // Apply progress is real (read from Terraform's output on the server). Only teardown still estimates.
       const totalResources = plan?.summary.resourceChanges.length ?? 1;
-      progressTimerRef.current = setInterval(() => {
-        setCompletedCount((prev) => {
-          if (prev < Math.max(1, totalResources - 1)) {
-            return prev + 1;
-          }
-          return prev;
-        });
-      }, 2500);
+      if (!applying) {
+        progressTimerRef.current = setInterval(() => {
+          setCompletedCount((prev) => {
+            if (prev < Math.max(1, totalResources - 1)) {
+              return prev + 1;
+            }
+            return prev;
+          });
+        }, 2500);
+      }
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
       if (progressTimerRef.current) clearInterval(progressTimerRef.current);
@@ -407,6 +414,7 @@ export default function TerraformExecutionPanel() {
     setPlan(null);
     setApplyStatus(null);
     setApplyJobId(null);
+    setApplyRunId(null);
     setApplyError(null);
     setDestroySuccess(null);
     setDestroyError(null);
@@ -438,9 +446,10 @@ export default function TerraformExecutionPanel() {
     setElapsedSeconds(0);
     setCompletedCount(0);
     try {
-      const { jobId } = await ApiTerraformExecutionService.confirmApply(activeProject.id, plan.planId, plan.planHash, currentUser);
+      const { jobId, applyRunId: runId } = await ApiTerraformExecutionService.confirmApply(activeProject.id, plan.planId, plan.planHash, currentUser);
       setApplyJobId(jobId);
-      pollApplyStatus(activeProject.id, jobId);
+      setApplyRunId(runId);
+      pollApplyStatus(activeProject.id, jobId, runId);
     } catch (err) {
       setApplyError(err instanceof Error ? err.message : 'Apply failed to start');
       setApplying(false);
@@ -488,6 +497,7 @@ export default function TerraformExecutionPanel() {
   }
 
   function resetPlan() {
+    setApplyRunId(null);
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     if (timerRef.current) clearInterval(timerRef.current);
     if (progressTimerRef.current) clearInterval(progressTimerRef.current);
@@ -514,12 +524,22 @@ export default function TerraformExecutionPanel() {
 
   const resourceChanges = plan?.summary.resourceChanges ?? [];
   const totalResources = resourceChanges.length;
-  const isAllDone = applyStatus?.state === 'completed' || completedCount >= totalResources;
-  const progressPercent = totalResources > 0 ? Math.min(100, Math.round((completedCount / totalResources) * 100)) : 0;
+  const progress = applyStatus?.progress ?? null;
+  const progressByAddress = new Map((progress?.resources ?? []).map((r) => [r.address, r]));
+  const doneCount = progress ? progress.counts.done : completedCount;
+  const isAllDone = applyStatus?.state === 'completed' || (!progress && completedCount >= totalResources);
+  const progressPercent = totalResources > 0 ? Math.min(100, Math.round((doneCount / totalResources) * 100)) : 0;
+  const rowStatus = (address: string, idx: number): { done: boolean; running: boolean; failed: boolean; stopped: boolean; seconds?: number; startedAt?: number } => {
+    if (progress) {
+      const r = progressByAddress.get(address);
+      const st = r?.state ?? 'queued';
+      return { done: isAllDone || st === 'done', running: st === 'running', failed: st === 'failed', stopped: st === 'stopped', seconds: r?.seconds, startedAt: r?.startedAt };
+    }
+    return { done: isAllDone || idx < completedCount, running: !!applying && idx === completedCount, failed: false, stopped: false };
+  };
 
   const filteredResources = resourceChanges.filter((rc, idx) => {
-    const isDone = isAllDone || idx < completedCount;
-    const isRunning = applying && idx === completedCount;
+    const { done: isDone, running: isRunning } = rowStatus(rc.address, idx);
     const isQueued = !isDone && !isRunning;
 
     if (filterMode === 'completed' && !isDone) return false;
@@ -768,10 +788,10 @@ export default function TerraformExecutionPanel() {
                   <button
                     onClick={resetPlan}
                     className="text-[11px] px-2.5 py-1 rounded bg-rose-950/60 hover:bg-rose-900 border border-rose-800/80 text-rose-300 transition-colors flex items-center gap-1 font-medium shadow-sm"
-                    title="Stop process, clear plan, and reset view"
+                    title={applying ? 'Closes this view only. It does NOT stop the deployment, which keeps running on the server.' : 'Clear plan and reset view'}
                   >
                     <XCircle className="w-3.5 h-3.5 text-rose-400" />
-                    {applying ? 'Terminate / Stop' : 'Clear / Discard'}
+                    {applying ? 'Hide this view' : 'Clear / Discard'}
                   </button>
                 </div>
               </div>
@@ -803,7 +823,7 @@ export default function TerraformExecutionPanel() {
                       ) : (
                         <>
                           <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
-                          <span>Provisioning Infrastructure ({completedCount} of {totalResources} Complete)</span>
+                          <span>Provisioning Infrastructure ({doneCount} of {totalResources} Complete{progress && progress.counts.running > 0 ? `, ${progress.counts.running} in progress` : ''}{progress && progress.counts.failed > 0 ? `, ${progress.counts.failed} failed` : ''})</span>
                         </>
                       )}
                     </span>
@@ -813,9 +833,9 @@ export default function TerraformExecutionPanel() {
                         <button
                           onClick={resetPlan}
                           className="text-[10px] px-2 py-0.5 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 transition-colors font-medium"
-                          title="Terminate execution and reset panel"
+                          title="Closes this view only. It does NOT stop the deployment."
                         >
-                          Terminate
+                          Hide
                         </button>
                       )}
                     </div>
@@ -834,6 +854,16 @@ export default function TerraformExecutionPanel() {
                     />
                   </div>
                 </div>
+              )}
+
+              {applyStatus?.diagnosis && (
+                <div className="mb-3 p-3 rounded-lg bg-amber-950/40 border border-amber-700/50 text-amber-200 text-xs" data-testid="apply-diagnosis">
+                  <p className="flex items-center gap-2 font-semibold"><AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" /> {applyStatus.diagnosis.title}</p>
+                  <p className="mt-1 text-amber-200/90 leading-relaxed">{applyStatus.diagnosis.message}</p>
+                </div>
+              )}
+              {progress?.status === 'queued' && !applyStatus?.diagnosis && (
+                <p className="mb-3 text-xs text-gray-400">Queued — waiting for the worker to start Terraform…</p>
               )}
 
               {/* Search & Filter for Services */}
@@ -883,9 +913,12 @@ export default function TerraformExecutionPanel() {
                 <div className="max-h-60 overflow-y-auto bg-gray-950 rounded-xl p-2 mb-3 border border-gray-800 space-y-1.5 custom-scrollbar">
                   {filteredResources.map((rc) => {
                     const originalIdx = resourceChanges.findIndex((r) => r.address === rc.address);
-                    const isDone = isAllDone || originalIdx < completedCount;
-                    const isRunning = applying && originalIdx === completedCount;
-                    const isQueued = !isDone && !isRunning;
+                    const row = rowStatus(rc.address, originalIdx);
+                    const isDone = row.done;
+                    const isRunning = row.running;
+                    const isFailed = row.failed;
+                    const isStopped = row.stopped;
+                    const runningFor = isRunning && row.startedAt ? Math.max(row.seconds ?? 0, Math.floor((Date.now() - row.startedAt) / 1000)) : row.seconds;
                     const Icon = getResourceIcon(rc.type, rc.address);
 
                     return (
@@ -893,7 +926,9 @@ export default function TerraformExecutionPanel() {
                         key={rc.address}
                         className={clsx(
                           'flex items-center justify-between p-2 rounded-lg border text-xs transition-all',
-                          isDone
+                          isFailed
+                            ? 'bg-rose-950/30 border-rose-500/40 text-rose-200'
+                            : isDone
                             ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200'
                             : isRunning
                             ? 'bg-blue-950/40 border-blue-500/50 text-blue-200 shadow-sm shadow-blue-500/10'
@@ -935,13 +970,21 @@ export default function TerraformExecutionPanel() {
 
                         {/* Status Badges with Ticks */}
                         <div className="shrink-0 flex items-center gap-1.5">
-                          {isDone ? (
+                          {isFailed ? (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-900/50 border border-rose-500/40 text-rose-300 text-[10px] font-semibold">
+                              <XCircle className="w-3 h-3 text-rose-400" /> Failed
+                            </span>
+                          ) : isDone ? (
                             <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-900/50 border border-emerald-500/40 text-emerald-300 text-[10px] font-semibold">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Done
+                              <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Done{runningFor !== undefined && runningFor > 0 ? ` · ${formatDuration(runningFor)}` : ''}
                             </span>
                           ) : isRunning ? (
                             <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-900/60 border border-blue-500/50 text-blue-300 text-[10px] font-semibold animate-pulse">
-                              <Loader2 className="w-3 h-3 animate-spin text-blue-400" /> Applying
+                              <Loader2 className="w-3 h-3 animate-spin text-blue-400" /> Applying{runningFor !== undefined && runningFor > 0 ? ` · ${formatDuration(runningFor)}` : ''}
+                            </span>
+                          ) : isStopped ? (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-900 border border-gray-700 text-gray-400 text-[10px]">
+                              <AlertTriangle className="w-3 h-3" /> Did not finish
                             </span>
                           ) : (
                             <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-900 border border-gray-800 text-gray-500 text-[10px]">
@@ -954,6 +997,8 @@ export default function TerraformExecutionPanel() {
                   })}
                 </div>
               )}
+
+              {!applyJobId && activeProject && <TerraformWorkerNotice projectId={activeProject.id} environment={state.activeEnvironment} />}
 
               {/* Approval: a plan only runs once an owner/admin has approved exactly this plan */}
               {!applyJobId && activeProject && (
@@ -1048,7 +1093,7 @@ export default function TerraformExecutionPanel() {
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 font-semibold text-xs transition-colors"
                       >
                         <XCircle className="w-3.5 h-3.5 text-rose-400" />
-                        Terminate / Cancel
+                        Hide this view (does not stop the deployment)
                       </button>
                     </div>
                   )}

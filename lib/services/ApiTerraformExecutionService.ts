@@ -1,4 +1,5 @@
 import type { PlanSummary, TerraformStateBackendConfig, ApplyJobOutput } from '@/lib/terraform/execution/types';
+import type { RunProgressRecord, WorkerStatus, ApplyDiagnosis } from '@/lib/terraform/execution/applyProgress';
 
 function parseErrorMessage(err: unknown, fallback: string): string {
   if (!err || typeof err !== 'object') return fallback;
@@ -31,6 +32,12 @@ export interface TerraformPlanResult {
 export interface TerraformApplyStatus {
   state: 'pending' | 'active' | 'completed' | 'failed' | 'unknown';
   output: ApplyJobOutput | null;
+  /** What Terraform is really doing, read from its own output (absent for runs started before this existed). */
+  progress?: RunProgressRecord | null;
+  /** Whether the deployment worker that runs applies is up. */
+  worker?: WorkerStatus;
+  /** A plain-language reason the run looks stuck (no worker, worker stopped, Terraform silent), or null. */
+  diagnosis?: ApplyDiagnosis | null;
 }
 
 /** Result of the teardown preview: a real `terraform plan -destroy` of what the state holds. */
@@ -180,13 +187,14 @@ export class ApiTerraformExecutionService {
     projectId: string,
     jobId: string,
     user?: { id: string; role?: string },
+    applyRunId?: string | null,
   ): Promise<TerraformApplyStatus> {
     const headers: Record<string, string> = {};
     if (user?.id) {
       headers['x-user-id'] = user.id;
       if (user.role) headers['x-user-role'] = user.role;
     }
-    const res = await fetch(`/api/projects/${projectId}/terraform/apply?jobId=${encodeURIComponent(jobId)}`, {
+    const res = await fetch(`/api/projects/${projectId}/terraform/apply?jobId=${encodeURIComponent(jobId)}${applyRunId ? `&applyRunId=${encodeURIComponent(applyRunId)}` : ''}`, {
       headers,
       credentials: 'include',
     });

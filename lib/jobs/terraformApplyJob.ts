@@ -26,6 +26,8 @@ import { recordTerraformAudit } from '@/lib/terraform/execution/audit';
 import { releaseProjectLock } from '@/lib/terraform/execution/projectLock';
 import { runApply } from '@/lib/terraform/execution/TerraformExecutionService';
 import type { TerraformApplyJobData, ApplyJobOutput } from '@/lib/terraform/execution/types';
+import { getPlan } from '@/lib/terraform/execution/planStore';
+import { ApplyProgressTracker, readRunProgress, writeRunProgress, type RunProgressRecord } from '@/lib/terraform/execution/applyProgress';
 
 export const TERRAFORM_APPLY_QUEUE = 'terraform-apply';
 
@@ -49,21 +51,58 @@ export async function enqueueApplyJob(data: TerraformApplyJobData): Promise<stri
   return jobId;
 }
 
+/**
+ * Keeps the run's progress record up to date while Terraform runs: every chunk of its output is parsed into per-resource states and the
+ * record is rewritten at most once a second (the web server reads it when the page polls). Never throws: progress is advisory.
+ */
+function startProgressReporting(data: TerraformApplyJobData) {
+  const planned = getPlan(data.planId)?.summary.resourceChanges.map((c) => ({ address: c.address, type: c.type })) ?? [];
+  const tracker = new ApplyProgressTracker(planned);
+  const previous = readRunProgress(data.applyRunId);
+  const meta = { runId: data.applyRunId, orgId: data.orgId, projectId: data.projectId ?? previous?.projectId ?? '' };
+  const startedAt = Date.now();
+  let dirty = true;
+  let status: RunProgressRecord['status'] = 'running';
+  let final: { message?: string; error?: string; finishedAt?: number } = {};
+
+  const write = () => {
+    dirty = false;
+    writeRunProgress({ ...meta, status, enqueuedAt: previous?.enqueuedAt ?? startedAt, startedAt, updatedAt: Date.now(), ...final, ...tracker.snapshot() });
+  };
+  write();
+  const timer = setInterval(() => { if (dirty) write(); }, 1000);
+  timer.unref?.();
+  return {
+    onOutput: (chunk: string) => { try { tracker.feed(chunk); dirty = true; } catch { /* a parsing problem must never stop the apply */ } },
+    finish: (ok: boolean, text: string) => {
+      clearInterval(timer);
+      tracker.finish(ok);
+      status = ok ? 'succeeded' : 'failed';
+      final = { finishedAt: Date.now(), ...(ok ? { message: text } : { error: text.slice(0, 2000) }) };
+      write();
+    },
+  };
+}
+
 /** Runs inside the worker process. */
 export async function processApplyJob(data: TerraformApplyJobData): Promise<ApplyJobOutput> {
   const audit = { action: 'apply' as const, orgId: data.orgId, projectId: data.projectId, userId: data.requestedBy, planId: data.planId };
+  const reporting = startProgressReporting(data);
   try {
     // Kill switch: honoured even for jobs that were already queued when it was switched on.
     if (terraformExecutionDisabled()) {
       const message = 'Terraform execution was switched off by the server operator before this apply ran.';
       await recordTerraformAudit({ ...audit, outcome: 'blocked', detail: message });
+      reporting.finish(false, message);
       return { status: 'failed', message, outputTail: '' };
     }
-    const result = await runApply(data.planId, data.orgId);
+    const result = await runApply(data.planId, data.orgId, reporting.onOutput);
     await recordTerraformAudit({ ...audit, outcome: 'succeeded' });
+    reporting.finish(true, result.message);
     return { status: 'success', message: result.message, outputTail: result.outputTail };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    reporting.finish(false, message);
     console.error(`[terraformApplyWorker] Apply run ${data.applyRunId} failed: ${message}`);
     await recordTerraformAudit({ ...audit, outcome: 'failed', detail: message });
     return { status: 'failed', message, outputTail: '' };

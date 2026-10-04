@@ -12,6 +12,9 @@ import type { Job } from 'pg-boss';
 import { getQueue, stopQueue } from '../lib/jobs/queue';
 import { TERRAFORM_APPLY_QUEUE, ensureTerraformApplyQueue, processApplyJob } from '../lib/jobs/terraformApplyJob';
 import type { TerraformApplyJobData } from '../lib/terraform/execution/types';
+import { APPLY_WORKER, HEARTBEAT_EVERY_MS, clearWorkerHeartbeat, writeWorkerHeartbeat } from '../lib/terraform/execution/applyProgress';
+
+let heartbeat: NodeJS.Timeout | undefined;
 
 async function main(): Promise<void> {
   await ensureTerraformApplyQueue();
@@ -23,11 +26,17 @@ async function main(): Promise<void> {
     return processApplyJob(job.data);
   });
 
+  // Tells the web app a worker is there (it shows "worker not running" otherwise, instead of waiting forever).
+  writeWorkerHeartbeat(APPLY_WORKER);
+  heartbeat = setInterval(() => writeWorkerHeartbeat(APPLY_WORKER), HEARTBEAT_EVERY_MS);
+
   console.info('[terraformApplyWorker] Started. Waiting for terraform-apply jobs...');
 }
 
 async function shutdown(signal: string): Promise<void> {
   console.info(`[terraformApplyWorker] Received ${signal}, shutting down gracefully...`);
+  if (heartbeat) clearInterval(heartbeat);
+  clearWorkerHeartbeat(APPLY_WORKER);
   await stopQueue();
   process.exit(0);
 }

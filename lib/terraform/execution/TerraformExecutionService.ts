@@ -313,7 +313,7 @@ export function verifyPlanForApply(planId: string, planHash: string): PlanRecord
  * directly from an API route — since this is the genuinely long-running,
  * infrastructure-mutating step.
  */
-export async function runApply(planId: string, orgId: string): Promise<{ message: string; outputTail: string }> {
+export async function runApply(planId: string, orgId: string, onOutput?: (chunk: string) => void): Promise<{ message: string; outputTail: string }> {
   const record = getPlan(planId);
   if (!record) {
     throw new Error('Plan not found or has expired — it may have already been applied, or the server restarted before apply ran.');
@@ -335,6 +335,7 @@ export async function runApply(planId: string, orgId: string): Promise<{ message
           cwd: record.workDir,
           env,
           timeoutMs: 45 * 60 * 1000,
+          onOutput,
         }),
       record.workDir,
       env,

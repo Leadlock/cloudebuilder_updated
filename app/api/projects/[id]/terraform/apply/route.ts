@@ -22,6 +22,7 @@ import { resolveOrgId } from '@/lib/api/phase2d';
 import { verifyPlanForApply } from '@/lib/terraform/execution/TerraformExecutionService';
 import { consumeApproval, returnApproval } from '@/lib/terraform/execution/approvals';
 import { enqueueApplyJob, getApplyJobStatus } from '@/lib/jobs/terraformApplyJob';
+import { APPLY_WORKER, diagnoseApply, newQueuedRecord, pruneRunProgress, readRunProgress, workerStatus, writeRunProgress } from '@/lib/terraform/execution/applyProgress';
 import { randomUUID } from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -84,6 +85,9 @@ export async function POST(
     }
 
     const applyRunId = randomUUID();
+    // Shown at once: every planned resource as queued, and (if no worker is running) why nothing is happening.
+    pruneRunProgress();
+    writeRunProgress(newQueuedRecord({ runId: applyRunId, orgId, projectId: record.projectId }, (record.summary.resourceChanges ?? []).map((c) => ({ address: c.address, type: c.type }))));
     let jobId: string;
     try {
       jobId = await enqueueApplyJob({
@@ -117,7 +121,16 @@ export async function GET(req: NextRequest) {
     if (!jobId) return badRequest('jobId query parameter is required');
 
     const status = await getApplyJobStatus(jobId);
-    return ok(status);
+
+    // Real progress comes from the run's own record, and only for a caller in the organisation that owns the run.
+    const runId = req.nextUrl.searchParams.get('applyRunId');
+    let progress = runId ? readRunProgress(runId) : null;
+    if (progress) {
+      const orgId = await resolveOrgId(req, identity.userId);
+      if (!orgId || progress.orgId !== orgId) progress = null;
+    }
+    const worker = workerStatus(APPLY_WORKER);
+    return ok({ ...status, progress, worker, diagnosis: diagnoseApply({ jobState: status.state, progress, worker }) });
   } catch (err) {
     console.error('[GET /api/projects/:id/terraform/apply]', err instanceof Error ? err.message : err);
     return internalError();
