@@ -115,7 +115,9 @@ describe('AzurePricingProvider against the Retail Prices API response shape', ()
     expect(await pending).toBeNull();
   });
 
-  test.each<Behaviour>(['403', '429', 'network', 'malformed'])('%s: resources with a baseline (SQL, storage, LB, App Gateway) are marked as estimates', async (b) => {
+  // With no usable live meter the adapter returns null (it never guesses a meter); CostEstimator then prices the resource from the
+  // static table in lib/engines/cost/azurePricing.ts, which is labelled a fallback estimate.
+  test.each<Behaviour>(['403', '429', 'network', 'malformed'])('%s: SQL, storage, LB and App Gateway return null so the static table is used', async (b) => {
     silence();
     mockFetch(b);
     const prov = new AzurePricingProvider();
@@ -123,9 +125,7 @@ describe('AzurePricingProvider against the Retail Prices API response shape', ()
       ['azure_sql', { tier: 'S0', maxSizeGb: 250 }], ['azure_storage', { sku: 'Standard_LRS' }],
       ['azure_lb', { sku: 'Standard' }], ['azure_app_gateway', {}],
     ] as const) {
-      const p = await prov.getPrice({ provider: 'azure', resourceType, region: 'eastus', configuration });
-      expect(p).not.toBeNull();
-      expect(classifyPricingSource(p!.source)).toBe('FALLBACK_ESTIMATE');
+      expect(await prov.getPrice({ provider: 'azure', resourceType, region: 'eastus', configuration })).toBeNull();
     }
   });
 

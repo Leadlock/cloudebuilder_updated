@@ -8,7 +8,7 @@
  */
 import type { ICloudPricingProvider, NormalizedPrice, PriceQuery } from './types';
 
-interface AzureRetailPriceItem {
+export interface AzureRetailPriceItem {
   currencyCode: string;
   tierMinimumUnits: number;
   retailPrice: number;
@@ -35,6 +35,22 @@ interface AzureRetailApiResponse {
   Items: AzureRetailPriceItem[];
   NextPageLink?: string | null;
   Count: number;
+}
+
+const HOURS_PER_MONTH = 730;
+
+/**
+ * The Retail Prices API quotes each meter in its own unit ("1 Hour", "1/Hour", "1/Day", "1/Month", "1 GB/Month", ...).
+ * Treating every retailPrice as per-hour made SQL Database (billed per DAY) look 24x too expensive, so every conversion goes through here.
+ * Returns null for a unit that is not a time-based charge, so the caller never multiplies a per-GB or per-request price by hours.
+ */
+export function monthlyFromRetailItem(item: Pick<AzureRetailPriceItem, 'retailPrice' | 'unitOfMeasure'>): number | null {
+  const unit = (item.unitOfMeasure || '').trim().toLowerCase();
+  if (/\bgb\b|\b\d*k\b|request|operation/.test(unit)) return null;
+  if (/hour/.test(unit)) return item.retailPrice * HOURS_PER_MONTH;
+  if (/day/.test(unit)) return item.retailPrice * (HOURS_PER_MONTH / 24);
+  if (/month/.test(unit)) return item.retailPrice;
+  return null;
 }
 
 export class AzurePricingProvider implements ICloudPricingProvider {
@@ -158,31 +174,30 @@ export class AzurePricingProvider implements ICloudPricingProvider {
     };
   }
 
-  private async _getSqlPrice(config: Record<string, unknown>, region: string): Promise<NormalizedPrice> {
+  private async _getSqlPrice(config: Record<string, unknown>, region: string): Promise<NormalizedPrice | null> {
     const tier = (config['tier'] as string) || 'S0';
     const maxSizeGb = Number(config['maxSizeGb'] || 250);
-    const filter = `serviceName eq 'SQL Database' and armRegionName eq '${region}' and contains(skuName, '${tier}') and priceType eq 'Consumption'`;
-    
-    let hourly = 0.020;
+
+    // Only the classic DTU tiers (Basic, S0-S12, P1-P15) are single meters. vCore tiers (GP_Gen5_N, BusinessCritical, ...) are priced per
+    // vCore by the static table, so they return null here rather than matching some unrelated meter.
+    if (!/^(Basic|S\d{1,2}|P\d{1,2})$/i.test(tier)) return null;
+
+    const filter = `serviceName eq 'SQL Database' and armRegionName eq '${region}' and skuName eq '${tier}' and priceType eq 'Consumption'`;
     let items: AzureRetailPriceItem[] = [];
     try {
       items = await this._fetchRetailPrices(filter);
     } catch {
-      // Fallback
+      return null;
     }
 
-    const item = items.find((i) => !i.meterName.toLowerCase().includes('secondary'));
-    if (item && item.retailPrice > 0) {
-      hourly = item.retailPrice;
-    } else {
-      // Standard DTU baseline relative to tier
-      const dtuMap: Record<string, number> = { 'S0': 10, 'S1': 20, 'S2': 50, 'S3': 100, 'P1': 125, 'P2': 250 };
-      const dtu = dtuMap[tier] || 10;
-      hourly = 0.002 * dtu;
-    }
+    // EXACT sku match: contains(skuName,'S1') also matches 'S12' ($145/day) and 'PRS1', which is how a small database was priced at $100,000+/mo.
+    const item = items.find((i) => i.skuName.toLowerCase() === tier.toLowerCase() && !/secondary/i.test(i.meterName) && i.retailPrice > 0);
+    const computeMonthly = item ? monthlyFromRetailItem(item) : null;
+    if (!item || computeMonthly === null) return null;
 
-    const storageMonthly = maxSizeGb * 0.122; // $0.122/GB/mo
-    const monthlyPrice = (hourly * 730) + storageMonthly;
+    // DTU tiers include storage up to a tier-specific size; only the excess over ~250GB is billed here.
+    const storageMonthly = tier.toLowerCase() === 'basic' ? 0 : Math.max(0, maxSizeGb - 250) * 0.115;
+    const monthlyPrice = computeMonthly + storageMonthly;
 
     return {
       provider: 'azure',
@@ -192,38 +207,40 @@ export class AzurePricingProvider implements ICloudPricingProvider {
       sku: tier,
       pricingModel: 'on-demand',
       unit: '1 Hour',
-      unitPrice: hourly,
+      unitPrice: computeMonthly / HOURS_PER_MONTH,
       monthlyPrice,
       currency: 'USD',
-      description: `Azure SQL Database ${tier} + ${maxSizeGb}GB storage`,
-      source: item && item.retailPrice > 0 ? 'azure-retail-api' : 'azure-static-estimate',
+      description: `Azure SQL Database ${tier} (${maxSizeGb}GB max size)`,
+      source: 'azure-retail-api',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
-        `Database compute list price: $${hourly.toFixed(4)}/hr ($${(hourly * 730).toFixed(2)}/mo)`,
-        `${maxSizeGb}GB allocated storage: $${storageMonthly.toFixed(2)}/mo`,
+        `Database ${tier} list price: $${item.retailPrice} per ${item.unitOfMeasure} = $${computeMonthly.toFixed(2)}/mo`,
+        storageMonthly > 0 ? `Storage above 250GB: $${storageMonthly.toFixed(2)}/mo` : 'Storage up to 250GB is included in the DTU price',
         `Region: ${region}`,
       ],
     };
   }
 
-  private async _getStoragePrice(config: Record<string, unknown>, region: string): Promise<NormalizedPrice> {
+  private async _getStoragePrice(config: Record<string, unknown>, region: string): Promise<NormalizedPrice | null> {
     const sku = (config['sku'] as string) || 'Standard_LRS';
     const capacityGb = Number(config['estimatedCapacityGb'] || 100);
-    const filter = `serviceName eq 'Storage' and armRegionName eq '${region}' and contains(meterName, 'Data Stored') and priceType eq 'Consumption'`;
-    
-    let pricePerGb = sku.includes('GRS') ? 0.036 : 0.0184;
-    let live = false;
+    const redundancy = /RAGZRS/i.test(sku) ? 'RA-GZRS' : /GZRS/i.test(sku) ? 'GZRS' : /RAGRS|RA-GRS/i.test(sku) ? 'RA-GRS' : /GRS/i.test(sku) ? 'GRS' : /ZRS/i.test(sku) ? 'ZRS' : 'LRS';
+    // Hot-tier block blob storage, first pricing tier. (A bare "LRS data stored" match picked up Cold, Files and Queue meters, $0.0036-0.06/GB.)
+    const filter = `serviceName eq 'Storage' and armRegionName eq '${region}' and skuName eq 'Hot ${redundancy}' and contains(meterName, 'Data Stored') and priceType eq 'Consumption'`;
+
+    let items: AzureRetailPriceItem[] = [];
     try {
-      const items = await this._fetchRetailPrices(filter);
-      const match = items.find((i) => sku.includes('GRS') ? i.meterName.includes('GRS') : i.meterName.includes('LRS'));
-      if (match && match.retailPrice > 0) { pricePerGb = match.retailPrice; live = true; }
+      items = await this._fetchRetailPrices(filter);
     } catch {
-      // Fallback
+      return null;
     }
+    const blob = items
+      .filter((i) => i.unitOfMeasure === '1 GB/Month' && i.retailPrice > 0 && /blob/i.test(i.productName) && !/hierarchical|data lake/i.test(i.productName))
+      .sort((a, b) => a.tierMinimumUnits - b.tierMinimumUnits)[0];
+    if (!blob) return null;
 
-    const monthlyPrice = capacityGb * pricePerGb;
-
+    const monthlyPrice = capacityGb * blob.retailPrice;
     return {
       provider: 'azure',
       service: 'Storage',
@@ -232,15 +249,15 @@ export class AzurePricingProvider implements ICloudPricingProvider {
       sku,
       pricingModel: 'consumption',
       unit: '1 GB/Month',
-      unitPrice: pricePerGb,
+      unitPrice: blob.retailPrice,
       monthlyPrice,
       currency: 'USD',
-      description: `Azure Blob Storage ${sku} (${capacityGb}GB)`,
-      source: live ? 'azure-retail-api' : 'azure-static-estimate',
+      description: `Azure Blob Storage Hot ${redundancy} (${capacityGb}GB)`,
+      source: 'azure-retail-api',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
-        `Rate: $${pricePerGb.toFixed(4)}/GB-month`,
+        `Hot ${redundancy} rate: $${blob.retailPrice.toFixed(4)}/GB-month`,
         `Assumed capacity: ${capacityGb}GB`,
         'Transaction and network egress charges not included',
         `Region: ${region}`,
@@ -248,22 +265,19 @@ export class AzurePricingProvider implements ICloudPricingProvider {
     };
   }
 
-  private async _getLbPrice(config: Record<string, unknown>, region: string): Promise<NormalizedPrice> {
+  private async _getLbPrice(config: Record<string, unknown>, region: string): Promise<NormalizedPrice | null> {
     const sku = (config['sku'] as string) || 'Standard';
-    const filter = `serviceName eq 'Load Balancer' and armRegionName eq '${region}' and priceType eq 'Consumption'`;
-    
-    let hourly = 0.005;
-    let live = false;
+    // The Basic Load Balancer is free (and being retired); only Standard is billed. Load Balancer meters are filed under the "Global" region.
+    if (sku === 'Basic') return null;
+    const filter = `serviceName eq 'Load Balancer' and armRegionName eq 'Global' and skuName eq 'Standard' and priceType eq 'Consumption'`;
+    let items: AzureRetailPriceItem[] = [];
     try {
-      const items = await this._fetchRetailPrices(filter);
-      const match = items.find((i) => i.meterName.toLowerCase().includes('rule') || i.meterName.toLowerCase().includes('load balancer'));
-      if (match && match.retailPrice > 0) { hourly = match.retailPrice; live = true; }
+      items = await this._fetchRetailPrices(filter);
     } catch {
-      // Fallback
+      return null;
     }
-
-    const rulesMonthly = 5 * (hourly > 0.01 ? 0.008 : hourly);
-    const monthlyPrice = (hourly * 730) + rulesMonthly;
+    const hourly = items.find((i) => /included lb rules/i.test(i.meterName) && i.retailPrice > 0)?.retailPrice;
+    if (!hourly) return null;
 
     return {
       provider: 'azure',
@@ -274,50 +288,58 @@ export class AzurePricingProvider implements ICloudPricingProvider {
       pricingModel: 'on-demand',
       unit: '1 Hour',
       unitPrice: hourly,
-      monthlyPrice,
+      monthlyPrice: hourly * HOURS_PER_MONTH,
       currency: 'USD',
       description: `Azure Load Balancer ${sku}`,
-      source: live ? 'azure-retail-api' : 'azure-static-estimate',
+      source: 'azure-retail-api',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
-        `Base hourly charge: $${hourly.toFixed(4)}/hr`,
-        `5 standard rules configured: $${rulesMonthly.toFixed(2)}/mo`,
+        `Includes the first 5 load-balancing/outbound rules: $${hourly.toFixed(4)}/hr`,
+        'Data processed ($0.005/GB) and rules beyond 5 are not included',
         `Region: ${region}`,
       ],
     };
   }
 
-  private async _getAppGatewayPrice(_config: Record<string, unknown>, region: string): Promise<NormalizedPrice> {
-    const filter = `serviceName eq 'Application Gateway' and armRegionName eq '${region}' and priceType eq 'Consumption'`;
-    let hourly = 0.246; // Standard_v2 base
-    let live = false;
+  private async _getAppGatewayPrice(config: Record<string, unknown>, region: string): Promise<NormalizedPrice | null> {
+    const waf = String(config['sku'] || 'Standard_v2').toLowerCase().includes('waf');
+    const product = waf ? 'Application Gateway WAF v2' : 'Application Gateway Standard v2';
+    const filter = `serviceName eq 'Application Gateway' and armRegionName eq '${region}' and productName eq '${product}' and priceType eq 'Consumption'`;
+    let items: AzureRetailPriceItem[] = [];
     try {
-      const items = await this._fetchRetailPrices(filter);
-      const match = items.find((i) => i.meterName.toLowerCase().includes('fixed') || i.meterName.toLowerCase().includes('gateway'));
-      if (match && match.retailPrice > 0) { hourly = match.retailPrice; live = true; }
+      items = await this._fetchRetailPrices(filter);
     } catch {
-      // Fallback
+      return null;
     }
+    // Two hourly meters: the fixed gateway charge and one per capacity unit. (The old lookup took the first meter with "gateway" in its name,
+    // which could belong to any SKU family, and ignored capacity units entirely.)
+    const fixed = items.find((i) => /fixed cost/i.test(i.meterName) && i.retailPrice > 0)?.retailPrice;
+    const unit = items.find((i) => /capacity units?/i.test(i.meterName) && i.retailPrice > 0)?.retailPrice;
+    if (!fixed || !unit) return null;
+
+    const capacity = Math.max(1, Number(config['autoscaleEnabled'] !== false ? config['minCapacity'] ?? 2 : config['capacity'] ?? 2));
+    const hourly = fixed + unit * capacity;
 
     return {
       provider: 'azure',
       service: 'Application Gateway',
       resourceType: 'azure_app_gateway',
       region,
-      sku: 'Standard_v2',
+      sku: waf ? 'WAF_v2' : 'Standard_v2',
       pricingModel: 'on-demand',
       unit: '1 Hour',
       unitPrice: hourly,
-      monthlyPrice: hourly * 730,
+      monthlyPrice: hourly * HOURS_PER_MONTH,
       currency: 'USD',
-      description: 'Azure Application Gateway Standard_v2',
-      source: live ? 'azure-retail-api' : 'azure-static-estimate',
+      description: `Azure Application Gateway ${waf ? 'WAF_v2' : 'Standard_v2'}`,
+      source: 'azure-retail-api',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
-        `Gateway fixed hourly: $${hourly.toFixed(4)}/hr`,
-        'Capacity units (CU) metered based on traffic volume',
+        `Gateway fixed charge: $${fixed.toFixed(4)}/hr ($${(fixed * HOURS_PER_MONTH).toFixed(2)}/mo)`,
+        `${capacity} capacity unit(s) at $${unit.toFixed(4)}/hr each: $${(unit * capacity * HOURS_PER_MONTH).toFixed(2)}/mo`,
+        'Additional capacity units above the minimum are metered by traffic',
         `Region: ${region}`,
       ],
     };

@@ -56,7 +56,7 @@ const SQL_HOURLY_PER_VCORE: Record<string, number> = {
   'GP_Gen5':    0.152217, // General Purpose Gen 5 per vCore
   'BC_Gen5':    0.304435, // Business Critical Gen 5 per vCore
   'Standard':   0.002,  // DTU Standard per DTU
-  'Premium':    0.0125, // DTU Premium per DTU
+  'Premium':    0.005,  // DTU Premium per DTU (P1 = 125 DTU = $15/day = $0.625/hr; verified against the Retail Prices API)
 };
 
 /**
@@ -209,8 +209,10 @@ export class AzurePricingProvider implements PricingProvider {
       assumption = 'Basic tier (fixed 5 DTU, not scalable)';
     } else {
       // Standard/Premium/S0-S4/P1-P11 DTU model
-      const dtu = this._dtuFromTier(tier);
-      const perDtu = SQL_HOURLY_PER_VCORE[tier === 'Premium' ? 'Premium' : 'Standard']!;
+      // P1-P11 and a bare "Premium" are Premium-DTU tiers (a bare "Premium" is priced as P1); everything else is Standard-DTU.
+      const isPremium = tier === 'Premium' || /^P\d+$/.test(tier);
+      const dtu = tier === 'Premium' ? 125 : this._dtuFromTier(tier);
+      const perDtu = SQL_HOURLY_PER_VCORE[isPremium ? 'Premium' : 'Standard']!;
       hourly = perDtu * dtu;
       sourceLabel = `Azure SQL ${tier} (${dtu} DTUs)`;
       assumption = `${tier} tier, ${dtu} DTUs`;
@@ -291,8 +293,9 @@ export class AzurePricingProvider implements PricingProvider {
     mult: number,
   ): CostLineItem {
     const sku = (config['sku'] as string) ?? 'Standard';
-    const hourly = (sku === 'Standard' ? 0.005 : 0.008) * mult;
-    const rulesMonthly = 5 * mult; // 5 rules × $0.008 each
+    // Standard: $0.025/hr including the first 5 rules (Retail Prices API, "Standard Included LB Rules and Outbound Rules"); Basic is free.
+    const hourly = (sku === 'Basic' ? 0 : 0.025) * mult;
+    const rulesMonthly = 0;
 
     return {
       resourceId: resource.id,
@@ -304,11 +307,11 @@ export class AzurePricingProvider implements PricingProvider {
       monthlyUsd: toMonthly(hourly) + rulesMonthly,
       breakdown: [
         { label: `Azure Load Balancer ${sku} (hourly)`, monthlyUsd: toMonthly(hourly) },
-        { label: 'Load Balancer rules (5 assumed)', monthlyUsd: rulesMonthly },
+        { label: 'First 5 rules included (data processed $0.005/GB not included)', monthlyUsd: rulesMonthly },
       ],
       assumptions: [
         `${sku} SKU load balancer`,
-        '5 LB rules assumed; data processing charges not included',
+        'First 5 rules are included in the hourly price; extra rules and data processing are not included',
         `Region: ${region}`,
       ],
       pricingSource: 'azure-lb-list-price',
@@ -323,10 +326,11 @@ export class AzurePricingProvider implements PricingProvider {
     mult: number,
   ): CostLineItem {
     const sku = (config['sku'] as string) || 'Standard_v2';
-    const baseHourly = (sku === 'WAF_v2' ? 0.443 : 0.246) * mult;
+    const isWaf = sku === 'WAF_v2';
+    const baseHourly = (isWaf ? 0.36 : 0.20) * mult; // fixed gateway charge, eastus (Retail Prices API)
     const capacity = Math.max(1, Number(config['autoscaleEnabled'] !== false ? config['minCapacity'] ?? 2 : config['capacity'] ?? 2));
-    // Fixed gateway charge plus a per-capacity-unit charge (~$0.008/hr/unit for v2 SKUs).
-    const capacityHourly = capacity * 0.008 * mult;
+    // Fixed gateway charge plus a per-capacity-unit charge ($0.008/hr for Standard_v2, $0.0144/hr for WAF_v2).
+    const capacityHourly = capacity * (isWaf ? 0.0144 : 0.008) * mult;
     const hourly = baseHourly + capacityHourly;
     const monthly = toMonthly(hourly);
     return {
