@@ -9,11 +9,12 @@
  * again. Credentials are never shown here — they are write-only.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Cloud, RefreshCw, Trash2, Loader2, CheckCircle2, ShieldCheck, Plus } from 'lucide-react';
+import { Cloud, RefreshCw, Trash2, Loader2, CheckCircle2, ShieldCheck, Plus, Pencil } from 'lucide-react';
 import clsx from 'clsx';
 import ConnectAwsAccountForm from '@/components/accounts/ConnectAwsAccountForm';
 import ConnectAzureAccountForm from '@/components/accounts/ConnectAzureAccountForm';
 import DeleteAccountDialog from '@/components/accounts/DeleteAccountDialog';
+import EditAccountDialog from '@/components/accounts/EditAccountDialog';
 
 interface Account {
   id: string;
@@ -40,7 +41,7 @@ function ago(iso: string | null | undefined): string {
   return `checked ${Math.round(s / 86400)} d ago`;
 }
 
-function AccountRow({ account, checking, onRecheck, onDelete }: { account: Account; checking: boolean; onRecheck: () => void; onDelete: () => void }) {
+function AccountRow({ account, checking, onRecheck, onEdit, onDelete }: { account: Account; checking: boolean; onRecheck: () => void; onEdit: () => void; onDelete: () => void }) {
   const id = account.identity ?? {};
   const method = typeof id.authMethod === 'string' ? id.authMethod : undefined;
   const who = typeof id.accountId === 'string' ? id.accountId : typeof id.subscriptionId === 'string' ? id.subscriptionId : '';
@@ -69,6 +70,10 @@ function AccountRow({ account, checking, onRecheck, onDelete }: { account: Accou
             className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs text-gray-400 hover:text-blue-300 hover:bg-blue-950/40 disabled:opacity-60 transition-colors">
             <RefreshCw className={clsx('w-3.5 h-3.5', checking && 'animate-spin')} />{checking ? 'Checking…' : 'Re-check'}
           </button>
+          <button type="button" onClick={onEdit} title="Edit this account" aria-label={`Edit account ${account.name}`}
+            className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs text-gray-400 hover:text-blue-300 hover:bg-blue-950/40 transition-colors">
+            <Pencil className="w-3.5 h-3.5" />Edit
+          </button>
           <button type="button" onClick={onDelete} title="Delete this account" aria-label={`Delete account ${account.name}`}
             className="p-2 rounded-md text-gray-500 hover:text-red-300 hover:bg-red-950/40 transition-colors">
             <Trash2 className="w-4 h-4" />
@@ -94,6 +99,7 @@ export default function CloudAccountsPanel() {
   const [showConnect, setShowConnect] = useState(false);
   const [checkingId, setCheckingId] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<Account | null>(null);
+  const [toEdit, setToEdit] = useState<Account | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -159,7 +165,7 @@ export default function CloudAccountsPanel() {
           <section className="space-y-2.5" aria-label="Connected accounts">
             <p className="text-gray-400 text-xs font-medium uppercase tracking-wider">Connected accounts ({list.length})</p>
             {list.map((a) => (
-              <AccountRow key={a.id} account={a} checking={checkingId === a.id} onRecheck={() => recheck(a)} onDelete={() => setToDelete(a)} />
+              <AccountRow key={a.id} account={a} checking={checkingId === a.id} onRecheck={() => recheck(a)} onEdit={() => setToEdit(a)} onDelete={() => setToDelete(a)} />
             ))}
           </section>
         )}
@@ -189,6 +195,15 @@ export default function CloudAccountsPanel() {
           </section>
         )}
       </div>
+
+      {toEdit && (
+        <EditAccountDialog
+          key={toEdit.id}
+          account={toEdit}
+          onClose={() => setToEdit(null)}
+          onSaved={async () => { setToEdit(null); await load(); }}
+        />
+      )}
 
       {toDelete && (
         <DeleteAccountDialog

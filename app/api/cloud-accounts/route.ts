@@ -11,142 +11,17 @@ import { extractIdentity, getOrgRole, resolveOrgIds } from '@/lib/api/auth';
 import { orgRepository } from '@/lib/repositories/orgRepository';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
 import { authMethodOf, isAwsCredentials, type CloudCredentials } from '@/lib/cloud/types';
-import { describeArn } from '@/lib/cloud/awsConnectInput';
+import { CloudCredentialsSchema, explainCredentialsProblem } from '@/lib/cloud/credentialSchemas';
+import { connectionHintOf } from '@/lib/cloud/connectionHint';
 
 export const dynamic = 'force-dynamic';
-
-// ─── Input schemas ────────────────────────────────────────────────────────────
-
-/**
- * AWS IAM Role ARN format: arn:aws:iam::<account-id>:role/<role-name>
- * Account ID is exactly 12 digits. Role name allows letters, digits, +, =, ,, ., @, -, _.
- */
-const AWS_ROLE_ARN_RE = /^arn:aws:iam::\d{12}:role\/[\w+=,.@/-]{1,64}$/;
-
-/**
- * AWS external ID: printable ASCII, 2–1224 chars (AWS limits).
- * No leading/trailing whitespace.
- */
-const AWS_EXTERNAL_ID_RE = /^[\x21-\x7E]{2,1224}$/;
-
-/**
- * AWS region: e.g. us-east-1, eu-central-1, ap-southeast-2.
- */
-const AWS_REGION_RE = /^[a-z]{2}-[a-z]+-\d{1,2}$/;
-
-/**
- * UUID v4 format (used for Azure tenantId, clientId, subscriptionId).
- */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const AwsCredentialsSchema = z.object({
-  roleArn: z
-    .string()
-    .regex(AWS_ROLE_ARN_RE, 'roleArn must be a valid IAM Role ARN (arn:aws:iam::<12-digit-account>:role/<name>)'),
-  externalId: z
-    .string()
-    .regex(AWS_EXTERNAL_ID_RE, 'externalId must be 2–1224 printable ASCII characters with no surrounding whitespace'),
-  region: z
-    .string()
-    .regex(AWS_REGION_RE, 'region must be a valid AWS region identifier (e.g. us-east-1)'),
-  additionalRegions: z
-    .array(z.string().regex(AWS_REGION_RE, 'Each additionalRegion must be a valid AWS region identifier'))
-    .max(20)
-    .optional(),
-}).strict();
-
-/**
- * Access-key connection with NO role (discovery only; kept for connections made earlier). Long-term IAM user keys: the key id starts AKIA and is 20 characters, the secret is
- * exactly 40 characters of base64. Temporary keys (ASIA…) need a session token and are not accepted.
- */
-const AwsKeyCredentialsSchema = z.object({
-  accessKeyId: z
-    .string()
-    .regex(/^AKIA[A-Z0-9]{16}$/, 'accessKeyId must be a long-term IAM access key ID (20 characters, starting AKIA)'),
-  secretAccessKey: z
-    .string()
-    .regex(/^[A-Za-z0-9/+=]{40}$/, 'secretAccessKey must be the 40-character secret access key'),
-  region: z
-    .string()
-    .regex(AWS_REGION_RE, 'region must be a valid AWS region identifier (e.g. us-east-1)'),
-  additionalRegions: z
-    .array(z.string().regex(AWS_REGION_RE, 'Each additionalRegion must be a valid AWS region identifier'))
-    .max(20)
-    .optional(),
-}).strict();   // strict: a key + role body that fails its own schema must NOT fall through and be saved as a key alone with the role dropped
-
-/**
- * The user's own access key + the user's own role (how accounts are connected now). The key's IAM user only needs permission to
- * assume the role; the role carries the permissions. The External ID is optional (only if the role's trust policy requires it).
- */
-const AwsKeyRoleCredentialsSchema = z.object({
-  accessKeyId: z
-    .string()
-    .regex(/^AKIA[A-Z0-9]{16}$/, 'accessKeyId must be a long-term IAM access key ID (20 characters, starting AKIA)'),
-  secretAccessKey: z
-    .string()
-    .regex(/^[A-Za-z0-9/+=]{40}$/, 'secretAccessKey must be the 40-character secret access key'),
-  roleArn: z
-    .string()
-    .regex(AWS_ROLE_ARN_RE, 'roleArn must be a valid IAM Role ARN (arn:aws:iam::<12-digit-account>:role/<name>)'),
-  externalId: z
-    .string()
-    .regex(AWS_EXTERNAL_ID_RE, 'externalId must be 2–1224 printable ASCII characters with no surrounding whitespace')
-    .optional(),
-  region: z
-    .string()
-    .regex(AWS_REGION_RE, 'region must be a valid AWS region identifier (e.g. us-east-1)'),
-  additionalRegions: z
-    .array(z.string().regex(AWS_REGION_RE, 'Each additionalRegion must be a valid AWS region identifier'))
-    .max(20)
-    .optional(),
-}).strict();
-
-const AzureCredentialsSchema = z.object({
-  tenantId: z
-    .string()
-    .regex(UUID_RE, 'tenantId must be a valid UUID'),
-  clientId: z
-    .string()
-    .regex(UUID_RE, 'clientId must be a valid UUID'),
-  clientSecret: z
-    .string()
-    .min(1)
-    .max(512),
-  subscriptionId: z
-    .string()
-    .regex(UUID_RE, 'subscriptionId must be a valid UUID'),
-}).strict();
 
 const CreateCloudAccountSchema = z.object({
   orgId:       z.string().min(1).optional(),
   provider:    z.enum(['aws', 'azure']),
   name:        z.string().min(1).max(120),
-  // Most specific first: a key + role must not be read as a key alone or as a role alone.
-  credentials: z.union([AwsKeyRoleCredentialsSchema, AwsKeyCredentialsSchema, AwsCredentialsSchema, AzureCredentialsSchema]),
+  credentials: CloudCredentialsSchema,
 });
-
-/**
- * z.union reports a failure as just "Invalid input". When the body is recognisably one kind of credentials, check it against THAT
- * schema and say which field is wrong (and, for the common mistake of pasting a user's ARN where a role's is needed, say so).
- */
-function explainCredentialsProblem(raw: unknown): string | null {
-  const c = (raw as { credentials?: unknown } | null)?.credentials;
-  if (!c || typeof c !== 'object' || Array.isArray(c)) return null;
-  const keys = c as Record<string, unknown>;
-  const schema = 'accessKeyId' in keys ? ('roleArn' in keys ? AwsKeyRoleCredentialsSchema : AwsKeyCredentialsSchema)
-    : 'roleArn' in keys ? AwsCredentialsSchema
-      : 'tenantId' in keys ? AzureCredentialsSchema : null;
-  if (!schema) return null;
-  const r = schema.safeParse(c);
-  if (r.success) return null;
-  if (typeof keys['roleArn'] === 'string' && !AWS_ROLE_ARN_RE.test(keys['roleArn'])) {
-    const kind = describeArn(keys['roleArn']);
-    if (kind === 'user') return 'roleArn is the ARN of an IAM user, not of a role. Use the ARN of the role the user assumes (IAM → Roles → your role).';
-    if (kind === 'root') return 'roleArn is the ARN of an account, not of a role. Use the ARN of the role (IAM → Roles → your role).';
-  }
-  return r.error.issues.map((i) => (i.path.length ? `${i.path.join('.')}: ${i.message}` : i.message)).join('; ');
-}
 
 // ─── Route handlers ───────────────────────────────────────────────────────────
 
@@ -191,7 +66,7 @@ export async function POST(req: NextRequest) {
     try { raw = await req.json(); } catch { return badRequest('Invalid JSON body'); }
     const parsed = CreateCloudAccountSchema.safeParse(raw);
     if (!parsed.success) {
-      return badRequest(explainCredentialsProblem(raw) ?? 'Validation failed', parsed.error.flatten());
+      return badRequest(explainCredentialsProblem((raw as { credentials?: unknown } | null)?.credentials) ?? 'Validation failed', parsed.error.flatten());
     }
     const body = parsed.data;
 
@@ -225,7 +100,7 @@ export async function POST(req: NextRequest) {
       provider: body.provider,
       name: body.name,
       credentialsJson,
-      identityJson: JSON.stringify({ authMethod: authMethodOf(creds) }),   // how it signs in — not a secret; the list shows what it may be used for
+      identityJson: JSON.stringify({ authMethod: authMethodOf(creds), connection: connectionHintOf(creds) }),   // how it signs in and what it points at — never a secret; the list and the Edit screen show them
     });
 
     // account is the safe shape — credentials are not included

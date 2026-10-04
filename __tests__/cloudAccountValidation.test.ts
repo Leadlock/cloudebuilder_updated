@@ -117,14 +117,18 @@ describe('POST /api/cloud-accounts/[id]/validate keeps the reason with the accou
     expect(saved).not.toHaveProperty('validationReason');
   });
 
-  it('never saves or returns the stored credentials (their values), only the explanation', async () => {
-    mockCreds.mockResolvedValue(JSON.stringify({ roleArn: 'arn:aws:iam::999988887777:role/MyPrivateRole', externalId: 'EXT-ID-VALUE-8f3a1c', region: 'us-east-1' }));
+  it('never saves or returns a secret (the External ID, a key, a secret): only the explanation and the non-secret connection details', async () => {
+    mockCreds.mockResolvedValue(JSON.stringify({
+      accessKeyId: 'AKIAIOSFODNN7EXAMPLE', secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+      roleArn: 'arn:aws:iam::999988887777:role/MyPrivateRole', externalId: 'EXT-ID-VALUE-8f3a1c', region: 'us-east-1',
+    }));
     mockValidate.mockResolvedValue({ valid: false, permissionsOk: false, missingPermissions: [], error: 'Could not load credentials from any providers' });
     const res = await call();
-    const text = JSON.stringify(await res.json()) + String(mockUpdate.mock.calls[0]![3]);
-    expect(text).not.toContain('EXT-ID-VALUE-8f3a1c');
-    expect(text).not.toContain('999988887777');
-    expect(text).not.toContain('MyPrivateRole');
+    const saved = String(mockUpdate.mock.calls[0]![3]);
+    const text = JSON.stringify(await res.json()) + saved;
+    for (const secret of ['EXT-ID-VALUE-8f3a1c', 'AKIAIOSFODNN7EXAMPLE', 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY']) expect(text).not.toContain(secret);
+    // the role and region are saved on purpose, so the Edit screen can show them; the key only as its start and end
+    expect(JSON.parse(saved).connection).toEqual({ region: 'us-east-1', roleArn: 'arn:aws:iam::999988887777:role/MyPrivateRole', accessKeyHint: 'AKIA…MPLE', hasExternalId: true });
   });
 
   it('still needs a signed-in member of the account\'s organisation', async () => {

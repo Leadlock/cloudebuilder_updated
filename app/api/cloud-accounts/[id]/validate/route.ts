@@ -15,6 +15,7 @@ import { resolveOrgId } from '@/lib/api/phase2d';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
 import { createDiscoveryProvider } from '@/lib/cloud/provider';
 import { authMethodOf, type CloudCredentials } from '@/lib/cloud/types';
+import { connectionHintOf } from '@/lib/cloud/connectionHint';
 import { explainValidationFailure } from '@/lib/cloud/validationExplain';
 import { getServerAwsIdentity } from '@/lib/cloud/serverIdentity';
 
@@ -72,6 +73,7 @@ export async function POST(
     const identityJson = JSON.stringify({
       ...(validationResult.identity ?? {}),
       authMethod: authMethodOf(credentials),
+      connection: connectionHintOf(credentials),
       ...(why ? { validationReason: why.reason, validationFix: why.fix } : {}),
     });
 

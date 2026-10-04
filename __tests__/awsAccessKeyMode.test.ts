@@ -77,13 +77,13 @@ describe('POST /api/cloud-accounts — connecting with an access key', () => {
     expect(JSON.stringify(await res.json())).not.toContain(SECRET);
     const input = mockCreate.mock.calls[0]![0] as { credentialsJson: string; identityJson: string; orgId: string };
     expect(JSON.parse(input.credentialsJson)).toMatchObject(keys);
-    expect(JSON.parse(input.identityJson)).toEqual({ authMethod: 'access-key' });
+    expect(JSON.parse(input.identityJson)).toMatchObject({ authMethod: 'access-key' });
     expect(input.orgId).toBe('org-1');
   });
 
   it('a role connection is recorded as a role, and still works as before', async () => {
     expect((await call({ provider: 'aws', name: 'Role account', credentials: role })).status).toBe(201);
-    expect(JSON.parse((mockCreate.mock.calls[0]![0] as { identityJson: string }).identityJson)).toEqual({ authMethod: 'role' });
+    expect(JSON.parse((mockCreate.mock.calls[0]![0] as { identityJson: string }).identityJson)).toMatchObject({ authMethod: 'role' });
   });
 
   it.each([
@@ -205,14 +205,14 @@ describe('POST /api/cloud-accounts/[id]/validate for an access-key account', () 
   it('a rejected key is explained as a wrong or deleted key', async () => {
     mockStsSend.mockRejectedValue(new Error('The security token included in the request is invalid.'));
     const body = (await (await call()).json()).data as { reason: string; fix: string };
-    expect(body.reason).toMatch(/does not accept this access key/i);
-    expect(body.fix).toMatch(/Secret access key/);
+    expect(body.reason).toMatch(/does not recognise this Access key ID/i);
+    expect(body.fix).toMatch(/Edit/);
   });
 });
 
 describe('explanations for access-key accounts', () => {
   it('speaks about the key, not about the server or a role', () => {
-    expect(explainValidationFailure('aws', 'InvalidClientTokenId', [], 'access-key').reason).toMatch(/does not accept this access key/i);
+    expect(explainValidationFailure('aws', 'InvalidClientTokenId', [], 'access-key').reason).toMatch(/does not recognise this Access key ID/i);
     expect(explainValidationFailure('aws', 'AccessDenied: not authorized', [], 'access-key').reason).toMatch(/IAM user is not allowed to read/i);
     expect(explainValidationFailure('aws', undefined, ['ec2:DescribeVpcs'], 'access-key').reason).toMatch(/access key works, but its IAM user cannot read/i);
   });

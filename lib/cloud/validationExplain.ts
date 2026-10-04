@@ -23,9 +23,16 @@ const ACCESS_KEY_RULES: Rule[] = [
     fix: 'Create a dedicated IAM user with only the read-only policy, make an access key for it, and connect the account with that key. Then delete the root key in AWS.',
   },
   {
-    when: /InvalidClientTokenId|security token included in the request is invalid|SignatureDoesNotMatch|Access Key Id you provided does not exist|InvalidAccessKeyId/i,
-    reason: 'AWS does not accept this access key.',
-    fix: 'Check the Access key ID and the Secret access key (the secret is shown only once, when the key is created) and that the key is Active in IAM. Delete this account and connect it again with the right key.',
+    // AWS answers InvalidClientTokenId ("The security token included in the request is invalid") when it does not know the key ID at all.
+    when: /InvalidClientTokenId|security token included in the request is invalid|Access Key Id you provided does not exist|InvalidAccessKeyId/i,
+    reason: 'AWS does not recognise this Access key ID.',
+    fix: 'The ID may have a typo or be cut short, or the key may have been deleted or deactivated. In IAM → Users → your user → Security credentials, check the key is listed and Active (or create a new one), then use Edit to enter the right Access key ID and Secret access key.',
+  },
+  {
+    // SignatureDoesNotMatch: the key ID is known, but the secret does not belong to it.
+    when: /SignatureDoesNotMatch|signature we calculated does not match/i,
+    reason: 'The Secret access key does not match this Access key ID.',
+    fix: 'Use Edit and paste the secret exactly as AWS showed it (it is shown only once, when the key is created). If you no longer have it, create a new access key for the user.',
   },
   {
     when: /AccessDenied|UnauthorizedOperation|not authorized to perform/i,
@@ -38,6 +45,7 @@ const ACCESS_KEY_RULES: Rule[] = [
 const KEY_ROLE_RULES: Rule[] = [
   ACCESS_KEY_RULES[0]!,
   ACCESS_KEY_RULES[1]!,
+  ACCESS_KEY_RULES[2]!,
   {
     when: /not authorized to perform:?\s*sts:AssumeRole|is not authorized to assume|AccessDenied.{0,80}AssumeRole|AssumeRole.{0,80}AccessDenied/i,
     reason: 'AWS refused to let your access key assume the role.',

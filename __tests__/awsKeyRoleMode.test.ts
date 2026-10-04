@@ -95,7 +95,9 @@ describe('POST /api/cloud-accounts — connecting with a key and a role', () => 
     expect(res.status).toBe(201);
     expect(JSON.stringify(await res.json())).not.toContain(SECRET);
     expect(JSON.parse(saved().credentialsJson)).toEqual(keyRole);
-    expect(JSON.parse(saved().identityJson)).toEqual({ authMethod: 'key-and-role' });
+    // how it signs in and what it points at: no secret, no full key id, no External ID value
+    expect(JSON.parse(saved().identityJson)).toEqual({ authMethod: 'key-and-role', connection: { region: 'us-east-1', roleArn: ROLE, hasExternalId: true, accessKeyHint: 'AKIA…MPLE' } });
+    for (const secret of [SECRET, KEY_ID, 'ext-123']) expect(saved().identityJson).not.toContain(secret);
   });
 
   it('the External ID is optional', async () => {
@@ -105,10 +107,10 @@ describe('POST /api/cloud-accounts — connecting with a key and a role', () => 
 
   it('a key alone and a role alone are still accepted, and recorded as what they are', async () => {
     expect((await call({ provider: 'aws', name: 'k', credentials: keyOnly })).status).toBe(201);
-    expect(JSON.parse(saved().identityJson)).toEqual({ authMethod: 'access-key' });
+    expect(JSON.parse(saved().identityJson)).toMatchObject({ authMethod: 'access-key' });
     mockCreate.mockClear();
     expect((await call({ provider: 'aws', name: 'r', credentials: roleOnly })).status).toBe(201);
-    expect(JSON.parse(saved().identityJson)).toEqual({ authMethod: 'role' });
+    expect(JSON.parse(saved().identityJson)).toMatchObject({ authMethod: 'role' });
   });
 
   it.each([
@@ -243,7 +245,8 @@ describe('POST /api/cloud-accounts/[id]/validate for a key + role account', () =
 describe('explanations for a key + role', () => {
   it.each([
     ['ROOT_ACCESS_KEY: the access key belongs to the account root user', /root user/i],
-    ['InvalidClientTokenId', /does not accept this access key/i],
+    ['InvalidClientTokenId', /does not recognise this Access key ID/i],
+    ['SignatureDoesNotMatch', /Secret access key does not match/i],
     ['User: [arn] is not authorized to perform: sts:AssumeRole on resource: [arn]', /refused to let your access key assume the role/i],
     ['Invalid length for parameter RoleArn', /role ARN does not look valid/i],
     ['getaddrinfo ENOTFOUND sts.amazonaws.com', /could not reach AWS/i],

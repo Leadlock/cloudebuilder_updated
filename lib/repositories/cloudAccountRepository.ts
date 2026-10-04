@@ -158,6 +158,23 @@ export const cloudAccountRepository = {
     return this.findById(id, orgId);
   },
 
+  /**
+   * Edit an account: its name and/or its credentials (re-encrypted). New credentials reset the account to "pending" — they have not
+   * been checked yet — and the caller checks them straight away.
+   */
+  async update(id: string, orgId: string, input: { name?: string; credentialsJson?: string; identityJson?: string }): Promise<DbCloudAccount | null> {
+    const existing = await db.orm.public.CloudAccount.where({ id, orgId }).first();
+    if (!existing) return null;
+    const ts = now();
+    await db.orm.public.CloudAccount.where({ id, orgId }).update({
+      updatedAt: ts,
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.credentialsJson !== undefined ? { credentialsJson: encrypt(input.credentialsJson), status: 'pending', lastValidatedAt: null } : {}),
+      ...(input.identityJson !== undefined ? { identityJson: input.identityJson } : {}),
+    });
+    return this.findById(id, orgId);
+  },
+
   async delete(id: string, orgId: string): Promise<boolean> {
     const existing = await db.orm.public.CloudAccount.where({ id, orgId }).first();
     if (!existing) return false;
