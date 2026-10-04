@@ -12,6 +12,12 @@ jest.mock('@/lib/terraform/execution/TerraformExecutionService', () => ({
   PlanBlockedError: class extends Error {},
 }));
 jest.mock('@/lib/repositories/orgRepository', () => ({ orgRepository: {} }));   // AuthService only needs it for DB-backed lookups
+const mockConsumeApproval = jest.fn();
+const mockReturnApproval = jest.fn();
+jest.mock('@/lib/terraform/execution/approvals', () => ({
+  consumeApproval: (...a: unknown[]) => mockConsumeApproval(...a),
+  returnApproval: (...a: unknown[]) => mockReturnApproval(...a),
+}));
 const mockAudit = jest.fn();
 jest.mock('@/lib/terraform/execution/audit', () => ({ recordTerraformAudit: (...a: unknown[]) => mockAudit(...a) }));
 
@@ -101,7 +107,9 @@ describe('/api/projects/[id]/terraform/destroy — preview, then run, then watch
   };
 
   beforeEach(async () => {
-    [mockIdentity, mockOrgRole, mockResolveOrg, mockResolveArch, mockPrepare, mockStart, mockAudit].forEach((m) => m.mockReset());
+    [mockIdentity, mockOrgRole, mockResolveOrg, mockResolveArch, mockPrepare, mockStart, mockAudit, mockConsumeApproval, mockReturnApproval].forEach((m) => m.mockReset());
+    mockConsumeApproval.mockResolvedValue({ ok: true, approval: { id: 'appr-1', decidedBy: 'approver-1' } });
+    mockReturnApproval.mockResolvedValue(undefined);
     await _clearDestroyPlansForTests(); _clearRunsForTests();
     env.CLOUDCRAFT_TERRAFORM_ORG_IDS = 'org-1';
     mockIdentity.mockReturnValue({ userId: `destroy-user-${++user}`, role: 'admin', email: 'a@example.com', orgIds: [] });   // fresh user: its own plan budget
@@ -129,6 +137,52 @@ describe('/api/projects/[id]/terraform/destroy — preview, then run, then watch
     expect((await started.json() as { data: { status: string; runId: string } }).data).toEqual({ status: 'started', runId: 'run-123' });
     expect(mockStart).toHaveBeenCalledWith(expect.objectContaining({ planId: p.data.planId, planHash: 'c'.repeat(64), projectId: 'proj-1', orgId: 'org-1' }));
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'destroy', outcome: 'allowed' }));
+  });
+
+  describe('approval before the teardown runs', () => {
+    const refusal = { ok: false, code: 'needs_approval', reason: 'This teardown has to be approved before it can run. Request approval first.' };
+
+    it('spends the approval for exactly this preview (organisation, project, plan and hash)', async () => {
+      const p = await (await call(body())).json() as Preview;
+      expect((await call(body({ confirmationToken: p.data.confirmationToken, planId: p.data.planId }))).status).toBe(201);
+      expect(mockConsumeApproval).toHaveBeenCalledWith({ orgId: 'org-1', projectId: 'proj-1', action: 'destroy', planId: p.data.planId, planHash: 'c'.repeat(64) });
+    });
+
+    it('refuses to start without one (403 APPROVAL_REQUIRED), starts nothing, and does NOT use up the confirmation token', async () => {
+      const p = await (await call(body())).json() as Preview;
+      mockConsumeApproval.mockResolvedValueOnce(refusal);
+      const blocked = await call(body({ confirmationToken: p.data.confirmationToken, planId: p.data.planId }));
+      expect(blocked.status).toBe(403);
+      const err = await blocked.json() as { error: { code: string; message: string } };
+      expect(err.error.code).toBe('APPROVAL_REQUIRED');
+      expect(err.error.message).toMatch(/approved/);
+      expect(mockStart).not.toHaveBeenCalled();
+      expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'destroy', outcome: 'blocked', detail: 'approval: needs_approval' }));
+      // once it is approved, the same preview and token work — nothing had to be previewed again
+      expect((await call(body({ confirmationToken: p.data.confirmationToken, planId: p.data.planId }))).status).toBe(201);
+    });
+
+    it('gives the approval back when the teardown could not start, so it is not spent for nothing', async () => {
+      const p = await (await call(body())).json() as Preview;
+      mockStart.mockRejectedValue(Object.assign(new Error('Another Terraform apply or teardown is already running for this project.'), { statusCode: 409 }));
+      expect((await call(body({ confirmationToken: p.data.confirmationToken, planId: p.data.planId }))).status).toBe(409);
+      expect(mockReturnApproval).toHaveBeenCalledWith('appr-1');
+    });
+
+    it('gives the approval back when the confirmation token is refused', async () => {
+      const p = await (await call(body())).json() as Preview;
+      const res = await call(body({ confirmationToken: p.data.confirmationToken, planId: p.data.planId, stateBackend: { ...backend, bucket: 'a-different-bucket' } }));
+      expect(res.status).toBe(400);
+      expect(mockReturnApproval).toHaveBeenCalledWith('appr-1');
+      expect(mockStart).not.toHaveBeenCalled();
+    });
+
+    it('when approval is switched off (approval is null) the teardown starts as before', async () => {
+      mockConsumeApproval.mockResolvedValue({ ok: true, approval: null });
+      const p = await (await call(body())).json() as Preview;
+      expect((await call(body({ confirmationToken: p.data.confirmationToken, planId: p.data.planId }))).status).toBe(201);
+      expect(mockReturnApproval).not.toHaveBeenCalled();
+    });
   });
 
   it('says so when the state holds nothing to destroy', async () => {

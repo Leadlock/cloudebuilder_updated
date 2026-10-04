@@ -20,6 +20,7 @@ import { recordTerraformAudit } from '@/lib/terraform/execution/audit';
 import { acquireProjectLock, releaseProjectLock } from '@/lib/terraform/execution/projectLock';
 import { resolveOrgId } from '@/lib/api/phase2d';
 import { verifyPlanForApply } from '@/lib/terraform/execution/TerraformExecutionService';
+import { consumeApproval, returnApproval } from '@/lib/terraform/execution/approvals';
 import { enqueueApplyJob, getApplyJobStatus } from '@/lib/jobs/terraformApplyJob';
 import { randomUUID } from 'crypto';
 
@@ -74,6 +75,14 @@ export async function POST(
       return apiError('CONFLICT', 'Another Terraform apply is already running for this project. Wait for it to finish.', 409);
     }
 
+    // A plan only runs with an approval for exactly this plan (same id and hash), given by an owner/admin and not yet used.
+    const approval = await consumeApproval({ orgId, projectId: record.projectId, action: 'apply', planId: record.planId, planHash: record.planHash });
+    if (!approval.ok) {
+      releaseProjectLock(record.projectId);
+      await recordTerraformAudit({ action: 'apply', outcome: 'blocked', orgId, projectId: record.projectId, userId: identity.userId, planId: record.planId, planHash: record.planHash, detail: `approval: ${approval.code}` });
+      return apiError('APPROVAL_REQUIRED', approval.reason, 403);
+    }
+
     const applyRunId = randomUUID();
     let jobId: string;
     try {
@@ -87,9 +96,10 @@ export async function POST(
       });
     } catch (enqueueErr) {
       releaseProjectLock(record.projectId);
+      if (approval.approval) await returnApproval(approval.approval.id).catch(() => undefined);   // the run never started: keep the approval usable
       throw enqueueErr;
     }
-    await recordTerraformAudit({ action: 'apply', outcome: 'allowed', orgId, projectId: record.projectId, userId: identity.userId, planId: record.planId, planHash: record.planHash, detail: 'apply queued' });
+    await recordTerraformAudit({ action: 'apply', outcome: 'allowed', orgId, projectId: record.projectId, userId: identity.userId, planId: record.planId, planHash: record.planHash, detail: approval.approval ? `apply queued (approved by ${approval.approval.decidedBy})` : 'apply queued (approval switched off)' });
 
     return created({ applyRunId, jobId, status: 'pending' });
   } catch (err) {

@@ -16,6 +16,7 @@ import { ok, created, notFound, forbidden, unauthorized, internalError, badReque
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { terraformExecutionDenied } from '@/lib/api/terraformAccess';
 import { checkRateLimit } from '@/lib/api/rateLimit';
+import { consumeApproval, returnApproval } from '@/lib/terraform/execution/approvals';
 import { planLimit, planRateKey } from '@/lib/terraform/execution/limits';
 import { recordTerraformAudit } from '@/lib/terraform/execution/audit';
 import { consumeDestroyConfirmation, issueDestroyConfirmation } from '@/lib/terraform/execution/destroyConfirmation';
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       });
       await recordTerraformAudit({ action: 'destroy', outcome: 'requested', orgId, projectId, userId: identity.userId, planId: prepared.planId, planHash: prepared.planHash, detail: `preview of ${prepared.resources.length} resource(s) in the state` });
       return ok({
-        status: 'confirmation_required', confirmationToken: token, expiresAt, planId: prepared.planId,
+        status: 'confirmation_required', confirmationToken: token, expiresAt, planId: prepared.planId, planHash: prepared.planHash,
         resourceCount: prepared.resources.length, resources: prepared.resources.slice(0, 200),
       });
     }
@@ -98,16 +99,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!planId) return badRequest('planId is required with a confirmation token.');
     const prepared = peekPreparedDestroy(planId);
     if (!prepared) return notFound('The destroy preview has expired or was already used. Preview it again.');
+    // The teardown only runs with an approval for exactly this preview. Checked first, so a missing approval does not burn the
+    // single-use confirmation token below.
+    const approval = await consumeApproval({ orgId, projectId, action: 'destroy', planId, planHash: prepared.planHash });
+    if (!approval.ok) {
+      await recordTerraformAudit({ action: 'destroy', outcome: 'blocked', orgId, projectId, userId: identity.userId, planId, planHash: prepared.planHash, detail: `approval: ${approval.code}` });
+      return apiError('APPROVAL_REQUIRED', approval.reason, 403);
+    }
+    const giveBack = async () => { if (approval.approval) await returnApproval(approval.approval.id).catch(() => undefined); };
     const confirmed = consumeDestroyConfirmation(confirmationToken, {
       userId: identity.userId, orgId, projectId, environment, cloudAccountId, stateBackend,
       resources: prepared.resources.map((r) => ({ id: r.address, resourceType: r.type })), planHash: prepared.planHash,
     });
     if (!confirmed.ok) {
+      await giveBack();
       await recordTerraformAudit({ action: 'destroy', outcome: 'blocked', orgId, projectId, userId: identity.userId, planId, planHash: prepared.planHash, detail: confirmed.reason });
       return badRequest(confirmed.reason);
     }
-    const { runId } = await startDestroyRun({ planId, planHash: prepared.planHash, orgId, projectId, cloudAccountId, stateBackend: backend, user });
-    await recordTerraformAudit({ action: 'destroy', outcome: 'allowed', orgId, projectId, userId: identity.userId, planId, planHash: prepared.planHash, detail: 'teardown started' });
+    let runId: string;
+    try {
+      ({ runId } = await startDestroyRun({ planId, planHash: prepared.planHash, orgId, projectId, cloudAccountId, stateBackend: backend, user }));
+    } catch (startErr) {
+      await giveBack();      // the teardown never started: keep the approval usable
+      throw startErr;
+    }
+    await recordTerraformAudit({ action: 'destroy', outcome: 'allowed', orgId, projectId, userId: identity.userId, planId, planHash: prepared.planHash, detail: approval.approval ? `teardown started (approved by ${approval.approval.decidedBy})` : 'teardown started (approval switched off)' });
     return created({ status: 'started', runId });
   } catch (err) {
     if (err instanceof TerraformNotInstalledError) return badRequest(err.message);

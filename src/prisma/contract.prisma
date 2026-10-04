@@ -594,3 +594,30 @@ model RevokedSession {
 
   @@index([expiresAtMs])
 }
+
+// A request to run a specific Terraform plan (apply) or teardown (destroy), and the decision on it. A plan can only be run
+// with an approved, unexpired, unused approval for exactly this plan (planId + planHash) — see lib/terraform/execution/approvals.ts.
+// status: pending | approved | rejected | used. expiresAtMs is epoch milliseconds from the DATABASE clock: a pending request
+// expires if nobody decides, an approved one if it is not used in time.
+model TerraformApproval {
+  id          String  @id @default(uuid())
+  createdAt   String
+  orgId       String
+  projectId   String
+  // apply | destroy
+  action      String
+  planId      String
+  planHash    String
+  // Short description of what is being approved ("3 to add, 1 to change, 0 to destroy"); never secrets.
+  summary     String?
+  requestedBy String
+  status      String
+  decidedBy   String?
+  decidedAt   String?
+  comment     String?
+  expiresAtMs Float
+  usedAt      String?
+
+  @@index([projectId, createdAt])
+  @@index([orgId, status])
+}

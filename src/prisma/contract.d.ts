@@ -33,9 +33,9 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'9a378bfb3956a6c13c2d39384fbf698f46960cc34c36f05733459ec1ece6b866'>;
+  StorageHashBase<'6b0817c3a48172f0fa480046ff296c943318a81e2601a56eebfd035ce7808563'>;
 export type ExecutionHash =
-  ExecutionHashBase<'f2cabb7b653b19c268fbfec23ecf7ec67c4f7687b2f0915b17f47f99cf2edae3'>;
+  ExecutionHashBase<'e601969d76456cec43d4ac30a97cd9949576e2dd63fc3f3c4753142e71bd8448'>;
 export type ProfileHash =
   ProfileHashBase<'3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2'>;
 
@@ -496,6 +496,23 @@ export type FieldOutputTypes = {
       readonly createdAt: CodecTypes['pg/text@1']['output'];
       readonly completedAt: CodecTypes['pg/text@1']['output'] | null;
     };
+    readonly TerraformApproval: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly createdAt: CodecTypes['pg/text@1']['output'];
+      readonly orgId: CodecTypes['pg/text@1']['output'];
+      readonly projectId: CodecTypes['pg/text@1']['output'];
+      readonly action: CodecTypes['pg/text@1']['output'];
+      readonly planId: CodecTypes['pg/text@1']['output'];
+      readonly planHash: CodecTypes['pg/text@1']['output'];
+      readonly summary: CodecTypes['pg/text@1']['output'] | null;
+      readonly requestedBy: CodecTypes['pg/text@1']['output'];
+      readonly status: CodecTypes['pg/text@1']['output'];
+      readonly decidedBy: CodecTypes['pg/text@1']['output'] | null;
+      readonly decidedAt: CodecTypes['pg/text@1']['output'] | null;
+      readonly comment: CodecTypes['pg/text@1']['output'] | null;
+      readonly expiresAtMs: CodecTypes['pg/float8@1']['output'];
+      readonly usedAt: CodecTypes['pg/text@1']['output'] | null;
+    };
     readonly TerraformAuditEvent: {
       readonly id: CodecTypes['pg/text@1']['output'];
       readonly createdAt: CodecTypes['pg/text@1']['output'];
@@ -823,6 +840,23 @@ export type FieldInputTypes = {
       readonly findingsJson: CodecTypes['pg/text@1']['input'];
       readonly createdAt: CodecTypes['pg/text@1']['input'];
       readonly completedAt: CodecTypes['pg/text@1']['input'] | null;
+    };
+    readonly TerraformApproval: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly createdAt: CodecTypes['pg/text@1']['input'];
+      readonly orgId: CodecTypes['pg/text@1']['input'];
+      readonly projectId: CodecTypes['pg/text@1']['input'];
+      readonly action: CodecTypes['pg/text@1']['input'];
+      readonly planId: CodecTypes['pg/text@1']['input'];
+      readonly planHash: CodecTypes['pg/text@1']['input'];
+      readonly summary: CodecTypes['pg/text@1']['input'] | null;
+      readonly requestedBy: CodecTypes['pg/text@1']['input'];
+      readonly status: CodecTypes['pg/text@1']['input'];
+      readonly decidedBy: CodecTypes['pg/text@1']['input'] | null;
+      readonly decidedAt: CodecTypes['pg/text@1']['input'] | null;
+      readonly comment: CodecTypes['pg/text@1']['input'] | null;
+      readonly expiresAtMs: CodecTypes['pg/float8@1']['input'];
+      readonly usedAt: CodecTypes['pg/text@1']['input'] | null;
     };
     readonly TerraformAuditEvent: {
       readonly id: CodecTypes['pg/text@1']['input'];
@@ -1152,6 +1186,23 @@ export type StorageColumnTypes = {
       readonly status: CodecTypes['pg/text@1']['output'];
       readonly versionId: CodecTypes['pg/text@1']['output'] | null;
     };
+    readonly terraformApproval: {
+      readonly action: CodecTypes['pg/text@1']['output'];
+      readonly comment: CodecTypes['pg/text@1']['output'] | null;
+      readonly createdAt: CodecTypes['pg/text@1']['output'];
+      readonly decidedAt: CodecTypes['pg/text@1']['output'] | null;
+      readonly decidedBy: CodecTypes['pg/text@1']['output'] | null;
+      readonly expiresAtMs: CodecTypes['pg/float8@1']['output'];
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly orgId: CodecTypes['pg/text@1']['output'];
+      readonly planHash: CodecTypes['pg/text@1']['output'];
+      readonly planId: CodecTypes['pg/text@1']['output'];
+      readonly projectId: CodecTypes['pg/text@1']['output'];
+      readonly requestedBy: CodecTypes['pg/text@1']['output'];
+      readonly status: CodecTypes['pg/text@1']['output'];
+      readonly summary: CodecTypes['pg/text@1']['output'] | null;
+      readonly usedAt: CodecTypes['pg/text@1']['output'] | null;
+    };
     readonly terraformAuditEvent: {
       readonly action: CodecTypes['pg/text@1']['output'];
       readonly createdAt: CodecTypes['pg/text@1']['output'];
@@ -1479,6 +1530,23 @@ export type StorageColumnInputTypes = {
       readonly score: CodecTypes['pg/int4@1']['input'];
       readonly status: CodecTypes['pg/text@1']['input'];
       readonly versionId: CodecTypes['pg/text@1']['input'] | null;
+    };
+    readonly terraformApproval: {
+      readonly action: CodecTypes['pg/text@1']['input'];
+      readonly comment: CodecTypes['pg/text@1']['input'] | null;
+      readonly createdAt: CodecTypes['pg/text@1']['input'];
+      readonly decidedAt: CodecTypes['pg/text@1']['input'] | null;
+      readonly decidedBy: CodecTypes['pg/text@1']['input'] | null;
+      readonly expiresAtMs: CodecTypes['pg/float8@1']['input'];
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly orgId: CodecTypes['pg/text@1']['input'];
+      readonly planHash: CodecTypes['pg/text@1']['input'];
+      readonly planId: CodecTypes['pg/text@1']['input'];
+      readonly projectId: CodecTypes['pg/text@1']['input'];
+      readonly requestedBy: CodecTypes['pg/text@1']['input'];
+      readonly status: CodecTypes['pg/text@1']['input'];
+      readonly summary: CodecTypes['pg/text@1']['input'] | null;
+      readonly usedAt: CodecTypes['pg/text@1']['input'] | null;
     };
     readonly terraformAuditEvent: {
       readonly action: CodecTypes['pg/text@1']['input'];
@@ -3608,6 +3676,102 @@ type ContractBase = Omit<
                 },
               ];
             };
+            readonly terraformApproval: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly createdAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly orgId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly projectId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly action: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly planId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly planHash: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly summary: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly requestedBy: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly status: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly decidedBy: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly decidedAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly comment: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly expiresAtMs: {
+                  readonly nativeType: 'float8';
+                  readonly codecId: 'pg/float8@1';
+                  readonly nullable: false;
+                };
+                readonly usedAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [];
+              indexes: readonly [
+                {
+                  readonly name: 'terraformApproval_projectId_createdAt_idx_d2d6484f';
+                  readonly prefix: 'terraformApproval_projectId_createdAt_idx';
+                  readonly columns: readonly ['projectId', 'createdAt'];
+                  readonly unique: false;
+                },
+                {
+                  readonly name: 'terraformApproval_orgId_status_idx_f07aed73';
+                  readonly prefix: 'terraformApproval_orgId_status_idx';
+                  readonly columns: readonly ['orgId', 'status'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [];
+            };
             readonly terraformAuditEvent: {
               columns: {
                 readonly id: {
@@ -4211,6 +4375,10 @@ type ContractBase = Omit<
     readonly revokedSession: {
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'RevokedSession';
+    };
+    readonly terraformApproval: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'TerraformApproval';
     };
   };
   readonly domain: {
@@ -6259,6 +6427,92 @@ type ContractBase = Omit<
               };
             };
           };
+          readonly TerraformApproval: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly createdAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly orgId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly projectId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly action: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly planId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly planHash: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly summary: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly requestedBy: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly status: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly decidedBy: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly decidedAt: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly comment: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly expiresAtMs: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/float8@1' };
+              };
+              readonly usedAt: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: {
+              readonly table: 'terraformApproval';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly createdAt: { readonly column: 'createdAt' };
+                readonly orgId: { readonly column: 'orgId' };
+                readonly projectId: { readonly column: 'projectId' };
+                readonly action: { readonly column: 'action' };
+                readonly planId: { readonly column: 'planId' };
+                readonly planHash: { readonly column: 'planHash' };
+                readonly summary: { readonly column: 'summary' };
+                readonly requestedBy: { readonly column: 'requestedBy' };
+                readonly status: { readonly column: 'status' };
+                readonly decidedBy: { readonly column: 'decidedBy' };
+                readonly decidedAt: { readonly column: 'decidedAt' };
+                readonly comment: { readonly column: 'comment' };
+                readonly expiresAtMs: { readonly column: 'expiresAtMs' };
+                readonly usedAt: { readonly column: 'usedAt' };
+              };
+            };
+          };
           readonly TerraformAuditEvent: {
             readonly fields: {
               readonly id: {
@@ -6908,6 +7162,14 @@ type ContractBase = Omit<
           readonly ref: {
             readonly namespace: 'public';
             readonly table: 'securityScan';
+            readonly column: 'id';
+          };
+          readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };
+        },
+        {
+          readonly ref: {
+            readonly namespace: 'public';
+            readonly table: 'terraformApproval';
             readonly column: 'id';
           };
           readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };

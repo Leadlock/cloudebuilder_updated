@@ -39,6 +39,7 @@ export interface TerraformDestroyPreview {
   confirmationToken?: string;
   expiresAt?: string;
   planId?: string;
+  planHash?: string;
   resourceCount: number;
   resources: { address: string; type: string }[];
 }
@@ -62,6 +63,27 @@ export interface TerraformLockInspection {
   reason?: string;
 }
 
+/** One request for approval of a plan (apply) or a teardown preview (destroy). */
+export interface TerraformApproval {
+  id: string;
+  action: 'apply' | 'destroy';
+  planId: string;
+  planHash: string;
+  summary: string | null;
+  requestedBy: string;
+  status: 'pending' | 'approved' | 'rejected' | 'used' | 'expired';
+  decidedBy: string | null;
+  comment: string | null;
+  createdAt: string;
+  expiresAt: string;
+}
+export interface TerraformApprovals {
+  /** required = a different owner/admin must approve; self-ok = the requester may approve; off = no approval needed. */
+  mode: 'required' | 'self-ok' | 'off';
+  you: string;
+  approvals: TerraformApproval[];
+}
+
 export interface TerraformExecutionStatus {
   /** False when the server's access rules or kill switch stop this caller from running Terraform. */
   enabled: boolean;
@@ -72,6 +94,27 @@ export interface TerraformExecutionStatus {
 }
 
 export class ApiTerraformExecutionService {
+  static async listApprovals(projectId: string, user?: { id: string; role?: string }): Promise<TerraformApprovals> {
+    const res = await fetch(`/api/projects/${projectId}/terraform/approvals`, { headers: authHeaders(user), credentials: 'include' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(parseErrorMessage(data, `Could not load approvals (${res.status})`));
+    return data.data;
+  }
+
+  static async requestApproval(projectId: string, action: 'apply' | 'destroy', planId: string, planHash: string, user?: { id: string; role?: string }): Promise<TerraformApproval> {
+    const res = await fetch(`/api/projects/${projectId}/terraform/approvals`, { method: 'POST', headers: authHeaders(user), credentials: 'include', body: JSON.stringify({ action, planId, planHash }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(parseErrorMessage(data, `Could not request approval (${res.status})`));
+    return data.data.approval;
+  }
+
+  static async decideApproval(projectId: string, approvalId: string, decision: 'approve' | 'reject', user?: { id: string; role?: string }, comment?: string): Promise<TerraformApproval> {
+    const res = await fetch(`/api/projects/${projectId}/terraform/approvals/${encodeURIComponent(approvalId)}`, { method: 'POST', headers: authHeaders(user), credentials: 'include', body: JSON.stringify({ decision, comment }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(parseErrorMessage(data, `Could not record the decision (${res.status})`));
+    return data.data.approval;
+  }
+
   /** Read-only: how many plans are left in the current window and whether an apply is running. Uses none of the budget. */
   static async getStatus(projectId: string, environment: string, user?: { id: string; role?: string }): Promise<TerraformExecutionStatus> {
     const res = await fetch(`/api/projects/${projectId}/terraform/status?env=${encodeURIComponent(environment)}`, { headers: authHeaders(user), credentials: 'include' });

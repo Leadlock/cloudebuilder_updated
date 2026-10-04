@@ -104,6 +104,10 @@
       "model": "SecurityScan",
       "namespace": "public"
     },
+    "terraformApproval": {
+      "model": "TerraformApproval",
+      "namespace": "public"
+    },
     "terraformAuditEvent": {
       "model": "TerraformAuditEvent",
       "namespace": "public"
@@ -3466,6 +3470,167 @@
               "table": "securityScan"
             }
           },
+          "TerraformApproval": {
+            "fields": {
+              "action": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "comment": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "decidedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "decidedBy": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "expiresAtMs": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/float8@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "orgId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "planHash": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "planId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "projectId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "requestedBy": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "status": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "summary": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "usedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "fields": {
+                "action": {
+                  "column": "action"
+                },
+                "comment": {
+                  "column": "comment"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "decidedAt": {
+                  "column": "decidedAt"
+                },
+                "decidedBy": {
+                  "column": "decidedBy"
+                },
+                "expiresAtMs": {
+                  "column": "expiresAtMs"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "orgId": {
+                  "column": "orgId"
+                },
+                "planHash": {
+                  "column": "planHash"
+                },
+                "planId": {
+                  "column": "planId"
+                },
+                "projectId": {
+                  "column": "projectId"
+                },
+                "requestedBy": {
+                  "column": "requestedBy"
+                },
+                "status": {
+                  "column": "status"
+                },
+                "summary": {
+                  "column": "summary"
+                },
+                "usedAt": {
+                  "column": "usedAt"
+                }
+              },
+              "namespaceId": "public",
+              "table": "terraformApproval"
+            }
+          },
           "TerraformAuditEvent": {
             "fields": {
               "action": {
@@ -6658,6 +6823,112 @@
               },
               "uniques": []
             },
+            "terraformApproval": {
+              "columns": {
+                "action": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "comment": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "createdAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "decidedAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "decidedBy": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "expiresAtMs": {
+                  "codecId": "pg/float8@1",
+                  "nativeType": "float8",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "orgId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "planHash": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "planId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "projectId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "requestedBy": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "status": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "summary": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "usedAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                }
+              },
+              "foreignKeys": [],
+              "indexes": [
+                {
+                  "columns": [
+                    "orgId",
+                    "status"
+                  ],
+                  "name": "terraformApproval_orgId_status_idx_f07aed73",
+                  "prefix": "terraformApproval_orgId_status_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "projectId",
+                    "createdAt"
+                  ],
+                  "name": "terraformApproval_projectId_createdAt_idx_d2d6484f",
+                  "prefix": "terraformApproval_projectId_createdAt_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
             "terraformAuditEvent": {
               "columns": {
                 "action": {
@@ -7219,10 +7490,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "9a378bfb3956a6c13c2d39384fbf698f46960cc34c36f05733459ec1ece6b866"
+    "storageHash": "6b0817c3a48172f0fa480046ff296c943318a81e2601a56eebfd035ce7808563"
   },
   "execution": {
-    "executionHash": "f2cabb7b653b19c268fbfec23ecf7ec67c4f7687b2f0915b17f47f99cf2edae3",
+    "executionHash": "e601969d76456cec43d4ac30a97cd9949576e2dd63fc3f3c4753142e71bd8448",
     "mutations": {
       "defaults": [
         {
@@ -7476,6 +7747,17 @@
             "column": "id",
             "namespace": "public",
             "table": "securityScan"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "terraformApproval"
           }
         },
         {

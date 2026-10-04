@@ -13,6 +13,7 @@ import {
 import clsx from 'clsx';
 import TerraformLimitsBar from './TerraformLimitsBar';
 import TerraformErrorBox from './TerraformErrorBox';
+import TerraformApprovalBar, { TerraformApprovalInbox } from './TerraformApprovalBar';
 
 interface CloudAccount {
   id: string;
@@ -64,6 +65,9 @@ export default function TerraformExecutionPanel() {
 
   const [latestReview, setLatestReview] = useState<ArchitectureReview | null>(null);
   const isApproved = latestReview?.status === 'approved';
+  // Whether the current plan / teardown preview has an approval from an owner/admin (the server enforces it; this enables the button).
+  const [applyApproved, setApplyApproved] = useState(false);
+  const [destroyApproved, setDestroyApproved] = useState(false);
 
   const storageKey = activeProject ? `cloudcraft_tf_state_${activeProject.id}_${state.activeEnvironment}` : null;
   const backendStorageKey = activeProject ? `cloudcraft_tf_backend_${activeProject.id}` : null;
@@ -600,6 +604,8 @@ export default function TerraformExecutionPanel() {
             />
           )}
 
+          {activeProject && <TerraformApprovalInbox projectId={activeProject.id} user={currentUser} />}
+
           {/* Main Action Buttons */}
           {!plan && !destroying && (
             <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -893,13 +899,19 @@ export default function TerraformExecutionPanel() {
                 </div>
               )}
 
+              {/* Approval: a plan only runs once an owner/admin has approved exactly this plan */}
+              {!applyJobId && activeProject && (
+                <TerraformApprovalBar projectId={activeProject.id} action="apply" planId={plan.planId} planHash={plan.planHash} user={currentUser} onReady={setApplyApproved} />
+              )}
+
               {/* Action Buttons */}
               {!applyJobId ? (
                 <div className="flex items-center justify-between gap-2 pt-1">
                   <div className="flex gap-2">
                     <button
                       onClick={handleConfirmApply}
-                      disabled={applying}
+                      disabled={applying || !applyApproved}
+                      title={applyApproved ? undefined : 'Needs an approval from an owner or admin first'}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white transition-all shadow-lg shadow-emerald-600/20"
                     >
                       {applying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
@@ -1058,6 +1070,10 @@ export default function TerraformExecutionPanel() {
                   />
                 </div>
 
+                {activeProject && destroyPreview?.planId && destroyPreview.planHash && (
+                  <TerraformApprovalBar projectId={activeProject.id} action="destroy" planId={destroyPreview.planId} planHash={destroyPreview.planHash} user={currentUser} onReady={setDestroyApproved} />
+                )}
+
                 <div className="flex justify-end gap-2 pt-2 border-t border-gray-800">
                   <button
                     onClick={() => {
@@ -1070,7 +1086,7 @@ export default function TerraformExecutionPanel() {
                   </button>
                   <button
                     onClick={handleExecuteDestroy}
-                    disabled={destroyConfirmInput !== 'DESTROY' || destroying || !destroyPreview?.confirmationToken}
+                    disabled={destroyConfirmInput !== 'DESTROY' || destroying || !destroyPreview?.confirmationToken || !destroyApproved}
                     className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white transition-all shadow-lg shadow-rose-600/30"
                   >
                     {destroying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}

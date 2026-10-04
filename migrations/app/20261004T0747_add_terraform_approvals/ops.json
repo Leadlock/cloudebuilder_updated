@@ -1,0 +1,119 @@
+[
+  {
+    "id": "table.terraformApproval",
+    "label": "Create table \"terraformApproval\"",
+    "summary": "Creates table \"terraformApproval\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "terraformApproval"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"terraformApproval\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"terraformApproval\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"terraformApproval\"",
+        "sql": "CREATE TABLE \"public\".\"terraformApproval\" (\n  \"action\" text NOT NULL,\n  \"comment\" text,\n  \"createdAt\" text NOT NULL,\n  \"decidedAt\" text,\n  \"decidedBy\" text,\n  \"expiresAtMs\" float8 NOT NULL,\n  \"id\" text NOT NULL,\n  \"orgId\" text NOT NULL,\n  \"planHash\" text NOT NULL,\n  \"planId\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"requestedBy\" text NOT NULL,\n  \"status\" text NOT NULL,\n  \"summary\" text,\n  \"usedAt\" text,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"terraformApproval\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"terraformApproval\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.terraformApproval.terraformApproval_orgId_status_idx_f07aed73",
+    "label": "Create index \"terraformApproval_orgId_status_idx_f07aed73\" on \"terraformApproval\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "terraformApproval_orgId_status_idx_f07aed73",
+        "table": "terraformApproval"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"terraformApproval_orgId_status_idx_f07aed73\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"terraformApproval_orgId_status_idx_f07aed73\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"terraformApproval_orgId_status_idx_f07aed73\"",
+        "sql": "CREATE INDEX \"terraformApproval_orgId_status_idx_f07aed73\" ON \"public\".\"terraformApproval\" (\"orgId\", \"status\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"terraformApproval_orgId_status_idx_f07aed73\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"terraformApproval_orgId_status_idx_f07aed73\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.terraformApproval.terraformApproval_projectId_createdAt_idx_d2d6484f",
+    "label": "Create index \"terraformApproval_projectId_createdAt_idx_d2d6484f\" on \"terraformApproval\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "terraformApproval_projectId_createdAt_idx_d2d6484f",
+        "table": "terraformApproval"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"terraformApproval_projectId_createdAt_idx_d2d6484f\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"terraformApproval_projectId_createdAt_idx_d2d6484f\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"terraformApproval_projectId_createdAt_idx_d2d6484f\"",
+        "sql": "CREATE INDEX \"terraformApproval_projectId_createdAt_idx_d2d6484f\" ON \"public\".\"terraformApproval\" (\"projectId\", \"createdAt\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"terraformApproval_projectId_createdAt_idx_d2d6484f\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"terraformApproval_projectId_createdAt_idx_d2d6484f\""
+        ]
+      }
+    ]
+  }
+]
