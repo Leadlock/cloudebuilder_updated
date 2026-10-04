@@ -243,3 +243,14 @@ describe('processApplyJob reports real progress', () => {
     expect(rec.counts).toMatchObject({ done: 1, failed: 1, stopped: 2 });
   });
 });
+
+describe('created resources and their ids', () => {
+  test('the id Terraform prints is kept for each created resource', () => {
+    expect(parseApplyLine('aws_vpc.main: Creation complete after 2s [id=vpc-0abc123]')).toMatchObject({ kind: 'complete', id: 'vpc-0abc123' });
+    expect(parseApplyLine('aws_s3_bucket.b: Creation complete after 1s [id=my-bucket]')).toMatchObject({ id: 'my-bucket' });
+    expect(parseApplyLine('aws_iam_role.r: Creation complete after 1s')).not.toHaveProperty('id');
+    const t = new ApplyProgressTracker(PLANNED);
+    t.feed('aws_vpc.main: Creating...\naws_vpc.main: Creation complete after 2s [id=vpc-0abc123]\n');
+    expect(t.snapshot().resources.find((r) => r.address === 'aws_vpc.main')).toMatchObject({ state: 'done', action: 'create', id: 'vpc-0abc123' });
+  });
+});

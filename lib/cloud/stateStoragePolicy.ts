@@ -17,7 +17,7 @@ export function buildStateStoragePolicy(): string {
       {
         Sid: 'CloudCraftStateBucketCreateAndSecure',
         Effect: 'Allow',
-        Action: ['s3:CreateBucket', 's3:PutBucketVersioning', 's3:PutEncryptionConfiguration', 's3:PutBucketPublicAccessBlock', 's3:PutBucketPolicy', 's3:ListBucket', 's3:GetBucketLocation'],
+        Action: ['s3:CreateBucket', 's3:PutBucketVersioning', 's3:PutEncryptionConfiguration', 's3:PutBucketPublicAccessBlock', 's3:PutBucketPolicy', 's3:PutBucketTagging', 's3:ListBucket', 's3:GetBucketLocation'],
         Resource: `arn:aws:s3:::${STATE_BUCKET_PREFIX}*`,
       },
       {

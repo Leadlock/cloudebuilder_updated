@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AI picks the price-list entries; code reads the prices.
  *
  * For an Azure resource type with no hand-written lookup, the model is shown a short list of real Retail Prices API rows and says which
@@ -95,7 +95,7 @@ export async function pickAzureMeters(input: MeterPickInput): Promise<Normalized
     const perUnitMonthly = monthlyFromRetailItem(row); // null for per-GB / per-operation rows
     const cost = perUnitMonthly !== null ? perUnitMonthly * q : row.retailPrice * q;
     monthly += cost;
-    lines.push(`${row.productName} / ${row.skuName} / ${row.meterName}: $${row.retailPrice} per ${row.unitOfMeasure.replace(/^1\s*\/?\s*/, '') || 'unit'} Ã— ${q} = $${cost.toFixed(2)}/mo`);
+    lines.push(`${row.productName} / ${row.skuName} / ${row.meterName}: $${row.retailPrice} per ${row.unitOfMeasure.replace(/^1\s*\/?\s*/, '') || 'unit'} × ${q} = $${cost.toFixed(2)}/mo`);
   }
 
   if (!Number.isFinite(monthly) || monthly <= 0 || monthly > maxPlausibleMonthlyUsd(resourceType)) return null;

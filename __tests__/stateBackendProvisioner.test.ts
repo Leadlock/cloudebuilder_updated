@@ -136,3 +136,18 @@ describe('Azure state storage', () => {
     await expect(ensureAzureStateBackend(az, 'eastus', f.c)).rejects.toThrow(/Reader role/);
   });
 });
+
+describe('state bucket tags', () => {
+  test('the bucket is tagged so it can be found later', async () => {
+    const f = fakeAws({ HeadBucketCommand: () => { throw awsErr('NotFound', 404); } });
+    await ensureAwsStateBackend({ bucket: 'my-state', region: 'eu-north-1' }, f.clients);
+    const tag = f.calls.find((c) => c.name === 'PutBucketTaggingCommand')!;
+    expect(JSON.stringify(tag.input)).toContain('"ManagedBy"');
+    expect(JSON.stringify(tag.input)).toContain('"CloudCraft"');
+  });
+  test('a role without the tagging permission still gets its bucket', async () => {
+    const f = fakeAws({ HeadBucketCommand: () => { throw awsErr('NotFound', 404); }, PutBucketTaggingCommand: () => { throw awsErr('AccessDenied', 403); } });
+    const r = await ensureAwsStateBackend({ bucket: 'my-state', region: 'eu-north-1' }, f.clients);
+    expect(r.steps[0]!.outcome).toBe('created');
+  });
+});

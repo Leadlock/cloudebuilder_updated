@@ -33,3 +33,7 @@ describe('state storage policy', () => {
     expect(defaultBucketName('123456789012', 'eu-north-1').startsWith(STATE_BUCKET_PREFIX)).toBe(true);
   });
 });
+
+test('the policy allows tagging the state bucket', () => {
+  expect(allActions).toContain('s3:PutBucketTagging');
+});

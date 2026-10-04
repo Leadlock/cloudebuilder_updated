@@ -11,7 +11,7 @@
  */
 import {
   S3Client, HeadBucketCommand, CreateBucketCommand, PutBucketVersioningCommand, PutBucketEncryptionCommand,
-  PutPublicAccessBlockCommand, PutBucketPolicyCommand,
+  PutPublicAccessBlockCommand, PutBucketPolicyCommand, PutBucketTaggingCommand,
 } from '@aws-sdk/client-s3';
 import { DynamoDBClient, DescribeTableCommand, CreateTableCommand, waitUntilTableExists } from '@aws-sdk/client-dynamodb';
 import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
@@ -117,6 +117,10 @@ export async function ensureAwsStateBackend(
       }),
     }));
     steps.push({ what: 'Bucket is private, versioned, encrypted and TLS-only', outcome: exists ? 'already-exists' : 'created' });
+    // Tags make it findable later (AWS Tag Editor: ManagedBy = CloudCraft). Best effort: an older role policy without this action is fine.
+    try {
+      await clients.s3.send(new PutBucketTaggingCommand({ Bucket: bucket, Tagging: { TagSet: [{ Key: 'ManagedBy', Value: 'CloudCraft' }, { Key: 'Purpose', Value: 'terraform-state' }] } }));
+    } catch { /* tagging is optional */ }
   } catch (e) {
     if (errName(e) === 'AccessDenied' || errStatus(e) === 403) throw explainAwsAccessDenied('s3:PutBucket* (securing the bucket)');
     throw e;

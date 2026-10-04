@@ -15,6 +15,7 @@ import TerraformLimitsBar from './TerraformLimitsBar';
 import TerraformErrorBox from './TerraformErrorBox';
 import TerraformApprovalBar, { TerraformApprovalInbox } from './TerraformApprovalBar';
 import TerraformWorkerNotice from './TerraformWorkerNotice';
+import CreatedResourcesList from './CreatedResourcesList';
 
 interface CloudAccount {
   id: string;
@@ -997,6 +998,8 @@ export default function TerraformExecutionPanel() {
                   })}
                 </div>
               )}
+
+              {progress && <CreatedResourcesList progress={progress} cloud={backendProvider.toUpperCase()} />}
 
               {!applyJobId && activeProject && <TerraformWorkerNotice projectId={activeProject.id} environment={state.activeEnvironment} />}
 

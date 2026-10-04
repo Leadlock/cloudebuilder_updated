@@ -30,6 +30,8 @@ export interface ProgressResource {
   finishedAt?: number;
   /** How long Terraform itself says it took (completed resources), else the latest "still creating" figure. */
   seconds?: number;
+  /** The cloud provider's id for it, as Terraform printed it ("[id=vpc-0abc]"): what you search for in the console to find or delete it. */
+  id?: string;
 }
 
 export interface ProgressCounts { total: number; queued: number; running: number; done: number; failed: number; stopped: number }
@@ -50,7 +52,7 @@ const NOUN_ACTION: Record<string, ProgressResource['action']> = { Creation: 'cre
 export type ParsedLine =
   | { kind: 'start'; address: string; action: ProgressResource['action'] }
   | { kind: 'still'; address: string; action: ProgressResource['action']; seconds?: number }
-  | { kind: 'complete'; address: string; action: ProgressResource['action']; seconds?: number }
+  | { kind: 'complete'; address: string; action: ProgressResource['action']; seconds?: number; id?: string }
   | { kind: 'error-address'; address: string }
   | { kind: 'error-start' }
   | { kind: 'other' };
@@ -81,7 +83,10 @@ export function parseApplyLine(raw: string): ParsedLine {
   }
 
   const done = /^(Creation|Modifications|Destruction|Read) complete after (\S+)/.exec(rest);
-  if (done) return { kind: 'complete', address, action: NOUN_ACTION[done[1]!], seconds: parseDuration(done[2]!.replace(/\[.*$/, '')) };
+  if (done) {
+    const id = /\[id=([^\]]+)\]/.exec(rest)?.[1];
+    return { kind: 'complete', address, action: NOUN_ACTION[done[1]!], seconds: parseDuration(done[2]!.replace(/\[.*$/, '')), ...(id ? { id: id.slice(0, 300) } : {}) };
+  }
 
   return { kind: 'other' };
 }
@@ -148,7 +153,7 @@ export class ApplyProgressTracker {
       }
       case 'complete': {
         const r = this.resource(p.address);
-        r.state = 'done'; r.action ??= p.action; r.finishedAt = this.now(); if (p.seconds !== undefined) r.seconds = p.seconds;
+        r.state = 'done'; r.action ??= p.action; r.finishedAt = this.now(); if (p.seconds !== undefined) r.seconds = p.seconds; if (p.id) r.id = p.id;
         this.inError = false;
         break;
       }
