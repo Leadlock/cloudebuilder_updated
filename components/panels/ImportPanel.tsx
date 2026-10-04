@@ -127,6 +127,8 @@ export default function ImportPanel() {
   const [accountToDelete, setAccountToDelete] = useState<CloudAccount | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // "Re-check": run the connection check again for one account.
+  const [recheckingId, setRecheckingId] = useState<string | null>(null);
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -147,6 +149,23 @@ export default function ImportPanel() {
     setAzureForm({ tenantId: '', clientId: '', clientSecret: '', subscriptionId: '' });
     setAccountName('');
     setConnecting(false);
+  }
+
+  async function recheckAccount(acct: CloudAccount) {
+    setRecheckingId(acct.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/cloud-accounts/${acct.id}/validate`, { method: 'POST', credentials: 'include' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: { message?: string } };
+        throw new Error(data?.error?.message ?? `Could not check the account (${res.status})`);
+      }
+      await fetchAccounts(acct.provider);     // the check saved its result with the account; show it
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not check the account');
+    } finally {
+      setRecheckingId(null);
+    }
   }
 
   function askToDeleteAccount(acct: CloudAccount) {
@@ -632,12 +651,13 @@ export default function ImportPanel() {
                     <div
                       key={acct.id}
                       className={clsx(
-                        'w-full flex items-center gap-1 rounded-lg border transition-colors',
+                        'w-full rounded-lg border transition-colors',
                         selectedAccountId === acct.id
                           ? 'border-blue-500 bg-blue-900/20'
                           : 'border-gray-700 hover:bg-gray-700/50',
                       )}
                     >
+                    <div className="flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => handleSelectAccount(acct.id)}
@@ -663,6 +683,17 @@ export default function ImportPanel() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => recheckAccount(acct)}
+                      disabled={recheckingId === acct.id}
+                      title="Check the connection again"
+                      aria-label={`Re-check account ${acct.name}`}
+                      className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs text-gray-400 hover:text-blue-300 hover:bg-blue-950/40 disabled:opacity-60 transition-colors"
+                    >
+                      <RefreshCw className={clsx('w-3.5 h-3.5', recheckingId === acct.id && 'animate-spin')} />
+                      {recheckingId === acct.id ? 'Checking…' : 'Re-check'}
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => askToDeleteAccount(acct)}
                       title="Delete this account"
                       aria-label={`Delete account ${acct.name}`}
@@ -670,6 +701,20 @@ export default function ImportPanel() {
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
+                    </div>
+                    {acct.status === 'invalid' && (
+                      <div className="mx-3 mb-3 text-xs leading-relaxed" data-testid="account-invalid-reason">
+                        <p className="text-red-300">
+                          {typeof acct.identity?.validationReason === 'string' ? acct.identity.validationReason : 'The last connection check failed.'}
+                        </p>
+                        <p className="text-gray-400 mt-0.5">
+                          {typeof acct.identity?.validationFix === 'string' ? acct.identity.validationFix : 'Click Re-check to see why.'}
+                        </p>
+                      </div>
+                    )}
+                    {acct.status === 'pending' && (
+                      <p className="mx-3 mb-3 text-xs text-gray-500">Not checked yet. Click Re-check.</p>
+                    )}
                     </div>
                   ))}
                 </div>

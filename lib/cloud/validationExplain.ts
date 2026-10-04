@@ -1,0 +1,107 @@
+/**
+ * Turns the raw reason a cloud account failed validation into two plain sentences: what is wrong, and what to do about it.
+ *
+ * The adapters return AWS/Azure error text (already stripped of request ids and ARNs). That text is accurate but written for
+ * developers, and the most common cause — the CloudCraft server has no AWS credentials of its own, so it cannot even try to
+ * assume your role — reads like a bug in the role the user just created. This says it straight.
+ */
+
+export interface ValidationExplanation {
+  /** What is wrong, in one sentence. */
+  reason: string;
+  /** What to do next. */
+  fix: string;
+}
+
+type Rule = { when: RegExp; reason: string; fix: string };
+
+const AWS_RULES: Rule[] = [
+  {
+    when: /could not load credentials|CredentialsProviderError|Missing credentials in config/i,
+    reason: 'The CloudCraft server has no AWS credentials of its own, so it cannot start the connection to your account.',
+    fix: 'Give the server an AWS identity that is allowed to assume your role (an access key in AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or an instance/task role), restart it, then check again. Your role and External ID have not been tested yet.',
+  },
+  {
+    when: /InvalidClientTokenId|security token included in the request is invalid|SignatureDoesNotMatch|Access Key Id you provided does not exist/i,
+    reason: 'The AWS access key the CloudCraft server uses is not valid.',
+    fix: 'Check AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY on the server (the key may have been deleted or mistyped), restart it, then check again.',
+  },
+  {
+    when: /ExpiredToken|token.{0,30}expired/i,
+    reason: 'The AWS credentials the CloudCraft server uses have expired.',
+    fix: 'Refresh the server\'s AWS credentials (temporary credentials expire), restart it, then check again.',
+  },
+  {
+    when: /not authorized to perform:?\s*sts:AssumeRole|is not authorized to assume|AccessDenied.{0,80}AssumeRole|AssumeRole.{0,80}AccessDenied/i,
+    reason: 'AWS refused to let CloudCraft assume your role.',
+    fix: 'Check three things: the role\'s trust policy names the AWS identity the CloudCraft server runs as; it requires exactly the External ID you entered here; and that identity has permission to call sts:AssumeRole on the role.',
+  },
+  {
+    when: /RoleArn|Member must satisfy regular expression pattern|not a valid (role )?arn|ValidationError/i,
+    reason: 'The role ARN does not look valid.',
+    fix: 'Copy the ARN from the role\'s page in IAM. It looks like arn:aws:iam::123456789012:role/CloudCraftReadOnly.',
+  },
+  {
+    when: /ENOTFOUND|ETIMEDOUT|ECONNREFUSED|ECONNRESET|EAI_AGAIN|getaddrinfo|socket hang up|timed out/i,
+    reason: 'CloudCraft could not reach AWS.',
+    fix: 'Check the server\'s internet connection and any proxy or firewall rules, then check again.',
+  },
+];
+
+const AZURE_RULES: Rule[] = [
+  {
+    when: /AADSTS7000222|secret.{0,40}expired/i,
+    reason: 'The client secret for this Azure service principal has expired.',
+    fix: 'Create a new client secret in Microsoft Entra ID (App registrations → Certificates & secrets), then delete this account and connect it again with the new secret.',
+  },
+  {
+    when: /AADSTS7000215|invalid client secret/i,
+    reason: 'The client secret is wrong.',
+    fix: 'Use the secret\'s Value (not its ID) from Entra ID → App registrations → Certificates & secrets, or create a new one, then connect the account again.',
+  },
+  {
+    when: /AADSTS700016|application with identifier .{0,80} was not found/i,
+    reason: 'No Azure application matches this client ID in this tenant.',
+    fix: 'Check the client (application) ID and the tenant ID: both come from the app registration\'s Overview page.',
+  },
+  {
+    when: /AADSTS90002|tenant .{0,60}not found|AADSTS900023/i,
+    reason: 'This tenant ID was not found.',
+    fix: 'Copy the Directory (tenant) ID from the app registration\'s Overview page and connect the account again.',
+  },
+  {
+    when: /AuthorizationFailed|does not have authorization to perform action/i,
+    reason: 'The service principal exists but is not allowed to read this subscription.',
+    fix: 'Give it the Reader role on the subscription (Subscription → Access control (IAM) → Add role assignment), then check again.',
+  },
+  {
+    when: /SubscriptionNotFound|subscription .{0,60}(was )?not found/i,
+    reason: 'This subscription ID was not found for the service principal.',
+    fix: 'Check the subscription ID, and that the service principal has a role on that subscription.',
+  },
+  {
+    when: /ENOTFOUND|ETIMEDOUT|ECONNREFUSED|ECONNRESET|EAI_AGAIN|getaddrinfo|socket hang up|timed out/i,
+    reason: 'CloudCraft could not reach Azure.',
+    fix: 'Check the server\'s internet connection and any proxy or firewall rules, then check again.',
+  },
+];
+
+export function explainValidationFailure(provider: string, error: string | null | undefined, missingPermissions: string[] = []): ValidationExplanation {
+  const text = (error ?? '').trim();
+  if (text) {
+    for (const rule of provider === 'azure' ? AZURE_RULES : AWS_RULES) if (rule.when.test(text)) return { reason: rule.reason, fix: rule.fix };
+  }
+  if (!text && missingPermissions.length > 0) {
+    const shown = missingPermissions.slice(0, 3).join(', ');
+    return provider === 'azure'
+      ? { reason: 'CloudCraft signed in, but it cannot read the subscription\'s resources.', fix: 'Give the service principal the Reader role on the subscription, then check again.' }
+      : {
+        reason: `CloudCraft assumed the role, but the role cannot read your resources (for example ${shown}).`,
+        fix: 'Attach the ReadOnlyAccess policy to the role, or a custom read-only policy that includes the actions CloudCraft uses, then check again.',
+      };
+  }
+  return {
+    reason: text ? `The connection check failed: ${text.slice(0, 200)}` : 'The connection check failed.',
+    fix: 'Check the connection details you entered, then check again. The server log has the full reason.',
+  };
+}

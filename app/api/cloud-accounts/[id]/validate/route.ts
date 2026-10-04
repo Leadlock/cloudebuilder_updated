@@ -15,6 +15,7 @@ import { resolveOrgId } from '@/lib/api/phase2d';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
 import { createDiscoveryProvider } from '@/lib/cloud/provider';
 import type { CloudCredentials } from '@/lib/cloud/types';
+import { explainValidationFailure } from '@/lib/cloud/validationExplain';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,9 +61,12 @@ export async function POST(
 
     // Persist validation outcome (status + identity, no credentials)
     const newStatus = validationResult.valid ? 'active' : 'invalid';
-    const identityJson = validationResult.identity
-      ? JSON.stringify(validationResult.identity)
-      : '{}';
+    // When it fails, keep the reason (in plain words) with the account so the list can show it without checking again.
+    const why = validationResult.valid ? null : explainValidationFailure(account.provider, validationResult.error, validationResult.missingPermissions ?? []);
+    const identityJson = JSON.stringify({
+      ...(validationResult.identity ?? {}),
+      ...(why ? { validationReason: why.reason, validationFix: why.fix } : {}),
+    });
 
     await cloudAccountRepository.updateStatus(id, orgId, newStatus, identityJson);
 
@@ -73,6 +77,8 @@ export async function POST(
       permissionsOk: validationResult.permissionsOk,
       missingPermissions: validationResult.missingPermissions,
       error: validationResult.error ?? null,
+      reason: why?.reason ?? null,
+      fix: why?.fix ?? null,
     });
   } catch (err) {
     console.error(
