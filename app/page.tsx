@@ -13,6 +13,7 @@ import AIGenerator from '@/components/ai/AIGenerator';
 import AdvisorPanel from '@/components/panels/AdvisorPanel';
 import DisasterRecovery from '@/components/panels/DisasterRecovery';
 import ImportPanel from '@/components/panels/ImportPanel';
+import CloudAccountsPanel from '@/components/panels/CloudAccountsPanel';
 import VersionHistory from '@/components/panels/VersionHistory';
 import EnvironmentsPanel from '@/components/panels/EnvironmentsPanel';
 import WellArchitectedReview from '@/components/panels/WellArchitectedReview';
@@ -57,6 +58,7 @@ function MainContent() {
     advisor:            <AdvisorPanel />,
     'disaster-recovery':<DisasterRecovery />,
     import:             <ImportPanel />,
+    accounts:           <CloudAccountsPanel />,
     history:            <VersionHistory />,
     environments:       <EnvironmentsPanel />,
     review:             <ReviewWorkflowPanel />,

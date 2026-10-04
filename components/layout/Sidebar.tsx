@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Box, Code2, ShieldCheck, DollarSign, Rocket,
   ChevronLeft, ChevronRight, Cloud, Plus, Trash2, Wand2, LayoutGrid,
   Sparkles, Brain, History, GitBranch, Shield, Upload, CheckSquare, FileCheck,
-  Activity, Scale, Users, X, GripVertical
+  Activity, Scale, Users, X, GripVertical, Link2
 } from 'lucide-react';
 import clsx from 'clsx';
 import { AppView, Project } from '@/types';
@@ -52,6 +52,7 @@ const NAV_GROUPS = [
   {
     label: 'Manage',
     items: [
+      { id: 'accounts',   label: 'Cloud Accounts',    icon: Link2,           requiresProject: false },
       { id: 'environments', label: 'Environments',   icon: GitBranch,       requiresProject: true },
       { id: 'history',    label: 'History',           icon: History,         requiresProject: true },
       { id: 'team',       label: 'Team',              icon: Users,           requiresProject: false, adminOnly: true },

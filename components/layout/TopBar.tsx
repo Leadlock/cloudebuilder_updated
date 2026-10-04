@@ -21,6 +21,7 @@ const VIEW_LABELS: Partial<Record<AppView, string>> = {
   advisor: 'Architecture Advisor',
   'disaster-recovery': 'DR Designer',
   import: 'Import Infrastructure',
+  accounts: 'Cloud Accounts',
   history: 'Version History',
   environments: 'Environments',
   review: 'Architecture Review',

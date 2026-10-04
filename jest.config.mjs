@@ -25,6 +25,8 @@ const config = {
         skipLibCheck: true,
         // Needed for import assertions
         target: 'ES2020',
+        // Lets a test render a React component to HTML (react-dom/server) — still no DOM, no browser.
+        jsx: 'react-jsx',
       },
     }],
   },

@@ -63,6 +63,7 @@ export type AppView =
   | 'well-architected'
   | 'disaster-recovery'
   | 'import'
+  | 'accounts'
   | 'history'
   | 'environments'
   | 'review'
