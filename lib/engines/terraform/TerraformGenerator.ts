@@ -137,6 +137,36 @@ class ReferenceResolver {
 // ─── AWS Terraform Generator ─────────────────────────────────────────────────
 
 class AwsTerraformGenerator {
+  /** Set when a resource that needs a VPC is not in or connected to one, so the account's default VPC is declared for it. */
+  private _needsDefaultVpc = false;
+
+  /**
+   * A VPC reference for a resource that is not inside a VPC on the canvas. Never a reference to a VPC that is not declared: that made
+   * `terraform validate` fail ("Reference to undeclared resource aws_vpc.main"). In order: the VPC of a subnet it is connected to; the
+   * architecture's only VPC; the account's default VPC (a data source). The user is told which one was used.
+   */
+  private _fallbackVpcRef(
+    r: DbArchitectureResource,
+    resolver: ReferenceResolver,
+    connections: DbArchitectureConnection[],
+    resources: DbArchitectureResource[],
+    warnings: string[],
+  ): string {
+    const refOf = (v: DbArchitectureResource) => `${Boolean(this._cfg(v).imported || this._cfg(v).importState === 'imported') ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(v.id) ?? 'main'}.id`;
+    for (const subnet of resolver.resolveParents(r.id, 'aws_subnet', connections, resources)) {
+      const viaSubnet = resolver.resolveParent(subnet.id, 'aws_vpc', connections, resources);
+      if (viaSubnet) return refOf(viaSubnet);
+    }
+    const vpcs = resources.filter((x) => x.resourceType === 'aws_vpc');
+    if (vpcs.length === 1) {
+      warnings.push(`"${r.label}" is not inside or connected to a VPC, so it was placed in the architecture's only VPC ("${vpcs[0]!.label}"). Move it into the VPC on the canvas to make that explicit.`);
+      return refOf(vpcs[0]!);
+    }
+    this._needsDefaultVpc = true;
+    warnings.push(`"${r.label}" is not inside or connected to a VPC, so it will be created in your AWS account's default VPC. Put it inside a VPC on the canvas to place it in a VPC this architecture creates.`);
+    return 'data.aws_vpc.default.id';
+  }
+
   generate(
     resources: DbArchitectureResource[],
     connections: DbArchitectureConnection[],
@@ -146,6 +176,7 @@ class AwsTerraformGenerator {
     const blocks: string[] = [];
     const warnings: string[] = [];
     const resourceMap: Record<string, string> = {};
+    this._needsDefaultVpc = false;
 
     // Pre-calculate distinct Availability Zones for all AWS subnets in the architecture
     const subnetAzMap = new Map<string, string>();
@@ -206,7 +237,7 @@ locals {
           const isVpcImported = vpc && Boolean(this._cfg(vpc).imported || this._cfg(vpc).importState === 'imported');
           const vpcRef = vpc
             ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id`
-            : 'aws_vpc.main.id # WARNING: VPC not connected';
+            : this._fallbackVpcRef(r, resolver, connections, resources, warnings);
           const az = subnetAzMap.get(r.id) ?? (cfg['availabilityZone'] as string) ?? 'us-east-1a';
 
           if (isImported) {
@@ -368,10 +399,7 @@ locals {
           }
 
           const isVpcImported = vpc && Boolean(this._cfg(vpc).imported || this._cfg(vpc).importState === 'imported');
-          const vpcRef = vpc ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id` : null;
-          if (!vpcRef) {
-            warnings.push(`ALB "${r.label}" has no resolvable VPC (directly or via a connected subnet) — its target group's vpc_id will fall back to a placeholder and Terraform will fail to apply.`);
-          }
+          const vpcRef = vpc ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id` : this._fallbackVpcRef(r, resolver, connections, resources, warnings);
 
           if (isImported) {
             blocks.push(this._dataAlb(name, cfg));
@@ -387,7 +415,7 @@ locals {
           const isVpcImported = vpc && Boolean(this._cfg(vpc).imported || this._cfg(vpc).importState === 'imported');
           const vpcRef = vpc
             ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id`
-            : 'aws_vpc.main.id # WARNING: VPC not connected';
+            : this._fallbackVpcRef(r, resolver, connections, resources, warnings);
           blocks.push(this._igw(name, cfg, vpcRef));
           resourceMap[r.id] = `aws_internet_gateway.${name}`;
           break;
@@ -407,7 +435,7 @@ locals {
           const isVpcImported = vpc && Boolean(this._cfg(vpc).imported || this._cfg(vpc).importState === 'imported');
           const vpcRef = vpc
             ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id`
-            : 'aws_vpc.main.id # WARNING: VPC not connected';
+            : this._fallbackVpcRef(r, resolver, connections, resources, warnings);
 
           if (isImported) {
             blocks.push(this._dataSg(name, cfg));
@@ -536,7 +564,14 @@ locals {
           break;
         }
         case 'aws_route53': {
-          blocks.push(this._route53(name, cfg));
+          {
+            const zoneVpc = resolver.resolveParent(r.id, 'aws_vpc', connections, resources);
+            const zoneVpcImported = zoneVpc && Boolean(this._cfg(zoneVpc).imported || this._cfg(zoneVpc).importState === 'imported');
+            const zoneVpcRef = cfg['hostedZoneType'] === 'Private'
+              ? (zoneVpc ? `${zoneVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(zoneVpc.id) ?? 'main'}.id` : this._fallbackVpcRef(r, resolver, connections, resources, warnings))
+              : null;
+            blocks.push(this._route53(name, cfg, zoneVpcRef));
+          }
           resourceMap[r.id] = `aws_route53_record.${name}`;
           break;
         }
@@ -548,7 +583,7 @@ locals {
         case 'aws_route_table': {
           const vpc = resolver.resolveParent(r.id, 'aws_vpc', connections, resources);
           const isVpcImported = vpc && Boolean(this._cfg(vpc).imported || this._cfg(vpc).importState === 'imported');
-          const vpcRef = vpc ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id` : 'aws_vpc.main.id # WARNING: VPC not connected';
+          const vpcRef = vpc ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id` : this._fallbackVpcRef(r, resolver, connections, resources, warnings);
           const igw = resolver.resolveParent(r.id, 'aws_igw', connections, resources);
           const nat = resolver.resolveParent(r.id, 'aws_nat', connections, resources);
           const subnets = resolver.resolveParents(r.id, 'aws_subnet', connections, resources);
@@ -565,7 +600,7 @@ locals {
         case 'aws_nacl': {
           const vpc = resolver.resolveParent(r.id, 'aws_vpc', connections, resources);
           const isVpcImported = vpc && Boolean(this._cfg(vpc).imported || this._cfg(vpc).importState === 'imported');
-          const vpcRef = vpc ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id` : 'aws_vpc.main.id # WARNING: VPC not connected';
+          const vpcRef = vpc ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id` : this._fallbackVpcRef(r, resolver, connections, resources, warnings);
           const subnets = resolver.resolveParents(r.id, 'aws_subnet', connections, resources);
           const subnetRefs = subnets.map((s) => {
             const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
@@ -616,6 +651,8 @@ locals {
         }
       }
     }
+
+    if (this._needsDefaultVpc) blocks.unshift('data "aws_vpc" "default" {\n  default = true\n}');
 
     return { blocks, warnings, resourceMap };
   }
@@ -1299,7 +1336,7 @@ ${tagLines.join('\n')}
     return parts.join('\n\n');
   }
 
-  private _route53(name: string, cfg: Record<string, unknown>): string {
+  private _route53(name: string, cfg: Record<string, unknown>, vpcRef: string | null = null): string {
     const isPrivate = cfg['hostedZoneType'] === 'Private';
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
@@ -1310,7 +1347,7 @@ ${tagLines.join('\n')}
     ];
     if (cfg['comment']) zoneLines.push(`  comment = "${cfg['comment']}"`);
     if (isPrivate) {
-      zoneLines.push(`  vpc {`, `    vpc_id = aws_vpc.main.id # WARNING: connect this hosted zone to a VPC on the canvas for a real private zone`, `  }`);
+      zoneLines.push(`  vpc {`, `    vpc_id = ${vpcRef ?? 'data.aws_vpc.default.id'}`, `  }`);
     }
     zoneLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
 
@@ -1791,7 +1828,7 @@ ${tagLines.join('\n')}
       `  name        = "${tgName}"`,
       `  port        = ${targetPort}`,
       `  protocol    = "${targetProtocol}"`,
-      `  vpc_id      = ${vpcRef ?? `aws_vpc.main.id # WARNING: VPC not connected`}`,
+      `  vpc_id      = ${vpcRef ?? 'data.aws_vpc.default.id'}`,
       `  target_type = "instance"`,
       ``,
       `  health_check {`,
