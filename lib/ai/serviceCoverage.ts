@@ -42,6 +42,7 @@ export const SERVICES: ServiceEntry[] = [
   S('EventBridge', /\bevent\s?bridge\b/i, ['aws_eventbridge'], ['aws_sqs', 'aws_lambda']),
   S('Kinesis', /\bkinesis\b/i, ['aws_kinesis'], ['aws_sqs']),
   S('Glue', /\baws glue\b|\bglue\b(?!\s+(?:code|logic|layer|between))/i, ['aws_glue']), S('Redshift', /\bredshift\b/i, ['aws_redshift']),
+  S('Data lake (Glue / Athena / Lake Formation)', /\bdata\s*lake\b|\blake\s*formation\b/i, ['aws_glue', 'aws_athena', 'aws_lake_formation'], ['aws_s3']),
   S('Athena', /\bathena\b/i, ['aws_athena']), S('SageMaker', /\bsage\s?maker\b/i, ['aws_sagemaker']),
   S('Cognito', /\bcognito\b/i, ['aws_cognito'], ['aws_iam']), S('Secrets Manager', /\bsecrets\s?manager\b/i, ['aws_secrets_manager'], ['aws_kms']),
   S('ECR', /\becr\b|\belastic container registry\b/i, ['aws_ecr']), S('EFS', /\befs\b|\belastic file system\b/i, ['aws_efs'], ['aws_ebs']),

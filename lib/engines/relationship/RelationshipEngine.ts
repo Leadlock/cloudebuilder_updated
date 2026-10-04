@@ -283,6 +283,19 @@ export class RelationshipEngine {
         };
       }
 
+      // Valid: S3 -> Lambda / SQS (S3 Event Notifications). The one legitimate exception to the "storage never initiates"
+      // rule below, like the Blob trigger on the Azure side and the SQS -> Lambda event source. Must be checked before the
+      // blanket rejection.
+      if (sType === 'aws_s3' && (tType === 'aws_lambda' || tType === 'aws_sqs')) {
+        return {
+          isValid: true,
+          relationshipType: 'TRIGGERS',
+          networkScope: 'internal',
+          protocol: 'S3 Event Notification',
+          label: 'Trigger / Event',
+        };
+      }
+
       // Invalid: Storage/Database initiating connection to Compute
       if ((sType === 'aws_rds' || sType === 'aws_s3' || sType === 'aws_dynamodb' || sType === 'aws_elasticache') && (tType === 'aws_ec2' || tType === 'aws_lambda' || tType === 'aws_ecs' || tType === 'aws_eks' || tType === 'aws_auto_scaling')) {
         return {
@@ -478,6 +491,18 @@ export class RelationshipEngine {
         };
       }
 
+      // Valid: EC2 / ECS / EKS / Lambda -> DynamoDB (the DynamoDB API over HTTPS, authorised by IAM)
+      if ((sType === 'aws_ec2' || sType === 'aws_auto_scaling' || sType === 'aws_ecs' || sType === 'aws_eks' || sType === 'aws_lambda') && tType === 'aws_dynamodb') {
+        return {
+          isValid: true,
+          relationshipType: 'CONNECTS_TO',
+          networkScope: 'private',
+          protocol: 'HTTPS / IAM',
+          port: 443,
+          label: 'DynamoDB API / IAM',
+        };
+      }
+
       // Valid: EC2 / Lambda -> SQS
       if ((sType === 'aws_ec2' || sType === 'aws_ecs' || sType === 'aws_lambda') && tType === 'aws_sqs') {
         return {
@@ -518,6 +543,16 @@ export class RelationshipEngine {
           relationshipType: 'AUTHENTICATES_WITH',
           networkScope: 'internal',
           label: 'IAM Role Policy',
+        };
+      }
+
+      // Valid: CloudWatch monitoring (alarms and metrics on a resource, drawn in either direction)
+      if (tType === 'aws_cloudwatch' || sType === 'aws_cloudwatch') {
+        return {
+          isValid: true,
+          relationshipType: 'ASSOCIATED_WITH',
+          networkScope: 'internal',
+          label: 'Alarm / Metric Monitoring',
         };
       }
 
@@ -697,6 +732,18 @@ export class RelationshipEngine {
           protocol: 'Blob HTTPS',
           port: 443,
           label: 'Blob Storage / 443',
+        };
+      }
+
+      // Valid: VM / VMSS / Functions / App Service / AKS -> Cosmos DB (the Cosmos DB API over HTTPS)
+      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_cosmos_db') {
+        return {
+          isValid: true,
+          relationshipType: 'CONNECTS_TO',
+          networkScope: 'private',
+          protocol: 'HTTPS',
+          port: 443,
+          label: 'Cosmos DB / 443',
         };
       }
 
