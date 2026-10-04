@@ -9,6 +9,7 @@
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import AwsKeyRoleGuide from '@/components/panels/AwsKeyRoleGuide';
+import { checkAwsConnectInput } from '@/lib/cloud/awsConnectInput';
 
 const REGIONS = ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2', 'eu-west-1', 'eu-central-1', 'ap-southeast-1', 'ap-northeast-1'];
 const INPUT = 'w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500';
@@ -21,8 +22,9 @@ export default function ConnectAwsAccountForm({ onConnected }: { onConnected: (a
 
   async function connect() {
     const f = { ...form, accessKeyId: form.accessKeyId.trim(), secretAccessKey: form.secretAccessKey.trim(), roleArn: form.roleArn.trim(), externalId: form.externalId.trim() };
-    if (!f.accessKeyId || !f.secretAccessKey || !f.roleArn) {
-      setError('Access key ID, Secret access key and Role ARN are required');
+    const problem = checkAwsConnectInput(f);
+    if (problem) {
+      setError(problem);          // nothing is sent, and nothing the person typed is cleared
       return;
     }
     setConnecting(true);
@@ -41,13 +43,14 @@ export default function ConnectAwsAccountForm({ onConnected }: { onConnected: (a
           },
         }),
       });
-      // The secret is cleared as soon as it has been sent.
-      setForm((v) => ({ ...v, accessKeyId: '', secretAccessKey: '' }));
       const data = await res.json().catch(() => ({})) as { ok?: boolean; data?: { id: string }; error?: { message?: string } };
       if (!res.ok || !data.ok || !data.data) {
+        // Not saved: keep what was typed (so a typo costs one correction, not retyping the secret) and say what the server said.
         setError(data.error?.message ?? 'Failed to connect the account');
         return;
       }
+      // Saved: the secret is cleared now and never shown again.
+      setForm((v) => ({ ...v, accessKeyId: '', secretAccessKey: '' }));
       // Check the connection right away, so the list shows the result (connected, or why not).
       await fetch(`/api/cloud-accounts/${data.data.id}/validate`, { method: 'POST', credentials: 'include' }).catch(() => undefined);
       setForm((v) => ({ ...v, roleArn: '', externalId: '' }));

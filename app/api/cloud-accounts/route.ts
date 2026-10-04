@@ -5,12 +5,13 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import {
-  ok, created, badRequest, forbidden, unauthorized, internalError, parseBody,
+  ok, created, badRequest, forbidden, unauthorized, internalError,
 } from '@/lib/api/response';
 import { extractIdentity, getOrgRole, resolveOrgIds } from '@/lib/api/auth';
 import { orgRepository } from '@/lib/repositories/orgRepository';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
 import { authMethodOf, isAwsCredentials, type CloudCredentials } from '@/lib/cloud/types';
+import { describeArn } from '@/lib/cloud/awsConnectInput';
 
 export const dynamic = 'force-dynamic';
 
@@ -125,6 +126,28 @@ const CreateCloudAccountSchema = z.object({
   credentials: z.union([AwsKeyRoleCredentialsSchema, AwsKeyCredentialsSchema, AwsCredentialsSchema, AzureCredentialsSchema]),
 });
 
+/**
+ * z.union reports a failure as just "Invalid input". When the body is recognisably one kind of credentials, check it against THAT
+ * schema and say which field is wrong (and, for the common mistake of pasting a user's ARN where a role's is needed, say so).
+ */
+function explainCredentialsProblem(raw: unknown): string | null {
+  const c = (raw as { credentials?: unknown } | null)?.credentials;
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return null;
+  const keys = c as Record<string, unknown>;
+  const schema = 'accessKeyId' in keys ? ('roleArn' in keys ? AwsKeyRoleCredentialsSchema : AwsKeyCredentialsSchema)
+    : 'roleArn' in keys ? AwsCredentialsSchema
+      : 'tenantId' in keys ? AzureCredentialsSchema : null;
+  if (!schema) return null;
+  const r = schema.safeParse(c);
+  if (r.success) return null;
+  if (typeof keys['roleArn'] === 'string' && !AWS_ROLE_ARN_RE.test(keys['roleArn'])) {
+    const kind = describeArn(keys['roleArn']);
+    if (kind === 'user') return 'roleArn is the ARN of an IAM user, not of a role. Use the ARN of the role the user assumes (IAM → Roles → your role).';
+    if (kind === 'root') return 'roleArn is the ARN of an account, not of a role. Use the ARN of the role (IAM → Roles → your role).';
+  }
+  return r.error.issues.map((i) => (i.path.length ? `${i.path.join('.')}: ${i.message}` : i.message)).join('; ');
+}
+
 // ─── Route handlers ───────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
@@ -164,8 +187,12 @@ export async function POST(req: NextRequest) {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
 
-    const parsed = await parseBody(req, CreateCloudAccountSchema);
-    if (!parsed.ok) return parsed.response;
+    let raw: unknown;
+    try { raw = await req.json(); } catch { return badRequest('Invalid JSON body'); }
+    const parsed = CreateCloudAccountSchema.safeParse(raw);
+    if (!parsed.success) {
+      return badRequest(explainCredentialsProblem(raw) ?? 'Validation failed', parsed.error.flatten());
+    }
     const body = parsed.data;
 
     let orgId = body.orgId ?? '';
