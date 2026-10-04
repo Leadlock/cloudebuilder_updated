@@ -82,6 +82,10 @@ const edgeTypes = {
   unknownRelationship: UnknownRelationshipEdge,
 };
 
+// Stable references: React Flow re-applies a prop to its store whenever the reference changes.
+const FIT_VIEW_OPTIONS = { padding: 0.15 };
+const PRO_OPTIONS = { hideAttribution: true };
+
 function toReactFlowNodes(
   canvasNodes: CanvasNode[],
   activeDragTargetId: string | null = null,
@@ -754,12 +758,17 @@ export default function InfraCanvas() {
     const projectChanged = activeProject.id !== prevProjectRef.current;
     const envChanged = state.activeEnvironment !== prevEnvRef.current;
     const keyChanged = state.canvasKey !== prevCanvasKey.current;
+    // Compare id SETS, ignoring the auto-injected provider boundaries on both sides. Comparing lengths looped forever (each pass
+    // rebuilt the canvas, which re-triggered this effect) whenever the stored project already contained an 'aws-cloud'/'az-cloud'
+    // node or two nodes shared an id.
+    const isInjectedBoundary = (id: string) => id === 'aws-cloud' || id === 'az-cloud';
     const currentResourceNodeIds = new Set(
-      nodes.filter((n) => n.id !== 'aws-cloud' && n.id !== 'az-cloud' && n.type !== 'azBoundaryNode').map((n) => n.id)
+      nodes.filter((n) => !isInjectedBoundary(n.id) && n.type !== 'azBoundaryNode').map((n) => n.id)
     );
+    const projectResourceNodeIds = new Set(activeProject.nodes.filter((n) => !isInjectedBoundary(n.id)).map((n) => n.id));
     const hasExternalNodeDiff =
-      activeProject.nodes.length !== currentResourceNodeIds.size ||
-      activeProject.nodes.some((n) => !currentResourceNodeIds.has(n.id));
+      projectResourceNodeIds.size !== currentResourceNodeIds.size ||
+      [...projectResourceNodeIds].some((id) => !currentResourceNodeIds.has(id));
 
     if (projectChanged || envChanged || keyChanged || hasExternalNodeDiff) {
       prevProjectRef.current = activeProject.id;
@@ -1792,6 +1801,10 @@ export default function InfraCanvas() {
     return boundaries;
   }, [nodes]);
 
+  // visibleNodes is rebuilt every render, so give React Flow a new array only when its contents could have changed.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const renderedNodes = useMemo(() => [...visibleNodes, ...azBoundaryNodes], [nodes, canvasFilter, normalizedSearch, activeProject, azBoundaryNodes]);
+
   const selectedNode = activeProject?.nodes.find((n) => n.id === selectedNodeId) ?? null;
   const selectedEdge = activeProject?.edges.find((e) => e.id === selectedEdgeId) ?? null;
   const selectedEdgeSourceNode = selectedEdge ? (activeProject?.nodes.find((n) => n.id === selectedEdge.source) ?? null) : null;
@@ -2009,7 +2022,7 @@ export default function InfraCanvas() {
 
         {/* React Flow Core */}
         <ReactFlow
-          nodes={[...visibleNodes, ...azBoundaryNodes]}
+          nodes={renderedNodes}
           edges={edges}
           onNodesChange={onNodesChangeWrapped}
           onEdgesChange={onEdgesChangeWrapped}
@@ -2025,8 +2038,8 @@ export default function InfraCanvas() {
             reactFlowInstance.current = instance;
           }}
           fitView
-          fitViewOptions={{ padding: 0.15 }}
-          proOptions={{ hideAttribution: true }}
+          fitViewOptions={FIT_VIEW_OPTIONS}
+          proOptions={PRO_OPTIONS}
           minZoom={0.2}
           maxZoom={2.0}
           onlyRenderVisibleElements
