@@ -105,13 +105,15 @@ describe('error explanation', () => {
 });
 
 describe('TerraformPermissionHelp', () => {
-  test('names the role, the refused actions and the policy, with the IAM warning when the plan creates roles', () => {
+  test('leads with the simple fix (one built-in AWS policy, nothing to write) and keeps the narrower policy underneath', () => {
     const html = renderToStaticMarkup(<TerraformPermissionHelp message={REAL} resourceTypes={['aws_vpc', 'aws_ecs_cluster', 'aws_iam_role']} />);
     expect(html).toContain('CloudCraft');
-    expect(html).toContain('ec2:CreateVpc');
-    expect(html).toContain('ecs:*');
-    expect(html).toContain('can grant itself more access');
+    expect(html).toContain('AdministratorAccess');
+    expect(html).toContain('Nothing to write or paste');
+    expect(html.indexOf('AdministratorAccess')).toBeLessThan(html.indexOf('ecs:*'));   // the simple way comes before the custom policy
+    expect(html).toContain('<details');                                              // and the custom policy is folded away
     expect(html).toContain('Create inline policy');
+    expect(html).toContain('can grant itself more access');
   });
   test('renders nothing for a failure that is not about permissions', () => {
     expect(renderToStaticMarkup(<TerraformPermissionHelp message="Error: Reference to undeclared resource" resourceTypes={['aws_vpc']} />)).toBe('');
