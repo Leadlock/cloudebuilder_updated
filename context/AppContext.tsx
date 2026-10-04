@@ -1,4 +1,5 @@
 'use client';
+import { applyLoadedCanvas } from '@/lib/domain/applyLoadedCanvas';
 import React, { createContext, useContext, useReducer, ReactNode, useEffect, useRef } from 'react';
 import {
   Project, CanvasNode, CanvasEdge, CloudProvider, AppView, Environment,
@@ -94,6 +95,8 @@ type Action =
   | { type: 'LOAD_DURABLE_DRAFT'; draft: { nodes: CanvasNode[]; edges: CanvasEdge[]; providerMode?: ProviderMode; scaleProfile?: ScaleProfile; revision?: number } }
   /** Internal: replaces project list after API load */
   | { type: '_LOAD_PROJECTS'; projects: Project[] }
+  /** Internal: a project's canvas fetched in the background, so the dashboard can show its real resource count, score and cost */
+  | { type: '_HYDRATE_PROJECT'; id: string; env: Environment; nodes: CanvasNode[]; edges: CanvasEdge[]; revision?: number }
   /** Internal: replaces a single project returned by the API after create */
   | { type: '_REPLACE_PROJECT'; localId: string; project: Project };
 
@@ -310,6 +313,15 @@ function reducer(state: AppState, action: Action): AppState {
         return incoming;
       });
       return { ...state, projects: mergedProjects, apiLoaded: true };
+    }
+
+    case '_HYDRATE_PROJECT': {
+      const target = state.projects.find((p) => p.id === action.id);
+      // Only fills in a project that has no resources yet; one that is already loaded (or being edited) is never overwritten.
+      if (!target || target.nodes.length > 0 || (action.nodes.length === 0 && action.edges.length === 0)) return state;
+      const projects = state.projects.map((p) => (p.id === action.id ? applyLoadedCanvas(p, action.env, state.activeEnvironment, action.nodes, action.edges, action.revision, computeProject) : p));
+      // The project on the canvas right now must redraw with what was loaded.
+      return { ...state, projects, canvasKey: action.id === state.activeProjectId && action.env === state.activeEnvironment ? state.canvasKey + 1 : state.canvasKey };
     }
 
     // ── Internal: swap a locally-created project for the API-returned version ──
@@ -1025,6 +1037,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     return () => { cancelled = true; };
   }, [state.currentUser?.id]);
+
+  // ── Dashboard: fetch each project's canvas so its card shows real numbers ──
+  // The project list carries no resources, so without this every card reads "0 nodes, $0.00, N/A" until the project is opened.
+  const hydrationRequested = useRef(new Set<string>());
+  const hydrationQueue = useRef<string[]>([]);
+  const hydrationRunning = useRef(0);
+  const hydrationEpoch = useRef(0);   // bumped when the user changes or the app unmounts, which abandons queued work
+  const hydrationEnv = state.activeEnvironment;
+  const hydrationMissing = state.projects.filter((p) => p.id !== 'draft-project' && p.nodes.length === 0).map((p) => p.id).join(',');
+
+  useEffect(() => {
+    hydrationEpoch.current += 1;
+    hydrationRequested.current.clear();
+    hydrationQueue.current = [];
+    return () => { hydrationEpoch.current += 1; hydrationQueue.current = []; };
+  }, [state.currentUser?.id]);
+
+  useEffect(() => {
+    if (!state.currentUser || !state.apiLoaded || state.activeView !== 'dashboard' || !hydrationMissing) return;
+    const epoch = hydrationEpoch.current;
+    for (const id of hydrationMissing.split(',')) {
+      const key = `${id}:${hydrationEnv}`;
+      if (!hydrationRequested.current.has(key)) { hydrationRequested.current.add(key); hydrationQueue.current.push(key); }
+    }
+    // Each fetched project changes the list and re-runs this effect, so the pumps must outlive a re-run: they stop only when the
+    // queue is empty or the user changed. A few at a time fills the dashboard quickly without a burst of requests.
+    const pump = async () => {
+      hydrationRunning.current += 1;
+      try {
+        for (let key = hydrationQueue.current.shift(); key !== undefined && epoch === hydrationEpoch.current; key = hydrationQueue.current.shift()) {
+          const [id, env] = key.split(':') as [string, Environment];
+          try {
+            const canvas = await _activeService.loadCanvas(id, env);
+            if (epoch !== hydrationEpoch.current) return;
+            dispatch({ type: '_HYDRATE_PROJECT', id, env, nodes: canvas?.nodes ?? [], edges: canvas?.edges ?? [], revision: canvas?.revision });
+          } catch {
+            hydrationRequested.current.delete(key);   // try again the next time the dashboard is shown
+          }
+        }
+      } finally {
+        hydrationRunning.current -= 1;
+      }
+    };
+    while (hydrationRunning.current < 3 && hydrationQueue.current.length > 0) void pump();
+  }, [state.currentUser?.id, state.apiLoaded, state.activeView, hydrationEnv, hydrationMissing]);
 
   // ── After login: restore this account's draft from backend or localStorage ─
   useEffect(() => {
