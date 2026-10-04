@@ -261,3 +261,58 @@ describe('explanations for a key + role', () => {
     expect(`${e.reason} ${e.fix}`).not.toContain(KEY_ID);
   });
 });
+
+describe('a refused assume-role says exactly who may not assume which role', () => {
+  const USER = 'arn:aws:iam::460195068628:user/Test';
+  const ROLE_SAME = 'arn:aws:iam::460195068628:role/CloudCraft';
+  const refusal = (user: string, role: string) => `User: ${user} is not authorized to perform: sts:AssumeRole on resource: ${role}`;
+  const failAssume = (user: string, role: string) => mockStsSend.mockImplementation(async (cmd: { input?: { RoleArn?: string } }) => {
+    if (cmd.input?.RoleArn) throw new Error(refusal(user, role));
+    return { Account: '460195068628', Arn: user, UserId: 'AIDAEXAMPLE' };
+  });
+
+  it('the adapter keeps who and which role (ARNs are not secrets) before the text is sanitised', async () => {
+    failAssume(USER, ROLE_SAME);
+    const result = await new AwsDiscoveryAdapter({ ...keyRole, roleArn: ROLE_SAME }).validateAccount();
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain(`ASSUME_DENIED|${USER}|${ROLE_SAME}|`);
+  });
+
+  it('same account: names the user and the role and gives the likeliest causes in order — role missing/misnamed, trust policy, External ID', () => {
+    const e = explainValidationFailure('aws', `ASSUME_DENIED|${USER}|${ROLE_SAME}| ${refusal('[arn]', '[arn]')}`, [], 'key-and-role');
+    expect(e.reason).toBe(`AWS refused to let ${USER} assume ${ROLE_SAME}.`);
+    expect(e.fix).toMatch(/\(1\) the role exists with exactly this name/);
+    expect(e.fix).toContain(`the role's trust policy allows ${USER}`);
+    expect(e.fix).toMatch(/enough by itself in the same account/);
+    expect(e.fix).toMatch(/sts:ExternalId condition/);
+  });
+
+  it('different accounts: says so, and also asks about the user\'s own permission to assume', () => {
+    const e = explainValidationFailure('aws', `ASSUME_DENIED|${USER}|arn:aws:iam::111122223333:role/Other| x`, [], 'key-and-role');
+    expect(e.fix).toContain('the role (in account 111122223333)');
+    expect(e.fix).toContain('the account 460195068628');
+    expect(e.fix).toMatch(/the user has an inline policy allowing sts:AssumeRole/);
+  });
+
+  it('the account row ends up saying it in plain words', async () => {
+    failAssume(USER, ROLE_SAME);
+    mockIdentity.mockReturnValue({ userId: 'u1', role: 'admin', orgIds: ['org-1'] });
+    mockResolveOrg.mockResolvedValue('org-1'); mockOrgRole.mockResolvedValue('owner');
+    mockFind.mockResolvedValue({ id: 'acct-1', provider: 'aws' });
+    mockCreds.mockResolvedValue(JSON.stringify({ ...keyRole, roleArn: ROLE_SAME }));
+    mockUpdate.mockReset();
+    mockUpdate.mockResolvedValue({});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await validatePost(new NextRequest('http://localhost/api/cloud-accounts/acct-1/validate', { method: 'POST' }), { params: Promise.resolve({ id: 'acct-1' }) });
+    const body = (await res.json()).data as { reason: string };
+    expect(body.reason).toBe(`AWS refused to let ${USER} assume ${ROLE_SAME}.`);
+    expect(JSON.parse(String(mockUpdate.mock.calls[0]![3]))).toMatchObject({ validationReason: body.reason });
+  });
+
+  it('other kinds of account keep the existing wording, and a marker never leaks into the text shown', () => {
+    const legacy = explainValidationFailure('aws', `ASSUME_DENIED|${USER}|${ROLE_SAME}| x`, [], 'role');
+    expect(legacy.reason).not.toContain('ASSUME_DENIED');
+    const keyRoleGeneric = explainValidationFailure('aws', 'User: [arn] is not authorized to perform: sts:AssumeRole on resource: [arn]', [], 'key-and-role');
+    expect(keyRoleGeneric.reason).toMatch(/refused to let your access key assume the role/i);
+  });
+});

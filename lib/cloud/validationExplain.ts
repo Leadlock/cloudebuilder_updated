@@ -134,9 +134,30 @@ const AZURE_RULES: Rule[] = [
   },
 ];
 
+/** "arn:aws:iam::123456789012:user/Test" → "123456789012" */
+const accountOf = (arn: string): string => /^arn:[^:]+:[^:]+::(\d{12}):/.exec(arn)?.[1] ?? '';
+
+/** AWS refused the assume-role and told us who and which role: say exactly that, and what to check, most likely first. */
+function explainAssumeDenied(userArn: string, roleArn: string): ValidationExplanation {
+  const same = !!accountOf(userArn) && accountOf(userArn) === accountOf(roleArn);
+  return {
+    reason: `AWS refused to let ${userArn} assume ${roleArn}.`,
+    fix: same
+      ? `Check, in AWS: (1) the role exists with exactly this name (IAM → Roles; AWS gives this same refusal when the role is missing or the name differs); (2) the role's trust policy allows ${userArn} (IAM → Roles → the role → Trust relationships → Edit trust policy) — naming the user there is enough by itself in the same account; if it trusts the account instead, the user also needs an inline policy allowing sts:AssumeRole on the role; (3) if the trust policy has an sts:ExternalId condition, enter that same External ID here (Edit).`
+      : `Check, in AWS: (1) the role (in account ${accountOf(roleArn)}) exists with exactly this name; (2) its trust policy allows ${userArn} or the account ${accountOf(userArn)}; (3) the user has an inline policy allowing sts:AssumeRole on the role; (4) if the trust policy has an sts:ExternalId condition, enter that same External ID here (Edit).`,
+  };
+}
+
 export function explainValidationFailure(provider: string, error: string | null | undefined, missingPermissions: string[] = [], authMethod?: string): ValidationExplanation {
   // Never repeat an access key id in a message, even one AWS echoed back.
   const text = (error ?? '').replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, '[access key id]').trim();
+  const denied = /ASSUME_DENIED\|(arn:[^|\s]+)\|(arn:[^|\s]+)\|/.exec(text);
+  if (denied && authMethod === 'key-and-role') return explainAssumeDenied(denied[1]!, denied[2]!);
+  // For every other kind of account the internal marker is dropped, so only AWS's own (already sanitised) wording is matched and shown.
+  return explainText(provider, text.replace(/ASSUME_DENIED\|[^|]*\|[^|]*\|\s*/, ''), missingPermissions, authMethod);
+}
+
+function explainText(provider: string, text: string, missingPermissions: string[], authMethod?: string): ValidationExplanation {
   if (text) {
     const rules = provider === 'azure' ? AZURE_RULES : authMethod === 'key-and-role' ? KEY_ROLE_RULES : authMethod === 'access-key' ? [...ACCESS_KEY_RULES, ...AWS_RULES.filter((r) => /ENOTFOUND/.test(r.when.source))] : AWS_RULES;
     for (const rule of rules) if (rule.when.test(text)) return { reason: rule.reason, fix: rule.fix };

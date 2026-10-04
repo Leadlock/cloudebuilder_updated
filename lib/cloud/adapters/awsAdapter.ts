@@ -527,11 +527,14 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error('[AwsDiscoveryAdapter] validateAccount failed:', message);
+      // A refused AssumeRole names who tried and which role; keep both (they are ARNs, not secrets) so the explanation can say exactly
+      // which user may not assume which role. (The generic sanitising below would replace them.)
+      const denied = /User: (arn:[^\s]+) is not authorized to perform: sts:AssumeRole on resource: (arn:[^\s,]+)/.exec(message);
       return {
         valid: false,
         permissionsOk: false,
         missingPermissions: REQUIRED_AWS_PERMISSIONS,
-        error: sanitiseAwsError(message),
+        error: denied ? `ASSUME_DENIED|${denied[1]}|${denied[2]}| ${sanitiseAwsError(message)}` : sanitiseAwsError(message),
       };
     }
   }
