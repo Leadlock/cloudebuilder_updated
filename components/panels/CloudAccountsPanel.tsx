@@ -28,6 +28,7 @@ interface Account {
 const METHOD_LABEL: Record<string, string> = {
   'key-and-role': 'access key + IAM role',
   'access-key': 'access key only',
+  'access-key-deploy': 'access key (can deploy)',
   role: 'IAM role (server identity)',
   'service-principal': 'service principal',
 };

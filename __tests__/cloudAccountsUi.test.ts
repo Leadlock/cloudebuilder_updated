@@ -14,7 +14,7 @@ const html = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticM
 const noop = async () => undefined;
 
 describe('Connect AWS form', () => {
-  const markup = html(createElement(ConnectAwsAccountForm, { onConnected: noop }));
+  const markup = html(createElement(ConnectAwsAccountForm, { onConnected: noop, initialMode: 'role' }));
 
   it('is about the user\'s own account: their key and their role, with nothing of CloudCraft\'s to set up or trust', () => {
     expect(markup).toContain('Connect your own AWS account');

@@ -23,7 +23,7 @@ export function describeArn(arn: string): 'user' | 'root' | 'role' | 'other' {
 }
 
 /** Returns the first problem, as a sentence a person can act on, or null when the input looks right. */
-export function checkAwsConnectInput(input: AwsConnectInput): string | null {
+export function checkAwsConnectInput(input: AwsConnectInput, options: { needsRole?: boolean } = {}): string | null {
   const accessKeyId = input.accessKeyId.trim();
   const secret = input.secretAccessKey.trim();
   const roleArn = input.roleArn.trim();
@@ -36,6 +36,7 @@ export function checkAwsConnectInput(input: AwsConnectInput): string | null {
   if (!secret) return 'Enter the Secret access key. AWS shows it only once, when the key is created.';
   if (!SECRET_RE.test(secret)) return 'The Secret access key should be 40 characters. Copy it exactly — AWS shows it only once, when the key is created; if you lost it, create a new key.';
 
+  if (options.needsRole === false) return null;     // connecting with the key alone: nothing about a role to check
   if (!roleArn) return 'Enter the Role ARN: the ARN of the role you created (IAM → Roles → your role).';
   if (!ROLE_ARN_RE.test(roleArn)) {
     const kind = describeArn(roleArn);

@@ -61,6 +61,8 @@ export const AwsKeyCredentialsSchema = z.object({
     .array(z.string().regex(AWS_REGION_RE, 'Each additionalRegion must be a valid AWS region identifier'))
     .max(20)
     .optional(),
+  /** The owner's explicit choice to let Terraform run directly on this key. Only the literal true is accepted. */
+  allowDeploy: z.literal(true).optional(),
 }).strict();   // strict: a key + role body that fails its own schema must NOT fall through and be saved as a key alone with the role dropped
 
 /**

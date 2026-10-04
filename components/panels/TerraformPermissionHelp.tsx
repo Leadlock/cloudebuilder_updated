@@ -38,6 +38,10 @@ export default function TerraformPermissionHelp({ message, resourceTypes }: { me
         </p>
       </div>
 
+      <p className="mt-2 text-[11px] text-amber-200/90 leading-relaxed">
+        <strong>Or skip the role entirely:</strong> attach <strong>AdministratorAccess</strong> to your IAM <em>user</em> instead, then in <strong>Cloud Accounts → Connect an AWS account → Simple</strong> connect that user&apos;s access key. CloudCraft then deploys as that user, with no role involved.
+      </p>
+
       <details className="mt-2">
         <summary className="cursor-pointer text-amber-200 font-medium">Want less access than that? Use a narrower policy instead</summary>
         <div className="mt-2">

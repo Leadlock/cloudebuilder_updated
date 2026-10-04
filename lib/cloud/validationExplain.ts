@@ -159,12 +159,12 @@ export function explainValidationFailure(provider: string, error: string | null 
 
 function explainText(provider: string, text: string, missingPermissions: string[], authMethod?: string): ValidationExplanation {
   if (text) {
-    const rules = provider === 'azure' ? AZURE_RULES : authMethod === 'key-and-role' ? KEY_ROLE_RULES : authMethod === 'access-key' ? [...ACCESS_KEY_RULES, ...AWS_RULES.filter((r) => /ENOTFOUND/.test(r.when.source))] : AWS_RULES;
+    const rules = provider === 'azure' ? AZURE_RULES : authMethod === 'key-and-role' ? KEY_ROLE_RULES : (authMethod === 'access-key' || authMethod === 'access-key-deploy') ? [...ACCESS_KEY_RULES, ...AWS_RULES.filter((r) => /ENOTFOUND/.test(r.when.source))] : AWS_RULES;
     for (const rule of rules) if (rule.when.test(text)) return { reason: rule.reason, fix: rule.fix };
   }
   if (!text && missingPermissions.length > 0) {
     const shown = missingPermissions.slice(0, 3).join(', ');
-    if (authMethod === 'access-key') {
+    if (authMethod === 'access-key' || authMethod === 'access-key-deploy') {
       return { reason: `The access key works, but its IAM user cannot read your resources (for example ${shown}).`, fix: 'Attach the read-only policy (or the AWS ReadOnlyAccess policy) to that IAM user, then check again.' };
     }
     return provider === 'azure'

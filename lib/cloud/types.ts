@@ -43,9 +43,9 @@ export interface AwsKeyRoleCredentials {
 }
 
 /**
- * AWS access-key credentials with NO role: a long-lived key of a read-only IAM user, used directly. Accounts connected earlier this way
- * keep working, for DISCOVERY ONLY — never to run Terraform (a stored key that could change infrastructure would be a permanent
- * standing risk; Terraform needs a role, so that its credentials are temporary).
+ * AWS access-key credentials with NO role: a long-lived key of an IAM user, used directly. For DISCOVERY ONLY unless the owner opted
+ * in to deploying with the key (allowDeploy): a stored key that can change infrastructure is a standing risk, so it is never the default;
+ * Terraform normally runs on a role's temporary credentials.
  */
 export interface AwsKeyCredentials {
   accessKeyId: string;
@@ -53,6 +53,11 @@ export interface AwsKeyCredentials {
   region: string;
   /** Optional: additional regions to discover in */
   additionalRegions?: string[];
+  /**
+   * Set only when the owner explicitly chose "deploy with this key": Terraform may then run directly on this key (which needs write
+   * permission, for example AdministratorAccess on the IAM user). Without it a key alone is for discovery only.
+   */
+  allowDeploy?: true;
 }
 
 /**
@@ -78,9 +83,13 @@ export const isAwsCredentials = (c: CloudCredentials): c is AwsCredentials => 'r
 export const isAzureCredentials = (c: CloudCredentials): c is AzureSpCredentials => 'tenantId' in c;
 
 /** How an account signs in. Stored (as a plain label) with the account so the UI can say what it may be used for. */
-export type AuthMethod = 'key-and-role' | 'role' | 'access-key' | 'service-principal';
+export type AuthMethod = 'key-and-role' | 'role' | 'access-key' | 'access-key-deploy' | 'service-principal';
+/** A key with no role that its owner allowed to deploy: Terraform runs directly on the key. */
+export type DeployKeyCredentials = AwsKeyCredentials & { allowDeploy: true };
+export const isAwsDeployKeyCredentials = (c: CloudCredentials): c is DeployKeyCredentials => isAwsKeyCredentials(c) && (c as AwsKeyCredentials).allowDeploy === true;
+
 export function authMethodOf(c: CloudCredentials): AuthMethod {
-  return isAwsKeyRoleCredentials(c) ? 'key-and-role' : isAwsRoleCredentials(c) ? 'role' : isAwsKeyCredentials(c) ? 'access-key' : 'service-principal';
+  return isAwsKeyRoleCredentials(c) ? 'key-and-role' : isAwsRoleCredentials(c) ? 'role' : isAwsDeployKeyCredentials(c) ? 'access-key-deploy' : isAwsKeyCredentials(c) ? 'access-key' : 'service-principal';
 }
 
 // ─── Discovered resource (semantic model) ────────────────────────────────────

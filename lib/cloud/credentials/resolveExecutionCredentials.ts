@@ -30,7 +30,7 @@
  * any API response.
  */
 import { STSClient, AssumeRoleCommand } from '@aws-sdk/client-sts';
-import { isAwsKeyRoleCredentials, isAwsRoleCredentials } from '@/lib/cloud/types';
+import { isAwsKeyRoleCredentials, isAwsRoleCredentials, isAwsDeployKeyCredentials } from '@/lib/cloud/types';
 import { assertTerraformCapable } from '@/lib/cloud/terraformCapability';
 import type { CloudCredentials } from '@/lib/cloud/types';
 
@@ -64,6 +64,15 @@ export async function resolveExecutionCredentials(
       AWS_ACCESS_KEY_ID: assumed.Credentials.AccessKeyId,
       AWS_SECRET_ACCESS_KEY: assumed.Credentials.SecretAccessKey,
       AWS_SESSION_TOKEN: assumed.Credentials.SessionToken,
+      AWS_DEFAULT_REGION: credentials.region,
+    };
+  }
+
+  if (isAwsDeployKeyCredentials(credentials)) {
+    // The owner chose to deploy with the key itself (no role): Terraform signs in as that IAM user.
+    return {
+      AWS_ACCESS_KEY_ID: credentials.accessKeyId,
+      AWS_SECRET_ACCESS_KEY: credentials.secretAccessKey,
       AWS_DEFAULT_REGION: credentials.region,
     };
   }
