@@ -11,6 +11,7 @@ import {
   Globe, Layers, ShieldCheck, Trash2,
 } from 'lucide-react';
 import clsx from 'clsx';
+import AwsConnectGuide from './AwsConnectGuide';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -816,6 +817,11 @@ export default function ImportPanel() {
                     <p className="font-medium mb-1">Required: IAM Cross-Account Role</p>
                     <p className="text-blue-400">Create an IAM role in your AWS account with <strong>ReadOnlyAccess</strong> and add CloudCraft as a trusted principal. Credentials are stored server-side only.</p>
                   </div>
+                  <AwsConnectGuide
+                    externalId={awsForm.externalId}
+                    roleArn={awsForm.roleArn}
+                    onExternalId={(value) => setAwsForm((f) => ({ ...f, externalId: value }))}
+                  />
                   <input
                     type="text"
                     placeholder="Account name (optional)"

@@ -16,6 +16,7 @@ import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepositor
 import { createDiscoveryProvider } from '@/lib/cloud/provider';
 import type { CloudCredentials } from '@/lib/cloud/types';
 import { explainValidationFailure } from '@/lib/cloud/validationExplain';
+import { getServerAwsIdentity } from '@/lib/cloud/serverIdentity';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,6 +64,11 @@ export async function POST(
     const newStatus = validationResult.valid ? 'active' : 'invalid';
     // When it fails, keep the reason (in plain words) with the account so the list can show it without checking again.
     const why = validationResult.valid ? null : explainValidationFailure(account.provider, validationResult.error, validationResult.missingPermissions ?? []);
+    if (why && account.provider === 'aws' && /refused to let CloudCraft assume/i.test(why.reason)) {
+      // The usual cause is a trust policy that names a different identity — so say which one the server really is.
+      const server = await getServerAwsIdentity();
+      if (server.configured) why.fix += ` The CloudCraft server is signed in as ${server.arn} — the role must trust that identity.`;
+    }
     const identityJson = JSON.stringify({
       ...(validationResult.identity ?? {}),
       ...(why ? { validationReason: why.reason, validationFix: why.fix } : {}),
