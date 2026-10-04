@@ -8,7 +8,7 @@ import { apiArchitectureService } from '@/lib/services/ApiArchitectureService';
 import {
   Upload, Cloud, FileCode2, CheckCircle2, Loader2,
   Server, Network, Database, HardDrive, AlertTriangle, RefreshCw,
-  Globe, Layers, ShieldCheck,
+  Globe, Layers, ShieldCheck, Trash2,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -123,6 +123,10 @@ export default function ImportPanel() {
   });
   const [accountName, setAccountName] = useState('');
   const [connecting, setConnecting] = useState(false);
+  // Deleting a connected account asks first: this is the account whose credentials CloudCraft stores.
+  const [accountToDelete, setAccountToDelete] = useState<CloudAccount | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -143,6 +147,35 @@ export default function ImportPanel() {
     setAzureForm({ tenantId: '', clientId: '', clientSecret: '', subscriptionId: '' });
     setAccountName('');
     setConnecting(false);
+  }
+
+  function askToDeleteAccount(acct: CloudAccount) {
+    setDeleteError(null);
+    setAccountToDelete(acct);
+  }
+
+  async function confirmDeleteAccount() {
+    if (!accountToDelete) return;
+    const acct = accountToDelete;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/cloud-accounts/${acct.id}`, { method: 'DELETE', credentials: 'include' });
+      const data = await res.json().catch(() => ({})) as { error?: { message?: string } };
+      if (!res.ok) throw new Error(data?.error?.message ?? `Could not delete the account (${res.status})`);
+      setAccounts((prev) => prev.filter((a) => a.id !== acct.id));
+      if (selectedAccountId === acct.id) {
+        setSelectedAccountId(null);
+        setAvailableRegions([]);
+        setSelectedRegions([]);
+        setAllRegionsSelected(true);
+      }
+      setAccountToDelete(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Could not delete the account');
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function handleSelectAccount(accountId: string) {
@@ -548,21 +581,67 @@ export default function ImportPanel() {
               ← Back
             </button>
 
+            {/* Confirm deleting a connected account */}
+            {accountToDelete && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="delete-account-title">
+                <div className="w-full max-w-md bg-gray-900 border border-red-900/60 rounded-xl p-5 space-y-3 shadow-2xl">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-red-950/60 text-red-400 shrink-0"><Trash2 className="w-5 h-5" /></div>
+                    <div className="space-y-1">
+                      <h3 id="delete-account-title" className="text-white font-semibold text-sm">Delete “{accountToDelete.name}”?</h3>
+                      <p className="text-gray-400 text-xs leading-relaxed">
+                        CloudCraft will forget this {accountToDelete.provider.toUpperCase()} account: its stored connection details are deleted and so is its discovery history.
+                        Terraform plans and applies that use it will stop working until you connect it again.
+                      </p>
+                      <p className="text-gray-500 text-xs leading-relaxed">
+                        Nothing in your cloud account is touched, and designs you already imported stay as they are.
+                      </p>
+                    </div>
+                  </div>
+                  {deleteError && <p className="text-red-400 text-xs bg-red-950/40 border border-red-900/50 rounded-lg px-3 py-2">{deleteError}</p>}
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      autoFocus
+                      onClick={() => setAccountToDelete(null)}
+                      disabled={deleting}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-300 bg-gray-800 hover:bg-gray-700 disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmDeleteAccount}
+                      disabled={deleting}
+                      className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white"
+                    >
+                      {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      Delete account
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Existing accounts */}
             {accounts.length > 0 && (
               <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
                 <p className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-3">Connected Accounts</p>
                 <div className="space-y-2">
                   {accounts.map((acct) => (
-                    <button
+                    <div
                       key={acct.id}
-                      onClick={() => handleSelectAccount(acct.id)}
                       className={clsx(
-                        'w-full flex items-center justify-between p-3 rounded-lg border transition-colors text-left',
+                        'w-full flex items-center gap-1 rounded-lg border transition-colors',
                         selectedAccountId === acct.id
                           ? 'border-blue-500 bg-blue-900/20'
                           : 'border-gray-700 hover:bg-gray-700/50',
                       )}
+                    >
+                    <button
+                      type="button"
+                      onClick={() => handleSelectAccount(acct.id)}
+                      className="flex-1 min-w-0 flex items-center justify-between p-3 text-left"
                     >
                       <div>
                         <p className="text-white text-sm font-medium">{acct.name}</p>
@@ -582,6 +661,16 @@ export default function ImportPanel() {
                         {acct.status}
                       </span>
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => askToDeleteAccount(acct)}
+                      title="Delete this account"
+                      aria-label={`Delete account ${acct.name}`}
+                      className="mr-2 p-2 rounded-md text-gray-500 hover:text-red-300 hover:bg-red-950/40 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    </div>
                   ))}
                 </div>
 

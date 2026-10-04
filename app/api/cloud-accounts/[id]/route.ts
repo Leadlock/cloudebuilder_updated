@@ -55,6 +55,7 @@ export async function DELETE(
 
     const deleted = await cloudAccountRepository.delete(id, orgId);
     if (!deleted) return notFound('CloudAccount');
+    console.info(`[cloud-account] removed ${id} from org ${orgId} by user ${identity.userId}`);   // ids only, never credentials
 
     return ok({ deleted: true });
   } catch (err) {
