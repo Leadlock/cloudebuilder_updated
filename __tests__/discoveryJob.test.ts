@@ -16,6 +16,7 @@ const mockBossInstance = {
   createQueue: jest.fn(),
   send: jest.fn(),
   work: jest.fn(),
+  on: jest.fn(),            // the queue registers an error listener (an unhandled pg-boss error would crash the process)
 };
 
 jest.mock('pg-boss', () => ({
@@ -72,6 +73,16 @@ describe('Discovery job queue', () => {
   });
 
   describe('enqueueDiscoveryJob', () => {
+    it('registers an error listener on the queue, so a dropped connection is logged instead of crashing the process', async () => {
+      await enqueueDiscoveryJob({ runId: 'run-1', accountId: 'acct-1', orgId: 'org-1', regions: ['us-east-1'] });
+      expect(mockBossInstance.on).toHaveBeenCalledWith('error', expect.any(Function));
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const handler = mockBossInstance.on.mock.calls.find((c) => c[0] === 'error')![1] as (e: unknown) => void;
+      expect(() => handler(new Error('terminating connection'))).not.toThrow();
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
     it('creates the queue and sends the job with only runId/accountId/orgId/regions — never credentials', async () => {
       await enqueueDiscoveryJob({ runId: 'run-1', accountId: 'acct-1', orgId: 'org-1', regions: ['us-east-1'] });
 

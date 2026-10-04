@@ -34,7 +34,11 @@ function createBoss(): PgBoss {
       'DATABASE_URL environment variable is not set — required for the job queue (pg-boss uses the same Postgres database).',
     );
   }
-  return new PgBoss(url);
+  const boss = new PgBoss(url);
+  boss.on('error', (err: any) => {
+    console.warn('[pg-boss] connection/idle error:', err?.message || err);
+  });
+  return boss;
 }
 
 /**

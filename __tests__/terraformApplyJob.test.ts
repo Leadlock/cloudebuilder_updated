@@ -17,6 +17,7 @@ const mockBossInstance = {
   send: jest.fn(),
   work: jest.fn(),
   getJobById: jest.fn(),
+  on: jest.fn(),            // the queue registers an error listener (an unhandled pg-boss error would crash the process)
 };
 
 jest.mock('pg-boss', () => ({

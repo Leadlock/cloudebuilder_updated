@@ -20,6 +20,7 @@ import { DISCOVERY_QUEUE, ensureDiscoveryQueue, processDiscoveryJob, type Discov
 async function main(): Promise<void> {
   await ensureDiscoveryQueue();
   const boss = await getQueue();
+  boss.on('error', (err: any) => console.warn('[discoveryWorker] queue error:', err?.message || err));
 
   await boss.work<DiscoveryJobData>(DISCOVERY_QUEUE, async ([job]: Job<DiscoveryJobData>[]) => {
     console.info(`[discoveryWorker] Picked up job ${job.id} (run ${job.data.runId})`);

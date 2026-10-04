@@ -16,6 +16,7 @@ import type { TerraformApplyJobData } from '../lib/terraform/execution/types';
 async function main(): Promise<void> {
   await ensureTerraformApplyQueue();
   const boss = await getQueue();
+  boss.on('error', (err: any) => console.warn('[terraformApplyWorker] queue error:', err?.message || err));
 
   await boss.work<TerraformApplyJobData>(TERRAFORM_APPLY_QUEUE, async ([job]: Job<TerraformApplyJobData>[]) => {
     console.info(`[terraformApplyWorker] Picked up apply job ${job.id} (run ${job.data.applyRunId})`);
