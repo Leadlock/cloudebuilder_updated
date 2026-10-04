@@ -13,7 +13,11 @@
 export type PricingTier = 'LIVE' | 'CACHED_LIVE' | 'FALLBACK_ESTIMATE' | 'UNAVAILABLE';
 
 /** Source identifiers that are only ever set after a successful official API response. */
-export const LIVE_PRICING_SOURCES = new Set(['aws-price-list-api', 'azure-retail-api']);
+export const LIVE_PRICING_SOURCES = new Set([
+  'aws-price-list-api', 'azure-retail-api',
+  // Azure Retail Prices API rows whose meters were chosen by the AI meter picker (lib/cost/ai/meterPicker.ts); the price itself is the official one.
+  'azure-retail-api-ai-matched',
+]);
 
 /**
  * Tier of a price as produced by a provider (before caching). Anything that is not a known

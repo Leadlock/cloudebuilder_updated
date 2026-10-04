@@ -3,9 +3,8 @@ import { z } from 'zod';
 import { ok, created, notFound, forbidden, unauthorized, internalError, badRequest, parseBody, tooManyRequests } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId, resolveArchitecture } from '@/lib/api/phase2d';
-import { costEstimator } from '@/lib/engines/cost/CostEstimator';
-import { CloudCostComparisonService } from '@/lib/engines/comparison/CloudCostComparisonService';
-import { translateRegion } from '@/lib/cloud/regions/regionEquivalence';
+import { runCostComparison } from '@/lib/engines/comparison/runCostComparison';
+import { aiCostAvailable } from '@/lib/cost/ai/askModel';
 import { db } from '@/src/prisma/db';
 import { randomUUID } from 'crypto';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
@@ -85,44 +84,24 @@ export async function POST(
         }))
       : arch.resources;
 
-    // Determine current provider from the first resource, defaulting to aws
-    const currentProvider = resources.length > 0 ? resources[0].provider : 'aws';
-    const targetProvider = currentProvider === 'aws' ? 'azure' : 'aws';
-
-    // Translate resources
-    const translatedResources = CloudCostComparisonService.translateResources(resources, targetProvider);
-
-    // Run real estimation for current provider
-    const currentResult = await costEstimator.estimateAsync({
+    const run = await runCostComparison({
       architectureId: arch.id,
       projectId,
       versionId: body.versionId,
       resources,
-      defaultRegion: project.region,
+      projectRegion: project.region,
       targetCurrency,
-    }, 'REAL');
-
-    // Run real estimation for target provider
-    const translatedResult = await costEstimator.estimateAsync({
-      architectureId: arch.id,
-      projectId,
-      versionId: body.versionId,
-      resources: translatedResources,
-      // The translated side's default region must be the geographic
-      // equivalent of THIS project's own region — not an unconditional
-      // us-east-1/eastus — otherwise the two sides of the comparison can
-      // silently price against different geographies even before any
-      // per-resource region is considered.
-      defaultRegion: translateRegion(project.region, currentProvider as 'aws' | 'azure', targetProvider),
-      targetCurrency,
-    }, 'REAL');
+      aiMatching: aiCostAvailable(),
+    });
 
     return ok({
-      currentProvider,
-      targetProvider,
-      current: currentResult,
-      translated: translatedResult,
-      targetCurrency
+      currentProvider: run.currentProvider,
+      targetProvider: run.targetProvider,
+      current: run.current,
+      translated: run.translated,
+      targetCurrency,
+      aiMatches: run.aiMatches,
+      anomalies: run.anomalies,
     });
 
   } catch (err) {

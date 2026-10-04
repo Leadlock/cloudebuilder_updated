@@ -7,6 +7,7 @@ import { formatCurrency } from '@/lib/currency/formatter';
 import { DollarSign, ArrowRightLeft, AlertTriangle, Cloud, Scale } from 'lucide-react';
 import clsx from 'clsx';
 import { getResourceDefinition } from '@/lib/resources';
+import CostInsightsCard from './CostInsightsCard';
 
 export default function CostComparisonPanel() {
   const { state } = useApp();
@@ -127,6 +128,8 @@ export default function CostComparisonPanel() {
       / (data.current.totalResourceCount + data.translated.totalResourceCount) * 100
     : 100;
   const comparisonUnreliable = combinedCoveragePct < 75;
+  const anomalies = [...(data.anomalies?.current ?? []), ...(data.anomalies?.translated ?? [])];
+  const aiMatchById = new Map((data.aiMatches ?? []).map((m) => [m.resourceId, m]));
 
   return (
     <div className="flex-1 overflow-y-auto bg-slate-950 p-6">
@@ -154,6 +157,18 @@ export default function CostComparisonPanel() {
               both architectures could be priced. Totals below only reflect what was priceable; treat any
               &quot;cheaper&quot; conclusion cautiously until pricing coverage improves.
             </p>
+          </div>
+        )}
+
+        {anomalies.length > 0 && (
+          <div className="bg-rose-900/30 border border-rose-800/50 rounded-xl p-4 mb-6" data-testid="cost-anomalies">
+            <p className="flex items-center gap-2 text-rose-200 text-sm font-semibold mb-1">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" /> {anomalies.length === 1 ? 'One price looks wrong' : `${anomalies.length} prices look wrong`}
+            </p>
+            <ul className="text-rose-300 text-xs space-y-1 list-disc pl-5">
+              {anomalies.map((a) => <li key={a.resourceId}><strong>{a.label}</strong> ({formatCurrency(a.monthlyUsd, 'USD')}/mo): {a.reason}</li>)}
+            </ul>
+            <p className="text-rose-300/80 text-xs mt-2">The totals and the &quot;cheaper / more expensive&quot; result below include these lines, so do not rely on them yet.</p>
           </div>
         )}
 
@@ -201,6 +216,8 @@ export default function CostComparisonPanel() {
           </div>
         </div>
 
+        {activeProject && <CostInsightsCard nodes={activeProject.nodes} />}
+
         {/* Detailed Breakdown */}
         <h3 className="text-lg font-bold text-white mb-4">Resource Breakdown</h3>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -219,7 +236,11 @@ export default function CostComparisonPanel() {
                       {def?.icon}
                     </div>
                     <div>
-                      <p className="text-white font-medium text-sm">{item.nodeLabel}</p>
+                      <p className="text-white font-medium text-sm">{item.nodeLabel}
+                        {aiMatchById.has(item.nodeId) && (
+                          <span title={`Matched by AI: ${aiMatchById.get(item.nodeId)!.from.replace(/^(aws|azure)_/, '')} → ${aiMatchById.get(item.nodeId)!.to.replace(/^(aws|azure)_/, '')}. ${aiMatchById.get(item.nodeId)!.reason} Priced at default size, so check it.`} className="ml-2 align-middle px-1.5 py-0.5 rounded text-[10px] font-semibold bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/30">AI match</span>
+                        )}
+                      </p>
                       <p className="text-slate-500 text-xs">{def?.label || item.resourceType}{item.region ? ` · ${item.region}` : ''}</p>
                     </div>
                   </div>
@@ -250,7 +271,11 @@ export default function CostComparisonPanel() {
                       {def?.icon}
                     </div>
                     <div>
-                      <p className="text-white font-medium text-sm">{item.nodeLabel}</p>
+                      <p className="text-white font-medium text-sm">{item.nodeLabel}
+                        {aiMatchById.has(item.nodeId) && (
+                          <span title={`Matched by AI: ${aiMatchById.get(item.nodeId)!.from.replace(/^(aws|azure)_/, '')} → ${aiMatchById.get(item.nodeId)!.to.replace(/^(aws|azure)_/, '')}. ${aiMatchById.get(item.nodeId)!.reason} Priced at default size, so check it.`} className="ml-2 align-middle px-1.5 py-0.5 rounded text-[10px] font-semibold bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/30">AI match</span>
+                        )}
+                      </p>
                       <p className="text-slate-500 text-xs">{def?.label || item.resourceType}{item.region ? ` · ${item.region}` : ''}</p>
                     </div>
                   </div>

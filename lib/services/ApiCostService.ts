@@ -43,7 +43,13 @@ export interface CostComparisonResult {
   current: CostComparisonSide;
   translated: CostComparisonSide;
   targetCurrency: string;
+  /** Other-cloud equivalents chosen by the AI rather than the fixed table (shown with an "AI match" badge). */
+  aiMatches?: { resourceId: string; from: string; to: string; reason: string }[];
+  /** Lines with an implausibly high price (computed in code). */
+  anomalies?: { current: CostAnomalyView[]; translated: CostAnomalyView[] };
 }
+
+export interface CostAnomalyView { resourceId: string; label: string; resourceType: string; monthlyUsd: number; reason: string }
 
 /**
  * Raw shape POST /api/projects/:id/cost-comparison actually returns — each
@@ -66,6 +72,8 @@ interface ApiCostComparisonResponse {
   current: ApiCostComparisonSide;
   translated: ApiCostComparisonSide;
   targetCurrency: string;
+  aiMatches?: CostComparisonResult['aiMatches'];
+  anomalies?: CostComparisonResult['anomalies'];
 }
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
@@ -330,7 +338,19 @@ class ApiCostServiceImpl implements ICostService {
       current: toSide(data.current),
       translated: toSide(data.translated),
       targetCurrency: data.targetCurrency,
+      aiMatches: data.aiMatches ?? [],
+      anomalies: data.anomalies ?? { current: [], translated: [] },
     };
+  }
+
+  /** AI explanation and savings ideas (a paid model call, so only on request). All numbers in it were calculated by the server. */
+  async getInsights(nodes: CanvasNode[]): Promise<import('@/lib/cost/ai/insights').CostInsights> {
+    const projectId = _activeProjectId;
+    if (!projectId) throw new Error('No active project context');
+    return apiFetch(`/api/projects/${projectId}/cost-insights`, {
+      method: 'POST',
+      body: JSON.stringify({ env: _activeEnvironment, ...(nodes.length > 0 ? { resources: nodesToResourcePayload(nodes) } : {}) }),
+    });
   }
 
   generateOptimizations(nodes: CanvasNode[]): CostOptimization[] {

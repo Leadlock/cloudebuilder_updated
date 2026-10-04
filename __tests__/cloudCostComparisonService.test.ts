@@ -116,11 +116,22 @@ describe('CloudCostComparisonService — RDS <-> Azure SQL config translation', 
     expect(small.config.tier).toBeDefined();
     expect(large.config.tier).toBeDefined();
     expect(small.config.tier).not.toBe(large.config.tier);
-    // The static (fallback) Azure SQL pricing engine only understands S0-S4 DTU tier
-    // names (lib/engines/cost/azurePricing.ts _dtuFromTier) — translating to anything
-    // else would silently re-introduce the "always collapses to one default" bug.
-    expect(['S0', 'S1', 'S2', 'S3', 'S4']).toContain(small.config.tier);
-    expect(['S0', 'S1', 'S2', 'S3', 'S4']).toContain(large.config.tier);
+    // Every tier the translation can produce must be one the static pricing engine
+    // (lib/engines/cost/azurePricing.ts) understands: DTU S-tiers or GP_Gen5_N.
+    const priced = /^(S\d|GP_Gen5_\d+)$/;
+    expect(small.config.tier).toMatch(priced);
+    expect(large.config.tier).toMatch(priced);
+  });
+
+  it('sizes a 2-vCPU instance at about 200 DTUs (S4), not a tenth of that', () => {
+    const [two] = CloudCostComparisonService.translateNodes(
+      [makeNode({ resourceType: 'aws_rds', config: { instanceClass: 'db.t3.medium', allocatedStorage: 20 } })], 'azure',
+    );
+    expect(two.config.tier).toBe('S4');
+    const [sixteen] = CloudCostComparisonService.translateNodes(
+      [makeNode({ resourceType: 'aws_rds', config: { instanceClass: 'db.r6g.4xlarge', allocatedStorage: 20 } })], 'azure',
+    );
+    expect(sixteen.config.tier).toBe('GP_Gen5_16');
   });
 
   it('carries allocatedStorage through to maxSizeGb', () => {

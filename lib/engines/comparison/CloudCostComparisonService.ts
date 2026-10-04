@@ -88,26 +88,22 @@ const AWS_RDS_SPECS: ComputeSpec[] = [
 ];
 
 /**
- * Azure SQL DTU-model tier -> approximate vCPU equivalent, used only to pick
- * the nearest tier for a given RDS instance class. DTU is not literally
- * vCPU, but AWS's own DTU-to-vCore guidance and Microsoft's published
- * DTU benchmark data put S0-S4 in roughly this vCPU-equivalent band; this
- * is documented as an approximation, not a precise conversion.
+ * Azure SQL tier -> approximate vCPU equivalent, used only to pick the nearest tier for an RDS instance class.
  *
- * Deliberately mapped to the classic DTU tier names (S0-S4) rather than the
- * vCore-model names (GP_Gen5_2 etc.) also offered in the Azure SQL RDE's
- * `tier` dropdown: lib/engines/cost/azurePricing.ts's `_dtuFromTier` (the
- * static fallback pricing path) only recognizes S0-S4 and silently defaults
- * anything else to 10 DTU — translating into a vCore-model name would
- * reintroduce the exact "collapses to one default regardless of input" bug
- * this service exists to fix.
+ * Microsoft's own guidance puts about 100 DTUs (S3) at one vCore, so a 2-vCPU RDS instance is about S4 (200 DTUs), not S1 (20 DTUs): the
+ * earlier mapping put every instance class at S0-S4 by vCPU 1/2/4/8/16, which sized a 2-vCPU database at one tenth of its capacity and made
+ * Azure look several times cheaper than it is. Above 2 vCPU the vCore model (GP_Gen5_N, General Purpose) is used, priced per vCore by the static
+ * table in lib/engines/cost/azurePricing.ts. DTU is not literally vCPU: this is an approximation, not a precise conversion.
  */
 const AZURE_SQL_TIERS: Array<{ key: string; vcpuEquivalent: number }> = [
-  { key: 'S0', vcpuEquivalent: 1 },
-  { key: 'S1', vcpuEquivalent: 2 },
-  { key: 'S2', vcpuEquivalent: 4 },
-  { key: 'S3', vcpuEquivalent: 8 },
-  { key: 'S4', vcpuEquivalent: 16 },
+  { key: 'S0', vcpuEquivalent: 0.1 },
+  { key: 'S1', vcpuEquivalent: 0.2 },
+  { key: 'S2', vcpuEquivalent: 0.5 },
+  { key: 'S3', vcpuEquivalent: 1 },
+  { key: 'S4', vcpuEquivalent: 2 },
+  { key: 'GP_Gen5_4', vcpuEquivalent: 4 },
+  { key: 'GP_Gen5_8', vcpuEquivalent: 8 },
+  { key: 'GP_Gen5_16', vcpuEquivalent: 16 },
 ];
 
 const AWS_CACHE_SPECS: ComputeSpec[] = [

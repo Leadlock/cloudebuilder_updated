@@ -129,6 +129,7 @@ describe('end to end: a small three-service stack never prices a database in the
       pricing: { getPrice: (q) => prov.getPrice(q).then((p) => p ?? ({ source: 'unavailable' } as never)) },
     }).estimateAsync({ architectureId: 'a', projectId: 'p', resources: [db as unknown as DbArchitectureResource] });
     expect(est.totalMonthlyUsd).toBeGreaterThan(5);
-    expect(est.totalMonthlyUsd).toBeLessThan(200);
+    // A 2-vCPU database maps to S4 (200 DTUs, about $294/month at list price). The fixture has no S4 row, so the static table prices it.
+    expect(est.totalMonthlyUsd).toBeLessThan(400);
   });
 });

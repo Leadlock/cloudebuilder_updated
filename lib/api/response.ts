@@ -65,6 +65,10 @@ export function internalError(message = 'Internal server error'): NextResponse<A
   return apiError('INTERNAL_ERROR', message, 500);
 }
 
+export function serviceUnavailable(message = 'This feature is not available right now'): NextResponse<ApiError> {
+  return apiError('SERVICE_UNAVAILABLE', message, 503);
+}
+
 export function tooManyRequests(retryAfterSeconds?: number): NextResponse<ApiError> {
   const res = apiError('RATE_LIMITED', 'Too many requests — please slow down and try again shortly.', 429);
   if (retryAfterSeconds !== undefined) res.headers.set('Retry-After', String(retryAfterSeconds));
