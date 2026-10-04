@@ -5,10 +5,11 @@
  * behind a "details" toggle — this only adds a readable summary on top, it never hides or rewrites what Terraform said.
  */
 import { isStateLockError, parseLockInfo } from './stateLockParse';
+import { parseAccessDenied } from './deployPermissions';
 
 export type TerraformErrorKind =
   | 'state-lock' | 'resource-group-not-empty' | 'network' | 'not-installed' | 'invalid-configuration'
-  | 'credentials' | 'already-exists' | 'quota' | 'timeout' | 'rate-limited' | 'unknown';
+  | 'credentials' | 'insufficient-permissions' | 'already-exists' | 'quota' | 'timeout' | 'rate-limited' | 'unknown';
 
 export interface TerraformErrorExplanation {
   kind: TerraformErrorKind;
@@ -81,6 +82,16 @@ export function explainTerraformError(raw: string | null | undefined): Terraform
       kind: 'network', title: 'The connection to the cloud dropped',
       summary: 'This computer could not reach Azure/AWS or the state storage for a moment (a DNS or internet problem). Nothing is wrong with the design.',
       steps: ['Check the internet connection or VPN, and try again.', 'If it keeps happening, try a different DNS server (for example 1.1.1.1 or 8.8.8.8).', 'If a run was cut off, it may have left a state lock behind — use "Check lock" if the next attempt reports one.'],
+    };
+  }
+
+  const denied = parseAccessDenied(message);
+  if (denied) {
+    const role = denied.roleName ? `the role "${denied.roleName}"` : 'the connected AWS role';
+    return {
+      kind: 'insufficient-permissions', title: 'The AWS role is not allowed to do this',
+      summary: `AWS refused ${denied.actions.length} kind${denied.actions.length === 1 ? '' : 's'} of action for ${role} (for example ${denied.actions.slice(0, 3).join(', ')}). That role can only read the account by default, so nothing was created or changed.`,
+      steps: ['In the AWS console open IAM → Roles → the role above → Add permissions, and allow these actions (after a failed apply, the deployment panel offers a ready-made policy).', 'Then generate a new plan and try again: Terraform only does what is still missing.'],
     };
   }
 

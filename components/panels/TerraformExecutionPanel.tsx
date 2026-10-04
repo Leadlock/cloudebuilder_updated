@@ -16,6 +16,7 @@ import TerraformErrorBox from './TerraformErrorBox';
 import TerraformApprovalBar, { TerraformApprovalInbox } from './TerraformApprovalBar';
 import TerraformWorkerNotice from './TerraformWorkerNotice';
 import CreatedResourcesList from './CreatedResourcesList';
+import TerraformPermissionHelp from './TerraformPermissionHelp';
 
 interface CloudAccount {
   id: string;
@@ -1069,9 +1070,16 @@ export default function TerraformExecutionPanel() {
                         <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
                         <span>Deployment encountered an issue</span>
                       </div>
-                      <p className="text-[11px] text-rose-300/90 bg-black/40 p-2 rounded border border-rose-900/30 font-mono">
-                        {applyStatus?.output?.message ?? applyError}
-                      </p>
+                      <TerraformPermissionHelp
+                        message={`${applyStatus?.output?.message ?? applyError ?? ''}\n${progress?.error ?? ''}\n${(progress?.logTail ?? []).join('\n')}`}
+                        resourceTypes={resourceChanges.map((c) => c.type)}
+                      />
+                      <details className="text-[11px] text-rose-300/90">
+                        <summary className="cursor-pointer text-rose-300 font-medium">Show Terraform&apos;s own message</summary>
+                        <p className="mt-1.5 bg-black/40 p-2 rounded border border-rose-900/30 font-mono whitespace-pre-wrap break-words max-h-60 overflow-auto">
+                          {applyStatus?.output?.message ?? applyError}
+                        </p>
+                      </details>
                       <div className="mt-2.5 flex items-center justify-between">
                         <button onClick={resetPlan} className="text-xs text-rose-400 hover:text-rose-200 underline font-medium">
                           Re-plan and try again

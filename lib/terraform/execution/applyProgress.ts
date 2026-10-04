@@ -32,6 +32,10 @@ export interface ProgressResource {
   seconds?: number;
   /** The cloud provider's id for it, as Terraform printed it ("[id=vpc-0abc]"): what you search for in the console to find or delete it. */
   id?: string;
+  /** For a failed resource: Terraform's error, shortened. */
+  error?: string;
+  /** True when the failure was the cloud refusing permission, which means the resource was never created. */
+  denied?: boolean;
 }
 
 export interface ProgressCounts { total: number; queued: number; running: number; done: number; failed: number; stopped: number }
@@ -108,6 +112,7 @@ export class ApplyProgressTracker {
   private lines: string[] = [];
   private lastOutputAt?: number;
   private inError = false;
+  private errorLines: string[] = [];
 
   constructor(planned: { address: string; type: string }[], private readonly now: () => number = Date.now) {
     for (const p of planned) this.byAddress.set(p.address, { address: p.address, type: p.type, state: 'queued' });
@@ -157,12 +162,21 @@ export class ApplyProgressTracker {
         this.inError = false;
         break;
       }
-      case 'error-start': this.inError = true; break;
+      case 'error-start': this.inError = true; this.errorLines = [clean.replace(/^[│|\s]+/, '').slice(0, 400)]; break;
       case 'error-address': {
-        if (this.inError) { const r = this.resource(p.address); r.state = 'failed'; r.finishedAt = this.now(); }
+        if (this.inError) {
+          const r = this.resource(p.address);
+          r.state = 'failed'; r.finishedAt = this.now();
+          const text = this.errorLines.join(' ').replace(/\s+/g, ' ');
+          r.error = text.slice(0, 300);
+          r.denied = /AccessDenied|UnauthorizedOperation|not authorized to perform|AuthorizationFailed/i.test(text);
+        }
         break;
       }
-      default: break;
+      default:
+        // The text of an error block before the "with <resource>" line says why it failed.
+        if (this.inError && this.errorLines.length < 12) this.errorLines.push(clean.replace(/^[│|\s]+/, '').slice(0, 400));
+        break;
     }
   }
 

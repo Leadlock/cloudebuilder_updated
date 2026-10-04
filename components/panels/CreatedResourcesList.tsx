@@ -10,7 +10,7 @@ export function createdResources(progress: RunProgressRecord | null): ProgressRe
 
 /** Resources that were being created when the run failed or stopped: they may exist, partly or fully, and should be checked. */
 export function maybeCreatedResources(progress: RunProgressRecord | null): ProgressResource[] {
-  return (progress?.resources ?? []).filter((r) => (r.state === 'failed' || r.state === 'stopped') && r.startedAt !== undefined && !r.address.startsWith('data.'));
+  return (progress?.resources ?? []).filter((r) => (r.state === 'failed' || r.state === 'stopped') && r.startedAt !== undefined && !r.denied && !r.address.startsWith('data.'));
 }
 
 export function createdListText(progress: RunProgressRecord): string {
