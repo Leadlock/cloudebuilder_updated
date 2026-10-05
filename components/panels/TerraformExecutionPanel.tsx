@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
 import { ApiTerraformExecutionService, type TerraformPlanResult, type TerraformApplyStatus, type TerraformDestroyPreview, type TerraformRunSnapshot } from '@/lib/services/ApiTerraformExecutionService';
 import { ApiReviewService } from '@/lib/services/ApiReviewService';
@@ -260,13 +260,32 @@ export default function TerraformExecutionPanel() {
     } catch {}
   }, [storageKey, plan, applyJobId, applyRunId, applyStatus, applying, planning, destroying, completedCount, startedAt, destroySuccess, destroyError, destroyOutputTail]);
 
+  // The review is approved on the Review screen, but this panel stays mounted while another screen is shown, so a one-time load on
+  // mount would keep saying "approval required" after the approval. Load it again whenever this screen is shown, whenever the
+  // design changes (an edit invalidates an approval), when the window regains focus, and every few seconds while it is not approved.
+  const activeProjectId = activeProject?.id;
+  const [checkingReview, setCheckingReview] = useState(false);
+  const loadReview = useCallback(async () => {
+    if (!activeProjectId) return;
+    try {
+      const data = await ApiReviewService.getReviews(activeProjectId, state.activeEnvironment);
+      setLatestReview(data.latest);
+    } catch { /* keep what is shown; the next check tries again */ }
+  }, [activeProjectId, state.activeEnvironment]);
+
+  useEffect(() => { void loadReview(); }, [loadReview, state.activeView, state.architectureVersion, activeProject?.updatedAt]);
+
   useEffect(() => {
-    if (!activeProject) return;
-    const projectId = activeProject.id;
-    ApiReviewService.getReviews(projectId, state.activeEnvironment)
-      .then((data) => setLatestReview(data.latest))
-      .catch(() => {});
-  }, [activeProject, state.activeEnvironment]);
+    const onFocus = () => { void loadReview(); };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [loadReview]);
+
+  useEffect(() => {
+    if (isApproved) return;
+    const t = setInterval(() => { void loadReview(); }, 8000);
+    return () => clearInterval(t);
+  }, [isApproved, loadReview]);
 
   useEffect(() => {
     let cancelled = false;
@@ -572,7 +591,19 @@ export default function TerraformExecutionPanel() {
       {!isApproved ? (
         <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span>Formal Architecture Review approval is required before a Terraform plan can be generated.</span>
+          <span className="flex-1">
+            Formal Architecture Review approval is required before a Terraform plan can be generated.
+            {latestReview?.status === 'invalidated_due_to_changes' && ' The design was changed after it was approved, so it needs to be reviewed and approved again.'}
+            {latestReview && latestReview.status !== 'approved' && latestReview.status !== 'invalidated_due_to_changes' && ` The latest review is "${latestReview.status}": it must be approved on the Review screen.`}
+          </span>
+          <button
+            type="button"
+            onClick={async () => { setCheckingReview(true); await loadReview(); setCheckingReview(false); }}
+            disabled={checkingReview}
+            className="shrink-0 px-2.5 py-1 rounded-md bg-amber-900/50 hover:bg-amber-900/80 border border-amber-600/50 text-amber-100 text-[11px] font-medium disabled:opacity-60"
+          >
+            {checkingReview ? 'Checking…' : 'Check again'}
+          </button>
         </div>
       ) : (
         <div className="space-y-4">
