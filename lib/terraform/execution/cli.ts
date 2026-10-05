@@ -78,7 +78,8 @@ function buildEnv(args: string[], env: Record<string, string>, pluginCache: bool
 }
 
 function failure(args: string[], timeoutMs: number, e: { code?: number | string; killed?: boolean; stdout?: string; stderr?: string; message?: string }): Error {
-  const detail = (e.stderr || e.stdout || e.message || '').slice(0, 4000);
+  // eslint-disable-next-line no-control-regex
+  const detail = (e.stderr || e.stdout || e.message || '').replace(/\u001b\[[0-9;]*[A-Za-z]/g, '').slice(0, 4000);   // no colour codes in what the user reads
   return new Error(e.killed
     ? `terraform ${args[0]} timed out after ${Math.round(timeoutMs / 60000)} minutes.`
     : `terraform ${args[0]} failed (exit ${e.code ?? 'unknown'}): ${detail}`);

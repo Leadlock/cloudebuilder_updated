@@ -28,6 +28,7 @@ import { ArchitectureReviewService } from '@/lib/services/ArchitectureReviewServ
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
 import { resolveExecutionCredentials } from '@/lib/cloud/credentials/resolveExecutionCredentials';
 import { runAwsPreflight, awsPreflightClients, regionFromTfvars } from './preflight';
+import { retryPluginStartup } from './runSupport';
 import { findProtectedResources, disableDeletionProtection, protectionClients, minimalAwsDestroyConfig } from './teardownSupport';
 import { assertTerraformCapable } from '@/lib/cloud/terraformCapability';
 import type { CloudCredentials } from '@/lib/cloud/types';
@@ -232,17 +233,17 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
     // -detailed-exitcode: 0 = no changes, 2 = changes present, 1 = error (thrown by runTerraform).
     await handleStateLockAndRetry(
       () =>
-        runTerraform(['plan', '-input=false', '-no-color', '-out=tfplan', '-detailed-exitcode'], {
+        retryPluginStartup(() => runTerraform(['plan', '-input=false', '-no-color', '-out=tfplan', '-detailed-exitcode'], {
           cwd: workDir,
           env,
           allowExitCodes: [0, 2],
-        }),
+        }), sleep),
       workDir,
       env,
       'plan',
     );
 
-    const { stdout: planJsonRaw } = await runTerraform(['show', '-json', 'tfplan'], { cwd: workDir, env });
+    const { stdout: planJsonRaw } = await retryPluginStartup(() => runTerraform(['show', '-json', '-no-color', 'tfplan'], { cwd: workDir, env }), sleep);
     const planJson = JSON.parse(planJsonRaw) as TerraformPlanJson;
 
     const resourceChanges = (planJson.resource_changes ?? [])
@@ -470,10 +471,10 @@ export async function prepareDestroy(input: ExecuteDestroyInput, onOutput?: (chu
     }
 
     await handleStateLockAndRetry(
-      () => runTerraform(['plan', '-destroy', '-input=false', '-no-color', '-out=tfplan'], { cwd: workDir, env, timeoutMs: 15 * 60 * 1000, onOutput }),
+      () => retryPluginStartup(() => runTerraform(['plan', '-destroy', '-input=false', '-no-color', '-out=tfplan'], { cwd: workDir, env, timeoutMs: 15 * 60 * 1000, onOutput }), sleep, 3, () => onOutput?.('\n[CloudCraft] The AWS plugin was slow to start; trying again.\n')),
       workDir, env, 'destroy',
     );
-    const { stdout } = await runTerraform(['show', '-json', 'tfplan'], { cwd: workDir, env });
+    const { stdout } = await retryPluginStartup(() => runTerraform(['show', '-json', '-no-color', 'tfplan'], { cwd: workDir, env }), sleep, 3, () => onOutput?.('\n[CloudCraft] The AWS plugin was slow to start; trying again.\n'));
     const planJson = JSON.parse(stdout) as PlanJsonForGuardrails;
     const resources = (planJson.resource_changes ?? [])
       .filter((rc) => (rc.mode ?? 'managed') === 'managed' && rc.change.actions.includes('delete'))

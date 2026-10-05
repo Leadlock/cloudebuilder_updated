@@ -15,6 +15,33 @@ export type RunTerraform = (args: string[], options: TerraformRunOptions) => Pro
 const TRANSIENT_NETWORK = /getaddrinfow|no such host|dial tcp|i\/o timeout|connection reset|TLS handshake timeout|temporary failure in name resolution|network is unreachable|ECONNRESET|ENOTFOUND|EAI_AGAIN/i;
 const CACHE_PROBLEM = /plugin cache|checksum|does not match any of the checksums|cache directory|failed to install provider|text file busy/i;
 
+/**
+ * Terraform starts the AWS provider as a separate program (several hundred MB) and waits one minute for it to answer. On a busy or
+ * virus-scanned machine the first start can miss that minute ("timeout while waiting for plugin to start"); the second is almost
+ * always instant because the file is then cached. Only for read-only steps (plan, show), never for apply or destroy.
+ */
+const PLUGIN_STARTUP = /timeout while waiting for plugin to start|Failed to load plugin schemas|Failed to obtain schema|plugin did not respond/i;
+
+export function isPluginStartupError(message: string): boolean {
+  return PLUGIN_STARTUP.test(message);
+}
+
+export async function retryPluginStartup<T>(fn: () => Promise<T>, sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)), attempts = 3, onRetry?: (attempt: number) => void): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (attempt < attempts && isPluginStartupError(message)) {
+        onRetry?.(attempt);
+        await sleep(attempt * 3000);
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 export function isTransientNetworkError(message: string): boolean {
   return TRANSIENT_NETWORK.test(message);
 }

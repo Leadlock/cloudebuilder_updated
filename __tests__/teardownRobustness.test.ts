@@ -153,3 +153,50 @@ describe('teardown still works when the saved design cannot be used', () => {
     expect(mockRunTerraform.mock.calls.some((c) => (c[0] as string[]).includes('-destroy'))).toBe(false);
   });
 });
+
+describe('a slow AWS plugin start does not fail the teardown preview', () => {
+  const SLOW = 'terraform show failed (exit 1): Error: Failed to load plugin schemas\nError: Could not load the schema for provider registry.terraform.io/hashicorp/aws: timeout while waiting for plugin to start..';
+
+  test('the read-only steps are tried again, and the user is told', async () => {
+    let shows = 0;
+    scriptTerraform([{ address: 'aws_vpc.main', type: 'aws_vpc', actions: ['delete'] }], { show: () => {
+      if (++shows === 1) throw new Error(SLOW);
+      return { stdout: showJson([{ address: 'aws_vpc.main', type: 'aws_vpc', actions: ['delete'] }]), stderr: '' };
+    } });
+    const log: string[] = [];
+    const p = await prepareDestroy(input('proj-slow'), (c) => log.push(c));
+    expect(p.resources).toHaveLength(1);
+    expect(shows).toBe(2);
+    expect(log.join('')).toMatch(/AWS plugin was slow to start; trying again/);
+  });
+
+  test('it asks for plain output (no colour codes) from show', async () => {
+    scriptTerraform([{ address: 'aws_vpc.main', type: 'aws_vpc', actions: ['delete'] }]);
+    await prepareDestroy(input('proj-nocolor'));
+    const show = mockRunTerraform.mock.calls.find((c) => (c[0] as string[])[0] === 'show')![0] as string[];
+    expect(show).toEqual(['show', '-json', '-no-color', 'tfplan']);
+  });
+
+  test('gives up after three tries with the real message, and a different error is not retried', async () => {
+    let shows = 0;
+    scriptTerraform([], { show: () => { shows++; throw new Error(SLOW); } });
+    await expect(prepareDestroy(input('proj-slow2'))).rejects.toThrow(/timeout while waiting for plugin to start/);
+    expect(shows).toBe(3);
+
+    let other = 0;
+    scriptTerraform([], { show: () => { other++; throw new Error('terraform show failed (exit 1): Error: state is corrupt'); } });
+    await expect(prepareDestroy(input('proj-other'))).rejects.toThrow(/state is corrupt/);
+    expect(other).toBe(1);
+  });
+
+  test('apply is never retried by this', async () => {
+    scriptTerraform([{ address: 'aws_vpc.main', type: 'aws_vpc', actions: ['delete'] }]);
+    const prep = await prepareDestroy(input('proj-noapplyretry'));
+    let applies = 0;
+    mockRunTerraform.mockImplementation(async (args: string[]) => { if (args[0] === 'apply') { applies++; throw new Error(SLOW); } return { stdout: '', stderr: '' }; });
+    const { runId } = await startDestroyRun({ planId: prep.planId!, planHash: prep.planHash!, orgId: 'org-1', projectId: 'proj-noapplyretry', cloudAccountId: 'acct-1', stateBackend: backend, user: admin });
+    const done = await waitForRun(runId);
+    expect(done.state).toBe('failed');
+    expect(applies).toBe(1);
+  });
+});
