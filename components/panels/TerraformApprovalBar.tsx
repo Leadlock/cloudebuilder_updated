@@ -100,7 +100,6 @@ export default function TerraformApprovalBar({ projectId, action, planId, planHa
   } else if (current?.status === 'approved') {
     box = (<div className={`flex items-center gap-2 ${isLight ? 'text-emerald-800' : 'text-emerald-300'}`}><ShieldCheck className={`w-4 h-4 shrink-0 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`} />
       <span>{info.mode === 'password' ? 'Confirmed with your password.' : `Approved by ${who(current.decidedBy ?? '', info.you)}.`} You can run this {noun} now — this is good for about {minutesLeft(current.expiresAt)} more minute(s) and works once.</span></div>);
-  }
   } else if (current?.status === 'pending') {
     box = (
       <div className="space-y-2">

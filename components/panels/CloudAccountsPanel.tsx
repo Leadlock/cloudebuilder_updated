@@ -234,7 +234,6 @@ export default function CloudAccountsPanel() {
           <section className="space-y-2.5" aria-label="Connected accounts">
             <p className={clsx("text-xs font-semibold uppercase tracking-wider", isLight ? "text-slate-500" : "text-gray-400")}>Connected accounts ({list.length})</p>
             {list.map((a) => (
-            {list.map((a) => (
               <AccountRow key={a.id} account={a} checking={checkingId === a.id} isLight={isLight} onRecheck={() => recheck(a)} onEdit={() => setToEdit(a)} onDelete={() => setToDelete(a)} onChanged={async () => { await load(); }} />
             ))}
           </section>
