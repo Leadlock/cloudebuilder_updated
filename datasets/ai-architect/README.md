@@ -6,21 +6,20 @@ multi-cloud architecture that CloudCraft can lay out, assess and export to Terra
 | File | Purpose |
 |---|---|
 | `train.jsonl`, `validation.jsonl` | OpenAI chat fine-tuning files (system / user / assistant). |
-| `eval-prompts.jsonl` | 40 held-out prompts (same generator as training, never in train/validation). |
-| `eval-freeform.jsonl` | 24 hand-written, differently phrased prompts (vague, casual, jargon, one-liners). The honest test of real-world use. |
+| `eval-prompts.jsonl` | 70 held-out prompts (same generator as training, never in train/validation). |
+| `eval-freeform.jsonl` | 101 hand-written, differently phrased prompts (vague, casual, jargon, one-liners). The honest test of real-world use. |
 | `manifest.json` | Counts by provider / pattern / scale / region, token estimate, generation stats. |
 | `rejected.json` | Candidates dropped by the gates during generation (empty = none). |
 | `knowledge-base/` | Markdown + `knowledge-base.jsonl` chunks for file search / RAG (see below). |
 
 ## What is in the dataset
 
-905 examples (see `manifest.json` for exact numbers): 693 design examples across 10 patterns — AWS three-tier (EC2 Auto Scaling),
-ECS Fargate, EKS, serverless; Azure three-tier (VMSS), App Service, Functions, AKS; AWS-primary/Azure-DR and
-active-active multi-cloud — varied over region, scale, database, cache, CDN, queue (AWS) and regulated workloads.
-The remaining 212 are **repair examples**: a design broken in a realistic way (missing WAF, public database, overlapping CIDR,
-reversed connection, snake_case setting names, `Web_Server`-style ids, a workload placed in the VPC instead of a subnet, a WAF used as a
-container, …; ~1 in 4 break it in two ways at once), the *real* validator output for it in the same hinted format the app sends on a
-retry (`lib/ai/repairHints.ts`), and the corrected design. Those mistakes are the ones an untuned model was measured making.
+1,392 examples (see `manifest.json` for exact numbers): 924 design examples across 18 patterns, the three newest being AWS web tier with queue-driven workers (ECS), AWS microservices on ECS with an events queue, and a private Azure App Service behind an Application Gateway WAF. They sit beside AWS three-tier (EC2 Auto Scaling), ECS Fargate, EKS, serverless, event-driven, static site and private Lambda API; Azure three-tier (VMSS), App Service, Functions, AKS, static site and private Functions API; and AWS-primary/Azure-DR and active-active multi-cloud. Each is varied over region, scale, database, cache, CDN and regulated workloads.
+
+Two other kinds of example sit on top of the designs:
+
+- **290 repair examples**: a design broken in a realistic way, the real validator output for it in the same hinted format the app sends on a retry (`lib/ai/repairHints.ts`), and the corrected design. The mistakes are the ones models were measured making, including (from running the real model over 34 free-form prompts) a firewall that is placed but never connected, subnets with no address range or zone, an internet gateway used but never declared, a load balancer not connected to its compute, and floating gateways. About 1 in 4 break the design in two ways at once.
+- **178 adjust examples**: the format the app uses when the AI cannot pass on its own (`adjustPrompt` in `lib/ai/verifiedBase.ts`): a verified design of the same pattern is given, and the answer is the design for the new request that keeps its structure and changes only what the request needs.
 
 Requests come in **9 phrasings** (terse, detailed, business, constraints, casual, minimal, technical, question, and *vague* — only cloud,
 kind of app and scale, so the design must use sensible defaults for everything unsaid). About 30% of designs also appear under a second

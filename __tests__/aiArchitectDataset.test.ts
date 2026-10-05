@@ -146,7 +146,7 @@ const hasDataset = existsSync(join(dir, 'train.jsonl'));
     expect(val.filter((r) => trained.has(design(r)))).toHaveLength(0);
   });
   test('requests are phrased in many styles, including vague ones that rely on defaults', () => {
-    const users = train.map((r) => r.messages[1].content as string).filter((u) => !u.includes('failed CloudCraft validation'));
+    const users = train.map((r) => r.messages[1].content as string).filter((u) => !u.includes('failed CloudCraft validation') && !u.includes('Verified design:'));
     expect(users.some((u) => /^I need /.test(u))).toBe(true);        // vague: cloud + kind + scale only
     expect(users.some((u) => /^hey, we need /.test(u))).toBe(true);  // casual
     expect(users.some((u) => /^What's a good /.test(u))).toBe(true); // question

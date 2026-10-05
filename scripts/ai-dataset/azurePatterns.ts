@@ -46,10 +46,10 @@ export const AZURE_SIZING: Record<Scale, AzureSizing> = {
   },
 };
 
-const cap = (s: string) => s.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
-const slug = (s: string) => s.replace(/[^a-z0-9]/g, '');
+export const cap = (s: string) => s.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+export const slug = (s: string) => s.replace(/[^a-z0-9]/g, '');
 
-function azureData(b: SpecBuilder, r: Requirements, core: AzureCore): { sql: string | null; cache: string | null; cosmos: string | null } {
+export function azureData(b: SpecBuilder, r: Requirements, core: AzureCore): { sql: string | null; cache: string | null; cosmos: string | null } {
   let sql: string | null = null; let cache: string | null = null; let cosmos: string | null = null;
   const sz = AZURE_SIZING[r.scale];
   if (r.db === 'postgres' || r.db === 'mysql') {
@@ -72,7 +72,7 @@ function azureData(b: SpecBuilder, r: Requirements, core: AzureCore): { sql: str
   return { sql, cache, cosmos };
 }
 
-function storageAndVault(b: SpecBuilder, r: Requirements, core: AzureCore): { storage: string; vault: string } {
+export function storageAndVault(b: SpecBuilder, r: Requirements, core: AzureCore): { storage: string; vault: string } {
   const storage = b.add('storage', 'azure_storage', 'Assets Storage Account', core.rg, {
     name: `${slug(r.app)}assets`, sku: r.regulated ? 'Standard_GRS' : 'Standard_ZRS', httpsOnly: true, allowBlobPublicAccess: false,
     minimumTlsVersion: 'TLS1_2', networkDefaultAction: 'Deny', blobVersioningEnabled: true, blobSoftDeleteRetentionDays: 14,
@@ -85,12 +85,12 @@ function storageAndVault(b: SpecBuilder, r: Requirements, core: AzureCore): { st
 }
 
 /** NSG protecting a subnet (association is a diagram connection) and the workload inside it. */
-function nsg(b: SpecBuilder, core: AzureCore, id: string, label: string, subnet: string, cfg?: Cfg): void {
+export function nsg(b: SpecBuilder, core: AzureCore, id: string, label: string, subnet: string, cfg?: Cfg): void {
   b.add(id, 'azure_nsg', label, core.vnet, cfg);
   b.connect(id, subnet);
 }
 
-function summary(r: Requirements, region: string, lead: string): string {
+export function summary(r: Requirements, region: string, lead: string): string {
   const bits: string[] = [lead];
   bits.push(`Sized for the ${r.scale} tier and deployed in ${region} with zone-redundant data services.`);
   if (r.regulated) bits.push('Regulated-workload posture: geo-zone-redundant backups, premium Key Vault and Web Application Firewall in Prevention mode.');

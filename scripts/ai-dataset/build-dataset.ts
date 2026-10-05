@@ -13,14 +13,16 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ARCHITECT_SYSTEM_PROMPT, CATALOG_TYPES, evaluateSpec, type ArchitectureSpec } from '@/lib/ai/architectureSpec';
 import { buildRepairPrompt } from '@/lib/ai/architectRepair';
+import { adjustPrompt } from '@/lib/ai/verifiedBase';
 import { withHints } from '@/lib/ai/repairHints';
 import { hardenSpec } from './harden';
 import { awsThreeTier, awsEcs, awsEks, awsServerless } from './awsPatterns';
 import { azureThreeTier, azureAppService, azureServerless, azureAks } from './azurePatterns';
 import { multiAwsAzureDr, multiActiveActive } from './multiPatterns';
 import { awsStaticSite, awsEventDriven, awsLambdaPrivateApi, azureStaticSite, azureFunctionsPrivateApi } from './morePatterns';
+import { awsQueueWorker, awsMicroservices, azureGatewayAppService } from './extraPatterns';
 import { AWS_REGIONS, AZURE_REGIONS } from './builder';
-import { APP_NAMES, PROMPT_STYLES, promptFor, vagueRequirements, type Database, type PromptStyle, type Requirements, type Scale } from './requirements';
+import { APP_NAMES, PATTERN_TEXT, PROMPT_STYLES, promptFor, vagueRequirements, type Database, type PromptStyle, type Requirements, type Scale } from './requirements';
 
 type Blueprint = (r: Requirements) => ArchitectureSpec;
 interface PatternDef { id: string; provider: Requirements['provider']; fn: Blueprint; target: number; dims: (keyof Requirements)[]; fixed?: Partial<Requirements> }
@@ -39,6 +41,9 @@ const PATTERNS: PatternDef[] = [
   { id: 'aws-lambda-private-api', provider: 'aws', fn: awsLambdaPrivateApi, target: 12, dims: ['region', 'scale'], fixed: { db: 'postgres', cache: false, cdn: false, queue: false } },
   { id: 'azure-static-site', provider: 'azure', fn: azureStaticSite, target: 6, dims: ['region', 'regulated'], fixed: { db: 'none', cache: false, cdn: true, queue: false } },
   { id: 'azure-functions-private-api', provider: 'azure', fn: azureFunctionsPrivateApi, target: 3, dims: ['region'], fixed: { db: 'postgres', cache: false, cdn: false, queue: false } },
+  { id: 'aws-queue-worker', provider: 'aws', fn: awsQueueWorker, target: 60, dims: ['region', 'scale', 'db', 'cache', 'cdn', 'regulated'], fixed: { queue: true } },
+  { id: 'aws-microservices', provider: 'aws', fn: awsMicroservices, target: 50, dims: ['region', 'scale', 'cache', 'cdn', 'regulated'], fixed: { db: 'postgres', queue: true } },
+  { id: 'azure-gateway-app-service', provider: 'azure', fn: azureGatewayAppService, target: 40, dims: ['region', 'scale', 'db', 'cache', 'regulated'], fixed: { cdn: false, queue: false } },
   { id: 'multi-aws-azure-dr', provider: 'multi', fn: multiAwsAzureDr, target: 40, dims: ['region', 'regionB', 'scale', 'db', 'cache', 'regulated'], fixed: { cdn: false, queue: false } },
   { id: 'multi-active-active', provider: 'multi', fn: multiActiveActive, target: 40, dims: ['region', 'regionB', 'scale', 'db', 'cache', 'regulated'], fixed: { cdn: false, queue: false } },
 ];
@@ -145,6 +150,19 @@ const MUTATIONS: Mutation[] = [
     if (!data) return null;
     return firstBroken(s.resources.filter((x) => x.type.endsWith('subnet')).map((sub) => { const c = clone(s); c.connections.push({ from: sub.id, to: data.id }); return c; }));
   } },
+  // ── Mistakes found by running the real model over 34 free-form prompts (scripts/ai-dataset/batch-failures.ts). ──
+  // A firewall that is placed but never attached to the load balancer.
+  { id: 'waf-unconnected', apply: (s) => { const c = clone(s); const w = c.resources.find((r) => r.type === 'aws_waf' || r.type === 'azure_waf'); if (!w) return null; const n = c.connections.length; c.connections = c.connections.filter((x) => x.from !== w.id && x.to !== w.id); return c.connections.length < n ? c : null; } },
+  // Subnet address ranges left out, so every subnet falls back to the same default and they overlap.
+  { id: 'subnets-default-cidr', apply: (s) => { const c = clone(s); const subs = c.resources.filter((r) => r.type === 'aws_subnet' && r.config?.cidrBlock); if (subs.length < 2) return null; for (const r of subs) delete r.config!.cidrBlock; return c; } },
+  // Availability zones left out, so every subnet lands in one zone.
+  { id: 'subnets-no-zone', apply: (s) => { const c = clone(s); const subs = c.resources.filter((r) => r.type === 'aws_subnet' && r.config?.availabilityZone); if (subs.length < 2) return null; for (const r of subs) delete r.config!.availabilityZone; return c; } },
+  // The load balancer is not connected to the compute behind it.
+  { id: 'alb-not-connected', apply: (s) => { const c = clone(s); const lb = c.resources.find((r) => r.type === 'aws_alb'); if (!lb) return null; const n = c.connections.length; c.connections = c.connections.filter((x) => x.from !== lb.id || !/^(asg|svc|web|fn|eks)/.test(x.to)); return c.connections.length < n ? c : null; } },
+  // Connections that name an internet gateway the design never declared.
+  { id: 'igw-undeclared', apply: (s) => { const c = clone(s); const i = c.resources.find((r) => r.type === 'aws_igw'); if (!i) return null; c.resources = c.resources.filter((r) => r !== i); return c; } },
+  // Internet gateway and NAT gateways floating, connected to nothing.
+  { id: 'gateways-floating', apply: (s) => { const c = clone(s); const g = c.resources.filter((r) => r.type === 'aws_igw' || r.type === 'aws_nat').map((r) => r.id); if (!g.length) return null; const n = c.connections.length; c.connections = c.connections.filter((x) => !g.includes(x.from) && !g.includes(x.to)); return c.connections.length < n ? c : null; } },
   // Parent that does not exist.
   { id: 'unknown-parent', apply: (s) => {
     const c = clone(s);
@@ -165,7 +183,7 @@ function mutate(spec: ArchitectureSpec, first: Mutation, second?: Mutation): Arc
 // ─── Build ────────────────────────────────────────────────────────────────────────────────
 
 /** `group` is the hash of the underlying design: every row about the same design (its paraphrases and its repairs) shares one train/validation side, so validation never contains a design the model trained on. */
-interface Row { pattern: string; provider: string; kind: 'design' | 'repair'; req: Requirements; line: string; tokens: number; inputs: number; mutation?: string; style: string; group: string }
+interface Row { pattern: string; provider: string; kind: 'design' | 'repair' | 'adjust'; req: Requirements; line: string; tokens: number; inputs: number; mutation?: string; style: string; group: string }
 
 function main() {
   const outDir = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : 'datasets/ai-architect';
@@ -238,9 +256,28 @@ function main() {
     }
   }
 
+  // Adjust examples: the app's fallback asks the model to change the closest VERIFIED design as little as possible (adjustPrompt).
+  // Here the verified design is another one of the same pattern, and the answer is the design for THIS request, so the model learns to
+  // keep the structure (ids, parents, zones, security groups, connections) and change only what the request needs.
+  const adjusts: Row[] = [];
+  const byPattern = new Map<string, typeof repairPool>();
+  for (const item of repairPool) byPattern.set(item.pattern, [...(byPattern.get(item.pattern) ?? []), item]);
+  const adjustRand = rng(SEED + 3);
+  for (const [pattern, items] of byPattern) {
+    if (items.length < 2) continue;
+    const targets = shuffle(items, adjustRand).slice(0, Math.max(1, Math.floor(items.length / 4)));
+    for (const t of targets) {
+      const base = items.find((x) => x.group !== t.group && x.req.provider === t.req.provider);
+      if (!base) continue;
+      const user = adjustPrompt(t.prompt, { title: PATTERN_TEXT[pattern]?.title ?? pattern, patternId: `pattern-${pattern}`, spec: base.spec });
+      const json = JSON.stringify(t.spec);
+      adjusts.push({ pattern, provider: t.req.provider, kind: 'adjust', req: t.req, line: JSON.stringify(chat(user, json)), tokens: tokens(ARCHITECT_SYSTEM_PROMPT) + tokens(user) + tokens(json), inputs: 0, style: t.style, group: t.group });
+    }
+  }
+
   // Train / validation split by DESIGN (~10% of designs): a design's paraphrases and its repair examples all
   // land on the same side, so validation loss is measured on architectures the model never trained on.
-  const all = [...design, ...repairs];
+  const all = [...design, ...repairs, ...adjusts];
   const train: Row[] = []; const val: Row[] = [];
   for (const r of shuffle(all, rng(SEED + 2))) (parseInt(r.group.slice(0, 6), 16) % 10 === 0 ? val : train).push(r);
 
@@ -254,7 +291,7 @@ function main() {
   const sum = (rows: Row[]) => rows.reduce((a, r) => a + r.tokens, 0);
   const manifest = {
     seed: SEED,
-    examples: { train: train.length, validation: val.length, designs: design.length, repairs: repairs.length, heldOutEvalPrompts: evalSet.length },
+    examples: { train: train.length, validation: val.length, designs: design.length, repairs: repairs.length, adjusts: adjusts.length, heldOutEvalPrompts: evalSet.length },
     byProvider: count(all, (r) => r.provider),
     byPattern: count(all, (r) => r.pattern),
     byPromptStyle: count(design, (r) => r.style),

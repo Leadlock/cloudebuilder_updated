@@ -32,3 +32,70 @@
 {"id":"free-32","requirements":{"pattern":"azure-static-site","provider":"azure"},"prompt":"Host our single page app on Azure blob storage behind a CDN, nothing else."}
 {"id":"free-33","requirements":{"pattern":"azure-functions-private-api","provider":"azure"},"prompt":"Azure Functions API that has to sit inside our VNet with a private SQL database, behind an application gateway."}
 {"id":"free-34","requirements":{"pattern":"azure-functions-private-api","provider":"azure"},"prompt":"Serverless on Azure but nothing public except the gateway, with a SQL database underneath."}
+{"id":"free-35","requirements":{"pattern":"aws-three-tier","provider":"aws"},"prompt":"Lift and shift our old PHP app onto EC2 in Ohio-ish region, needs a MySQL database and to survive a server dying."}
+{"id":"free-36","requirements":{"pattern":"aws-three-tier","provider":"aws"},"prompt":"HA web portal on AWS VMs, two AZs, RDS postgres, behind a WAF. Budget is tight."}
+{"id":"free-37","requirements":{"pattern":"aws-three-tier","provider":"aws"},"prompt":"we have a legacy java monolith, auto scaling group + load balancer + postgres please"}
+{"id":"free-38","requirements":{"pattern":"aws-three-tier","provider":"aws"},"prompt":"Need a classic n-tier setup in us-west-2 for an HR system, 2000 employees, must be encrypted."}
+{"id":"free-39","requirements":{"pattern":"aws-three-tier","provider":"aws"},"prompt":"Standard EC2 web fleet with Redis session cache and a relational DB, Mumbai region."}
+{"id":"free-40","requirements":{"pattern":"aws-ecs","provider":"aws"},"prompt":"Deploy our docker compose stack on AWS without managing servers; postgres and a CDN please."}
+{"id":"free-41","requirements":{"pattern":"aws-ecs","provider":"aws"},"prompt":"Fargate service for a Node API, ALB in front, RDS postgres, singapore."}
+{"id":"free-42","requirements":{"pattern":"aws-ecs","provider":"aws"},"prompt":"containers, no kubernetes, aws, ~20k users, needs a cache and a bucket for uploads"}
+{"id":"free-43","requirements":{"pattern":"aws-ecs","provider":"aws"},"prompt":"Run our Rails app in containers on AWS with a managed MySQL and WAF protection."}
+{"id":"free-44","requirements":{"pattern":"aws-ecs","provider":"aws"},"prompt":"ECS setup for a healthcare scheduling tool, HIPAA-ish, private subnets only for the app."}
+{"id":"free-45","requirements":{"pattern":"aws-eks","provider":"aws"},"prompt":"Kubernetes on AWS for our platform team, private cluster, 12 microservices, Frankfurt."}
+{"id":"free-46","requirements":{"pattern":"aws-eks","provider":"aws"},"prompt":"EKS with a load balancer in front and Postgres, we already use Helm."}
+{"id":"free-47","requirements":{"pattern":"aws-eks","provider":"aws"},"prompt":"Need a k8s cluster on AWS for ML inference APIs, scale to a few hundred thousand requests a day."}
+{"id":"free-48","requirements":{"pattern":"aws-eks","provider":"aws"},"prompt":"managed kubernetes aws, locked down, audit logging on, small team"}
+{"id":"free-49","requirements":{"pattern":"aws-serverless","provider":"aws"},"prompt":"Serverless backend on AWS for a mobile app: API, DynamoDB, a CDN and file uploads."}
+{"id":"free-50","requirements":{"pattern":"aws-serverless","provider":"aws"},"prompt":"Lambda functions and DynamoDB, a static front end on S3, behind CloudFront. Keep it cheap."}
+{"id":"free-51","requirements":{"pattern":"aws-serverless","provider":"aws"},"prompt":"Pay per use stack for a hackathon project: lambda, dynamo, s3, nothing that runs 24/7."}
+{"id":"free-52","requirements":{"pattern":"aws-serverless","provider":"aws"},"prompt":"JAMstack site with a serverless API and background jobs through a queue, AWS."}
+{"id":"free-53","requirements":{"pattern":"aws-queue-worker","provider":"aws"},"prompt":"Web app where users upload videos and background workers transcode them, AWS containers, results go to S3."}
+{"id":"free-54","requirements":{"pattern":"aws-queue-worker","provider":"aws"},"prompt":"Order processing: web front end puts jobs on a queue, worker containers handle them, Postgres for orders."}
+{"id":"free-55","requirements":{"pattern":"aws-queue-worker","provider":"aws"},"prompt":"We send thousands of emails and PDFs asynchronously; web tier plus a worker fleet fed by SQS on ECS."}
+{"id":"free-56","requirements":{"pattern":"aws-queue-worker","provider":"aws"},"prompt":"report generation takes minutes so push it to a queue and have separate workers do it, aws, mysql"}
+{"id":"free-57","requirements":{"pattern":"aws-queue-worker","provider":"aws"},"prompt":"Async job system on AWS with a Redis cache, a web service and workers, EU region."}
+{"id":"free-58","requirements":{"pattern":"aws-microservices","provider":"aws"},"prompt":"Break our shop into users, orders and payments services on ECS with one load balancer and a message queue between orders and payments."}
+{"id":"free-59","requirements":{"pattern":"aws-microservices","provider":"aws"},"prompt":"Microservices on AWS containers: a shared Postgres for two services and DynamoDB for payments."}
+{"id":"free-60","requirements":{"pattern":"aws-microservices","provider":"aws"},"prompt":"we are splitting a monolith into 3 services, each deploys independently on fargate, event queue between them"}
+{"id":"free-61","requirements":{"pattern":"aws-microservices","provider":"aws"},"prompt":"Service-per-domain architecture on ECS with WAF, a CDN and an events queue, Singapore."}
+{"id":"free-62","requirements":{"pattern":"aws-microservices","provider":"aws"},"prompt":"Small fintech: users service, orders service, payments service, all on AWS containers, encrypted, regulated."}
+{"id":"free-63","requirements":{"pattern":"aws-static-site","provider":"aws"},"prompt":"Company marketing site on AWS, global CDN, WAF, no servers."}
+{"id":"free-64","requirements":{"pattern":"aws-static-site","provider":"aws"},"prompt":"React SPA hosted on S3 with CloudFront in front. That is all we need."}
+{"id":"free-65","requirements":{"pattern":"aws-event-driven","provider":"aws"},"prompt":"When a file lands in S3 process it with Lambda, put results in DynamoDB; queue in the middle so bursts are fine."}
+{"id":"free-66","requirements":{"pattern":"aws-event-driven","provider":"aws"},"prompt":"Event driven image pipeline on AWS using queues and lambdas, no VMs."}
+{"id":"free-67","requirements":{"pattern":"aws-lambda-private-api","provider":"aws"},"prompt":"Lambda API that must talk to a private PostgreSQL inside a VPC, exposed only through a load balancer with WAF."}
+{"id":"free-68","requirements":{"pattern":"aws-lambda-private-api","provider":"aws"},"prompt":"Private serverless API on AWS, database not reachable from the internet at all."}
+{"id":"free-69","requirements":{"pattern":"azure-three-tier","provider":"azure"},"prompt":"Classic web tier on Azure VMs with a scale set, Azure SQL, and a load balancer. Central Europe-ish."}
+{"id":"free-70","requirements":{"pattern":"azure-three-tier","provider":"azure"},"prompt":"HA line of business app on Azure virtual machines, SQL database, must be zone redundant."}
+{"id":"free-71","requirements":{"pattern":"azure-three-tier","provider":"azure"},"prompt":"VM scale set + Application Gateway + Azure SQL for an insurance quoting tool."}
+{"id":"free-72","requirements":{"pattern":"azure-three-tier","provider":"azure"},"prompt":"lift and shift windows app to azure, needs redundancy and a database"}
+{"id":"free-73","requirements":{"pattern":"azure-app-service","provider":"azure"},"prompt":"Simple web app on Azure App Service with a SQL database and Front Door."}
+{"id":"free-74","requirements":{"pattern":"azure-app-service","provider":"azure"},"prompt":"PaaS website on Azure for a school, Redis cache, minimal ops."}
+{"id":"free-75","requirements":{"pattern":"azure-app-service","provider":"azure"},"prompt":"App Service with Cosmos DB and Key Vault, WAF in front, East US."}
+{"id":"free-76","requirements":{"pattern":"azure-app-service","provider":"azure"},"prompt":"azure web app, ~30k users, managed database, secrets in a key vault"}
+{"id":"free-77","requirements":{"pattern":"azure-gateway-app-service","provider":"azure"},"prompt":"App Service web app that is NOT publicly reachable, only through an Application Gateway WAF, with Azure SQL behind it."}
+{"id":"free-78","requirements":{"pattern":"azure-gateway-app-service","provider":"azure"},"prompt":"Internal company portal on Azure: private App Service, gateway with WAF, private SQL, North Europe."}
+{"id":"free-79","requirements":{"pattern":"azure-gateway-app-service","provider":"azure"},"prompt":"Regional PaaS web app, no Front Door, App Gateway only, data private."}
+{"id":"free-80","requirements":{"pattern":"azure-gateway-app-service","provider":"azure"},"prompt":"We need our HR web app on Azure behind an application gateway and with no public endpoint on the app itself."}
+{"id":"free-81","requirements":{"pattern":"azure-gateway-app-service","provider":"azure"},"prompt":"Azure App Service in a locked-down setup for a bank, WAF gateway, SQL with auditing, Redis cache."}
+{"id":"free-82","requirements":{"pattern":"azure-serverless","provider":"azure"},"prompt":"Azure Functions API with Cosmos DB and a CDN in front."}
+{"id":"free-83","requirements":{"pattern":"azure-serverless","provider":"azure"},"prompt":"Event-driven serverless backend on Azure, cheap, Cosmos for storage."}
+{"id":"free-84","requirements":{"pattern":"azure-aks","provider":"azure"},"prompt":"AKS cluster for our microservices, private, with an application gateway in front and SQL."}
+{"id":"free-85","requirements":{"pattern":"azure-aks","provider":"azure"},"prompt":"Kubernetes on Azure, small team, needs Redis and a database, Southeast Asia."}
+{"id":"free-86","requirements":{"pattern":"azure-aks","provider":"azure"},"prompt":"managed k8s azure with ingress and WAF"}
+{"id":"free-87","requirements":{"pattern":"azure-static-site","provider":"azure"},"prompt":"Azure static website with a CDN, WAF, and nothing else."}
+{"id":"free-88","requirements":{"pattern":"azure-functions-private-api","provider":"azure"},"prompt":"Functions inside a VNet, SQL private, only the gateway is public."}
+{"id":"free-89","requirements":{"pattern":"multi-aws-azure-dr","provider":"multi"},"prompt":"Run production on AWS but keep a standby copy on Azure in case AWS has an outage."}
+{"id":"free-90","requirements":{"pattern":"multi-aws-azure-dr","provider":"multi"},"prompt":"Disaster recovery across clouds: AWS primary, Azure secondary, Postgres, regulated."}
+{"id":"free-91","requirements":{"pattern":"multi-aws-azure-dr","provider":"multi"},"prompt":"multi cloud DR, aws main azure backup, small"}
+{"id":"free-92","requirements":{"pattern":"multi-active-active","provider":"multi"},"prompt":"Serve traffic from both AWS and Azure at the same time with a single entry point."}
+{"id":"free-93","requirements":{"pattern":"multi-active-active","provider":"multi"},"prompt":"We do not want to depend on one vendor: active-active web app on AWS and Azure."}
+{"id":"free-94","requirements":{"pattern":"multi-active-active","provider":"multi"},"prompt":"Global web app running in AWS Frankfurt and Azure West Europe together, with a database and cache."}
+{"id":"free-95","requirements":{"pattern":"aws-three-tier","provider":"aws"},"prompt":"Hey, can you set up something on AWS for our online bookstore? We get spikes at Christmas. Postgres. Thanks!"}
+{"id":"free-96","requirements":{"pattern":"aws-ecs","provider":"aws"},"prompt":"What would you recommend for running 5 docker services on AWS with a database and a CDN, around 100k users?"}
+{"id":"free-97","requirements":{"pattern":"aws-serverless","provider":"aws"},"prompt":"is there a way to do a whole web app on AWS without any servers? we use dynamodb"}
+{"id":"free-98","requirements":{"pattern":"azure-three-tier","provider":"azure"},"prompt":"Looking for a resilient Azure setup with VMs, a SQL database and strong security, 500k users."}
+{"id":"free-99","requirements":{"pattern":"aws-queue-worker","provider":"aws"},"prompt":"Our checkout needs to stay fast, so heavy work goes to background workers through a queue. AWS, Postgres, Redis."}
+{"id":"free-100","requirements":{"pattern":"aws-microservices","provider":"aws"},"prompt":"Multiple small services with their own scaling, one public load balancer, async events. Docker. AWS."}
+{"id":"free-101","requirements":{"pattern":"azure-gateway-app-service","provider":"azure"},"prompt":"Private web app on Azure, gateway protects it, SQL + Key Vault, regulated industry."}

@@ -12,7 +12,7 @@ import { AWS_REGIONS, SpecBuilder, awsCore, type AwsCore, type Cfg } from './bui
 import type { Requirements, Scale } from './requirements';
 
 const CERT = 'arn:aws:acm:REGION:123456789012:certificate/REPLACE-WITH-YOUR-CERTIFICATE-ID';
-const IMAGE = 'REPLACE-WITH-YOUR-CONTAINER-IMAGE';
+export const IMAGE = 'REPLACE-WITH-YOUR-CONTAINER-IMAGE';
 
 export const awsRegionOf = (id: string) => AWS_REGIONS.find((r) => r.id === id) ?? AWS_REGIONS[0];
 
@@ -52,7 +52,7 @@ export const AWS_SIZING: Record<Scale, AwsSizing> = {
   },
 };
 
-const certFor = (region: string) => CERT.replace('REGION', region);
+export const certFor = (region: string) => CERT.replace('REGION', region);
 
 function rdsConfig(r: Requirements): Cfg {
   const s = AWS_SIZING[r.scale].rds;
@@ -65,7 +65,7 @@ function rdsConfig(r: Requirements): Cfg {
 }
 
 /** Data-store attachment shared by the VPC-based patterns. Returns the ids workloads must connect to. */
-function awsData(b: SpecBuilder, r: Requirements, core: AwsCore): { db: string | null; cache: string | null; nosql: string | null } {
+export function awsData(b: SpecBuilder, r: Requirements, core: AwsCore): { db: string | null; cache: string | null; nosql: string | null } {
   let db: string | null = null; let cache: string | null = null; let nosql: string | null = null;
   if (r.db === 'postgres' || r.db === 'mysql') {
     db = b.add('rds', 'aws_rds', r.db === 'mysql' ? 'MySQL Multi-AZ Database' : 'PostgreSQL Multi-AZ Database', core.data[0], rdsConfig(r));
@@ -79,7 +79,7 @@ function awsData(b: SpecBuilder, r: Requirements, core: AwsCore): { db: string |
   return { db, cache, nosql };
 }
 
-function regionalWaf(b: SpecBuilder, r: Requirements, target: string): string {
+export function regionalWaf(b: SpecBuilder, r: Requirements, target: string): string {
   const waf = b.add('waf-alb', 'aws_waf', 'Regional WAF', 'aws-cloud', {
     scope: 'REGIONAL', defaultAction: 'ALLOW',
     managedRuleGroups: r.regulated
@@ -91,7 +91,7 @@ function regionalWaf(b: SpecBuilder, r: Requirements, target: string): string {
   return waf;
 }
 
-function securityGroups(b: SpecBuilder, core: AwsCore, ids: { alb?: string; app: string[]; db?: string | null; cache?: string | null }) {
+export function securityGroups(b: SpecBuilder, core: AwsCore, ids: { alb?: string; app: string[]; db?: string | null; cache?: string | null }) {
   const sg = (id: string, label: string, target: string, cfg?: Cfg) => { b.add(id, 'aws_sg', label, core.vpc, cfg); b.connect(id, target); };
   if (ids.alb) sg('sg-alb', 'Load Balancer Security Group', ids.alb, { allowHttp: false, allowHttps: true });
   ids.app.forEach((a, i) => sg(`sg-app-${i === 0 ? 'a' : 'b'}`, `App Security Group ${i === 0 ? 'A' : 'B'}`, a, { allowHttp: true, allowHttps: false, sourceCidr: '10.0.0.0/8' }));
@@ -99,12 +99,12 @@ function securityGroups(b: SpecBuilder, core: AwsCore, ids: { alb?: string; app:
   if (ids.cache) sg('sg-cache', 'Cache Security Group', ids.cache, { allowHttp: false, allowHttps: false, sourceCidr: '10.0.0.0/8' });
 }
 
-function monitoring(b: SpecBuilder, core: AwsCore, targets: string[], namespace: string, metric: string): void {
+export function monitoring(b: SpecBuilder, core: AwsCore, targets: string[], namespace: string, metric: string): void {
   const cw = b.add('cloudwatch', 'aws_cloudwatch', 'CloudWatch Alarms', undefined, { namespace, metricName: metric });
   for (const t of targets) b.connect(cw, t);
 }
 
-function edgeAndEntry(b: SpecBuilder, r: Requirements, core: AwsCore, alb: string): void {
+export function edgeAndEntry(b: SpecBuilder, r: Requirements, core: AwsCore, alb: string): void {
   const r53 = b.add('r53', 'aws_route53', 'Route 53 DNS', core.boundary, { domainName: `${r.app}.example.com` });
   if (r.cdn) {
     const cf = b.add('cf', 'aws_cloudfront', 'CloudFront Distribution', core.boundary, { priceClass: r.scale === 'large' ? 'PriceClass_All' : 'PriceClass_100' });
@@ -233,8 +233,8 @@ export function awsServerless(r: Requirements): ArchitectureSpec {
   return b.build(`${cap(r.app)} on AWS — serverless web application and API`, summary(r, region.id, 'CloudFront serves the static site from S3 and routes API calls to Lambda behind a WAF; state lives in DynamoDB, with an optional queue-driven worker.'));
 }
 
-const cap = (s: string) => s.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
-function summary(r: Requirements, region: string, lead: string): string {
+export const cap = (s: string) => s.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+export function summary(r: Requirements, region: string, lead: string): string {
   const bits: string[] = [lead];
   bits.push(`Sized for the ${r.scale} tier and deployed in ${region} across two availability zones where the service is zonal.`);
   if (r.regulated) bits.push('Regulated-workload posture: stricter WAF rule groups, 35-day database backups and Performance Insights.');

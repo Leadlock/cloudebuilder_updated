@@ -4,7 +4,7 @@ Direction matters: connect from the caller to the callee. The lists below are th
 
 ## aws_alb connects to
 - aws_auto_scaling (LOAD_BALANCES, HTTP:80; seen in 12 verified designs)
-- aws_ecs (LOAD_BALANCES, HTTP:80; seen in 4 verified designs)
+- aws_ecs (LOAD_BALANCES, HTTP:80; seen in 12 verified designs)
 - aws_eks (LOAD_BALANCES, HTTP:80; seen in 4 verified designs)
 - aws_lambda (NETWORK_FLOW; seen in 4 verified designs)
 
@@ -13,56 +13,57 @@ Direction matters: connect from the caller to the callee. The lists below are th
 - aws_nat (ROUTES_TO, TCP / UDP Egress; seen in 12 verified designs)
 - aws_elasticache (CONNECTS_TO, Redis TCP:6379; seen in 9 verified designs)
 - aws_rds (CONNECTS_TO, PostgreSQL:5432; seen in 6 verified designs)
-- aws_dynamodb (NETWORK_FLOW; seen in 3 verified designs)
+- aws_dynamodb (CONNECTS_TO, HTTPS / IAM:443; seen in 3 verified designs)
 
 ## aws_cloudfront connects to
-- aws_igw (NETWORK_FLOW; seen in 9 verified designs)
+- aws_igw (NETWORK_FLOW; seen in 15 verified designs)
 - aws_s3 (SERVES, S3 REST API (OAC):443; seen in 8 verified designs)
 - aws_lambda (NETWORK_FLOW; seen in 4 verified designs)
 
 ## aws_cloudwatch connects to
-- aws_alb (NETWORK_FLOW; seen in 24 verified designs)
-- aws_rds (NETWORK_FLOW; seen in 14 verified designs)
-- aws_auto_scaling (NETWORK_FLOW; seen in 12 verified designs)
-- aws_lambda (NETWORK_FLOW; seen in 12 verified designs)
-- aws_ecs (NETWORK_FLOW; seen in 4 verified designs)
-- aws_eks (NETWORK_FLOW; seen in 4 verified designs)
+- aws_alb (ASSOCIATED_WITH; seen in 32 verified designs)
+- aws_rds (ASSOCIATED_WITH; seen in 20 verified designs)
+- aws_auto_scaling (ASSOCIATED_WITH; seen in 12 verified designs)
+- aws_ecs (ASSOCIATED_WITH; seen in 12 verified designs)
+- aws_lambda (ASSOCIATED_WITH; seen in 12 verified designs)
+- aws_eks (ASSOCIATED_WITH; seen in 4 verified designs)
 
 ## aws_ecs connects to
-- aws_s3 (STORES_IN, HTTPS / IAM:443; seen in 4 verified designs)
-- aws_nat (ROUTES_TO, TCP / UDP Egress; seen in 4 verified designs)
-- aws_elasticache (CONNECTS_TO, Redis TCP:6379; seen in 3 verified designs)
-- aws_rds (CONNECTS_TO, PostgreSQL:5432; seen in 2 verified designs)
-- aws_dynamodb (NETWORK_FLOW; seen in 1 verified designs)
+- aws_nat (ROUTES_TO, TCP / UDP Egress; seen in 12 verified designs)
+- aws_elasticache (CONNECTS_TO, Redis TCP:6379; seen in 9 verified designs)
+- aws_rds (CONNECTS_TO, PostgreSQL:5432; seen in 8 verified designs)
+- aws_s3 (STORES_IN, HTTPS / IAM:443; seen in 8 verified designs)
+- aws_sqs (CONNECTS_TO, SQS API:443; seen in 8 verified designs)
+- aws_dynamodb (CONNECTS_TO, HTTPS / IAM:443; seen in 6 verified designs)
 
 ## aws_eks connects to
 - aws_s3 (NETWORK_FLOW; seen in 4 verified designs)
 - aws_nat (NETWORK_FLOW; seen in 4 verified designs)
 - aws_elasticache (NETWORK_FLOW; seen in 3 verified designs)
 - aws_rds (CONNECTS_TO, PostgreSQL:5432; seen in 2 verified designs)
-- aws_dynamodb (NETWORK_FLOW; seen in 1 verified designs)
+- aws_dynamodb (CONNECTS_TO, HTTPS / IAM:443; seen in 1 verified designs)
 
 ## aws_iam connects to
+- aws_ecs (AUTHENTICATES_WITH; seen in 12 verified designs)
 - aws_lambda (AUTHENTICATES_WITH; seen in 12 verified designs)
-- aws_ecs (AUTHENTICATES_WITH; seen in 4 verified designs)
 - aws_eks (AUTHENTICATES_WITH; seen in 4 verified designs)
 
 ## aws_igw connects to
-- aws_alb (NETWORK_FLOW; seen in 24 verified designs)
+- aws_alb (NETWORK_FLOW; seen in 32 verified designs)
 
 ## aws_lambda connects to
 - aws_s3 (STORES_IN, HTTPS / IAM:443; seen in 12 verified designs)
-- aws_dynamodb (NETWORK_FLOW; seen in 8 verified designs)
+- aws_dynamodb (CONNECTS_TO, HTTPS / IAM:443; seen in 8 verified designs)
 - aws_sqs (CONNECTS_TO, SQS API:443; seen in 4 verified designs)
 - aws_rds (CONNECTS_TO, PostgreSQL:5432; seen in 4 verified designs)
 - aws_nat (NETWORK_FLOW; seen in 4 verified designs)
 
 ## aws_nat connects to
-- aws_igw (ROUTES_TO, Egress Translation; seen in 24 verified designs)
+- aws_igw (ROUTES_TO, Egress Translation; seen in 32 verified designs)
 
 ## aws_route53 connects to
-- aws_cloudfront (RESOLVES_TO, DNS:53; seen in 17 verified designs)
-- aws_alb (RESOLVES_TO, DNS:53; seen in 15 verified designs)
+- aws_cloudfront (RESOLVES_TO, DNS:53; seen in 23 verified designs)
+- aws_alb (RESOLVES_TO, DNS:53; seen in 17 verified designs)
 - azure_app_gateway (CONNECTS_TO, HTTPS / VPN:443; seen in 8 verified designs)
 
 ## aws_sg connects to
@@ -72,30 +73,32 @@ Direction matters: connect from the caller to the callee. The lists below are th
 - aws_elasticache (ASSOCIATED_WITH; seen in 9 verified designs)
 
 ## aws_sqs connects to
+- aws_ecs (NETWORK_FLOW; seen in 8 verified designs)
 - aws_lambda (TRIGGERS, EventSourceMapping; seen in 4 verified designs)
 
 ## aws_waf connects to
-- aws_alb (ASSOCIATED_WITH; seen in 24 verified designs)
-- aws_cloudfront (ASSOCIATED_WITH; seen in 17 verified designs)
+- aws_alb (ASSOCIATED_WITH; seen in 32 verified designs)
+- aws_cloudfront (ASSOCIATED_WITH; seen in 23 verified designs)
 
 ## azure_aks connects to
 - azure_storage (NETWORK_FLOW; seen in 4 verified designs)
 - azure_key_vault (NETWORK_FLOW; seen in 4 verified designs)
 - azure_redis (CONNECTS_TO, Redis TLS:6380; seen in 3 verified designs)
 - azure_sql (CONNECTS_TO, TDS / TCP:1433; seen in 2 verified designs)
-- azure_cosmos_db (NETWORK_FLOW; seen in 1 verified designs)
+- azure_cosmos_db (CONNECTS_TO, HTTPS:443; seen in 1 verified designs)
 
 ## azure_app_gateway connects to
 - azure_vmss (LOAD_BALANCES, HTTP:80; seen in 12 verified designs)
 - azure_aks (LOAD_BALANCES, HTTP:80; seen in 4 verified designs)
 - azure_functions (NETWORK_FLOW; seen in 4 verified designs)
+- azure_app_service (NETWORK_FLOW; seen in 4 verified designs)
 
 ## azure_app_service connects to
-- azure_storage (STORES_IN, Blob HTTPS:443; seen in 4 verified designs)
-- azure_key_vault (AUTHENTICATES_WITH, Managed Identity:443; seen in 4 verified designs)
-- azure_redis (CONNECTS_TO, Redis TLS:6380; seen in 3 verified designs)
-- azure_sql (CONNECTS_TO, TDS / TCP:1433; seen in 2 verified designs)
-- azure_cosmos_db (NETWORK_FLOW; seen in 1 verified designs)
+- azure_storage (STORES_IN, Blob HTTPS:443; seen in 8 verified designs)
+- azure_key_vault (AUTHENTICATES_WITH, Managed Identity:443; seen in 8 verified designs)
+- azure_redis (CONNECTS_TO, Redis TLS:6380; seen in 6 verified designs)
+- azure_sql (CONNECTS_TO, TDS / TCP:1433; seen in 4 verified designs)
+- azure_cosmos_db (CONNECTS_TO, HTTPS:443; seen in 2 verified designs)
 
 ## azure_bastion connects to
 - azure_vmss (NETWORK_FLOW; seen in 3 verified designs)
@@ -109,11 +112,11 @@ Direction matters: connect from the caller to the callee. The lists below are th
 ## azure_functions connects to
 - azure_storage (STORES_IN, Blob HTTPS:443; seen in 8 verified designs)
 - azure_key_vault (AUTHENTICATES_WITH, Managed Identity:443; seen in 8 verified designs)
-- azure_cosmos_db (NETWORK_FLOW; seen in 4 verified designs)
+- azure_cosmos_db (CONNECTS_TO, HTTPS:443; seen in 4 verified designs)
 - azure_sql (CONNECTS_TO, TDS / TCP:1433; seen in 4 verified designs)
 
 ## azure_nsg connects to
-- azure_subnet (ASSOCIATED_WITH; seen in 28 verified designs)
+- azure_subnet (ASSOCIATED_WITH; seen in 32 verified designs)
 
 ## azure_vmss connects to
 - azure_storage (STORES_IN, Blob HTTPS:443; seen in 12 verified designs)
@@ -121,7 +124,7 @@ Direction matters: connect from the caller to the callee. The lists below are th
 - aws_s3 (CONNECTS_TO, HTTPS / VPN:443; seen in 8 verified designs)
 - azure_sql (CONNECTS_TO, TDS / TCP:1433; seen in 6 verified designs)
 - azure_redis (CONNECTS_TO, Redis TLS:6380; seen in 6 verified designs)
-- azure_cosmos_db (NETWORK_FLOW; seen in 3 verified designs)
+- azure_cosmos_db (CONNECTS_TO, HTTPS:443; seen in 3 verified designs)
 
 ## azure_waf connects to
 - azure_front_door (ASSOCIATED_WITH; seen in 16 verified designs)
