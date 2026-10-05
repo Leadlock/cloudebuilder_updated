@@ -103,7 +103,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!prepared) return notFound('The destroy preview has expired or was already used. Preview it again.');
     // The teardown only runs with an approval for exactly this preview. Checked first, so a missing approval does not burn the
     // single-use confirmation token below.
-    const approval = await consumeApproval({ orgId, projectId, action: 'destroy', planId, planHash: prepared.planHash });
+    const approval = await consumeApproval({ orgId, projectId, action: 'destroy', planId, planHash: prepared.planHash, userId: identity.userId });
     if (!approval.ok) {
       await recordTerraformAudit({ action: 'destroy', outcome: 'blocked', orgId, projectId, userId: identity.userId, planId, planHash: prepared.planHash, detail: `approval: ${approval.code}` });
       return apiError('APPROVAL_REQUIRED', approval.reason, 403);

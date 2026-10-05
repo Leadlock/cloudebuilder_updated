@@ -19,7 +19,7 @@ beforeEach(() => {
     "decidedBy" text, "decidedAt" text, "comment" text, "expiresAtMs" double precision NOT NULL, "usedAt" text)`);
   const { Pool } = mem.adapters.createPg();
   _setSharedDbForTests(new Pool() as unknown as Queryable);
-  delete env['CLOUDCRAFT_TERRAFORM_APPROVAL'];
+  env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'self-ok';       // these tests are about the approval records; password mode has its own file
   env['NODE_ENV'] = 'test';
 });
 afterEach(() => {
@@ -34,6 +34,7 @@ const expireEverything = () => mem.public.none('UPDATE "terraformApproval" SET "
 
 describe('approvalMode', () => {
   it('defaults to confirming with a password everywhere, and follows CLOUDCRAFT_TERRAFORM_APPROVAL', () => {
+    delete env['CLOUDCRAFT_TERRAFORM_APPROVAL'];
     env['NODE_ENV'] = 'production'; expect(approvalMode()).toBe('password');
     env['NODE_ENV'] = 'development'; expect(approvalMode()).toBe('password');
     env['NODE_ENV'] = 'test'; expect(approvalMode()).toBe('password');

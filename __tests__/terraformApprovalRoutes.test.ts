@@ -65,7 +65,7 @@ describe('POST /terraform/apply — needs an approval for exactly this plan', ()
   it('runs an approved plan, spending the approval for exactly that organisation, project, plan and hash', async () => {
     const res = await apply();
     expect(res.status).toBe(201);
-    expect(A.consume).toHaveBeenCalledWith({ orgId: 'org-1', projectId, action: 'apply', planId: 'plan-1', planHash: PLAN.planHash });
+    expect(A.consume).toHaveBeenCalledWith({ orgId: 'org-1', projectId, action: 'apply', planId: 'plan-1', planHash: PLAN.planHash, userId: expect.any(String) });
     expect(mockEnqueue).toHaveBeenCalledTimes(1);
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'apply', outcome: 'allowed', detail: expect.stringContaining('approved by bob') }));
   });

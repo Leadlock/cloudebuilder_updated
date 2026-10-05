@@ -139,15 +139,17 @@ export type ConsumeResult =
  * Spends the approval for this exact plan: marks it used, atomically, so it can start one run and no more. Fails if there is
  * none that is approved, unexpired and unused.
  */
-export async function consumeApproval(input: { orgId: string; projectId: string; action: ApprovalAction; planId: string; planHash: string }): Promise<ConsumeResult> {
+export async function consumeApproval(input: { orgId: string; projectId: string; action: ApprovalAction; planId: string; planHash: string; /** Who is running it. In password mode only the person who confirmed with their password may use that confirmation. */ userId?: string }): Promise<ConsumeResult> {
   if (approvalMode() === 'off') return { ok: true, approval: null };
   const key = [input.orgId, input.projectId, input.action, input.planId, input.planHash];
+  const ownConfirmationOnly = approvalMode() === 'password';
   const candidate = await sharedDb().query(
     `SELECT "id" FROM "terraformApproval"
      WHERE "orgId" = $1 AND "projectId" = $2 AND "action" = $3 AND "planId" = $4 AND "planHash" = $5
        AND "status" = 'approved' AND "expiresAtMs" > ${NOW_MS}
+       ${ownConfirmationOnly ? 'AND "decidedBy" = $6' : ''}
      ORDER BY "createdAt" ASC LIMIT 1`,
-    key,
+    ownConfirmationOnly ? [...key, input.userId ?? ''] : key,
   );
   const id = candidate.rows[0]?.['id'];
   if (typeof id === 'string') {
@@ -170,6 +172,9 @@ export async function consumeApproval(input: { orgId: string; projectId: string;
   const last = latest.rows[0] ? toApproval(latest.rows[0], await dbNow()) : null;
   const what = input.action === 'destroy' ? 'teardown' : 'plan';
   if (last?.status === 'pending') return { ok: false, code: 'pending', reason: `This ${what} is waiting for approval. Another owner or admin has to approve it first.` };
+  if (ownConfirmationOnly && last?.status === 'approved' && last.decidedBy !== input.userId) {
+    return { ok: false, code: 'needs_approval', reason: `This ${what} was confirmed with someone else's password. Confirm it yourself with your own password first.` };
+  }
   if (last?.status === 'rejected') return { ok: false, code: 'rejected', reason: `The approval for this ${what} was rejected. Change it and request approval again.` };
   return { ok: false, code: 'needs_approval', reason: `This ${what} has to be approved before it can run. Request approval first (an earlier approval may have expired or already been used).` };
 }

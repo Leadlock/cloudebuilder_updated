@@ -46,20 +46,28 @@ describe('confirmWithPassword', () => {
       expect(r.approval.decidedBy).toBe('alice');
       expect(Date.parse(r.approval.expiresAt) - Date.now()).toBeLessThanOrEqual(PASSWORD_CONFIRM_TTL_MS + 1000);
     }
-    expect((await consumeApproval(PLAN)).ok).toBe(true);
-    expect((await consumeApproval(PLAN)).ok).toBe(false);          // single use
+    expect((await consumeApproval({ ...PLAN, userId: 'alice' })).ok).toBe(true);
+    expect((await consumeApproval({ ...PLAN, userId: 'alice' })).ok).toBe(false);          // single use
+  });
+
+  it('can only be used by the person who confirmed it', async () => {
+    await confirmWithPassword(input('correct horse battery'), deps);
+    const other = await consumeApproval({ ...PLAN, userId: 'bob' });
+    expect(other).toMatchObject({ ok: false });
+    expect(other.ok === false && other.reason).toMatch(/someone else's password/);
+    expect((await consumeApproval({ ...PLAN, userId: 'alice' })).ok).toBe(true);     // still there for the real owner
   });
 
   it('does not carry over to a different plan', async () => {
     await confirmWithPassword(input('correct horse battery'), deps);
-    expect((await consumeApproval({ ...PLAN, planHash: 'other' })).ok).toBe(false);
-    expect((await consumeApproval({ ...PLAN, planId: 'plan-2' })).ok).toBe(false);
+    expect((await consumeApproval({ ...PLAN, planHash: 'other', userId: 'alice' })).ok).toBe(false);
+    expect((await consumeApproval({ ...PLAN, planId: 'plan-2', userId: 'alice' })).ok).toBe(false);
   });
 
   it('refuses a wrong password, says how many tries are left, and records nothing', async () => {
     const r = await confirmWithPassword(input('nope'), deps);
     expect(r).toMatchObject({ ok: false, code: 'wrong_password', triesLeft: PASSWORD_TRIES.limit - 1 });
-    expect((await consumeApproval(PLAN)).ok).toBe(false);
+    expect((await consumeApproval({ ...PLAN, userId: 'alice' })).ok).toBe(false);
   });
 
   it('locks out after too many wrong passwords, even for the right one, and a right one earlier clears the count', async () => {

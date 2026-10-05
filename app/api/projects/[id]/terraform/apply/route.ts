@@ -77,7 +77,7 @@ export async function POST(
     }
 
     // A plan only runs with an approval for exactly this plan (same id and hash), given by an owner/admin and not yet used.
-    const approval = await consumeApproval({ orgId, projectId: record.projectId, action: 'apply', planId: record.planId, planHash: record.planHash });
+    const approval = await consumeApproval({ orgId, projectId: record.projectId, action: 'apply', planId: record.planId, planHash: record.planHash, userId: identity.userId });
     if (!approval.ok) {
       releaseProjectLock(record.projectId);
       await recordTerraformAudit({ action: 'apply', outcome: 'blocked', orgId, projectId: record.projectId, userId: identity.userId, planId: record.planId, planHash: record.planHash, detail: `approval: ${approval.code}` });

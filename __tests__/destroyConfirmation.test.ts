@@ -145,7 +145,7 @@ describe('/api/projects/[id]/terraform/destroy — preview, then run, then watch
     it('spends the approval for exactly this preview (organisation, project, plan and hash)', async () => {
       const p = await (await call(body())).json() as Preview;
       expect((await call(body({ confirmationToken: p.data.confirmationToken, planId: p.data.planId }))).status).toBe(201);
-      expect(mockConsumeApproval).toHaveBeenCalledWith({ orgId: 'org-1', projectId: 'proj-1', action: 'destroy', planId: p.data.planId, planHash: 'c'.repeat(64) });
+      expect(mockConsumeApproval).toHaveBeenCalledWith({ orgId: 'org-1', projectId: 'proj-1', action: 'destroy', planId: p.data.planId, planHash: 'c'.repeat(64), userId: expect.any(String) });
     });
 
     it('refuses to start without one (403 APPROVAL_REQUIRED), starts nothing, and does NOT use up the confirmation token', async () => {
