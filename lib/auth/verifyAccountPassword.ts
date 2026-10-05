@@ -35,8 +35,13 @@ export async function verifyAccountPassword(input: { userId: string; email?: str
     return result.sub === input.userId ? 'ok' : 'wrong';
   } catch (err) {
     const name = (err as { name?: string })?.name;
+    // Cognito asks for a further step (MFA, a new password...) only AFTER it accepted the password, so the password is right. The email
+    // is the signed-in session's own, so there is no other identity to compare.
+    if (name === 'CognitoChallengeException') return 'ok';
     if (name === 'NotAuthorizedException') return 'wrong';
     if (name === 'UserNotFoundException') return 'none';
+    // Name and message of the sign-in service's error, never the password.
+    console.warn('[verifyAccountPassword] Cognito check failed:', name ?? 'unknown', (err as Error)?.message ?? '');
     return 'unavailable';
   }
 }

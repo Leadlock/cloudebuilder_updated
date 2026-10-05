@@ -22,6 +22,11 @@ describe('verifyAccountPassword', () => {
     expect(await verifyAccountPassword(input(), deps({ cognitoSignIn: async () => { throw Object.assign(new Error('x'), { name: 'NotAuthorizedException' }); } }))).toBe('wrong');
   });
 
+  it('counts a Cognito challenge (MFA, new password) as a correct password, because Cognito only asks after accepting it', async () => {
+    const challenge = async () => { throw Object.assign(new Error('further step: MFA_SETUP'), { name: 'CognitoChallengeException' }); };
+    expect(await verifyAccountPassword(input(), deps({ cognitoSignIn: challenge }))).toBe('ok');
+  });
+
   it('refuses a Cognito identity that is a different user', async () => {
     expect(await verifyAccountPassword(input(), deps({ cognitoSignIn: async () => ({ sub: 'someone-else' }) }))).toBe('wrong');
   });

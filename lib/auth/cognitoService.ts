@@ -142,6 +142,10 @@ export class CognitoService {
     });
 
     const res = await client.send(command);
+    if (!res.AuthenticationResult && res.ChallengeName) {
+      // Cognito only issues a challenge (MFA, new password required...) AFTER the password was accepted.
+      throw Object.assign(new Error(`Cognito asked for a further step: ${res.ChallengeName}`), { name: 'CognitoChallengeException', challenge: res.ChallengeName });
+    }
     if (!res.AuthenticationResult || !res.AuthenticationResult.IdToken || !res.AuthenticationResult.AccessToken) {
       throw new Error('Cognito authentication failed to return tokens');
     }
