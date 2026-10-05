@@ -55,6 +55,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return forbidden(denied);
     }
     if (approvalMode() === 'off') return badRequest('Approval is switched off on this server, so there is nothing to request.');
+    if (approvalMode() === 'password') return badRequest('This server confirms with your password instead of an approval request. Use Confirm with password.');
 
     const rl = await checkRateLimit(`${identity.userId}:terraform-approval`, 30, 10 * 60_000);
     if (!rl.allowed) return tooManyRequests(rl.retryAfterSeconds);

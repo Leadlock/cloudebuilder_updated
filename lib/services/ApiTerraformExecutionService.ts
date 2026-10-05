@@ -94,7 +94,7 @@ export interface TerraformApproval {
 }
 export interface TerraformApprovals {
   /** required = a different owner/admin must approve; self-ok = the requester may approve; off = no approval needed. */
-  mode: 'required' | 'self-ok' | 'off';
+  mode: 'password' | 'required' | 'self-ok' | 'off';
   you: string;
   approvals: TerraformApproval[];
 }
@@ -114,6 +114,14 @@ export class ApiTerraformExecutionService {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(parseErrorMessage(data, `Could not load approvals (${res.status})`));
     return data.data;
+  }
+
+  /** Confirm a deploy or teardown with the signed-in person's own password. The password is sent once and never kept. */
+  static async confirmWithPassword(projectId: string, action: 'apply' | 'destroy', planId: string, planHash: string, password: string, user?: { id: string; role?: string }): Promise<TerraformApproval> {
+    const res = await fetch(`/api/projects/${projectId}/terraform/confirm`, { method: 'POST', headers: authHeaders(user), credentials: 'include', body: JSON.stringify({ action, planId, planHash, password }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(parseErrorMessage(data, `Could not confirm (${res.status})`));
+    return data.data.approval;
   }
 
   static async requestApproval(projectId: string, action: 'apply' | 'destroy', planId: string, planHash: string, user?: { id: string; role?: string }): Promise<TerraformApproval> {

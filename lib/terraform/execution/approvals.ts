@@ -7,6 +7,8 @@
  * server instances.
  *
  * Policy (CLOUDCRAFT_TERRAFORM_APPROVAL):
+ *   password   the default. The person running it confirms with their own login password (see passwordConfirm.ts); that records
+ *              a short-lived approval for exactly this plan. No second person is involved.
  *   required   a DIFFERENT owner/admin than the requester must approve (production default). The requester can still withdraw
  *              their own request.
  *   self-ok    the requester may approve their own request — it still takes an explicit approval step (development default,
@@ -19,17 +21,19 @@
 import { randomUUID } from 'crypto';
 import { NOW_MS, sharedDb } from '@/lib/api/sharedStore';
 
-export type ApprovalMode = 'required' | 'self-ok' | 'off';
+export type ApprovalMode = 'password' | 'required' | 'self-ok' | 'off';
 export type ApprovalAction = 'apply' | 'destroy';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'used' | 'expired';
 
 /** How long a request waits for a decision, and how long an approval can be used once given. */
 export const APPROVAL_TTL_MS = 30 * 60 * 1000;
+/** A password confirmation is for doing it now: it expires sooner than a request that waits for another person. */
+export const PASSWORD_CONFIRM_TTL_MS = 5 * 60 * 1000;
 
 export function approvalMode(): ApprovalMode {
   const v = (process.env['CLOUDCRAFT_TERRAFORM_APPROVAL'] ?? '').trim().toLowerCase();
-  if (v === 'required' || v === 'self-ok' || v === 'off') return v;
-  return process.env['NODE_ENV'] === 'production' ? 'required' : 'self-ok';
+  if (v === 'password' || v === 'required' || v === 'self-ok' || v === 'off') return v;
+  return 'password';      // a typo, or nothing set, never switches the gate off
 }
 
 export interface Approval {
@@ -103,7 +107,7 @@ export type DecisionResult =
  * Approves or rejects a pending request. Approving needs a different person than the requester when the mode is `required`;
  * anyone who may decide can reject. Deciding is one atomic statement, so two people deciding at once cannot both win.
  */
-export async function decideApproval(input: { id: string; orgId: string; decidedBy: string; decision: 'approve' | 'reject'; comment?: string }): Promise<DecisionResult> {
+export async function decideApproval(input: { id: string; orgId: string; decidedBy: string; decision: 'approve' | 'reject'; comment?: string; ttlMs?: number }): Promise<DecisionResult> {
   const found = await sharedDb().query(`SELECT ${COLUMNS} FROM "terraformApproval" WHERE "id" = $1 AND "orgId" = $2`, [input.id, input.orgId]);
   const row = found.rows[0];
   if (!row) return { ok: false, code: 'not_found', reason: 'That approval request does not exist.' };
@@ -121,7 +125,7 @@ export async function decideApproval(input: { id: string; orgId: string; decided
          "expiresAtMs" = CASE WHEN $7::boolean THEN ${NOW_MS} + $8::double precision ELSE "expiresAtMs" END
      WHERE "id" = $1 AND "orgId" = $2 AND "status" = 'pending' AND "expiresAtMs" > ${NOW_MS}
      RETURNING ${COLUMNS}`,
-    [input.id, input.orgId, approve ? 'approved' : 'rejected', input.decidedBy, new Date().toISOString(), input.comment ? input.comment.slice(0, 500) : null, approve, APPROVAL_TTL_MS],
+    [input.id, input.orgId, approve ? 'approved' : 'rejected', input.decidedBy, new Date().toISOString(), input.comment ? input.comment.slice(0, 500) : null, approve, input.ttlMs ?? APPROVAL_TTL_MS],
   );
   if (!updated.rows[0]) return { ok: false, code: 'not_pending', reason: 'That request was just decided by someone else.' };
   return { ok: true, approval: toApproval(updated.rows[0], now) };

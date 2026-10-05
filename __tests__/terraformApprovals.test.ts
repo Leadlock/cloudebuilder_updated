@@ -33,13 +33,14 @@ const ask = (over: Partial<typeof PLAN> & { requestedBy?: string } = {}) => requ
 const expireEverything = () => mem.public.none('UPDATE "terraformApproval" SET "expiresAtMs" = "expiresAtMs" - 3600000');
 
 describe('approvalMode', () => {
-  it('requires a different admin in production, self-approval elsewhere, and follows CLOUDCRAFT_TERRAFORM_APPROVAL', () => {
-    env['NODE_ENV'] = 'production'; expect(approvalMode()).toBe('required');
-    env['NODE_ENV'] = 'development'; expect(approvalMode()).toBe('self-ok');
-    env['NODE_ENV'] = 'test'; expect(approvalMode()).toBe('self-ok');
+  it('defaults to confirming with a password everywhere, and follows CLOUDCRAFT_TERRAFORM_APPROVAL', () => {
+    env['NODE_ENV'] = 'production'; expect(approvalMode()).toBe('password');
+    env['NODE_ENV'] = 'development'; expect(approvalMode()).toBe('password');
+    env['NODE_ENV'] = 'test'; expect(approvalMode()).toBe('password');
+    env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'self-ok'; expect(approvalMode()).toBe('self-ok');
     env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'REQUIRED'; expect(approvalMode()).toBe('required');
     env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'off'; expect(approvalMode()).toBe('off');
-    env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'nonsense'; env['NODE_ENV'] = 'production'; expect(approvalMode()).toBe('required');   // a typo never switches the gate off
+    env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'nonsense'; env['NODE_ENV'] = 'production'; expect(approvalMode()).toBe('password');   // a typo never switches the gate off
   });
 });
 

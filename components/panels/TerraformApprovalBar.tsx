@@ -50,6 +50,7 @@ export default function TerraformApprovalBar({ projectId, action, planId, planHa
   const { info, error, reload } = useApprovals(projectId, user, 6_000, !stopPolling);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
 
   const forPlan = (info?.approvals ?? []).filter((a) => a.action === action && a.planId === planId && a.planHash === planHash);
   const current: TerraformApproval | undefined = forPlan.find((a) => a.status === 'approved') ?? forPlan.find((a) => a.status === 'pending') ?? forPlan[0];
@@ -64,6 +65,8 @@ export default function TerraformApprovalBar({ projectId, action, planId, planHa
     try { await fn(); await reload(); } catch (e) { setActionError(e instanceof Error ? e.message : 'That did not work'); } finally { setBusy(false); }
   }
   const request = () => run(() => ApiTerraformExecutionService.requestApproval(projectId, action, planId, planHash, user));
+  // The password goes to the server once and is cleared from the page whether or not it was right.
+  const confirmPassword = () => { const typed = password; setPassword(''); return run(() => ApiTerraformExecutionService.confirmWithPassword(projectId, action, planId, planHash, typed, user)); };
   const decide = (decision: 'approve' | 'reject') => run(() => ApiTerraformExecutionService.decideApproval(projectId, current!.id, decision, user));
 
   if (!info) return error ? <p className="text-[11px] text-amber-400">Could not check approval: {error}</p> : null;
@@ -73,9 +76,21 @@ export default function TerraformApprovalBar({ projectId, action, planId, planHa
   const mine = current?.requestedBy === info.you;
   const canApprove = !!current && current.status === 'pending' && (info.mode === 'self-ok' || !mine);
   let box: React.ReactNode;
-  if (current?.status === 'approved') {
+  if (info.mode === 'password' && current?.status !== 'approved') {
+    box = (
+      <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); if (password) void confirmPassword(); }}>
+        <div className="flex items-start gap-2 text-amber-300"><ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+          <span>Confirm this {noun} with your CloudCraft password before it runs.{current?.status === 'used' || current?.status === 'expired' ? ' The earlier confirmation is no longer valid.' : ''}</span></div>
+        <div className="flex gap-2">
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" autoComplete="current-password" aria-label="Your CloudCraft password"
+            className="flex-1 min-w-0 bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-xs placeholder-gray-500 focus:outline-none focus:border-amber-500" />
+          <button type="submit" disabled={busy || !password} className="px-3 py-1 rounded-lg text-[11px] disabled:opacity-60 bg-amber-600 hover:bg-amber-500 text-white font-semibold">{busy ? <Loader2 className="w-3 h-3 animate-spin inline" /> : 'Confirm'}</button>
+        </div>
+      </form>
+    );
+  } else if (current?.status === 'approved') {
     box = (<div className="flex items-center gap-2 text-emerald-300"><ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
-      <span>Approved by {who(current.decidedBy ?? '', info.you)}. You can run this {noun} now — the approval is good for about {minutesLeft(current.expiresAt)} more minute(s) and works once.</span></div>);
+      <span>{info.mode === 'password' ? 'Confirmed with your password.' : `Approved by ${who(current.decidedBy ?? '', info.you)}.`} You can run this {noun} now — this is good for about {minutesLeft(current.expiresAt)} more minute(s) and works once.</span></div>);
   } else if (current?.status === 'pending') {
     box = (
       <div className="space-y-2">

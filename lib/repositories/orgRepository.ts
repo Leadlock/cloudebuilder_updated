@@ -75,6 +75,12 @@ export const orgRepository = {
     return { id, ...input, createdAt: ts, updatedAt: ts };
   },
 
+  /** For re-checking a password before a dangerous action. The hash never leaves the server-side callers. */
+  async getPasswordHashById(id: string): Promise<string | null> {
+    const row = await db.orm.public.User.where({ id }).select('passwordHash').first();
+    return row?.passwordHash ?? null;
+  },
+
   async findUser(id: string): Promise<DbUser | null> {
     const row = await db.orm.public.User
       .where({ id })

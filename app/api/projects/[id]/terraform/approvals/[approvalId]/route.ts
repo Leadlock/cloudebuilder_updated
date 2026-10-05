@@ -12,7 +12,7 @@ import { extractIdentity } from '@/lib/api/auth';
 import { requireProjectAccess } from '@/lib/api/projectAccess';
 import { terraformExecutionDenied } from '@/lib/api/terraformAccess';
 import { recordTerraformAudit } from '@/lib/terraform/execution/audit';
-import { decideApproval, getApproval } from '@/lib/terraform/execution/approvals';
+import { approvalMode, decideApproval, getApproval } from '@/lib/terraform/execution/approvals';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,6 +35,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       await recordTerraformAudit({ action: 'approval', outcome: 'denied', orgId, projectId, userId: identity.userId, detail: denied });
       return forbidden(denied);
     }
+
+    if (approvalMode() === 'password') return apiError('BAD_REQUEST', 'This server confirms with a password instead of approvals from other people.', 400);
 
     const parsed = await parseBody(req, DecisionSchema);
     if (!parsed.ok) return parsed.response;
