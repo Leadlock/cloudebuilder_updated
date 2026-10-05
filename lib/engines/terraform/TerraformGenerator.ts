@@ -31,6 +31,11 @@ export interface TerraformGenerationInput {
 export interface TerraformGenerationResult {
   files: TerraformFile[];
   warnings: string[];
+  /**
+   * Problems that make the generated Terraform fail only when the cloud is asked to create something (after earlier resources were
+   * already built). Terraform's own plan cannot see them, so the plan is refused up front when this is not empty.
+   */
+  blocking?: string[];
   resourceMap: Record<string, string>; // resourceId → tf resource address
   providers: string[];
 }
@@ -139,6 +144,7 @@ class ReferenceResolver {
 class AwsTerraformGenerator {
   /** Set when a resource that needs a VPC is not in or connected to one, so the account's default VPC is declared for it. */
   private _needsDefaultVpc = false;
+  private _blocking: string[] = [];
 
   /**
    * A VPC reference for a resource that is not inside a VPC on the canvas. Never a reference to a VPC that is not declared: that made
@@ -172,11 +178,12 @@ class AwsTerraformGenerator {
     connections: DbArchitectureConnection[],
     projectName: string,
     resolver: ReferenceResolver,
-  ): { blocks: string[]; warnings: string[]; resourceMap: Record<string, string> } {
+  ): { blocks: string[]; warnings: string[]; resourceMap: Record<string, string>; blocking?: string[] } {
     const blocks: string[] = [];
     const warnings: string[] = [];
     const resourceMap: Record<string, string> = {};
     this._needsDefaultVpc = false;
+    this._blocking = [];
 
     // Pre-calculate distinct Availability Zones for all AWS subnets in the architecture
     const subnetAzMap = new Map<string, string>();
@@ -369,33 +376,52 @@ locals {
             vpc = resolver.resolveParent(subnets[0]!.id, 'aws_vpc', connections, resources);
           }
 
-          // Ensure multi-AZ coverage for ALB (requires >= 2 subnets in distinct AZs)
-          if (subnetRefs.length < 2) {
-            const peerSubnets = allAwsSubnets.filter((s) => {
+          // A load balancer needs subnets in at least two DIFFERENT Availability Zones, and AWS only refuses it when the load balancer is
+          // created: after everything before it was already built ("A load balancer cannot be attached to multiple subnets in the same
+          // Availability Zone"). So take one subnet per zone here (the ones you connected first, then the public ones), and stop the plan
+          // when two zones cannot be found.
+          const azOfSubnet = (x: DbArchitectureResource) => subnetAzMap.get(x.id) ?? ((this._cfg(x)['availabilityZone'] as string) || 'us-east-1a');
+          const isPublicSubnet = (x: DbArchitectureResource) => {
+            const xc = this._cfg(x);
+            const xn = (resolver.tfNameOf(x.id) ?? x.label).toLowerCase();
+            return xc['mapPublicIpOnLaunch'] === true || xn.includes('public') || xn.includes('pub');
+          };
+          const chosen: DbArchitectureResource[] = [];
+          const usedAz = new Set<string>();
+          const take = (x: DbArchitectureResource): boolean => {
+            const az = azOfSubnet(x);
+            if (usedAz.has(az) || chosen.some((c) => c.id === x.id)) return false;
+            usedAz.add(az); chosen.push(x);
+            return true;
+          };
+          for (const x of subnets) take(x);
+          if (usedAz.size < 2) {
+            const peers = allAwsSubnets.filter((x) => {
               if (vpc) {
-                const sVpc = resolver.resolveParent(s.id, 'aws_vpc', connections, resources);
-                if (sVpc && sVpc.id !== vpc.id) return false;
+                const xVpc = resolver.resolveParent(x.id, 'aws_vpc', connections, resources);
+                if (xVpc && xVpc.id !== vpc.id) return false;
               }
               return true;
             });
-            const publicPeerSubnets = peerSubnets.filter((s) => {
-              const sCfg = this._cfg(s);
-              const sName = (resolver.tfNameOf(s.id) ?? s.label).toLowerCase();
-              return sCfg['mapPublicIpOnLaunch'] === true || sName.includes('public') || sName.includes('pub');
-            });
-            const candidates = publicPeerSubnets.length >= 2 ? publicPeerSubnets : peerSubnets;
-            for (const s of candidates) {
-              const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
-              const ref = `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
-              if (!subnetRefs.includes(ref)) {
-                subnetRefs.push(ref);
+            for (const x of peers.filter(isPublicSubnet)) take(x);
+            if (usedAz.size < 2) {
+              for (const x of peers.filter((p) => !isPublicSubnet(p))) {
+                if (take(x) && cfg['scheme'] !== 'internal') {
+                  warnings.push(`Load balancer "${r.label}" is internet-facing but only one public subnet exists, so it was also placed in the private subnet "${x.label}" to cover a second Availability Zone. Add a second PUBLIC subnet in another Availability Zone and connect it to the load balancer.`);
+                }
+                if (usedAz.size >= 2) break;
               }
-              if (subnetRefs.length >= 2) break;
             }
           }
+          subnetRefs.length = 0;
+          for (const x of chosen) {
+            const isImp = Boolean(this._cfg(x).imported || this._cfg(x).importState === 'imported');
+            subnetRefs.push(`${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(x.id) ?? 'main'}.id`);
+          }
 
-          if (subnetRefs.length < 2) {
-            warnings.push(`ALB "${r.label}" is connected to ${subnetRefs.length} subnet(s) — an aws_lb requires subnets in at least 2 distinct Availability Zones and will fail to apply as generated.`);
+          if (usedAz.size < 2 && !isImported) {
+            const where = chosen.length > 0 ? `all in ${[...usedAz].join(', ')}` : 'none connected';
+            this._blocking.push(`The load balancer "${r.label}" needs subnets in at least two different Availability Zones, but the subnets it can use are ${where}. AWS only refuses this when it creates the load balancer, after other resources were already built, so CloudCraft stops here instead. Add a second subnet in another Availability Zone (set its Availability Zone) and connect it to the load balancer.`);
           }
 
           const isVpcImported = vpc && Boolean(this._cfg(vpc).imported || this._cfg(vpc).importState === 'imported');
@@ -654,7 +680,7 @@ locals {
 
     if (this._needsDefaultVpc) blocks.unshift('data "aws_vpc" "default" {\n  default = true\n}');
 
-    return { blocks, warnings, resourceMap };
+    return { blocks, warnings, resourceMap, blocking: [...this._blocking] };
   }
 
   private _cfg(r: DbArchitectureResource): Record<string, unknown> {
@@ -3623,6 +3649,7 @@ export class TerraformGenerator {
     const azureResources = input.resources.filter((r) => r.provider === 'azure');
 
     const warnings: string[] = [];
+    const blocking: string[] = [];
     const resourceMap: Record<string, string> = {};
     const providers: string[] = [];
 
@@ -3633,6 +3660,7 @@ export class TerraformGenerator {
       const result = this.awsGen.generate(awsResources, input.connections, projectName, resolver);
       awsBlocks = result.blocks;
       warnings.push(...result.warnings);
+      blocking.push(...(result.blocking ?? []));
       Object.assign(resourceMap, result.resourceMap);
       providers.push('aws');
     }
@@ -3657,7 +3685,7 @@ export class TerraformGenerator {
     const files = this._buildFiles(awsBlocks, azureBlocks, providers, projectName, input);
     assertSafeHcl(files);
 
-    return { files, warnings, resourceMap, providers };
+    return { files, warnings, resourceMap, providers, ...(blocking.length > 0 ? { blocking } : {}) };
   }
 
   private _buildFiles(

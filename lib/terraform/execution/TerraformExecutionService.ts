@@ -192,6 +192,10 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
     connections,
     projectName: input.projectName,
   });
+  // Problems the cloud would only report halfway through an apply (see TerraformGenerationResult.blocking) stop the plan here.
+  if (generated.blocking && generated.blocking.length > 0) {
+    throw Object.assign(new Error(`Plan blocked: ${generated.blocking.join(' ')}`), { statusCode: 400 });
+  }
 
   const workDir = await mkdtemp(join(tmpdir(), 'cloudcraft-tf-'));
   try {
