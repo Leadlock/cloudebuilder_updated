@@ -27,6 +27,7 @@ import { terraformGenerator } from '@/lib/engines/terraform/TerraformGenerator';
 import { ArchitectureReviewService } from '@/lib/services/ArchitectureReviewService';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
 import { resolveExecutionCredentials } from '@/lib/cloud/credentials/resolveExecutionCredentials';
+import { runAwsPreflight, awsPreflightClients, regionFromTfvars } from './preflight';
 import { assertTerraformCapable } from '@/lib/cloud/terraformCapability';
 import type { CloudCredentials } from '@/lib/cloud/types';
 import type { CanvasNode, CanvasEdge } from '@/types';
@@ -213,6 +214,15 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
       ...terraformSecretVars(),
       ...rawEnv,
     };
+
+    // Read-only checks against the real account for refusals AWS would only report halfway through an apply (see preflight.ts).
+    if (provider === 'aws') {
+      const region = regionFromTfvars(generated.files.find((f) => f.filename === 'terraform.tfvars')?.content);
+      if (region && rawEnv['AWS_ACCESS_KEY_ID']) {
+        const problems = await runAwsPreflight({ resources, region, clients: awsPreflightClients(rawEnv, region) });
+        if (problems.length > 0) throw Object.assign(new Error(`Plan blocked: ${problems.join(' ')}`), { statusCode: 400 });
+      }
+    }
 
     await initWithRetry(workDir, env);
     await validateConfiguration(workDir, env);   // a configuration Terraform will reject fails here, in seconds
