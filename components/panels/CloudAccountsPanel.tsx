@@ -16,6 +16,7 @@ import ConnectAzureAccountForm from '@/components/accounts/ConnectAzureAccountFo
 import DeleteAccountDialog from '@/components/accounts/DeleteAccountDialog';
 import EditAccountDialog from '@/components/accounts/EditAccountDialog';
 import DeploymentPasswords from '@/components/accounts/DeploymentPasswords';
+import TotpCard from '@/components/accounts/TotpCard';
 import EncryptionKeyCard from '@/components/accounts/EncryptionKeyCard';
 import CredentialLifetimeControls from '@/components/accounts/CredentialLifetimeControls';
 import { describeLifetime } from '@/lib/cloud/credentialLifetime';
@@ -233,6 +234,7 @@ export default function CloudAccountsPanel() {
           </section>
         )}
 
+        <TotpCard />
         <EncryptionKeyCard />
       </div>
 

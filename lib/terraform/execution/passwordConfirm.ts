@@ -5,6 +5,9 @@
  * plan (same id and hash), good for a few minutes. Running the plan spends it, exactly as with any approval, so a confirmation cannot
  * be reused or moved to another plan. Wrong passwords are counted: after a few the person is locked out for a while, and a correct
  * password clears the count. Nothing about the password is ever logged or returned.
+ *
+ * A person who turned on an authenticator app must also give the current 6-digit code (or a recovery code): password AND code. A wrong
+ * code counts as a failed try like a wrong password. If whether they have it on cannot be read, confirming fails rather than skipping it.
  */
 import { requestApproval, decideApproval, PASSWORD_CONFIRM_TTL_MS, type Approval, type ApprovalAction } from './approvals';
 import { checkRateLimit, peekRateLimit, resetRateLimit } from '@/lib/api/rateLimit';
@@ -15,16 +18,18 @@ export interface PasswordCheckDeps {
   /** The user's stored password hash, or null if they have no password (for example a development or single-sign-on identity). */
   getPasswordHash(userId: string): Promise<string | null>;
   verifyPassword(password: string, hash: string): Promise<boolean>;
+  /** Authenticator-app step. Omit to use passwords alone. */
+  totp?: { enabled(userId: string): Promise<boolean>; verify(userId: string, code: string): Promise<boolean> };
 }
 
 export type ConfirmResult =
   | { ok: true; approval: Approval }
-  | { ok: false; code: 'locked' | 'no_password' | 'wrong_password' | 'not_recorded'; message: string; retryAfterSeconds?: number; triesLeft?: number };
+  | { ok: false; code: 'locked' | 'needs_code' | 'no_password' | 'wrong_password' | 'not_recorded'; message: string; retryAfterSeconds?: number; triesLeft?: number };
 
 const key = (userId: string) => `${userId}:terraform-password`;
 
 export async function confirmWithPassword(
-  input: { orgId: string; projectId: string; userId: string; action: ApprovalAction; planId: string; planHash: string; summary: string; password: string },
+  input: { orgId: string; projectId: string; userId: string; action: ApprovalAction; planId: string; planHash: string; summary: string; password: string; code?: string },
   deps: PasswordCheckDeps,
 ): Promise<ConfirmResult> {
   // Locked out? Refuse before even looking at the password, so a lockout cannot be tested for with a correct one.
@@ -41,6 +46,14 @@ export async function confirmWithPassword(
   if (!(await deps.verifyPassword(input.password, hash))) {
     const after = await checkRateLimit(key(input.userId), PASSWORD_TRIES.limit, PASSWORD_TRIES.windowMs);   // counts this failure
     return { ok: false, code: 'wrong_password', triesLeft: Math.max(0, after.remaining), message: after.remaining > 0 ? `That password is not right. ${after.remaining} ${after.remaining === 1 ? 'try' : 'tries'} left.` : 'That password is not right, and there are no tries left for a while.' };
+  }
+  if (deps.totp && (await deps.totp.enabled(input.userId))) {
+    const code = (input.code ?? '').trim();
+    if (!code) return { ok: false, code: 'needs_code', message: 'Also enter the 6-digit code from your authenticator app (or a recovery code).' };
+    if (!(await deps.totp.verify(input.userId, code))) {
+      const after = await checkRateLimit(key(input.userId), PASSWORD_TRIES.limit, PASSWORD_TRIES.windowMs);
+      return { ok: false, code: 'wrong_password', triesLeft: Math.max(0, after.remaining), message: after.remaining > 0 ? `That code is not right (it changes every 30 seconds, and each one works once). ${after.remaining} ${after.remaining === 1 ? 'try' : 'tries'} left.` : 'That code is not right, and there are no tries left for a while.' };
+    }
   }
   await resetRateLimit(key(input.userId));
 

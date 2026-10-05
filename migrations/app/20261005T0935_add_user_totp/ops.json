@@ -1,0 +1,41 @@
+[
+  {
+    "id": "table.userTotp",
+    "label": "Create table \"userTotp\"",
+    "summary": "Creates table \"userTotp\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "userTotp"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"userTotp\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"userTotp\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"userTotp\"",
+        "sql": "CREATE TABLE \"public\".\"userTotp\" (\n  \"createdAt\" text NOT NULL,\n  \"enabled\" bool DEFAULT false NOT NULL,\n  \"lastStep\" float8 DEFAULT 0 NOT NULL,\n  \"recoveryJson\" text DEFAULT '[]' NOT NULL,\n  \"secretEnc\" text NOT NULL,\n  \"userId\" text NOT NULL,\n  PRIMARY KEY (\"userId\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"userTotp\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"userTotp\""
+        ]
+      }
+    ]
+  }
+]

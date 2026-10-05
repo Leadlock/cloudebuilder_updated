@@ -634,3 +634,15 @@ model DeploymentSecret {
 
   @@index([cloudAccountId])
 }
+
+// A person's authenticator-app (TOTP) setup, used to confirm deploys and teardowns on top of their password. secretEnc is encrypted with the
+// credential key and bound to the user. lastStep is the last accepted 30-second step (a code can never be used twice). recoveryJson holds
+// sha256 hashes of unused recovery codes, never the codes. enabled is false until the person proves their app works by entering a code.
+model UserTotp {
+  userId       String  @id
+  secretEnc    String
+  enabled      Boolean @default(false)
+  lastStep     Float   @default(0)
+  recoveryJson String  @default("[]")
+  createdAt    String
+}

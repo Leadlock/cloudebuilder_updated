@@ -33,7 +33,7 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'5ec0a56099dc1f3c7a677c934b3a57b5744dffd268a580996ec1194aa3378e76'>;
+  StorageHashBase<'4e52db63200a9cef1691eaad77e0cbda346bc475db35c372e4f1e551ef7a5984'>;
 export type ExecutionHash =
   ExecutionHashBase<'e601969d76456cec43d4ac30a97cd9949576e2dd63fc3f3c4753142e71bd8448'>;
 export type ProfileHash =
@@ -552,6 +552,14 @@ export type FieldOutputTypes = {
       readonly createdAt: CodecTypes['pg/text@1']['output'];
       readonly updatedAt: CodecTypes['pg/text@1']['output'];
     };
+    readonly UserTotp: {
+      readonly userId: CodecTypes['pg/text@1']['output'];
+      readonly secretEnc: CodecTypes['pg/text@1']['output'];
+      readonly enabled: CodecTypes['pg/bool@1']['output'];
+      readonly lastStep: CodecTypes['pg/float8@1']['output'];
+      readonly recoveryJson: CodecTypes['pg/text@1']['output'];
+      readonly createdAt: CodecTypes['pg/text@1']['output'];
+    };
     readonly WellArchitectedAssessment: {
       readonly id: CodecTypes['pg/text@1']['output'];
       readonly projectId: CodecTypes['pg/text@1']['output'];
@@ -904,6 +912,14 @@ export type FieldInputTypes = {
       readonly passwordHash: CodecTypes['pg/text@1']['input'] | null;
       readonly createdAt: CodecTypes['pg/text@1']['input'];
       readonly updatedAt: CodecTypes['pg/text@1']['input'];
+    };
+    readonly UserTotp: {
+      readonly userId: CodecTypes['pg/text@1']['input'];
+      readonly secretEnc: CodecTypes['pg/text@1']['input'];
+      readonly enabled: CodecTypes['pg/bool@1']['input'];
+      readonly lastStep: CodecTypes['pg/float8@1']['input'];
+      readonly recoveryJson: CodecTypes['pg/text@1']['input'];
+      readonly createdAt: CodecTypes['pg/text@1']['input'];
     };
     readonly WellArchitectedAssessment: {
       readonly id: CodecTypes['pg/text@1']['input'];
@@ -1258,6 +1274,14 @@ export type StorageColumnTypes = {
       readonly passwordHash: CodecTypes['pg/text@1']['output'] | null;
       readonly updatedAt: CodecTypes['pg/text@1']['output'];
     };
+    readonly userTotp: {
+      readonly createdAt: CodecTypes['pg/text@1']['output'];
+      readonly enabled: CodecTypes['pg/bool@1']['output'];
+      readonly lastStep: CodecTypes['pg/float8@1']['output'];
+      readonly recoveryJson: CodecTypes['pg/text@1']['output'];
+      readonly secretEnc: CodecTypes['pg/text@1']['output'];
+      readonly userId: CodecTypes['pg/text@1']['output'];
+    };
     readonly wellArchitectedAssessment: {
       readonly architectureId: CodecTypes['pg/text@1']['output'];
       readonly completedAt: CodecTypes['pg/text@1']['output'] | null;
@@ -1610,6 +1634,14 @@ export type StorageColumnInputTypes = {
       readonly name: CodecTypes['pg/text@1']['input'] | null;
       readonly passwordHash: CodecTypes['pg/text@1']['input'] | null;
       readonly updatedAt: CodecTypes['pg/text@1']['input'];
+    };
+    readonly userTotp: {
+      readonly createdAt: CodecTypes['pg/text@1']['input'];
+      readonly enabled: CodecTypes['pg/bool@1']['input'];
+      readonly lastStep: CodecTypes['pg/float8@1']['input'];
+      readonly recoveryJson: CodecTypes['pg/text@1']['input'];
+      readonly secretEnc: CodecTypes['pg/text@1']['input'];
+      readonly userId: CodecTypes['pg/text@1']['input'];
     };
     readonly wellArchitectedAssessment: {
       readonly architectureId: CodecTypes['pg/text@1']['input'];
@@ -4061,6 +4093,56 @@ type ContractBase = Omit<
               indexes: readonly [];
               foreignKeys: readonly [];
             };
+            readonly userTotp: {
+              columns: {
+                readonly userId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly secretEnc: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly enabled: {
+                  readonly nativeType: 'bool';
+                  readonly codecId: 'pg/bool@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/bool@1', false>;
+                  };
+                };
+                readonly lastStep: {
+                  readonly nativeType: 'float8';
+                  readonly codecId: 'pg/float8@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/float8@1', 0>;
+                  };
+                };
+                readonly recoveryJson: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', '[]'>;
+                  };
+                };
+                readonly createdAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['userId'] };
+              uniques: readonly [];
+              indexes: readonly [];
+              foreignKeys: readonly [];
+            };
             readonly wellArchitectedAssessment: {
               columns: {
                 readonly id: {
@@ -4461,6 +4543,7 @@ type ContractBase = Omit<
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'DeploymentSecret';
     };
+    readonly userTotp: { readonly namespace: 'public' & NamespaceId; readonly model: 'UserTotp' };
   };
   readonly domain: {
     readonly namespaces: {
@@ -6836,6 +6919,47 @@ type ContractBase = Omit<
                 readonly passwordHash: { readonly column: 'passwordHash' };
                 readonly createdAt: { readonly column: 'createdAt' };
                 readonly updatedAt: { readonly column: 'updatedAt' };
+              };
+            };
+          };
+          readonly UserTotp: {
+            readonly fields: {
+              readonly userId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly secretEnc: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly enabled: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/bool@1' };
+              };
+              readonly lastStep: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/float8@1' };
+              };
+              readonly recoveryJson: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly createdAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: {
+              readonly table: 'userTotp';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly userId: { readonly column: 'userId' };
+                readonly secretEnc: { readonly column: 'secretEnc' };
+                readonly enabled: { readonly column: 'enabled' };
+                readonly lastStep: { readonly column: 'lastStep' };
+                readonly recoveryJson: { readonly column: 'recoveryJson' };
+                readonly createdAt: { readonly column: 'createdAt' };
               };
             };
           };

@@ -21,6 +21,8 @@ import { getResourceDefinition } from '@/lib/resources';
 export interface SanitizeReport {
   renamed: { type: string; from: string; to: string; resources: string[] }[];
   dropped: { type: string; setting: string; resources: string[] }[];
+  /** Subnets moved to a second Availability Zone because the design put every subnet in one. */
+  zonesSpread?: string[];
 }
 
 const EMPTY = (): SanitizeReport => ({ renamed: [], dropped: [] });
@@ -60,12 +62,49 @@ export function sanitizeSpecInput(input: unknown): { value: unknown; report: San
   }
   report.renamed = [...renamed.values()];
   report.dropped = [...dropped.values()];
+  const spread = spreadSubnetZones(value.resources as SpecResource[]);
+  if (spread.length > 0) report.zonesSpread = spread;
   return { value, report };
+}
+
+interface SpecResource { id?: unknown; type?: unknown; config?: unknown }
+
+/**
+ * A highly available design needs its subnets in at least two Availability Zones. Models often write the same zone on every subnet,
+ * and asking them again rarely fixes it. When there are two or more subnets and they all name one zone, move some to the next zone
+ * of the same region: subnets of the same kind (public / private, same name apart from a number or letter) alternate a, b, a, b, so
+ * each kind spans two zones. Only that exact mistake is repaired; subnets with no zone, or already in several zones, are left alone.
+ * Returns the ids that were moved.
+ */
+export function spreadSubnetZones(resources: SpecResource[]): string[] {
+  const subnets = resources.filter((r) => r && r.type === 'aws_subnet' && r.config && typeof r.config === 'object' && !Array.isArray(r.config)) as { id?: unknown; config: Record<string, unknown> }[];
+  if (subnets.length < 2) return [];
+  const zones = new Set(subnets.map((s) => s.config['availabilityZone']));
+  const only = zones.size === 1 ? [...zones][0] : undefined;
+  const match = typeof only === 'string' ? /^([a-z]{2}-[a-z]+-\d)([a-z])$/.exec(only) : null;
+  if (!match) return [];
+  const region = match[1]!;
+  const letters = ['a', 'b'];
+  const kind = (s: { id?: unknown; config: Record<string, unknown> }) => `${s.config['isPublic'] === true}|${String(s.id ?? '').toLowerCase().replace(/[\d_-]+[a-z]?$|\d+/g, '')}`;
+
+  const seen = new Map<string, number>();
+  const target = subnets.map((s) => { const k = kind(s); const n = seen.get(k) ?? 0; seen.set(k, n + 1); return letters[n % 2]!; });
+  if (new Set(target).size < 2) subnets.forEach((_, i) => { target[i] = letters[i % 2]!; });   // every kind has one subnet: alternate overall
+
+  const moved: string[] = [];
+  subnets.forEach((s, i) => {
+    const az = region + target[i];
+    if (s.config['availabilityZone'] !== az) { s.config['availabilityZone'] = az; moved.push(String(s.id ?? '?')); }
+  });
+  return moved;
 }
 
 /** Sentences for the user about settings that were ignored (renames are lossless, so they are not worth a warning). */
 export function describeSanitized(report: SanitizeReport): string[] {
-  if (report.dropped.length === 0) return [];
+  const out: string[] = [];
+  if (report.zonesSpread && report.zonesSpread.length > 0) out.push(`The AI placed every subnet in one Availability Zone, so CloudCraft spread ${report.zonesSpread.length} of them across two zones for high availability.`);
+  if (report.dropped.length === 0) return out;
   const list = report.dropped.map((d) => `${d.type}.${d.setting} (${d.resources.slice(0, 3).join(', ')}${d.resources.length > 3 ? ', …' : ''})`).join('; ');
-  return [`The AI used ${report.dropped.length} setting name${report.dropped.length === 1 ? '' : 's'} CloudCraft doesn't have, so the defaults were used instead: ${list}. Check those resources if you needed something specific.`];
+  out.push(`The AI used ${report.dropped.length} setting name${report.dropped.length === 1 ? '' : 's'} CloudCraft doesn't have, so the defaults were used instead: ${list}. Check those resources if you needed something specific.`);
+  return out;
 }

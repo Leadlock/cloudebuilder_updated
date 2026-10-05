@@ -17,6 +17,7 @@ import { describePlanForApproval } from '@/lib/terraform/execution/approvalPlan'
 import { confirmWithPassword } from '@/lib/terraform/execution/passwordConfirm';
 import { orgRepository } from '@/lib/repositories/orgRepository';
 import { verifyPassword } from '@/lib/crypto/password';
+import { totpEnabled, verifyTotpCode } from '@/lib/api/totpStore';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,7 @@ const Body = z.object({
   planId: z.string().min(1).max(200),
   planHash: z.string().min(1).max(200),
   password: z.string().min(1).max(512),
+  code: z.string().trim().max(32).optional(),
 }).strict();
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -45,19 +47,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const parsed = await parseBody(req, Body);
     if (!parsed.ok) return parsed.response;
-    const { action, planId, planHash, password } = parsed.data;
+    const { action, planId, planHash, password, code } = parsed.data;
 
     const plan = describePlanForApproval({ orgId, projectId, action, planId, planHash });
     if (!plan.ok) return plan.status === 404 ? notFound(plan.message) : badRequest(plan.message);
 
     const result = await confirmWithPassword(
-      { orgId, projectId, userId: identity.userId, action, planId, planHash, summary: plan.summary, password },
-      { getPasswordHash: (id) => orgRepository.getPasswordHashById(id), verifyPassword },
+      { orgId, projectId, userId: identity.userId, action, planId, planHash, summary: plan.summary, password, code },
+      { getPasswordHash: (id) => orgRepository.getPasswordHashById(id), verifyPassword, totp: { enabled: totpEnabled, verify: verifyTotpCode } },
     );
     if (!result.ok) {
       await recordTerraformAudit({ action: 'approval', outcome: 'denied', orgId, projectId, userId: identity.userId, planId, planHash, detail: `${action} password confirmation refused: ${result.code}` });   // never the password
       if (result.code === 'locked') return tooManyRequests(result.retryAfterSeconds);
       if (result.code === 'wrong_password') return apiError('WRONG_PASSWORD', result.message, 403);
+      if (result.code === 'needs_code') return apiError('CODE_REQUIRED', result.message, 400);
       return badRequest(result.message);
     }
     await recordTerraformAudit({ action: 'approval', outcome: 'allowed', orgId, projectId, userId: identity.userId, planId, planHash, detail: `${action} confirmed with password: ${plan.summary}` });

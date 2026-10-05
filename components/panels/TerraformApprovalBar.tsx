@@ -51,6 +51,7 @@ export default function TerraformApprovalBar({ projectId, action, planId, planHa
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
 
   const forPlan = (info?.approvals ?? []).filter((a) => a.action === action && a.planId === planId && a.planHash === planHash);
   const current: TerraformApproval | undefined = forPlan.find((a) => a.status === 'approved') ?? forPlan.find((a) => a.status === 'pending') ?? forPlan[0];
@@ -66,7 +67,7 @@ export default function TerraformApprovalBar({ projectId, action, planId, planHa
   }
   const request = () => run(() => ApiTerraformExecutionService.requestApproval(projectId, action, planId, planHash, user));
   // The password goes to the server once and is cleared from the page whether or not it was right.
-  const confirmPassword = () => { const typed = password; setPassword(''); return run(() => ApiTerraformExecutionService.confirmWithPassword(projectId, action, planId, planHash, typed, user)); };
+  const confirmPassword = () => { const typed = password; const typedCode = code; setPassword(''); setCode(''); return run(() => ApiTerraformExecutionService.confirmWithPassword(projectId, action, planId, planHash, typed, user, typedCode)); };
   const decide = (decision: 'approve' | 'reject') => run(() => ApiTerraformExecutionService.decideApproval(projectId, current!.id, decision, user));
 
   if (!info) return error ? <p className="text-[11px] text-amber-400">Could not check approval: {error}</p> : null;
@@ -78,13 +79,17 @@ export default function TerraformApprovalBar({ projectId, action, planId, planHa
   let box: React.ReactNode;
   if (info.mode === 'password' && current?.status !== 'approved') {
     box = (
-      <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); if (password) void confirmPassword(); }}>
+      <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); if (password && (!info.totpEnabled || code)) void confirmPassword(); }}>
         <div className="flex items-start gap-2 text-amber-300"><ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
-          <span>Confirm this {noun} with your CloudCraft password before it runs.{current?.status === 'used' || current?.status === 'expired' ? ' The earlier confirmation is no longer valid.' : ''}</span></div>
+          <span>Confirm this {noun} with your CloudCraft password{info.totpEnabled ? ' and the code from your authenticator app' : ''} before it runs.{current?.status === 'used' || current?.status === 'expired' ? ' The earlier confirmation is no longer valid.' : ''}</span></div>
         <div className="flex gap-2">
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" autoComplete="current-password" aria-label="Your CloudCraft password"
             className="flex-1 min-w-0 bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-xs placeholder-gray-500 focus:outline-none focus:border-amber-500" />
-          <button type="submit" disabled={busy || !password} className="px-3 py-1 rounded-lg text-[11px] disabled:opacity-60 bg-amber-600 hover:bg-amber-500 text-white font-semibold">{busy ? <Loader2 className="w-3 h-3 animate-spin inline" /> : 'Confirm'}</button>
+          {info.totpEnabled && (
+            <input type="text" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} placeholder="App code" autoComplete="one-time-code" aria-label="Authenticator app code" maxLength={12}
+              className="w-24 bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-xs placeholder-gray-500 focus:outline-none focus:border-amber-500" />
+          )}
+          <button type="submit" disabled={busy || !password || (!!info.totpEnabled && !code)} className="px-3 py-1 rounded-lg text-[11px] disabled:opacity-60 bg-amber-600 hover:bg-amber-500 text-white font-semibold">{busy ? <Loader2 className="w-3 h-3 animate-spin inline" /> : 'Confirm'}</button>
         </div>
       </form>
     );

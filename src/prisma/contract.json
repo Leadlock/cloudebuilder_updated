@@ -124,6 +124,10 @@
       "model": "User",
       "namespace": "public"
     },
+    "userTotp": {
+      "model": "UserTotp",
+      "namespace": "public"
+    },
     "wellArchitectedAssessment": {
       "model": "WellArchitectedAssessment",
       "namespace": "public"
@@ -4051,6 +4055,77 @@
               "table": "user"
             }
           },
+          "UserTotp": {
+            "fields": {
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "enabled": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/bool@1",
+                  "kind": "scalar"
+                }
+              },
+              "lastStep": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/float8@1",
+                  "kind": "scalar"
+                }
+              },
+              "recoveryJson": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "secretEnc": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "userId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "fields": {
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "enabled": {
+                  "column": "enabled"
+                },
+                "lastStep": {
+                  "column": "lastStep"
+                },
+                "recoveryJson": {
+                  "column": "recoveryJson"
+                },
+                "secretEnc": {
+                  "column": "secretEnc"
+                },
+                "userId": {
+                  "column": "userId"
+                }
+              },
+              "namespaceId": "public",
+              "table": "userTotp"
+            }
+          },
           "WellArchitectedAssessment": {
             "fields": {
               "architectureId": {
@@ -7305,6 +7380,60 @@
                 }
               ]
             },
+            "userTotp": {
+              "columns": {
+                "createdAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "enabled": {
+                  "codecId": "pg/bool@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "nativeType": "bool",
+                  "nullable": false
+                },
+                "lastStep": {
+                  "codecId": "pg/float8@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "nativeType": "float8",
+                  "nullable": false
+                },
+                "recoveryJson": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": "[]"
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "secretEnc": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "userId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [],
+              "indexes": [],
+              "primaryKey": {
+                "columns": [
+                  "userId"
+                ]
+              },
+              "uniques": []
+            },
             "wellArchitectedAssessment": {
               "columns": {
                 "architectureId": {
@@ -7616,7 +7745,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "5ec0a56099dc1f3c7a677c934b3a57b5744dffd268a580996ec1194aa3378e76"
+    "storageHash": "4e52db63200a9cef1691eaad77e0cbda346bc475db35c372e4f1e551ef7a5984"
   },
   "execution": {
     "executionHash": "e601969d76456cec43d4ac30a97cd9949576e2dd63fc3f3c4753142e71bd8448",

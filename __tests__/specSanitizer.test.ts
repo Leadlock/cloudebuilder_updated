@@ -1,5 +1,5 @@
 import { readFileSync } from 'fs';
-import { sanitizeSpecInput, describeSanitized } from '@/lib/ai/specSanitizer';
+import { sanitizeSpecInput, describeSanitized, spreadSubnetZones } from '@/lib/ai/specSanitizer';
 import { evaluateSpec, parseSpec } from '@/lib/ai/architectureSpec';
 
 // A design from the training set — verified to pass every deploy-readiness gate.
@@ -99,5 +99,37 @@ describe('with the validator', () => {
       noWaf.connections = noWaf.connections.filter((c: { from: string; to: string }) => c.from !== waf.id && c.to !== waf.id);
       expect(evaluateSpec(sanitizeSpecInput(noWaf).value).ok).toBe(false);
     }
+  });
+});
+
+describe('spreadSubnetZones', () => {
+  const sub = (id: string, az: string | undefined, isPublic: boolean) => ({ id, type: 'aws_subnet', config: { cidrBlock: '10.0.0.0/24', isPublic, ...(az ? { availabilityZone: az } : {}) } });
+  const zonesOf = (rs: { config?: unknown }[]) => rs.map((r) => (r.config as { availabilityZone?: string }).availabilityZone);
+
+  it('moves every second subnet of a kind to another zone when the design put them all in one', () => {
+    const rs = [sub('public_subnet_1', 'us-east-1a', true), sub('public_subnet_2', 'us-east-1a', true), sub('private_subnet_1', 'us-east-1a', false), sub('private_subnet_2', 'us-east-1a', false)];
+    const moved = spreadSubnetZones(rs);
+    expect(zonesOf(rs)).toEqual(['us-east-1a', 'us-east-1b', 'us-east-1a', 'us-east-1b']);
+    expect(moved).toEqual(['public_subnet_2', 'private_subnet_2']);
+  });
+
+  it('alternates overall when each kind has only one subnet', () => {
+    const rs = [sub('public', 'eu-west-1a', true), sub('private', 'eu-west-1a', false)];
+    spreadSubnetZones(rs);
+    expect(zonesOf(rs)).toEqual(['eu-west-1a', 'eu-west-1b']);
+  });
+
+  it('leaves alone designs that already use two zones, have no zone, or have one subnet', () => {
+    const ok = [sub('a', 'us-east-1a', true), sub('b', 'us-east-1b', true)];
+    expect(spreadSubnetZones(ok)).toEqual([]);
+    const none = [sub('a', undefined, true), sub('b', undefined, true)];
+    expect(spreadSubnetZones(none)).toEqual([]);
+    expect(spreadSubnetZones([sub('a', 'us-east-1a', true)])).toEqual([]);
+  });
+
+  it('is applied by sanitizeSpecInput and reported to the user', () => {
+    const out = sanitizeSpecInput({ resources: [sub('s1', 'us-east-1a', true), sub('s2', 'us-east-1a', true)] });
+    expect(out.report.zonesSpread).toEqual(['s2']);
+    expect(describeSanitized(out.report).join(' ')).toMatch(/spread 1 of them across two zones/);
   });
 });

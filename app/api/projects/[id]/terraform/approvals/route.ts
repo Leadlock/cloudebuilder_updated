@@ -13,6 +13,7 @@ import { requireProjectAccess } from '@/lib/api/projectAccess';
 import { terraformExecutionDenied } from '@/lib/api/terraformAccess';
 import { checkRateLimit } from '@/lib/api/rateLimit';
 import { recordTerraformAudit } from '@/lib/terraform/execution/audit';
+import { totpEnabled } from '@/lib/api/totpStore';
 import { approvalMode, requestApproval, listApprovals } from '@/lib/terraform/execution/approvals';
 import { verifyPlanForApply } from '@/lib/terraform/execution/TerraformExecutionService';
 import { peekPreparedDestroy } from '@/lib/terraform/execution/destroyPlans';
@@ -33,7 +34,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const access = await requireProjectAccess(req, identity.userId, projectId);
     if ('response' in access) return access.response;
     const approvals = await listApprovals(projectId, access.orgId);
-    return ok({ mode: approvalMode(), you: identity.userId, approvals });
+    // Whether to ask for an authenticator code too. Unreadable counts as off here (it is only the form); the confirm route itself fails closed.
+    const totp = await totpEnabled(identity.userId).catch(() => false);
+    return ok({ mode: approvalMode(), you: identity.userId, totpEnabled: totp, approvals });
   } catch (err) {
     console.error('[GET /api/projects/:id/terraform/approvals]', err instanceof Error ? err.message : String(err));
     return internalError();
