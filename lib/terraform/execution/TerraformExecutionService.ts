@@ -58,7 +58,8 @@ export class PlanBlockedError extends Error {
     super(
       `Plan blocked: contains ${destroyedAddresses.length} resource destroy action(s) ` +
       `(${destroyedAddresses.slice(0, 5).join(', ')}${destroyedAddresses.length > 5 ? ', …' : ''}). ` +
-      'CloudCraft does not apply plans that destroy infrastructure — review and run this manually with the Terraform CLI if the destroy is intentional.',
+      'CloudCraft does not apply plans that destroy infrastructure. This usually means the design changed after an earlier deployment, so something that was already built is no longer in the design. ' +
+      'To start over cleanly, use Teardown to remove the earlier deployment, then generate a new plan; or review and run this manually with the Terraform CLI if the destroy is intentional.',
     );
     this.name = 'PlanBlockedError';
   }
