@@ -17,12 +17,15 @@
  */
 import { CATALOG_TYPES } from './architectureSpec';
 import { getResourceDefinition } from '@/lib/resources';
+import { describeSpecRepair, type SpecRepairReport } from './specRepair';
 
 export interface SanitizeReport {
   renamed: { type: string; from: string; to: string; resources: string[] }[];
   dropped: { type: string; setting: string; resources: string[] }[];
   /** Subnets moved to a second Availability Zone because the design put every subnet in one. */
   zonesSpread?: string[];
+  /** Mechanical repairs made by specRepair.ts (certificate placeholder, WAF, loose parts connected). */
+  specRepairs?: SpecRepairReport;
 }
 
 const EMPTY = (): SanitizeReport => ({ renamed: [], dropped: [] });
@@ -79,7 +82,8 @@ interface SpecResource { id?: unknown; type?: unknown; config?: unknown }
 export function spreadSubnetZones(resources: SpecResource[]): string[] {
   const subnets = resources.filter((r) => r && r.type === 'aws_subnet' && r.config && typeof r.config === 'object' && !Array.isArray(r.config)) as { id?: unknown; config: Record<string, unknown> }[];
   if (subnets.length < 2) return [];
-  const zones = new Set(subnets.map((s) => s.config['availabilityZone']));
+  // A subnet with no zone gets the catalog default (us-east-1a) when compiled, so for this purpose it is in that zone.
+  const zones = new Set(subnets.map((s) => s.config['availabilityZone'] ?? 'us-east-1a'));
   const only = zones.size === 1 ? [...zones][0] : undefined;
   const match = typeof only === 'string' ? /^([a-z]{2}-[a-z]+-\d)([a-z])$/.exec(only) : null;
   if (!match) return [];
@@ -101,7 +105,7 @@ export function spreadSubnetZones(resources: SpecResource[]): string[] {
 
 /** Sentences for the user about settings that were ignored (renames are lossless, so they are not worth a warning). */
 export function describeSanitized(report: SanitizeReport): string[] {
-  const out: string[] = [];
+  const out: string[] = report.specRepairs ? describeSpecRepair(report.specRepairs) : [];
   if (report.zonesSpread && report.zonesSpread.length > 0) out.push(`The AI placed every subnet in one Availability Zone, so CloudCraft spread ${report.zonesSpread.length} of them across two zones for high availability.`);
   if (report.dropped.length === 0) return out;
   const list = report.dropped.map((d) => `${d.type}.${d.setting} (${d.resources.slice(0, 3).join(', ')}${d.resources.length > 3 ? ', …' : ''})`).join('; ');

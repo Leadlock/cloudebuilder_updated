@@ -2,6 +2,7 @@ import { foundryClient, FOUNDRY_MODEL } from '../ai/foundryClient';
 import { buildGenerationContext } from '../ai/knowledgeBase';
 import { detectServiceNotices, unsupportedServiceNames, type ServiceNotices } from '../ai/serviceCoverage';
 import { sanitizeSpecInput, type SanitizeReport } from '../ai/specSanitizer';
+import { repairSpecInput } from '../ai/specRepair';
 import { awsResources } from '../resources/aws';
 import { azureResources } from '../resources/azure';
 import { db } from '../../src/prisma/db';
@@ -491,8 +492,10 @@ CloudCraft cannot model these services yet, so NEVER offer them as options (not 
     }, userPrompt, maxAttempts, withHints, (json) => {
       // Rename near-miss setting names and drop invented ones before validating; the last call is the accepted attempt.
       const cleaned = sanitizeSpecInput(json);
-      sanitized = cleaned.report;
-      return cleaned.value;
+      // Then the mechanical repairs the AI keeps getting wrong (certificate placeholder, WAF, parts left unconnected).
+      const repaired = repairSpecInput(cleaned.value);
+      sanitized = { ...cleaned.report, specRepairs: repaired.report };
+      return repaired.value;
     }, { autoRepair: true });
 
     const last = outcome.attempts[outcome.attempts.length - 1]!;
