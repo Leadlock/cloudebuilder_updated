@@ -40,6 +40,10 @@ export interface AwsKeyRoleCredentials {
   region: string;
   /** Optional: additional regions to discover in */
   additionalRegions?: string[];
+  /** When CloudCraft must stop using (and erase) this key. Set by the server from the lifetime the person chose. */
+  expiresAt?: string;
+  /** Erase the key after a deployment succeeds. */
+  forgetAfterDeploy?: true;
 }
 
 /**
@@ -58,6 +62,12 @@ export interface AwsKeyCredentials {
    * permission, for example AdministratorAccess on the IAM user). Without it a key alone is for discovery only.
    */
   allowDeploy?: true;
+  /** Temporary credentials (AWS access key ids starting ASIA) come with a session token. */
+  sessionToken?: string;
+  /** When CloudCraft must stop using (and erase) this key. Always set for temporary credentials. */
+  expiresAt?: string;
+  /** Erase the key after a deployment succeeds. */
+  forgetAfterDeploy?: true;
 }
 
 /**

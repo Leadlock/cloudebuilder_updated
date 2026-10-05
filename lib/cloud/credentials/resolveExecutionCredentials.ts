@@ -32,12 +32,15 @@
 import { STSClient, AssumeRoleCommand } from '@aws-sdk/client-sts';
 import { isAwsKeyRoleCredentials, isAwsRoleCredentials, isAwsDeployKeyCredentials } from '@/lib/cloud/types';
 import { assertTerraformCapable } from '@/lib/cloud/terraformCapability';
+import { assertEnoughTimeLeft } from '@/lib/cloud/credentialLifetime';
 import type { CloudCredentials } from '@/lib/cloud/types';
 
 export async function resolveExecutionCredentials(
   credentials: CloudCredentials,
 ): Promise<Record<string, string>> {
   assertTerraformCapable(credentials);     // defence in depth: an access key never becomes Terraform's environment
+  // Credentials with a deadline must outlast the work: a run cut off halfway can leave resources half-built.
+  assertEnoughTimeLeft((credentials as { expiresAt?: string }).expiresAt);
   if (isAwsRoleCredentials(credentials) || isAwsKeyRoleCredentials(credentials)) {
     // The user's own key signs in (a legacy role-only connection uses the server's ambient identity); the role is assumed either way,
     // so Terraform only ever runs on short-lived credentials.
@@ -73,6 +76,7 @@ export async function resolveExecutionCredentials(
     return {
       AWS_ACCESS_KEY_ID: credentials.accessKeyId,
       AWS_SECRET_ACCESS_KEY: credentials.secretAccessKey,
+      ...(credentials.sessionToken ? { AWS_SESSION_TOKEN: credentials.sessionToken } : {}),
       AWS_DEFAULT_REGION: credentials.region,
     };
   }

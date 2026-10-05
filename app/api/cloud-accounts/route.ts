@@ -13,6 +13,7 @@ import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepositor
 import { authMethodOf, isAwsCredentials, type CloudCredentials } from '@/lib/cloud/types';
 import { CloudCredentialsSchema, explainCredentialsProblem } from '@/lib/cloud/credentialSchemas';
 import { connectionHintOf } from '@/lib/cloud/connectionHint';
+import { lifetimeFromRequest } from '@/lib/cloud/credentialLifetime';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +22,11 @@ const CreateCloudAccountSchema = z.object({
   provider:    z.enum(['aws', 'azure']),
   name:        z.string().min(1).max(120),
   credentials: CloudCredentialsSchema,
+  /** How long CloudCraft may keep this key, and whether to forget it after a deployment. Turned into a deadline here, by the server's clock. */
+  lifetime: z.object({
+    hours: z.number().positive().max(24 * 30).nullable().optional(),
+    forgetAfterDeploy: z.boolean().optional(),
+  }).strict().optional(),
 });
 
 // ─── Route handlers ───────────────────────────────────────────────────────────
@@ -48,6 +54,7 @@ export async function GET(req: NextRequest) {
     const role = await getOrgRole(identity.userId, orgId);
     if (!role) return forbidden();
 
+    await cloudAccountRepository.expireDue(orgId).catch(() => 0);     // credentials past their time are erased before anyone sees the list
     const accounts = await cloudAccountRepository.list(orgId);
     // Double-check: credentials are never included in mapAccount output
     return ok(accounts);
@@ -92,15 +99,27 @@ export async function POST(req: NextRequest) {
     const creds = body.credentials as CloudCredentials;
     if ((body.provider === 'aws') !== isAwsCredentials(creds)) return badRequest('The credentials do not match the selected cloud provider.');
 
+    // The deadline is decided here, not by the browser: any expiry the request carried inside the credentials is discarded.
+    const { expiresAt: _ignoredExpiry, forgetAfterDeploy: _ignoredForget, ...sent } = body.credentials as Record<string, unknown>;
+    void _ignoredExpiry; void _ignoredForget;
+    const temporary = typeof sent['accessKeyId'] === 'string' && sent['accessKeyId'].startsWith('ASIA');
+    if (temporary && !(body.lifetime?.hours && body.lifetime.hours > 0)) {
+      return badRequest('These are temporary credentials: say how long they are valid for, so CloudCraft stops using them when AWS does.');
+    }
+    if (temporary && (body.lifetime?.hours ?? 0) > 36) return badRequest('AWS temporary credentials last at most 36 hours.');
+    const lifetime = lifetimeFromRequest(body.lifetime, temporary);
+    const stored: Record<string, unknown> = { ...sent, ...(lifetime.expiresAt ? { expiresAt: lifetime.expiresAt } : {}), ...(lifetime.forgetAfterDeploy ? { forgetAfterDeploy: true } : {}) };
+    if (CloudCredentialsSchema.safeParse(stored).success !== true) return badRequest('The credentials are not valid.');
+
     // Serialize credentials for storage — never log this value
-    const credentialsJson = JSON.stringify(body.credentials);
+    const credentialsJson = JSON.stringify(stored);
 
     const account = await cloudAccountRepository.create({
       orgId,
       provider: body.provider,
       name: body.name,
       credentialsJson,
-      identityJson: JSON.stringify({ authMethod: authMethodOf(creds), connection: connectionHintOf(creds) }),   // how it signs in and what it points at — never a secret; the list and the Edit screen show them
+      identityJson: JSON.stringify({ authMethod: authMethodOf(stored as unknown as CloudCredentials), connection: connectionHintOf(stored as unknown as CloudCredentials), ...(Object.keys(lifetime).length > 0 ? { lifetime } : {}) }),   // how it signs in and what it points at — never a secret; the list and the Edit screen show them
     });
 
     // account is the safe shape — credentials are not included

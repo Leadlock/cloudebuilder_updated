@@ -360,8 +360,9 @@ export async function runApply(planId: string, orgId: string, onOutput?: (chunk:
       env,
       'apply',
     );
+    const forgotten = await forgetCredentialsAfterSuccess(record.cloudAccountId, orgId);
     return {
-      message: `Applied ${record.summary.toAdd} new and ${record.summary.toChange} changed resource(s).`,
+      message: `Applied ${record.summary.toAdd} new and ${record.summary.toChange} changed resource(s).${forgotten ? ' As you asked, the credentials for this account were then deleted from CloudCraft.' : ''}`,
       outputTail: stdout.slice(-4000),
     };
   } finally {
@@ -393,6 +394,14 @@ let sleepImpl = (ms: number) => new Promise<void>((resolve) => setTimeout(resolv
 const sleep = (ms: number) => sleepImpl(ms);
 /** For tests: replace the real wait between retries. */
 export function _setSleepForTests(fn: (ms: number) => Promise<void>): void { sleepImpl = fn; }
+
+/**
+ * For an account set to "forget after a successful deployment": erases its credentials now that the work has succeeded.
+ * Best effort and silent on failure: it must never turn a successful run into a failed one.
+ */
+async function forgetCredentialsAfterSuccess(accountId: string, orgId: string): Promise<boolean> {
+  try { return await cloudAccountRepository.forgetAfterDeploy(accountId, orgId); } catch { return false; }
+}
 
 function httpError(message: string, statusCode: number): Error & { statusCode: number } {
   const err = new Error(message) as Error & { statusCode: number };
@@ -556,6 +565,8 @@ async function runDestroyPlan(args: { run: RunHandle; prepared: PreparedDestroyP
         throw err;
       }
     }
+    const forgotten = await forgetCredentialsAfterSuccess(prepared.cloudAccountId, prepared.orgId);
+    if (forgotten) run.append('[CloudCraft] As you asked, the credentials for this account were deleted from CloudCraft.\n');
     run.finish(true, 'The planned resources were destroyed.');
     await recordTerraformAudit({ ...audit, outcome: 'succeeded' });
   } catch (err) {

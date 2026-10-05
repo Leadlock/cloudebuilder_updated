@@ -15,6 +15,7 @@ import ConnectAwsAccountForm from '@/components/accounts/ConnectAwsAccountForm';
 import ConnectAzureAccountForm from '@/components/accounts/ConnectAzureAccountForm';
 import DeleteAccountDialog from '@/components/accounts/DeleteAccountDialog';
 import EditAccountDialog from '@/components/accounts/EditAccountDialog';
+import { describeLifetime } from '@/lib/cloud/credentialLifetime';
 
 interface Account {
   id: string;
@@ -47,6 +48,9 @@ function AccountRow({ account, checking, onRecheck, onEdit, onDelete }: { accoun
   const method = typeof id.authMethod === 'string' ? id.authMethod : undefined;
   const who = typeof id.accountId === 'string' ? id.accountId : typeof id.subscriptionId === 'string' ? id.subscriptionId : '';
   const terraform = method !== 'access-key';
+  const lifetime = (id.lifetime ?? {}) as { expiresAt?: string; forgetAfterDeploy?: boolean; temporary?: boolean };
+  const expired = account.status === 'expired';
+  const timeText = lifetime.expiresAt ? describeLifetime(lifetime.expiresAt) : null;
   return (
     <div className="rounded-xl border border-gray-700 bg-gray-800/60 p-3.5" data-testid="account-row">
       <div className="flex items-start justify-between gap-3">
@@ -60,7 +64,7 @@ function AccountRow({ account, checking, onRecheck, onEdit, onDelete }: { accoun
           </p>
           <p className="flex items-center gap-1 text-[11px] text-gray-400">
             <ShieldCheck className="w-3 h-3" />
-            {terraform ? 'Discovery and Terraform' : 'Discovery only — reconnect with an access key and an IAM role to run Terraform'}
+            {expired ? 'Credentials were erased from CloudCraft' : terraform ? 'Discovery and Terraform' : 'Discovery only — reconnect with an access key and an IAM role to run Terraform'}
           </p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -81,6 +85,18 @@ function AccountRow({ account, checking, onRecheck, onEdit, onDelete }: { accoun
           </button>
         </div>
       </div>
+      {(timeText || lifetime.forgetAfterDeploy || lifetime.temporary) && !expired && (
+        <p className="mt-2 text-[11px] text-amber-300/90" data-testid="account-lifetime">
+          {lifetime.temporary ? 'Temporary credentials' : 'Key kept for a limited time'}{timeText ? ` · ${timeText}` : ''}{lifetime.forgetAfterDeploy ? ' · deleted after a successful deployment' : ''}
+        </p>
+      )}
+      {expired && (
+        <p className="mt-2.5 text-xs text-amber-300 leading-relaxed" data-testid="account-expired">
+          {timeText === 'expired'
+            ? 'The time limit passed, so CloudCraft deleted the key. Connect the account again with a new key to use it.'
+            : 'CloudCraft deleted the key after your last successful deployment, as you asked. Connect the account again to deploy.'}
+        </p>
+      )}
       {account.status === 'invalid' && (
         <div className="mt-2.5 text-xs leading-relaxed" data-testid="account-invalid-reason">
           <p className="text-red-300">{typeof id.validationReason === 'string' ? id.validationReason : 'The last connection check failed.'}</p>

@@ -23,6 +23,7 @@ import {
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId } from '@/lib/api/phase2d';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
+import { credentialsExpiredResponse } from '@/lib/api/credentialErrors';
 import { discoveryRepository } from '@/lib/repositories/discoveryRepository';
 import { enqueueDiscoveryJob, processDiscoveryJob } from '@/lib/jobs/discoveryJob';
 
@@ -82,6 +83,8 @@ export async function POST(
 
     return created({ runId: run.id, status: 'pending' });
   } catch (err) {
+    const expired = credentialsExpiredResponse(err);
+    if (expired) return expired;
     console.error(
       '[POST /api/cloud-accounts/[id]/discover]',
       err instanceof Error ? err.message : String(err),

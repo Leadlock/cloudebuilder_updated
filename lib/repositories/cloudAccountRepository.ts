@@ -9,7 +9,14 @@
  */
 import { db } from '@/src/prisma/db';
 import { randomUUID as uuidv4 } from 'crypto';
-import { encrypt, decrypt } from '@/lib/crypto/credentials';
+import { encrypt, decrypt, inspectCiphertext } from '@/lib/crypto/credentials';
+import { CredentialsExpiredError, remainingMs, type WipeReason } from '@/lib/cloud/credentialLifetime';
+
+/**
+ * What a stored credential is bound to. Part of the encrypted data's authentication, so a value copied into another account or
+ * another organisation can never be decrypted there.
+ */
+export const credentialContext = (orgId: string, accountId: string): string => `cloud-account:${orgId}:${accountId}`;
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
 
@@ -109,8 +116,76 @@ export const cloudAccountRepository = {
       .select('credentialsJson')
       .first();
     if (!row?.credentialsJson) return null;
-    // Decrypt the stored ciphertext — throws on tamper/key mismatch.
-    return decrypt(row.credentialsJson);
+    // Decrypt the stored ciphertext — throws on tamper, wrong key, or data that belongs to a different account.
+    const plain = decrypt(row.credentialsJson, credentialContext(orgId, id));
+
+    // A credential with a time limit is enforced here, where every use of it passes: past its deadline (or already erased) it is
+    // never returned, and the secret is erased from the database.
+    const parsed = parseJson(plain);
+    if (parsed['expired'] === true) throw new CredentialsExpiredError((parsed['reason'] as WipeReason) ?? 'expired', parsed['at'] as string | undefined);
+    const left = remainingMs(parsed['expiresAt'] as string | undefined);
+    if (left !== null && left <= 0) {
+      await this.wipeCredentials(id, orgId, 'expired', parsed['expiresAt'] as string);
+      throw new CredentialsExpiredError('expired', parsed['expiresAt'] as string);
+    }
+
+    // Data written by an older version (no key id, not bound to this account) is upgraded the first time it is read.
+    if (!inspectCiphertext(row.credentialsJson).current) {
+      try {
+        await db.orm.public.CloudAccount.where({ id, orgId }).update({ credentialsJson: encrypt(plain, credentialContext(orgId, id)) });
+      } catch { /* best effort: the next read tries again */ }
+    }
+    return plain;
+  },
+
+  /**
+   * Erases the secret. The account stays listed (marked expired) so the person can see what happened and reconnect; what is
+   * stored afterwards is only a note that the credentials are gone.
+   */
+  async wipeCredentials(id: string, orgId: string, reason: WipeReason, at: string = now()): Promise<void> {
+    const existing = await db.orm.public.CloudAccount.where({ id, orgId }).first();
+    if (!existing) return;
+    const identity = parseJson(existing.identityJson);
+    await db.orm.public.CloudAccount.where({ id, orgId }).update({
+      credentialsJson: encrypt(JSON.stringify({ expired: true, reason, at }), credentialContext(orgId, id)),
+      identityJson: JSON.stringify({ ...identity, expired: true, expiredReason: reason, expiredAt: at }),
+      status: 'expired',
+      updatedAt: now(),
+    });
+  },
+
+  /** Erases the credentials of every account in the organisation whose time is up (decided from the plain mirror, without decrypting). */
+  async expireDue(orgId: string): Promise<number> {
+    const rows = await db.orm.public.CloudAccount.where({ orgId }).select('id', 'identityJson').all();
+    let wiped = 0;
+    for (const r of rows) {
+      const identity = parseJson(r.identityJson);
+      const expiresAt = (identity['lifetime'] as { expiresAt?: string } | undefined)?.expiresAt;
+      const left = remainingMs(expiresAt);
+      if (identity['expired'] !== true && left !== null && left <= 0) { await this.wipeCredentials(r.id, orgId, 'expired', expiresAt); wiped++; }
+    }
+    return wiped;
+  },
+
+  /** For an account set to "forget after a successful deployment": erases the credentials now. True when it did. */
+  async forgetAfterDeploy(id: string, orgId: string): Promise<boolean> {
+    const row = await db.orm.public.CloudAccount.where({ id, orgId }).select('identityJson').first();
+    if (!row) return false;
+    const lifetime = parseJson(row.identityJson)['lifetime'] as { forgetAfterDeploy?: boolean } | undefined;
+    if (lifetime?.forgetAfterDeploy !== true) return false;
+    await this.wipeCredentials(id, orgId, 'forgotten');
+    return true;
+  },
+
+  /** Every stored credential value with the account it belongs to (never returned by an API: used by key rotation). */
+  async listForRotation(): Promise<{ id: string; orgId: string; credentialsJson: string }[]> {
+    const rows = await db.orm.public.CloudAccount.select('id', 'orgId', 'credentialsJson').all();
+    return rows.map((r) => ({ id: r.id, orgId: r.orgId, credentialsJson: r.credentialsJson }));
+  },
+
+  /** Replaces one stored value with an already re-encrypted one (used by key rotation). */
+  async replaceEncrypted(id: string, orgId: string, credentialsJson: string): Promise<void> {
+    await db.orm.public.CloudAccount.where({ id, orgId }).update({ credentialsJson });
   },
 
   async create(input: {
@@ -123,8 +198,8 @@ export const cloudAccountRepository = {
   }): Promise<DbCloudAccount> {
     const ts = now();
     const id = uuidv4();
-    // Encrypt credentials before storage — AES-256-GCM with a random IV per record.
-    const credentialsEnc = encrypt(input.credentialsJson);
+    // Encrypt credentials before storage — AES-256-GCM with a random IV per record, bound to this account and organisation.
+    const credentialsEnc = encrypt(input.credentialsJson, credentialContext(input.orgId, id));
     await db.orm.public.CloudAccount.create({
       id,
       orgId: input.orgId,
@@ -169,7 +244,7 @@ export const cloudAccountRepository = {
     await db.orm.public.CloudAccount.where({ id, orgId }).update({
       updatedAt: ts,
       ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.credentialsJson !== undefined ? { credentialsJson: encrypt(input.credentialsJson), status: 'pending', lastValidatedAt: null } : {}),
+      ...(input.credentialsJson !== undefined ? { credentialsJson: encrypt(input.credentialsJson, credentialContext(orgId, id)), status: 'pending', lastValidatedAt: null } : {}),
       ...(input.identityJson !== undefined ? { identityJson: input.identityJson } : {}),
     });
     return this.findById(id, orgId);

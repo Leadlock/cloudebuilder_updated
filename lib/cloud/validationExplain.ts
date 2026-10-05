@@ -39,6 +39,11 @@ const ACCESS_KEY_RULES: Rule[] = [
     reason: 'The access key is valid, but its IAM user is not allowed to read your resources.',
     fix: 'Attach the read-only policy (or the AWS ReadOnlyAccess policy) to that IAM user, then check again.',
   },
+  {
+    when: /ExpiredToken|token.{0,30}expired/i,
+    reason: 'These temporary AWS credentials have expired.',
+    fix: 'Temporary credentials stop working on their own. Create new ones (for example run "aws sts get-session-token" in AWS CloudShell, or copy fresh credentials from AWS access portal) and connect the account again.',
+  },
 ];
 
 /** Your own access key assumes your own role: what can go wrong is in the key, the key's permission to assume, or the role's trust. */

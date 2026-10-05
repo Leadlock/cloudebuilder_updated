@@ -13,9 +13,11 @@ import {
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId } from '@/lib/api/phase2d';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
+import { credentialsExpiredResponse } from '@/lib/api/credentialErrors';
 import { createDiscoveryProvider } from '@/lib/cloud/provider';
 import { authMethodOf, type CloudCredentials } from '@/lib/cloud/types';
 import { connectionHintOf } from '@/lib/cloud/connectionHint';
+import { lifetimeMirror } from '@/lib/cloud/credentialLifetime';
 import { explainValidationFailure } from '@/lib/cloud/validationExplain';
 import { getServerAwsIdentity } from '@/lib/cloud/serverIdentity';
 
@@ -74,6 +76,7 @@ export async function POST(
       ...(validationResult.identity ?? {}),
       authMethod: authMethodOf(credentials),
       connection: connectionHintOf(credentials),
+      ...lifetimeMirror(credentials),
       ...(why ? { validationReason: why.reason, validationFix: why.fix } : {}),
     });
 
@@ -90,6 +93,8 @@ export async function POST(
       fix: why?.fix ?? null,
     });
   } catch (err) {
+    const expired = credentialsExpiredResponse(err);
+    if (expired) return expired;
     console.error(
       '[POST /api/cloud-accounts/[id]/validate]',
       err instanceof Error ? err.message : String(err),

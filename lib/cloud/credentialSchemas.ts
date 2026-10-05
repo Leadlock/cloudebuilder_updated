@@ -47,10 +47,16 @@ export const AwsCredentialsSchema = z.object({
  * Access-key connection with NO role (discovery only; kept for connections made earlier). Long-term IAM user keys: the key id starts AKIA and is 20 characters, the secret is
  * exactly 40 characters of base64. Temporary keys (ASIA…) need a session token and are not accepted.
  */
+const ISO_TIME = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/, 'must be an ISO time (UTC)');
+
 export const AwsKeyCredentialsSchema = z.object({
   accessKeyId: z
     .string()
-    .regex(/^AKIA[A-Z0-9]{16}$/, 'accessKeyId must be a long-term IAM access key ID (20 characters, starting AKIA)'),
+    .regex(/^(AKIA|ASIA)[A-Z0-9]{16}$/, 'accessKeyId must be an IAM access key ID (20 characters, starting AKIA, or ASIA for temporary credentials)'),
+  /** Only temporary credentials (ASIA…) have one. */
+  sessionToken: z.string().regex(/^[A-Za-z0-9/+=_.-]{16,4096}$/, 'sessionToken must be the session token that came with the temporary credentials').optional(),
+  expiresAt: ISO_TIME.optional(),
+  forgetAfterDeploy: z.literal(true).optional(),
   secretAccessKey: z
     .string()
     .regex(/^[A-Za-z0-9/+=]{40}$/, 'secretAccessKey must be the 40-character secret access key'),
@@ -63,7 +69,16 @@ export const AwsKeyCredentialsSchema = z.object({
     .optional(),
   /** The owner's explicit choice to let Terraform run directly on this key. Only the literal true is accepted. */
   allowDeploy: z.literal(true).optional(),
-}).strict();   // strict: a key + role body that fails its own schema must NOT fall through and be saved as a key alone with the role dropped
+}).strict()   // strict: a key + role body that fails its own schema must NOT fall through and be saved as a key alone with the role dropped
+  .superRefine((c, ctx) => {
+    // Temporary credentials (ASIA) are useless without their session token and must carry a deadline; a long-term key has no session token.
+    if (c.accessKeyId.startsWith('ASIA')) {
+      if (!c.sessionToken) ctx.addIssue({ code: 'custom', path: ['sessionToken'], message: 'temporary credentials (ASIA…) need their session token' });
+      if (!c.expiresAt) ctx.addIssue({ code: 'custom', path: ['expiresAt'], message: 'temporary credentials must say when they expire' });
+    } else if (c.sessionToken) {
+      ctx.addIssue({ code: 'custom', path: ['sessionToken'], message: 'only temporary credentials (ASIA…) have a session token' });
+    }
+  });
 
 /**
  * The user's own access key + the user's own role (how accounts are connected now). The key's IAM user only needs permission to
@@ -90,6 +105,8 @@ export const AwsKeyRoleCredentialsSchema = z.object({
     .array(z.string().regex(AWS_REGION_RE, 'Each additionalRegion must be a valid AWS region identifier'))
     .max(20)
     .optional(),
+  expiresAt: ISO_TIME.optional(),
+  forgetAfterDeploy: z.literal(true).optional(),
 }).strict();
 
 export const AzureCredentialsSchema = z.object({

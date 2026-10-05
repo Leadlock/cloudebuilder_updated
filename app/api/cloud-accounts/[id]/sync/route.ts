@@ -14,6 +14,7 @@ import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId } from '@/lib/api/phase2d';
 import { resolveEnvironmentInOrg } from '@/lib/api/tenantScope';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
+import { credentialsExpiredResponse } from '@/lib/api/credentialErrors';
 import { architectureRepository, toCanvas } from '@/lib/repositories/architectureRepository';
 import { infrastructureSyncService } from '@/lib/cloud/sync/InfrastructureSyncService';
 import type { CloudCredentials } from '@/lib/cloud/types';
@@ -74,6 +75,8 @@ export async function POST(
       items: driftReport.items,
     });
   } catch (err) {
+    const expired = credentialsExpiredResponse(err);
+    if (expired) return expired;
     console.error(
       '[POST /api/cloud-accounts/[id]/sync]',
       err instanceof Error ? err.message : String(err),

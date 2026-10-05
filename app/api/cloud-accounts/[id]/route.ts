@@ -11,9 +11,11 @@ import {
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId } from '@/lib/api/phase2d';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
+import { credentialsExpiredResponse } from '@/lib/api/credentialErrors';
 import { CloudCredentialsSchema, explainCredentialsProblem, mergeCredentialEdit } from '@/lib/cloud/credentialSchemas';
 import { authMethodOf, isAwsCredentials, type CloudCredentials } from '@/lib/cloud/types';
 import { connectionHintOf } from '@/lib/cloud/connectionHint';
+import { lifetimeMirror } from '@/lib/cloud/credentialLifetime';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,7 +103,7 @@ export async function PATCH(
       // Nothing actually changed (for example only blanks were sent): leave the stored credentials and the last check as they are.
       if (!sameCredentials(stored, merged)) {
         credentialsJson = JSON.stringify(checked.data);     // never logged, never returned
-        identityJson = JSON.stringify({ authMethod: authMethodOf(creds), connection: connectionHintOf(creds) });   // the old check result no longer applies
+        identityJson = JSON.stringify({ authMethod: authMethodOf(creds), connection: connectionHintOf(creds), ...lifetimeMirror(creds) });   // the old check result no longer applies
       }
     }
 
@@ -137,6 +139,8 @@ export async function DELETE(
 
     return ok({ deleted: true });
   } catch (err) {
+    const expired = credentialsExpiredResponse(err);
+    if (expired) return expired;
     console.error('[DELETE /api/cloud-accounts/[id]]', err instanceof Error ? err.message : String(err));
     return internalError();
   }

@@ -220,7 +220,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     const own = this._credentials;
     // A key with no role (older connections): used as it is — nothing to assume.
     if (isAwsKeyCredentials(own)) {
-      this._sessionCredentials = { accessKeyId: own.accessKeyId, secretAccessKey: own.secretAccessKey };
+      this._sessionCredentials = { accessKeyId: own.accessKeyId, secretAccessKey: own.secretAccessKey, ...(own.sessionToken ? { sessionToken: own.sessionToken } : {}) };
       return this._sessionCredentials;
     }
 
@@ -471,7 +471,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
       if ('accessKeyId' in this._credentials) {
         const key = this._credentials;
         const keyIdentity = await retryWithBackoff(() =>
-          new STSClient({ region: key.region, credentials: { accessKeyId: key.accessKeyId, secretAccessKey: key.secretAccessKey } }).send(new GetCallerIdentityCommand({})),
+          new STSClient({ region: key.region, credentials: { accessKeyId: key.accessKeyId, secretAccessKey: key.secretAccessKey, ...('sessionToken' in key && key.sessionToken ? { sessionToken: key.sessionToken } : {}) } }).send(new GetCallerIdentityCommand({})),
         );
         if (keyIdentity.Arn && /:root$/.test(keyIdentity.Arn)) {
           return { valid: false, permissionsOk: false, missingPermissions: [], error: 'ROOT_ACCESS_KEY: the access key belongs to the account root user' };

@@ -12,6 +12,7 @@ import {
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId } from '@/lib/api/phase2d';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
+import { credentialsExpiredResponse } from '@/lib/api/credentialErrors';
 import { createDiscoveryProvider } from '@/lib/cloud/provider';
 import type { CloudCredentials } from '@/lib/cloud/types';
 
@@ -59,6 +60,8 @@ export async function GET(
       await provider.dispose();
     }
   } catch (err) {
+    const expired = credentialsExpiredResponse(err);
+    if (expired) return expired;
     console.error(
       '[GET /api/cloud-accounts/[id]/regions]',
       err instanceof Error ? err.message : String(err),

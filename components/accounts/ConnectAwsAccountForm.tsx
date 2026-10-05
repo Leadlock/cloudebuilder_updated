@@ -10,12 +10,17 @@ import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import AwsKeyRoleGuide from '@/components/panels/AwsKeyRoleGuide';
 import { checkAwsConnectInput } from '@/lib/cloud/awsConnectInput';
+import { LIFETIME_CHOICES, TEMPORARY_HOURS } from '@/lib/cloud/credentialLifetime';
 
 const REGIONS = ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2', 'eu-west-1', 'eu-central-1', 'ap-southeast-1', 'ap-northeast-1'];
 const INPUT = 'w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500';
 
 export default function ConnectAwsAccountForm({ onConnected, initialMode = 'direct' }: { onConnected: (accountId: string) => void | Promise<void>; initialMode?: 'direct' | 'role' }) {
-  const [form, setForm] = useState({ accessKeyId: '', secretAccessKey: '', roleArn: '', externalId: '', region: 'us-east-1' });
+  const [form, setForm] = useState({ accessKeyId: '', secretAccessKey: '', roleArn: '', externalId: '', sessionToken: '', region: 'us-east-1' });
+  // How long CloudCraft may keep the key (a stored key is a standing risk, so the default is short), and whether to erase it after a deployment.
+  const [keepFor, setKeepFor] = useState<string>('8h');
+  const [forgetAfterDeploy, setForgetAfterDeploy] = useState(false);
+  const [validHours, setValidHours] = useState<number>(12);   // temporary (ASIA) credentials: how long they are still valid
   const [name, setName] = useState('');
   // 'direct': the IAM user's own key does everything (simple; for test accounts). 'role': the key only assumes a role (safer).
   const [mode, setMode] = useState<'direct' | 'role'>(initialMode);
@@ -23,8 +28,9 @@ export default function ConnectAwsAccountForm({ onConnected, initialMode = 'dire
   const [error, setError] = useState<string | null>(null);
 
   async function connect() {
-    const f = { ...form, accessKeyId: form.accessKeyId.trim(), secretAccessKey: form.secretAccessKey.trim(), roleArn: form.roleArn.trim(), externalId: form.externalId.trim() };
-    const problem = checkAwsConnectInput(f, { needsRole: mode === 'role' });
+    const f = { ...form, accessKeyId: form.accessKeyId.trim(), secretAccessKey: form.secretAccessKey.trim(), roleArn: form.roleArn.trim(), externalId: form.externalId.trim(), sessionToken: form.sessionToken.trim() };
+    const temporary = f.accessKeyId.startsWith('ASIA');
+    const problem = checkAwsConnectInput(f, { needsRole: mode === 'role', allowTemporary: mode === 'direct' });
     if (problem) {
       setError(problem);          // nothing is sent, and nothing the person typed is cleared
       return;
@@ -37,10 +43,14 @@ export default function ConnectAwsAccountForm({ onConnected, initialMode = 'dire
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          lifetime: {
+            hours: temporary ? validHours : (LIFETIME_CHOICES.find((c) => c.id === keepFor)?.hours ?? null),
+            ...(forgetAfterDeploy ? { forgetAfterDeploy: true } : {}),
+          },
           provider: 'aws',
           name: name.trim() || `AWS (${f.region})`,
           credentials: mode === 'direct'
-            ? { accessKeyId: f.accessKeyId, secretAccessKey: f.secretAccessKey, region: f.region, allowDeploy: true }
+            ? { accessKeyId: f.accessKeyId, secretAccessKey: f.secretAccessKey, region: f.region, allowDeploy: true, ...(temporary ? { sessionToken: f.sessionToken } : {}) }
             : {
               accessKeyId: f.accessKeyId, secretAccessKey: f.secretAccessKey, roleArn: f.roleArn, region: f.region,
               ...(f.externalId ? { externalId: f.externalId } : {}),
@@ -54,7 +64,7 @@ export default function ConnectAwsAccountForm({ onConnected, initialMode = 'dire
         return;
       }
       // Saved: the secret is cleared now and never shown again.
-      setForm((v) => ({ ...v, accessKeyId: '', secretAccessKey: '' }));
+      setForm((v) => ({ ...v, accessKeyId: '', secretAccessKey: '', sessionToken: '' }));
       // Check the connection right away, so the list shows the result (connected, or why not).
       await fetch(`/api/cloud-accounts/${data.data.id}/validate`, { method: 'POST', credentials: 'include' }).catch(() => undefined);
       setForm((v) => ({ ...v, roleArn: '', externalId: '' }));
@@ -99,6 +109,9 @@ export default function ConnectAwsAccountForm({ onConnected, initialMode = 'dire
       <input type="text" placeholder="Account name (optional)" value={name} onChange={(e) => setName(e.target.value)} className={INPUT} />
       <input type="text" placeholder="Access key ID (AKIA…)" value={form.accessKeyId} onChange={(e) => setForm((v) => ({ ...v, accessKeyId: e.target.value }))} autoComplete="off" spellCheck={false} className={`${INPUT} font-mono`} />
       <input type="password" placeholder="Secret access key (shown once by AWS; never shown again here)" value={form.secretAccessKey} onChange={(e) => setForm((v) => ({ ...v, secretAccessKey: e.target.value }))} autoComplete="new-password" spellCheck={false} className={`${INPUT} font-mono`} />
+      {mode === 'direct' && form.accessKeyId.trim().startsWith('ASIA') && (
+        <input type="password" placeholder="Session token (AWS_SESSION_TOKEN — for temporary credentials)" value={form.sessionToken} onChange={(e) => setForm((v) => ({ ...v, sessionToken: e.target.value }))} autoComplete="new-password" spellCheck={false} className={`${INPUT} font-mono`} data-testid="session-token" />
+      )}
       {mode === 'role' && (
         <>
           <input type="text" placeholder="Role ARN (arn:aws:iam::123456789012:role/CloudCraftRole)" value={form.roleArn} onChange={(e) => setForm((v) => ({ ...v, roleArn: e.target.value }))} autoComplete="off" spellCheck={false} className={INPUT} />
@@ -108,6 +121,29 @@ export default function ConnectAwsAccountForm({ onConnected, initialMode = 'dire
       <select value={form.region} onChange={(e) => setForm((v) => ({ ...v, region: e.target.value }))} aria-label="Region" className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
         {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
       </select>
+
+      <div className="rounded-lg border border-gray-700 bg-gray-800/50 px-3 py-2 space-y-2 text-xs" data-testid="credential-lifetime">
+        {mode === 'direct' && form.accessKeyId.trim().startsWith('ASIA') ? (
+          <label className="flex items-center justify-between gap-3 text-gray-300">
+            <span>These temporary credentials are valid for another</span>
+            <select value={validHours} onChange={(e) => setValidHours(Number(e.target.value))} aria-label="Temporary credentials valid for" className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white">
+              {TEMPORARY_HOURS.map((h) => <option key={h} value={h}>{h} hour{h === 1 ? '' : 's'}</option>)}
+            </select>
+          </label>
+        ) : (
+          <label className="flex items-center justify-between gap-3 text-gray-300">
+            <span>Keep this key in CloudCraft for</span>
+            <select value={keepFor} onChange={(e) => setKeepFor(e.target.value)} aria-label="Keep the key for" className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white">
+              {LIFETIME_CHOICES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+          </label>
+        )}
+        <label className="flex items-start gap-2 text-gray-300">
+          <input type="checkbox" checked={forgetAfterDeploy} onChange={(e) => setForgetAfterDeploy(e.target.checked)} className="mt-0.5" />
+          <span>Delete the key from CloudCraft after a deployment succeeds</span>
+        </label>
+        <p className="text-gray-500 leading-relaxed">When the time is up CloudCraft erases the secret and you connect again. Also delete the key in AWS when you no longer need it.</p>
+      </div>
 
       {error && <p className="text-red-400 text-xs bg-red-950/40 border border-red-900/50 rounded-lg px-3 py-2" role="alert">{error}</p>}
 

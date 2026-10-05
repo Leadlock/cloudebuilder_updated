@@ -26,7 +26,7 @@
  * is exposed. HMAC-SHA256 over a fixed, known algorithm, checked with a
  * constant-time comparison, is the entire trust boundary.
  */
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 
 function secret(): string {
   const value = process.env.SESSION_SECRET;
@@ -38,8 +38,14 @@ function secret(): string {
       'sessions without it, rather than silently falling back to something guessable.'
     );
   }
+  // A secret that was once published as an example lets anyone forge a login. Compared by hash; production refuses it.
+  if (process.env.NODE_ENV === 'production' && PUBLISHED_EXAMPLE_SECRET_HASHES.has(createHash('sha256').update(value, 'utf8').digest('hex'))) {
+    throw new Error('SESSION_SECRET is a value that was published as an example, so anyone could forge a login. Generate your own: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+  }
   return value;
 }
+
+const PUBLISHED_EXAMPLE_SECRET_HASHES = new Set(['2aeb44412f66ad1af12c68f36a4687d0855ce696c4ad3a760bf7acf191bf7f98']);
 
 function sign(data: string): string {
   return createHmac('sha256', secret()).update(data).digest('base64url');
