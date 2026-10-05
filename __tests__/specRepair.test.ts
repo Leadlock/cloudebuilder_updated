@@ -42,6 +42,32 @@ describe('specRepair', () => {
     expect(result.deploymentInputs?.some((d) => /certificate/i.test(`${d.setting} ${d.resourceLabel}`))).toBe(true);   // the person is still told to supply the real one
   });
 
+  it('connects a firewall, internet gateway and NAT gateways the AI left floating', () => {
+    const s = clone(good);
+    s.connections = s.connections.filter((c) => c.from !== 'waf-alb' && !(c.from === 'igw') && !(c.to === 'igw') && !(c.to.startsWith('nat-')));
+    expect(evaluateSpec(s, { autoRepair: true }).ok).toBe(false);
+    const { value, report } = repairSpecInput(s);
+    expect(report.connections).toBe(4);
+    expect((value as Spec).connections).toEqual(expect.arrayContaining([{ from: 'waf-alb', to: 'alb' }, { from: 'igw', to: 'alb' }, { from: 'nat-a', to: 'igw' }, { from: 'nat-b', to: 'igw' }]));
+    expect(evaluateSpec(value, { autoRepair: true }).ok).toBe(true);
+  });
+
+  it('connects a cache and a bucket that nothing calls to the compute that should use them', () => {
+    const spec = {
+      name: 'x', summary: 'y',
+      resources: [
+        { id: 'cloud', type: 'aws_cloud_boundary', label: 'AWS' },
+        { id: 'fn', type: 'aws_lambda', label: 'Processing Lambda', parent: 'cloud' },
+        { id: 'cache', type: 'aws_elasticache', label: 'Redis', parent: 'cloud' },
+        { id: 'bucket', type: 'aws_s3', label: 'Uploads', parent: 'cloud' },
+      ],
+      connections: [] as { from: string; to: string }[],
+    };
+    const { report, value } = repairSpecInput(spec);
+    expect(report.connections).toBe(2);
+    expect((value as typeof spec).connections).toEqual(expect.arrayContaining([{ from: 'fn', to: 'cache' }, { from: 'fn', to: 'bucket' }]));
+  });
+
   it('spreads subnets with no zone across two zones (sanitizer) so the single-zone check passes', () => {
     const { value } = sanitizeSpecInput(sloppy());
     const zones = new Set((value as Spec).resources.filter((r) => r.type === 'aws_subnet').map((r) => r.config!['availabilityZone']));

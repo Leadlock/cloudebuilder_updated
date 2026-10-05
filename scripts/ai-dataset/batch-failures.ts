@@ -1,36 +1,18 @@
 /**
  * Finds the mistakes the AI generator still makes AFTER every automatic repair, so the next repair can be built from evidence.
  *
- * Runs the free-form prompts through the same pipeline the app uses (knowledge-base context, repair hints, sanitiser, mechanical
- * repairs, verified auto-fixes) against the configured Azure AI Foundry deployment, and groups the issues that are left by kind.
- * Calls the model once per prompt per attempt: --limit and --attempts keep the cost bounded. The key is read from the environment
- * and never printed.
+ * Runs the free-form prompts through the app's own generator (AiGeneratorService.generateValidatedArchitecture: knowledge-base context,
+ * repair hints, sanitiser, mechanical repairs, verified auto-fixes, then the verified-pattern ladder) against the configured Azure AI
+ * Foundry deployment, and groups what is left by kind. --attempts is the number of tries the model gets for its own design; each prompt
+ * can cost up to attempts + 2 model calls. --only restricts to listed prompt ids. The key is read from the environment, never printed.
  *
- *   npx tsx --env-file=.env --tsconfig tsconfig.json scripts/ai-dataset/batch-failures.ts [--limit 34] [--attempts 2] [--out report.json]
+ *   npx tsx --env-file=.env --tsconfig tsconfig.json scripts/ai-dataset/batch-failures.ts [--limit 34] [--attempts 2] [--only free-6,free-9] [--out report.json]
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { generateWithRepair } from '@/lib/ai/architectRepair';
-import { buildGenerationContext } from '@/lib/ai/knowledgeBase';
-import { withHints } from '@/lib/ai/repairHints';
-import { sanitizeSpecInput } from '@/lib/ai/specSanitizer';
-import { repairSpecInput } from '@/lib/ai/specRepair';
+import { AiGeneratorService } from '@/lib/services/AiGeneratorService';
 
 interface EvalPrompt { id: string; prompt: string; requirements: { pattern: string; provider: string } }
 const arg = (name: string) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined);
-
-async function complete(messages: { role: string; content: string }[]): Promise<string> {
-  const endpoint = (process.env.AZURE_AI_FOUNDRY_ENDPOINT ?? '').replace(/\/responses\/?$/, '');
-  const key = process.env.AZURE_AI_FOUNDRY_API_KEY;
-  const model = process.env.AZURE_AI_FOUNDRY_DEPLOYMENT;
-  if (!endpoint || !key || !model) throw new Error('AZURE_AI_FOUNDRY_ENDPOINT / _API_KEY / _DEPLOYMENT are not set (run with --env-file=.env)');
-  const res = await fetch(`${endpoint}/responses`, {
-    method: 'POST', headers: { 'content-type': 'application/json', 'api-key': key },
-    body: JSON.stringify({ model, input: messages, text: { format: { type: 'json_object' } } }),
-  });
-  if (!res.ok) throw new Error(`Foundry request failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
-  const body = (await res.json()) as { output?: { content?: { type: string; text: string }[] }[] };
-  return (body.output ?? []).flatMap((o) => o.content ?? []).filter((c) => c.type === 'output_text').map((c) => c.text).join('');
-}
 
 /** "MEDIUM AWS-ELB-003: ... (API Load Balancer)" and "\"Name\" (type) is not connected" → one kind per rule, names removed. */
 function kindOf(message: string): string {
@@ -41,44 +23,51 @@ async function main() {
   const file = arg('--prompts') ?? 'datasets/ai-architect/eval-freeform.jsonl';
   const limit = Number(arg('--limit') ?? 34);
   const attempts = Number(arg('--attempts') ?? 2);
-  const prompts = readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as EvalPrompt).slice(0, limit);
+  const only = arg('--only')?.split(',');
+  const all = readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as EvalPrompt).slice(0, limit);
+  const chosen = only ? all.filter((p) => only.includes(p.id)) : all;
 
   const kinds = new Map<string, { count: number; example: string; prompts: string[] }>();
-  const rows: { id: string; ok: boolean; attempts: number; autoRepairs: number; stage: string; issues: string[] }[] = [];
-  let passed = 0; let firstTry = 0;
+  const rows: { id: string; ok: boolean; ownDesignPassed: boolean; route: string; issues: string[] }[] = [];
+  let passed = 0;
+  let ownPassed = 0;
 
-  for (const p of prompts) {
+  for (const p of chosen) {
     const provider = p.requirements.provider === 'azure' ? 'azure' : 'aws';
-    const ctx = await buildGenerationContext(p.prompt, provider).catch(() => '');
-    const userPrompt = ctx ? `${p.prompt}\n\n${ctx}` : p.prompt;
     try {
-      const out = await generateWithRepair((m) => complete(m), userPrompt, attempts, withHints,
-        (j) => repairSpecInput(sanitizeSpecInput(j).value).value, { autoRepair: true });
-      const last = out.attempts[out.attempts.length - 1]!;
-      const issues = out.ok ? [] : (out.best?.issues ?? last.issues).map((i) => i.message);
-      if (out.ok) passed++;
-      if (out.attempts[0]!.ok) firstTry++;
+      const r = await AiGeneratorService.generateValidatedArchitecture(p.prompt, 'batch', '', provider, undefined, undefined, attempts);
+      const own = r.attempts.slice(0, attempts);
+      const ownDesignPassed = own.some((a) => a.ok);
+      // What the AI's own design still got wrong after the automatic repairs: the last of its own attempts.
+      const issues = ownDesignPassed ? [] : own[own.length - 1]!.issues.map((i) => i.message);
+      if (r.ok) passed++;
+      if (ownDesignPassed) ownPassed++;
       for (const m of issues) {
         const k = kindOf(m);
         const e = kinds.get(k) ?? { count: 0, example: m, prompts: [] };
-        e.count++; if (!e.prompts.includes(p.id)) e.prompts.push(p.id);
+        e.count++;
+        if (!e.prompts.includes(p.id)) e.prompts.push(p.id);
         kinds.set(k, e);
       }
-      rows.push({ id: p.id, ok: out.ok, attempts: out.attempts.length, autoRepairs: (out.autoRepairs ?? out.best?.autoRepairs ?? []).length, stage: last.stage, issues });
-      console.log(`${p.id}: ${out.ok ? 'pass' : `FAIL (${last.stage}, ${issues.length} issue(s))`} after ${out.attempts.length} attempt(s)`);
+      const route = r.verifiedFallback ? 'verified pattern itself'
+        : r.basedOnPattern ? 'AI adapted verified pattern'
+        : r.needsReview ? 'needs review'
+        : ownDesignPassed ? 'AI own design' : 'FAILED';
+      rows.push({ id: p.id, ok: r.ok, ownDesignPassed, route, issues });
+      console.log(`${p.id}: ${route}${issues.length ? ` (${issues.length} issue(s) in the AI's own design)` : ''}`);
     } catch (err) {
       console.log(`${p.id}: error — ${(err as Error).message}`);
-      rows.push({ id: p.id, ok: false, attempts: 0, autoRepairs: 0, stage: 'error', issues: [(err as Error).message] });
+      rows.push({ id: p.id, ok: false, ownDesignPassed: false, route: 'error', issues: [(err as Error).message] });
     }
   }
 
-  const summary = {
-    prompts: prompts.length, passed, firstTryPass: firstTry,
-    remainingIssueKinds: [...kinds.entries()].sort((a, b) => b[1].count - a[1].count).map(([kind, v]) => ({ kind, count: v.count, prompts: v.prompts.length, example: v.example })),
-    rows,
-  };
+  const routes = rows.reduce<Record<string, number>>((m, r) => { m[r.route] = (m[r.route] ?? 0) + 1; return m; }, {});
+  const remainingIssueKinds = [...kinds.entries()].sort((a, b) => b[1].count - a[1].count)
+    .map(([kind, v]) => ({ kind, count: v.count, prompts: v.prompts.length, example: v.example }));
+  const summary = { prompts: chosen.length, passed, aiOwnDesignPassed: ownPassed, routes, remainingIssueKinds, rows };
   const out = arg('--out');
   if (out) writeFileSync(out, JSON.stringify(summary, null, 2));
-  console.log(JSON.stringify({ prompts: summary.prompts, passed, firstTryPass: firstTry, remainingIssueKinds: summary.remainingIssueKinds.slice(0, 15) }, null, 2));
+  console.log(JSON.stringify({ prompts: chosen.length, passed, aiOwnDesignPassed: ownPassed, routes, remainingIssueKinds: remainingIssueKinds.slice(0, 15) }, null, 2));
+  process.exit(0);
 }
 main().catch((e) => { console.error(e.message); process.exit(2); });

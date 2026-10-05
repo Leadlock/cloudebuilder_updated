@@ -20,8 +20,10 @@ interface SConn { from?: unknown; to?: unknown }
 interface Spec { resources?: SRes[]; connections?: SConn[]; [k: string]: unknown }
 
 const CERT_PLACEHOLDER = (region: string) => `arn:aws:acm:${region}:123456789012:certificate/REPLACE-WITH-YOUR-CERTIFICATE-ID`;
-const COMPUTE = new Set(['aws_auto_scaling', 'aws_ec2', 'aws_ecs']);
-const DATA = new Set(['aws_rds', 'aws_elasticache', 'aws_dynamodb']);
+const COMPUTE = new Set(['aws_auto_scaling', 'aws_ec2', 'aws_ecs', 'aws_lambda']);
+const DATA = new Set(['aws_rds', 'aws_elasticache', 'aws_dynamodb', 'aws_s3']);
+// Network edge pieces that must hang off the entry point: a firewall on the load balancer, the internet gateway to it, NAT to the gateway.
+const EDGE = new Set(['aws_waf', 'aws_igw', 'aws_nat']);
 const ENTRY = new Set(['aws_route53', 'aws_cloudfront', 'aws_alb']);
 const sid = (r: SRes) => String(r.id ?? '');
 
@@ -73,7 +75,7 @@ function addWaf(spec: Spec): number {
 function connectLooseParts(spec: Spec): number {
   const resources = spec.resources ?? [];
   const connections = (spec.connections ??= []);
-  const handled = (r: SRes) => ENTRY.has(String(r.type)) || COMPUTE.has(String(r.type)) || DATA.has(String(r.type));
+  const handled = (r: SRes) => ENTRY.has(String(r.type)) || COMPUTE.has(String(r.type)) || DATA.has(String(r.type)) || EDGE.has(String(r.type));
   const nodes = resources.filter(handled);
   if (nodes.length < 2) return 0;
 
@@ -91,7 +93,8 @@ function connectLooseParts(spec: Spec): number {
 
   for (let pass = 0; pass < 4; pass++) {
     const adj = adjacency();
-    const start = sid(nodes[0]!);
+    // The entry point (DNS, CDN or load balancer) anchors the design; if there is none, the first piece does.
+    const start = sid(nodes.find((r) => ENTRY.has(String(r.type))) ?? nodes[0]!);
     const seen = new Set([start]);
     const stack = [start];
     while (stack.length) for (const nb of adj.get(stack.pop()!) ?? []) if (!seen.has(nb)) { seen.add(nb); stack.push(nb); }
@@ -105,6 +108,9 @@ function connectLooseParts(spec: Spec): number {
       if (COMPUTE.has(type)) { const alb = inMain('aws_alb')[0]; if (alb) { link(alb, x); changed = true; } }
       else if (DATA.has(type)) { const caller = inMain(COMPUTE)[0]; if (caller) { link(caller, x); changed = true; } }
       else if (type === 'aws_alb') { const dns = inMain('aws_route53')[0] ?? inMain('aws_cloudfront')[0]; if (dns) { link(dns, x); changed = true; } }
+      else if (type === 'aws_waf') { const target = inMain('aws_alb')[0] ?? inMain('aws_cloudfront')[0]; if (target) { link(x, target); changed = true; } }
+      else if (type === 'aws_igw') { const alb = inMain('aws_alb')[0]; if (alb) { link(x, alb); changed = true; } }
+      else if (type === 'aws_nat') { const igw = inMain('aws_igw')[0]; if (igw) { link(x, igw); changed = true; } }
       else if (type === 'aws_route53' || type === 'aws_cloudfront') { const alb = inMain('aws_alb')[0]; if (alb) { link(x, alb); changed = true; } }
     }
     if (!changed) break;
