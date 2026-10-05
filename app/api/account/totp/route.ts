@@ -15,7 +15,7 @@ import { ok, unauthorized, forbidden, internalError, badRequest, tooManyRequests
 import { extractIdentity } from '@/lib/api/auth';
 import { checkRateLimit, peekRateLimit, resetRateLimit } from '@/lib/api/rateLimit';
 import { orgRepository } from '@/lib/repositories/orgRepository';
-import { verifyPassword } from '@/lib/crypto/password';
+import { verifyAccountPassword } from '@/lib/auth/verifyAccountPassword';
 import { totpStatus, beginTotpSetup, enableTotp, verifyTotpCode, disableTotp } from '@/lib/api/totpStore';
 
 export const dynamic = 'force-dynamic';
@@ -56,14 +56,13 @@ export async function POST(req: NextRequest) {
     if (peek.remaining <= 0) return tooManyRequests(peek.resetsInSeconds);
     const fail = async (message: string) => { await checkRateLimit(tryKey(userId), TRIES.limit, TRIES.windowMs); return apiError('WRONG_CREDENTIALS', message, 403); };
 
-    const passwordOk = async (password: string): Promise<boolean> => {
-      const hash = await orgRepository.getPasswordHashById(userId);
-      return !!hash && verifyPassword(password, hash);
-    };
+    const check = (password: string) => verifyAccountPassword({ userId, email: identity.email, password });
 
     if (body.action === 'begin') {
-      if (!(await orgRepository.getPasswordHashById(userId))) return forbidden('Your account has no password, so an authenticator app cannot be added to it.');
-      if (!(await passwordOk(body.password))) return fail('That password is not right.');
+      const checked = await check(body.password);
+      if (checked === 'none') return forbidden('Your account has no password CloudCraft can check, so an authenticator app cannot be added to it.');
+      if (checked === 'unavailable') return apiError('SERVICE_UNAVAILABLE', 'Could not check your password right now. Try again in a minute.', 503);
+      if (checked !== 'ok') return fail('That password is not right.');
       const user = await orgRepository.findUser(userId);
       try {
         const setup = await beginTotpSetup(userId, user?.email ?? userId);
@@ -85,7 +84,9 @@ export async function POST(req: NextRequest) {
     }
 
     // disable
-    if (!(await passwordOk(body.password))) return fail('That password is not right.');
+    const checked = await check(body.password);
+    if (checked === 'unavailable') return apiError('SERVICE_UNAVAILABLE', 'Could not check your password right now. Try again in a minute.', 503);
+    if (checked !== 'ok') return fail('That password is not right.');
     if (!(await verifyTotpCode(userId, body.code))) return fail('That code is not right.');
     await disableTotp(userId);
     await resetRateLimit(tryKey(userId));

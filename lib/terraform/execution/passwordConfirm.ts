@@ -15,16 +15,15 @@ import { checkRateLimit, peekRateLimit, resetRateLimit } from '@/lib/api/rateLim
 export const PASSWORD_TRIES = { limit: 5, windowMs: 15 * 60_000 } as const;
 
 export interface PasswordCheckDeps {
-  /** The user's stored password hash, or null if they have no password (for example a development or single-sign-on identity). */
-  getPasswordHash(userId: string): Promise<string | null>;
-  verifyPassword(password: string, hash: string): Promise<boolean>;
+  /** Checks the person's own password (local hash or AWS Cognito; see verifyAccountPassword.ts). */
+  checkPassword(userId: string, password: string): Promise<'ok' | 'wrong' | 'none' | 'unavailable'>;
   /** Authenticator-app step. Omit to use passwords alone. */
   totp?: { enabled(userId: string): Promise<boolean>; verify(userId: string, code: string): Promise<boolean> };
 }
 
 export type ConfirmResult =
   | { ok: true; approval: Approval }
-  | { ok: false; code: 'locked' | 'needs_code' | 'no_password' | 'wrong_password' | 'not_recorded'; message: string; retryAfterSeconds?: number; triesLeft?: number };
+  | { ok: false; code: 'locked' | 'needs_code' | 'no_password' | 'unavailable' | 'wrong_password' | 'not_recorded'; message: string; retryAfterSeconds?: number; triesLeft?: number };
 
 const key = (userId: string) => `${userId}:terraform-password`;
 
@@ -39,11 +38,12 @@ export async function confirmWithPassword(
     return { ok: false, code: 'locked', retryAfterSeconds: peek.resetsInSeconds, message: `Too many wrong passwords. Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.` };
   }
 
-  const hash = await deps.getPasswordHash(input.userId);
-  if (!hash) {
+  const checked = await deps.checkPassword(input.userId, input.password);
+  if (checked === 'unavailable') return { ok: false, code: 'unavailable', message: 'Could not check your password right now (the sign-in service did not answer). Try again in a minute.' };
+  if (checked === 'none') {
     return { ok: false, code: 'no_password', message: 'Your account has no password to confirm with (you may have signed in another way). Ask the server operator to set CLOUDCRAFT_TERRAFORM_APPROVAL=self-ok, or sign in with an email and password.' };
   }
-  if (!(await deps.verifyPassword(input.password, hash))) {
+  if (checked !== 'ok') {
     const after = await checkRateLimit(key(input.userId), PASSWORD_TRIES.limit, PASSWORD_TRIES.windowMs);   // counts this failure
     return { ok: false, code: 'wrong_password', triesLeft: Math.max(0, after.remaining), message: after.remaining > 0 ? `That password is not right. ${after.remaining} ${after.remaining === 1 ? 'try' : 'tries'} left.` : 'That password is not right, and there are no tries left for a while.' };
   }

@@ -116,7 +116,7 @@ describe('confirming with password and code', () => {
     secret = generateTotpSecret();
     const hash = await hashPassword('pw-correct');
     deps = {
-      getPasswordHash: async () => hash, verifyPassword,
+      checkPassword: async (_u, pw) => ((await verifyPassword(pw, hash)) ? 'ok' : 'wrong'),
       totp: { enabled: async () => true, verify: async (_u, c) => c === totpCode(secret, totpStep(Date.now())) },
     };
   });

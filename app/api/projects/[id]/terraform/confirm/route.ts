@@ -15,8 +15,7 @@ import { recordTerraformAudit } from '@/lib/terraform/execution/audit';
 import { approvalMode } from '@/lib/terraform/execution/approvals';
 import { describePlanForApproval } from '@/lib/terraform/execution/approvalPlan';
 import { confirmWithPassword } from '@/lib/terraform/execution/passwordConfirm';
-import { orgRepository } from '@/lib/repositories/orgRepository';
-import { verifyPassword } from '@/lib/crypto/password';
+import { verifyAccountPassword } from '@/lib/auth/verifyAccountPassword';
 import { totpEnabled, verifyTotpCode } from '@/lib/api/totpStore';
 
 export const dynamic = 'force-dynamic';
@@ -54,12 +53,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const result = await confirmWithPassword(
       { orgId, projectId, userId: identity.userId, action, planId, planHash, summary: plan.summary, password, code },
-      { getPasswordHash: (id) => orgRepository.getPasswordHashById(id), verifyPassword, totp: { enabled: totpEnabled, verify: verifyTotpCode } },
+      { checkPassword: (userId, pw) => verifyAccountPassword({ userId, email: identity.email, password: pw }), totp: { enabled: totpEnabled, verify: verifyTotpCode } },
     );
     if (!result.ok) {
       await recordTerraformAudit({ action: 'approval', outcome: 'denied', orgId, projectId, userId: identity.userId, planId, planHash, detail: `${action} password confirmation refused: ${result.code}` });   // never the password
       if (result.code === 'locked') return tooManyRequests(result.retryAfterSeconds);
       if (result.code === 'wrong_password') return apiError('WRONG_PASSWORD', result.message, 403);
+      if (result.code === 'unavailable') return apiError('SERVICE_UNAVAILABLE', result.message, 503);
       if (result.code === 'needs_code') return apiError('CODE_REQUIRED', result.message, 400);
       return badRequest(result.message);
     }

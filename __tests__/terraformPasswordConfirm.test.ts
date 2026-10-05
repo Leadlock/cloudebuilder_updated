@@ -34,7 +34,7 @@ const input = (password: string, over: Partial<typeof PLAN> = {}) => ({ ...PLAN,
 let deps: PasswordCheckDeps;
 beforeAll(async () => {
   const hash = await hashPassword('correct horse battery');
-  deps = { getPasswordHash: async (id) => (id === 'alice' ? hash : null), verifyPassword };
+  deps = { checkPassword: async (id, pw) => (id !== 'alice' ? 'none' : (await verifyPassword(pw, hash)) ? 'ok' : 'wrong') };
 });
 
 describe('confirmWithPassword', () => {
