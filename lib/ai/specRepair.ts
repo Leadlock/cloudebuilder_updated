@@ -7,7 +7,9 @@
  *  1. an internet-facing load balancer with no certificate setting gets the standard placeholder certificate, which CloudCraft
  *     already reports as a value the person must supply before deploying (it never invents a real certificate);
  *  2. an internet-facing load balancer with no web application firewall gets one, attached to it;
- *  3. parts of the design that are not connected to the entry point are connected the usual way: load balancer to the compute it
+ *  3. subnets that share an address range (the model leaves it out, so every subnet gets the catalog default) get their own /24
+ *     inside the network's range; a connection that names an internet gateway the design never declared gets one added;
+ *  4. parts of the design that are not connected to the entry point are connected the usual way: load balancer to the compute it
  *     should serve, compute to the data stores, DNS to the load balancer.
  *
  * Every step is checked: if the repaired design compiles with MORE problems than before, that step is undone. Nothing here can make
@@ -118,11 +120,60 @@ function connectLooseParts(spec: Spec): number {
   return added;
 }
 
-export interface SpecRepairReport { certificates: number; waf: number; connections: number }
+const SUBNET_KEY: Record<string, { key: string; fallback: string }> = {
+  aws_subnet: { key: 'cidrBlock', fallback: '10.0.1.0/24' },
+  azure_subnet: { key: 'addressPrefix', fallback: '10.0.1.0/24' },
+};
+const NET_KEY: Record<string, string> = { aws_vpc: 'cidrBlock', azure_vnet: 'addressSpace' };
+
+function range(cidr: unknown): { start: number; end: number; prefix: number } | null {
+  const m = typeof cidr === 'string' ? /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(cidr) : null;
+  if (!m) return null;
+  const [a, b, c, d, p] = m.slice(1).map(Number) as [number, number, number, number, number];
+  if ([a, b, c, d].some((x) => x > 255) || p > 32) return null;
+  const ip = ((a * 256 + b) * 256 + c) * 256 + d;
+  const size = 2 ** (32 - p);
+  const start = Math.floor(ip / size) * size;
+  return { start, end: start + size - 1, prefix: p };
+}
+
+function fixAddressing(spec: Spec): number {
+  const resources = spec.resources ?? [];
+  let n = 0;
+  const byParent = new Map<string, SRes[]>();
+  for (const r of resources) if (SUBNET_KEY[String(r.type)]) byParent.set(String(r.parent ?? ''), [...(byParent.get(String(r.parent ?? '')) ?? []), r]);
+  for (const [parentId, subnets] of byParent) {
+    if (subnets.length < 2) continue;
+    const ranges = subnets.map((s) => range(s.config?.[SUBNET_KEY[String(s.type)]!.key] ?? SUBNET_KEY[String(s.type)]!.fallback));
+    const overlap = ranges.some((a, i) => ranges.some((b, j) => i < j && a && b && a.start <= b.end && b.start <= a.end));
+    if (!overlap) continue;
+    const parent = resources.find((r) => r.id === parentId);
+    const netCidr = parent ? (parent.config?.[NET_KEY[String(parent.type)] ?? ''] ?? '10.0.0.0/16') : '10.0.0.0/16';
+    const net = range(netCidr);
+    if (!net || net.prefix > 16 || subnets.length > 250) continue;      // only the usual /16 network is renumbered
+    const [x, y] = [Math.floor(net.start / 16777216) % 256, Math.floor(net.start / 65536) % 256];
+    subnets.forEach((s, i) => { (s.config ??= {})[SUBNET_KEY[String(s.type)]!.key] = `${x}.${y}.${i + 1}.0/24`; n++; });
+  }
+  return n;
+}
+
+function addMissingGateway(spec: Spec): number {
+  const resources = spec.resources ?? [];
+  const connections = spec.connections ?? [];
+  const names = (c: SConn) => [String(c.from), String(c.to)];
+  const declared = new Set(resources.map(sid));
+  if (!connections.some((c) => names(c).includes('igw')) || declared.has('igw')) return 0;
+  const vpc = resources.find((r) => r.type === 'aws_vpc');
+  if (!vpc) return 0;
+  resources.push({ id: 'igw', type: 'aws_igw', label: 'Internet Gateway', parent: vpc.id, config: {} });
+  return 1;
+}
+
+export interface SpecRepairReport { certificates: number; waf: number; connections: number; addressing: number; gateway: number }
 
 /** Returns the repaired design (a copy) and what was done. Steps that would make the design compile worse are undone. */
 export function repairSpecInput(input: unknown): { value: unknown; report: SpecRepairReport } {
-  const report: SpecRepairReport = { certificates: 0, waf: 0, connections: 0 };
+  const report: SpecRepairReport = { certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0 };
   if (!input || typeof input !== 'object' || !Array.isArray((input as Spec).resources)) return { value: input, report };
 
   let spec = JSON.parse(JSON.stringify(input)) as Spec;
@@ -132,6 +183,8 @@ export function repairSpecInput(input: unknown): { value: unknown; report: SpecR
     const done = run(trial);
     if (done > 0 && problems(trial) <= before) { spec = trial; report[name] = done; }
   };
+  step('addressing', fixAddressing);
+  step('gateway', addMissingGateway);
   step('certificates', addCertificates);
   step('waf', addWaf);
   step('connections', connectLooseParts);
@@ -142,6 +195,8 @@ export function describeSpecRepair(report: SpecRepairReport): string[] {
   const out: string[] = [];
   if (report.certificates > 0) out.push(`The load balancer had no certificate setting, so a placeholder was added: replace it with your own ACM certificate before deploying.`);
   if (report.waf > 0) out.push(`CloudCraft added a web application firewall in front of the internet-facing load balancer.`);
+  if (report.addressing > 0) out.push(`Subnets shared one address range, so ${report.addressing} of them were given their own.`);
+  if (report.gateway > 0) out.push('The design used an internet gateway it never declared, so one was added.');
   if (report.connections > 0) out.push(`CloudCraft connected ${report.connections} part(s) of the design that the AI had left disconnected.`);
   return out;
 }

@@ -31,7 +31,7 @@ describe('specRepair', () => {
   it('adds a certificate placeholder, a WAF and the missing connections, and then the design passes', () => {
     const cleaned = sanitizeSpecInput(sloppy());
     const { value, report } = repairSpecInput(cleaned.value);
-    expect(report).toEqual({ certificates: 1, waf: 1, connections: 2 });
+    expect(report).toMatchObject({ certificates: 1, waf: 1, connections: 2 });
     const out = value as Spec;
     expect(out.resources.find((r) => r.id === 'alb')!.config!['certificateArn']).toMatch(/REPLACE-WITH-YOUR-CERTIFICATE-ID$/);
     expect(out.connections).toEqual(expect.arrayContaining([{ from: 'waf-alb', to: 'alb' }, { from: 'alb', to: 'asg-a' }, { from: 'alb', to: 'asg-b' }]));
@@ -68,6 +68,21 @@ describe('specRepair', () => {
     expect((value as typeof spec).connections).toEqual(expect.arrayContaining([{ from: 'fn', to: 'cache' }, { from: 'fn', to: 'bucket' }]));
   });
 
+  it('gives subnets that share an address range their own, and declares a missing internet gateway', () => {
+    const s = clone(good);
+    for (const r of s.resources) if (r.type === 'aws_subnet' && r.config) delete r.config['cidrBlock'];     // every subnet falls back to the same default
+    s.resources = s.resources.filter((r) => r.id !== 'igw');
+    const { value, report } = repairSpecInput(s);
+    expect(report.addressing).toBe(6);
+    expect(report.gateway).toBe(1);
+    const subnets = (value as Spec).resources.filter((r) => r.type === 'aws_subnet').map((r) => r.config!['cidrBlock']);
+    expect(new Set(subnets).size).toBe(6);
+    expect(subnets.every((c) => /^\d+\.\d+\.\d+\.0\/24$/.test(String(c)))).toBe(true);
+    const result = evaluateSpec(value, { autoRepair: true });
+    expect(result.issues).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
   it('spreads subnets with no zone across two zones (sanitizer) so the single-zone check passes', () => {
     const { value } = sanitizeSpecInput(sloppy());
     const zones = new Set((value as Spec).resources.filter((r) => r.type === 'aws_subnet').map((r) => r.config!['availabilityZone']));
@@ -76,7 +91,7 @@ describe('specRepair', () => {
 
   it('leaves a design that is already fine untouched', () => {
     const { value, report } = repairSpecInput(good);
-    expect(report).toEqual({ certificates: 0, waf: 0, connections: 0 });
+    expect(report).toEqual({ certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0 });
     expect(value).toEqual(good);
   });
 
@@ -89,8 +104,8 @@ describe('specRepair', () => {
   });
 
   it('describes what it did', () => {
-    expect(describeSpecRepair({ certificates: 1, waf: 1, connections: 2 })).toHaveLength(3);
-    expect(describeSpecRepair({ certificates: 0, waf: 0, connections: 0 })).toEqual([]);
+    expect(describeSpecRepair({ certificates: 1, waf: 1, connections: 2, addressing: 3, gateway: 1 })).toHaveLength(5);
+    expect(describeSpecRepair({ certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0 })).toEqual([]);
   });
 
   it('never makes input that is not a design worse', () => {
