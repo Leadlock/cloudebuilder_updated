@@ -28,6 +28,7 @@ import { ArchitectureReviewService } from '@/lib/services/ArchitectureReviewServ
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
 import { resolveExecutionCredentials } from '@/lib/cloud/credentials/resolveExecutionCredentials';
 import { runAwsPreflight, awsPreflightClients, regionFromTfvars } from './preflight';
+import { findProtectedResources, disableDeletionProtection, protectionClients, minimalAwsDestroyConfig } from './teardownSupport';
 import { assertTerraformCapable } from '@/lib/cloud/terraformCapability';
 import type { CloudCredentials } from '@/lib/cloud/types';
 import type { CanvasNode, CanvasEdge } from '@/types';
@@ -266,6 +267,8 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
       toChange: resourceChanges.filter((rc) => rc.actions.includes('update')).length,
       toDestroy: 0,
       resourceChanges,
+      // The generator's warnings, minus the one that is just the diagram's cloud outline (a drawing helper, not a resource).
+      notes: generated.warnings.filter((w) => !/^Unsupported AWS resource type: aws_cloud_boundary/.test(w)).slice(0, 8),
       guardrails,
     };
 
@@ -431,16 +434,39 @@ export interface PreparedDestroy {
  */
 export async function prepareDestroy(input: ExecuteDestroyInput, onOutput?: (chunk: string) => void): Promise<PreparedDestroy> {
   const env = await destroyEnvironment(input);
-  const generated = terraformGenerator.generate({
-    architectureId: input.architectureId, projectId: input.projectId, resources: input.resources, connections: input.connections, projectName: input.projectName,
-  });
+  // The saved design is only needed so Terraform has a configuration to load; what gets destroyed is whatever the state records.
+  let generated: { files: { filename: string; content: string }[] } | null = null;
+  try {
+    generated = terraformGenerator.generate({
+      architectureId: input.architectureId, projectId: input.projectId, resources: input.resources, connections: input.connections, projectName: input.projectName,
+    });
+  } catch { generated = null; }
+  const region = regionFromTfvars(generated?.files.find((f) => f.filename === 'terraform.tfvars')?.content)
+    ?? input.resources.find((r) => r.region)?.region ?? env['AWS_DEFAULT_REGION'] ?? 'us-east-1';
 
-  const workDir = await mkdtemp(join(tmpdir(), 'cloudcraft-tf-destroy-'));
+  let workDir = await mkdtemp(join(tmpdir(), 'cloudcraft-tf-destroy-'));
   let keep = false;
   try {
-    await writeTerraformFiles(workDir, generated, input.stateBackend);
-    await initWithRetry(workDir, env, { onOutput });
-    await validateConfiguration(workDir, env);
+    let usable = false;
+    if (generated) {
+      try {
+        await writeTerraformFiles(workDir, generated, input.stateBackend);
+        await initWithRetry(workDir, env, { onOutput });
+        await validateConfiguration(workDir, env);
+        usable = true;
+      } catch (err) {
+        if (input.stateBackend.provider !== 'aws') throw err;   // the fallback below is for AWS
+        onOutput?.(`\n[CloudCraft] The saved design cannot be used as it is (${err instanceof Error ? err.message.slice(0, 160) : 'error'}). The teardown will work from what Terraform recorded instead.\n`);
+      }
+    }
+    if (!usable) {
+      if (input.stateBackend.provider !== 'aws') throw httpError('The saved design could not be turned into a valid configuration, so this teardown cannot run. Fix the design and try again.', 400);
+      await rm(workDir, { recursive: true, force: true }).catch(() => {});
+      workDir = await mkdtemp(join(tmpdir(), 'cloudcraft-tf-destroy-'));
+      await writeTerraformFiles(workDir, { files: minimalAwsDestroyConfig(region) }, input.stateBackend);
+      await initWithRetry(workDir, env, { onOutput });
+      await validateConfiguration(workDir, env);
+    }
 
     await handleStateLockAndRetry(
       () => runTerraform(['plan', '-destroy', '-input=false', '-no-color', '-out=tfplan'], { cwd: workDir, env, timeoutMs: 15 * 60 * 1000, onOutput }),
@@ -458,6 +484,7 @@ export async function prepareDestroy(input: ExecuteDestroyInput, onOutput?: (chu
     await savePreparedDestroy({
       planId, planHash, workDir, orgId: input.orgId, projectId: input.projectId, userId: input.user.id,
       environment: input.environment, cloudAccountId: input.cloudAccountId, stateBackend: input.stateBackend, resources,
+      protectedResources: findProtectedResources(planJson as never), region,
     });
     keep = true;
     return { planId, planHash, resources };
@@ -501,6 +528,11 @@ async function runDestroyPlan(args: { run: RunHandle; prepared: PreparedDestroyP
   const audit = { action: 'destroy' as const, orgId: prepared.orgId, projectId: prepared.projectId, userId, planId: prepared.planId, planHash: prepared.planHash };
   try {
     run.append(`[CloudCraft] Destroying ${prepared.resources.length} resource(s) from the plan you reviewed.\n`);
+    // AWS refuses to delete a protected load balancer, database or table: switch protection off on exactly those the plan deletes.
+    if (prepared.protectedResources && prepared.protectedResources.length > 0 && env['AWS_ACCESS_KEY_ID']) {
+      run.append(`[CloudCraft] ${prepared.protectedResources.length} resource(s) have deletion protection on; switching it off so they can be removed.\n`);
+      await disableDeletionProtection(prepared.protectedResources, protectionClients(env, prepared.region ?? env['AWS_DEFAULT_REGION'] ?? 'us-east-1'), run.append);
+    }
     const maxAttempts = 3;
     for (let attempt = 1; ; attempt++) {
       try {

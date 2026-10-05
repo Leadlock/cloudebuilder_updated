@@ -23,6 +23,10 @@ export interface PreparedDestroyPlan {
   cloudAccountId: string;
   stateBackend: unknown;
   resources: { address: string; type: string }[];
+  /** Resources the plan deletes that have deletion protection on: it is switched off just before the confirmed teardown runs. */
+  protectedResources?: { type: 'aws_lb' | 'aws_db_instance' | 'aws_dynamodb_table'; id: string }[];
+  /** The AWS region of the deployment (for switching protection off). */
+  region?: string;
   expiresAtMs: number;
 }
 

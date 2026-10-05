@@ -42,6 +42,8 @@ export interface PlanSummary {
   toChange: number;
   toDestroy: number;
   resourceChanges: PlanResourceChange[];
+  /** Things worth knowing before applying (for example "the private subnets have no route to the internet"). Advice only: never blocks. */
+  notes?: string[];
   /** Result of the safety checks run on the plan; shown to the approver. A plan that failed them is never stored. */
   guardrails?: GuardrailReport;
 }

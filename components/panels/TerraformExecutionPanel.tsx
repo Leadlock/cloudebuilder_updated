@@ -812,6 +812,15 @@ export default function TerraformExecutionPanel() {
                 )}
               </div>
 
+              {(plan.summary.notes?.length ?? 0) > 0 && !applyJobId && (
+                <div className="mb-3 p-3 rounded-lg bg-amber-950/30 border border-amber-700/40 text-xs text-amber-100" data-testid="plan-notes">
+                  <p className="font-semibold flex items-center gap-2"><AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" /> Worth knowing before you apply</p>
+                  <ul className="mt-1.5 list-disc pl-5 space-y-1 text-amber-100/90 leading-relaxed">
+                    {plan.summary.notes!.map((n, i) => <li key={i}>{n}</li>)}
+                  </ul>
+                </div>
+              )}
+
               {/* Overall Progress Bar (Shown while applying or completed) */}
               {(applying || applyJobId) && (
                 <div className="mb-4 bg-gray-950 border border-gray-800 rounded-xl p-3.5 space-y-2">

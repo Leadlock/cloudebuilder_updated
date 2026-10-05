@@ -43,6 +43,18 @@ export interface TerraformGenerationResult {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Convert a label or name to a valid Terraform identifier */
+/** Small deterministic hash (works in the browser and in Node) used to keep generated AWS names unique and within length limits. */
+function shortHash(input: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < input.length; i++) { h ^= input.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(36).padStart(6, '0').slice(0, 6);
+}
+
+/** A name AWS accepts for target groups and security groups: letters, digits and hyphens, no leading/trailing hyphen. */
+const awsSlug = (s: string, max: number): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, max).replace(/-+$/g, '');
+
+interface EcsTarget { tfName: string; label: string; port: number; paths: string[]; priority: number; sgRef: string | null }
+
 function tfName(input: string): string {
   return input
     .toLowerCase()
@@ -328,7 +340,41 @@ locals {
             if (subnetRefs.length > 0) {
               blocks.push(this._dbSubnetGroup(name, subnetRefs));
             }
-            blocks.push(this._rds(name, cfg, subnetRefs.length > 0 ? `aws_db_subnet_group.${name}_subnet_group.name` : null, sgRef));
+            // With no security group of its own the database gets the VPC default one, which no service can reach. Admit the
+            // services wired to it, on the database port.
+            let dbSgRef = sgRef;
+            if (!dbSgRef) {
+              const clientSgs = resolver.resolveParents(r.id, 'aws_ecs', connections, resources)
+                .map((svc) => resolver.resolveParent(svc.id, 'aws_sg', connections, resources))
+                .filter((g): g is DbArchitectureResource => Boolean(g))
+                .map((g) => `${Boolean(this._cfg(g).imported || this._cfg(g).importState === 'imported') ? 'data.' : ''}aws_security_group.${resolver.tfNameOf(g.id) ?? 'main'}.id`);
+              if (clientSgs.length > 0) {
+                const engine = String(cfg['engine'] ?? 'mysql');
+                const dbPort = Number(cfg['port'] ?? (engine.includes('postgres') ? 5432 : 3306));
+                const dbVpc = resolver.resolveParent(r.id, 'aws_vpc', connections, resources);
+                const dbVpcRef = dbVpc ? `aws_vpc.${resolver.tfNameOf(dbVpc.id) ?? 'main'}.id` : this._fallbackVpcRef(r, resolver, connections, resources, warnings);
+                blocks.push(`resource "aws_security_group" "${name}_sg" {
+  name        = "${awsSlug(name, 40)}-sg"
+  description = "Database ${awsSlug(name, 30)}: only the application services"
+  vpc_id      = ${dbVpcRef}
+
+  ingress {
+    from_port       = ${dbPort}
+    to_port         = ${dbPort}
+    protocol        = "tcp"
+    security_groups = [${[...new Set(clientSgs)].join(', ')}]
+    description     = "From the application services"
+  }
+
+  tags = {
+    Name      = "${name}_sg"
+    ManagedBy = "CloudCraft"
+  }
+}`);
+                dbSgRef = `[aws_security_group.${name}_sg.id]`;
+              }
+            }
+            blocks.push(this._rds(name, cfg, subnetRefs.length > 0 ? `aws_db_subnet_group.${name}_subnet_group.name` : null, dbSgRef));
             resourceMap[r.id] = `aws_db_instance.${name}`;
             const replicaBlock = this._rdsReplicas(name, cfg);
             if (replicaBlock) blocks.push(replicaBlock);
@@ -441,7 +487,74 @@ locals {
             blocks.push(this._dataAlb(name, cfg));
             resourceMap[r.id] = `data.aws_lb.${name}`;
           } else {
-            blocks.push(this._alb(name, cfg, vpcRef, sgRef, subnetRefs));
+            // Fargate services behind this load balancer: each gets its own target group (type "ip") and a path rule on the listener.
+            const fargate = resolver.resolveParents(r.id, 'aws_ecs', connections, resources).filter((x) => (this._cfg(x)['launchType'] ?? 'FARGATE') === 'FARGATE');
+            const ecsTargets: EcsTarget[] = fargate.map((svc, i) => {
+              const sg = resolver.resolveParent(svc.id, 'aws_sg', connections, resources);
+              const sgImp = sg && Boolean(this._cfg(sg).imported || this._cfg(sg).importState === 'imported');
+              return {
+                tfName: resolver.tfNameOf(svc.id) ?? tfName(svc.label),
+                label: svc.label,
+                port: Number(this._cfg(svc)['containerPort'] ?? 80),
+                paths: this._routePaths(connections, r.id, svc, fargate.length),
+                priority: (i + 1) * 10,
+                sgRef: sg ? `${sgImp ? 'data.' : ''}aws_security_group.${resolver.tfNameOf(sg.id) ?? 'main'}.id` : null,
+              };
+            });
+
+            // Without a security group the load balancer gets the VPC default one, which lets nobody in. Make one that admits the listener port.
+            let albSgRef = sgRef;
+            if (!albSgRef) {
+              const listenerPort = Number(cfg['listenerPort'] ?? ((cfg['listenerProtocol'] === 'HTTPS' || cfg['listenerProtocol'] === 'TLS') ? 443 : 80));
+              const source = cfg['scheme'] === 'internal' && vpc ? `aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.cidr_block` : '"0.0.0.0/0"';
+              blocks.push(`resource "aws_security_group" "${name}_sg" {
+  name        = "${awsSlug(name, 40)}-sg"
+  description = "Load balancer ${awsSlug(name, 30)}: allows the listener port"
+  vpc_id      = ${vpcRef}
+
+  ingress {
+    from_port   = ${listenerPort}
+    to_port     = ${listenerPort}
+    protocol    = "tcp"
+    cidr_blocks = [${source}]
+    description = "Listener"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "All outbound"
+  }
+
+  tags = {
+    Name      = "${name}_sg"
+    ManagedBy = "CloudCraft"
+  }
+}`);
+              albSgRef = `[aws_security_group.${name}_sg.id]`;
+            }
+
+            blocks.push(this._alb(name, cfg, vpcRef, albSgRef, subnetRefs, ecsTargets));
+
+            // Let the load balancer reach each service on its container port (separate rules, so the services' own security groups stay as drawn).
+            const albSgId = albSgRef.slice(1, -1);
+            for (const t of ecsTargets) {
+              if (t.sgRef) {
+                blocks.push(`resource "aws_security_group_rule" "${name}_to_${t.tfName}" {
+  type                     = "ingress"
+  from_port                = ${t.port}
+  to_port                  = ${t.port}
+  protocol                 = "tcp"
+  security_group_id        = ${t.sgRef}
+  source_security_group_id = ${albSgId}
+  description              = "From the load balancer"
+}`);
+              } else {
+                warnings.push(`ECS service "${t.label}" is behind a load balancer but has no security group, so it uses the VPC default one and the load balancer cannot reach it. Connect a security group to the service.`);
+              }
+            }
             resourceMap[r.id] = `aws_lb.${name}`;
           }
           break;
@@ -558,7 +671,13 @@ locals {
           if (subnetRefs.length === 0) {
             warnings.push(`ECS service "${r.label}" is not connected to any subnet — the generated aws_ecs_service will have no network configuration and will fail to apply.`);
           }
-          blocks.push(this._ecs(name, cfg, subnetRefs, sgRef));
+          const lbs = resolver.resolveParents(r.id, 'aws_alb', connections, resources)
+            .filter((a) => !(this._cfg(a).imported || this._cfg(a).importState === 'imported') && (cfg['launchType'] ?? 'FARGATE') === 'FARGATE')
+            .map((a) => {
+              const albName = resolver.tfNameOf(a.id) ?? tfName(a.label);
+              return { targetGroupRef: `aws_lb_target_group.${albName}_${name}_tg`, dependsOn: `aws_lb_listener_rule.${albName}_${name}_rule` };
+            });
+          blocks.push(this._ecs(name, cfg, subnetRefs, sgRef, lbs));
           resourceMap[r.id] = `aws_ecs_service.${name}`;
           break;
         }
@@ -688,6 +807,8 @@ locals {
       }
     }
 
+    this._autoRouting(resources, connections, resolver, blocks, warnings);
+
     if (this._needsDefaultVpc) blocks.unshift('data "aws_vpc" "default" {\n  default = true\n}');
 
     return { blocks, warnings, resourceMap, blocking: [...this._blocking] };
@@ -695,6 +816,72 @@ locals {
 
   private _cfg(r: DbArchitectureResource): Record<string, unknown> {
     try { return JSON.parse(r.configJson) as Record<string, unknown>; } catch { return {}; }
+  }
+
+  /**
+   * Route tables. A VPC with an internet gateway and public subnets is useless without a route to the gateway, and a private subnet
+   * has no way out (no image pulls, no logs) without a NAT gateway. Only added when the architecture has no route table of its own,
+   * so a design that already draws its routes is left exactly as drawn.
+   */
+  private _autoRouting(resources: DbArchitectureResource[], connections: DbArchitectureConnection[], resolver: ReferenceResolver, blocks: string[], warnings: string[]): void {
+    if (resources.some((r) => r.resourceType === 'aws_route_table')) return;
+    const isImp = (r: DbArchitectureResource) => Boolean(this._cfg(r).imported || this._cfg(r).importState === 'imported');
+    for (const vpc of resources.filter((r) => r.resourceType === 'aws_vpc' && !isImp(r))) {
+      const vpcName = resolver.tfNameOf(vpc.id) ?? tfName(vpc.label);
+      const inVpc = (r: DbArchitectureResource) => resolver.resolveParent(r.id, 'aws_vpc', connections, resources)?.id === vpc.id;
+      const subnets = resources.filter((r) => r.resourceType === 'aws_subnet' && !isImp(r) && inVpc(r));
+      const isPublic = (r: DbArchitectureResource) => this._cfg(r)['mapPublicIpOnLaunch'] === true || /public|pub/.test((resolver.tfNameOf(r.id) ?? r.label).toLowerCase());
+      const publicSubnets = subnets.filter(isPublic);
+      const privateSubnets = subnets.filter((r) => !isPublic(r));
+      const igw = resources.find((r) => r.resourceType === 'aws_igw' && !isImp(r) && inVpc(r));
+      const nat = resources.find((r) => r.resourceType === 'aws_nat' && !isImp(r) && this._cfg(r)['connectivityType'] !== 'private'
+        && (() => { const sn = resolver.resolveParent(r.id, 'aws_subnet', connections, resources); return Boolean(sn) && inVpc(sn!); })());
+
+      const table = (suffix: string, route: string, targets: DbArchitectureResource[]) => {
+        blocks.push(`resource "aws_route_table" "${vpcName}_${suffix}_rt" {
+  vpc_id = aws_vpc.${vpcName}.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    ${route}
+  }
+
+  tags = {
+    Name      = "${vpcName}_${suffix}_rt"
+    ManagedBy = "CloudCraft"
+  }
+}`);
+        for (const sn of targets) {
+          const sName = resolver.tfNameOf(sn.id) ?? tfName(sn.label);
+          blocks.push(`resource "aws_route_table_association" "${sName}_${suffix}_assoc" {
+  subnet_id      = aws_subnet.${sName}.id
+  route_table_id = aws_route_table.${vpcName}_${suffix}_rt.id
+}`);
+        }
+      };
+
+      if (igw && publicSubnets.length > 0) table('public', `gateway_id = aws_internet_gateway.${resolver.tfNameOf(igw.id) ?? tfName(igw.label)}.id`, publicSubnets);
+      if (nat && privateSubnets.length > 0) table('private', `nat_gateway_id = aws_nat_gateway.${resolver.tfNameOf(nat.id) ?? tfName(nat.label)}.id`, privateSubnets);
+
+      const needsOutbound = resources.some((r) => r.resourceType === 'aws_ecs' && (this._cfg(r)['launchType'] ?? 'FARGATE') === 'FARGATE' && this._cfg(r)['assignPublicIp'] !== true
+        && resolver.resolveParents(r.id, 'aws_subnet', connections, resources).some((sn) => privateSubnets.some((p) => p.id === sn.id)));
+      if (needsOutbound && !nat) {
+        warnings.push(`The services in the private subnets of "${vpc.label}" have no route to the internet (no NAT Gateway), so they cannot pull their container image or send logs and their tasks will not start. Add a NAT Gateway in a public subnet to the diagram (it costs about $32 a month), or turn on "Assign Public IP" for the services.`);
+      }
+    }
+  }
+
+  /**
+   * The URL paths a load balancer sends to one service. Taken from the wire's label ("Route /orders" gives /orders and /orders/*);
+   * a service that is the only one behind the load balancer takes everything; otherwise its own name is the path.
+   */
+  private _routePaths(connections: DbArchitectureConnection[], albId: string, svc: DbArchitectureResource, serviceCount: number): string[] {
+    const wire = connections.find((c) => (c.sourceId === albId && c.targetId === svc.id) || (c.sourceId === svc.id && c.targetId === albId));
+    const base = /(\/[A-Za-z0-9._~\-/*]*)/.exec(wire?.label ?? '')?.[1]?.replace(/\/+$/, '');
+    if (base && base !== '') return base.endsWith('*') ? [base] : [base, `${base}/*`];
+    if (serviceCount === 1) return ['/*'];
+    const word = awsSlug(svc.label.replace(/\(.*?\)/g, ''), 30).split('-')[0] || 'service';
+    return [`/${word}`, `/${word}/*`];
   }
 
   private _vpc(name: string, cfg: Record<string, unknown>): string {
@@ -1135,7 +1322,7 @@ locals {
    * service itself. Networking is only attached when the service is
    * connected to a subnet on the canvas.
    */
-  private _ecs(name: string, cfg: Record<string, unknown>, subnetRefs: string[], sgRef: string | null): string {
+  private _ecs(name: string, cfg: Record<string, unknown>, subnetRefs: string[], sgRef: string | null, loadBalancers: { targetGroupRef: string; dependsOn: string }[] = []): string {
     const launchType = (cfg['launchType'] as string) || 'FARGATE';
     const isFargate = launchType === 'FARGATE';
     const envVars = (cfg['environmentVariables'] && typeof cfg['environmentVariables'] === 'object')
@@ -1227,6 +1414,12 @@ ${tagLines.join('\n')}
       serviceLines.push(`    assign_public_ip = ${cfg['assignPublicIp'] === true}`);
       serviceLines.push(`  }`);
     }
+    // Registered with each load balancer it sits behind. The listener rule must exist first, or AWS refuses the service
+    // ("target group does not have an associated load balancer").
+    for (const lb of loadBalancers) {
+      serviceLines.push(`  load_balancer {`, `    target_group_arn = ${lb.targetGroupRef}.arn`, `    container_name   = "${name}"`, `    container_port   = ${containerPort}`, `  }`);
+    }
+    if (loadBalancers.length > 0) serviceLines.push(`  depends_on = [${loadBalancers.map((lb) => lb.dependsOn).join(', ')}]`);
     serviceLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
     parts.push(serviceLines.join('\n'));
 
@@ -1834,7 +2027,7 @@ ${tagLines.join('\n')}
     return parts.join('\n');
   }
 
-  private _alb(name: string, cfg: Record<string, unknown>, vpcRef: string | null, sgRef: string | null, subnetRefs: string[] = []): string {
+  private _alb(name: string, cfg: Record<string, unknown>, vpcRef: string | null, sgRef: string | null, subnetRefs: string[] = [], ecsTargets: EcsTarget[] = []): string {
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
     const sanitizedName = name.replace(/_/g, '-').replace(/[^a-zA-Z0-9-]/g, '').replace(/--+/g, '-').replace(/^-+|-+$/g, '').substring(0, 32);
@@ -1858,7 +2051,7 @@ ${tagLines.join('\n')}
 
     const targetProtocol = (cfg['targetProtocol'] as string) || 'HTTP';
     const targetPort = cfg['targetPort'] ?? 80;
-    lines.push(
+    if (ecsTargets.length === 0) lines.push(
       ``,
       `resource "aws_lb_target_group" "${name}_tg" {`,
       `  name        = "${tgName}"`,
@@ -1896,17 +2089,67 @@ ${tagLines.join('\n')}
         lines.push(`  # WARNING: certificate_arn not set — required by AWS for HTTPS listeners`);
       }
     }
-    lines.push(
-      `  default_action {`,
-      `    type             = "forward"`,
-      `    target_group_arn = aws_lb_target_group.${name}_tg.arn`,
-      `  }`,
-      `}`,
-      ``,
-      `# Target attachment is not auto-generated — attach EC2/ASG targets to`,
-      `# aws_lb_target_group.${name}_tg via aws_lb_target_group_attachment or`,
-      `# an Auto Scaling Group's target_group_arns.`,
-    );
+    if (ecsTargets.length > 0) {
+      // Requests that match no service's path get a plain 404; each Fargate service has its own target group (type "ip") and path rule.
+      lines.push(
+        `  default_action {`,
+        `    type = "fixed-response"`,
+        `    fixed_response {`,
+        `      content_type = "text/plain"`,
+        `      message_body = "Not found"`,
+        `      status_code  = "404"`,
+        `    }`,
+        `  }`,
+        `}`,
+      );
+      for (const t of ecsTargets) {
+        const tgName = `${awsSlug(t.tfName, 25)}-${shortHash(`${name}:${t.tfName}`)}`.slice(0, 32).replace(/-+$/, '');
+        lines.push(
+          ``,
+          `resource "aws_lb_target_group" "${name}_${t.tfName}_tg" {`,
+          `  name        = "${tgName}"`,
+          `  port        = ${t.port}`,
+          `  protocol    = "${targetProtocol}"`,
+          `  vpc_id      = ${vpcRef ?? 'data.aws_vpc.default.id'}`,
+          `  target_type = "ip"`,
+          ``,
+          `  health_check {`,
+          `    path                = "${cfg['healthCheckPath'] ?? '/'}"`,
+          `    protocol            = "${targetProtocol}"`,
+          `    interval            = ${cfg['healthCheckIntervalSeconds'] ?? 30}`,
+          `    healthy_threshold   = 3`,
+          `    unhealthy_threshold = 3`,
+          `  }`,
+          `}`,
+          ``,
+          `resource "aws_lb_listener_rule" "${name}_${t.tfName}_rule" {`,
+          `  listener_arn = aws_lb_listener.${name}_listener.arn`,
+          `  priority     = ${t.priority}`,
+          `  action {`,
+          `    type             = "forward"`,
+          `    target_group_arn = aws_lb_target_group.${name}_${t.tfName}_tg.arn`,
+          `  }`,
+          `  condition {`,
+          `    path_pattern {`,
+          `      values = [${t.paths.map((x) => `"${x}"`).join(', ')}]`,
+          `    }`,
+          `  }`,
+          `}`,
+        );
+      }
+    } else {
+      lines.push(
+        `  default_action {`,
+        `    type             = "forward"`,
+        `    target_group_arn = aws_lb_target_group.${name}_tg.arn`,
+        `  }`,
+        `}`,
+        ``,
+        `# Target attachment is not auto-generated — attach EC2/ASG targets to`,
+        `# aws_lb_target_group.${name}_tg via aws_lb_target_group_attachment or`,
+        `# an Auto Scaling Group's target_group_arns.`,
+      );
+    }
 
     return lines.join('\n');
   }
