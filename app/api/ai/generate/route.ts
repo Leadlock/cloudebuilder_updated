@@ -84,6 +84,11 @@ export async function POST(req: NextRequest) {
     }
 
     const warnings = [
+      ...(result.verifiedFallback
+        ? [`CloudCraft could not make the AI's own design pass its checks, so this is the closest verified pattern: ${result.basedOnPattern}. It passes every check but may not reflect everything you asked for: adapt it on the canvas.`]
+        : result.basedOnPattern
+          ? [`The AI's first design did not pass CloudCraft's checks, so it was rebuilt from the verified pattern ${result.basedOnPattern} with your changes.`]
+          : []),
       ...(result.needsReview
         ? [`Review before deploying: the AI's design still has ${result.issues.length} point(s) CloudCraft's checks flag — ${result.issues.slice(0, 4).join('; ')}${result.issues.length > 4 ? '; …' : ''}. Fix them on the canvas (the Security and Validate panels show how) before deploying.`]
         : []),
@@ -104,6 +109,8 @@ export async function POST(req: NextRequest) {
       notices: result.notices,
       attempts: result.attempts.length,
       needsReview: result.needsReview === true,
+      basedOnPattern: result.basedOnPattern,
+      verifiedFallback: result.verifiedFallback === true,
       historyId: result.historyId,
       warning: warnings.length ? warnings.join('\n') : undefined,
     });

@@ -3,6 +3,8 @@ import { buildGenerationContext } from '../ai/knowledgeBase';
 import { detectServiceNotices, unsupportedServiceNames, type ServiceNotices } from '../ai/serviceCoverage';
 import { sanitizeSpecInput, type SanitizeReport } from '../ai/specSanitizer';
 import { repairSpecInput } from '../ai/specRepair';
+import { closestVerifiedDesign, adjustPrompt } from '../ai/verifiedBase';
+import { evaluateSpec } from '../ai/architectureSpec';
 import { awsResources } from '../resources/aws';
 import { azureResources } from '../resources/azure';
 import { db } from '../../src/prisma/db';
@@ -114,6 +116,10 @@ export interface ValidatedGeneration {
   issues: string[];
   /** True when no design passed every gate, so the closest one is returned for the person to review instead of an error. */
   needsReview?: boolean;
+  /** Title of the verified pattern the design was rebuilt from, when the AI's own design could not pass. */
+  basedOnPattern?: string;
+  /** The verified pattern itself was returned (the AI could not adapt it either). */
+  verifiedFallback?: boolean;
   /** What CloudCraft's own verified fixes changed in the design after the AI wrote it. */
   autoRepairs?: string[];
   stage: string;
@@ -482,14 +488,14 @@ CloudCraft cannot model these services yet, so NEVER offer them as options (not 
     const userPrompt = context ? `${request}\n\n${context}` : request;
 
     let sanitized: SanitizeReport = { renamed: [], dropped: [] };
-    const outcome = await generateWithRepair(async (messages) => {
+    const run = (promptText: string, attempts: number) => generateWithRepair(async (messages) => {
       const response = await foundryClient().responses.create({
         model: FOUNDRY_MODEL,
         input: messages,
         text: { format: { type: 'json_object' } },
       });
       return response.output_text || '';
-    }, userPrompt, maxAttempts, withHints, (json) => {
+    }, promptText, attempts, withHints, (json) => {
       // Rename near-miss setting names and drop invented ones before validating; the last call is the accepted attempt.
       const cleaned = sanitizeSpecInput(json);
       // Then the mechanical repairs the AI keeps getting wrong (certificate placeholder, WAF, parts left unconnected).
@@ -497,6 +503,31 @@ CloudCraft cannot model these services yet, so NEVER offer them as options (not 
       sanitized = { ...cleaned.report, specRepairs: repaired.report };
       return repaired.value;
     }, { autoRepair: true });
+
+    let outcome = await run(userPrompt, maxAttempts);
+
+    // The dependable ladder when the AI's own design does not pass: (1) ask it to change the closest VERIFIED design as little as
+    // possible; (2) if that still fails, use the verified design itself. A verified design passed every gate before it was stored and is
+    // checked again here, so this never returns something that fails.
+    let basedOnPattern: string | undefined;
+    let verifiedFallback = false;
+    if (!outcome.ok) {
+      const base = await closestVerifiedDesign(prompt, provider);
+      if (base) {
+        const second = await run(adjustPrompt(request, base), 2);
+        if (second.ok) {
+          outcome = { ...second, attempts: [...outcome.attempts, ...second.attempts] };
+          basedOnPattern = base.title;
+        } else {
+          const ev = evaluateSpec(base.spec);
+          if (ev.ok && ev.graph) {
+            outcome = { ok: true, attempts: [...outcome.attempts, ...second.attempts], spec: ev.spec, graph: ev.graph, deploymentInputs: ev.deploymentInputs };
+            basedOnPattern = base.title;
+            verifiedFallback = true;
+          }
+        }
+      }
+    }
 
     const last = outcome.attempts[outcome.attempts.length - 1]!;
     // No design passed every gate: hand back the closest one for review instead of an error. It is clearly flagged, and the deploy
@@ -523,6 +554,8 @@ CloudCraft cannot model these services yet, so NEVER offer them as options (not 
     return {
       ok: outcome.ok || needsReview,
       needsReview,
+      basedOnPattern,
+      verifiedFallback,
       autoRepairs: outcome.ok ? outcome.autoRepairs : outcome.best?.autoRepairs,
       graph: chosen?.graph,
       deploymentInputs: chosen?.deploymentInputs ?? [],
