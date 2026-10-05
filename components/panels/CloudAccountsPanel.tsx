@@ -138,7 +138,7 @@ function AccountRow({ account, checking, isLight, onRecheck, onEdit, onDelete, o
         </p>
       )}
       {showKeepTime && account.status !== 'expired' && (
-        <CredentialLifetimeControls accountId={account.id} forgetAfterDeploy={lifetime.forgetAfterDeploy === true} temporary={lifetime.temporary === true} onChanged={onChanged} />
+        <CredentialLifetimeControls accountId={account.id} forgetAfterDeploy={lifetime.forgetAfterDeploy === true} temporary={lifetime.temporary === true} onChanged={onChanged ?? (() => undefined)} />
       )}
       {showPasswords && <DeploymentPasswords accountId={account.id} />}
       {account.status === 'invalid' && (

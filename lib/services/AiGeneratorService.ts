@@ -109,8 +109,12 @@ export interface ValidatedGeneration {
   notices: ServiceNotices;
   /** Setting names the AI got wrong in the accepted design: `renamed` were fixed losslessly, `dropped` fell back to defaults. */
   sanitized: SanitizeReport;
-  /** Remaining validation problems when ok is false. */
+  /** Remaining validation problems when ok is false (or, with needsReview, the ones the person still has to look at). */
   issues: string[];
+  /** True when no design passed every gate, so the closest one is returned for the person to review instead of an error. */
+  needsReview?: boolean;
+  /** What CloudCraft's own verified fixes changed in the design after the AI wrote it. */
+  autoRepairs?: string[];
   stage: string;
   historyId: string;
 }
@@ -489,18 +493,22 @@ CloudCraft cannot model these services yet, so NEVER offer them as options (not 
       const cleaned = sanitizeSpecInput(json);
       sanitized = cleaned.report;
       return cleaned.value;
-    });
+    }, { autoRepair: true });
 
     const last = outcome.attempts[outcome.attempts.length - 1]!;
+    // No design passed every gate: hand back the closest one for review instead of an error. It is clearly flagged, and the deploy
+    // checks (readiness, Terraform preflight) still stop anything unfit from being deployed.
+    const needsReview = !outcome.ok && !!outcome.best;
+    const chosen = outcome.ok ? outcome : outcome.best;
     let historyId = '';
-    if (outcome.ok) {
+    if (outcome.ok || needsReview) {
       try {
         const { architectureRepository } = await import('../repositories/architectureRepository');
         const architecture = await architectureRepository.findByEnvironment(environmentId);
         if (architecture) {
           const record = await db.orm.public.AIGenerationHistory.create({
             id: crypto.randomUUID(), projectId, architectureId: architecture.id, prompt, provider,
-            model: FOUNDRY_MODEL, architectureJson: JSON.stringify(outcome.spec), createdAt: new Date().toISOString(),
+            model: FOUNDRY_MODEL, architectureJson: JSON.stringify(chosen?.spec), createdAt: new Date().toISOString(),
           });
           historyId = record.id;
         }
@@ -510,15 +518,17 @@ CloudCraft cannot model these services yet, so NEVER offer them as options (not 
     }
 
     return {
-      ok: outcome.ok,
-      graph: outcome.graph,
-      deploymentInputs: outcome.deploymentInputs ?? [],
+      ok: outcome.ok || needsReview,
+      needsReview,
+      autoRepairs: outcome.ok ? outcome.autoRepairs : outcome.best?.autoRepairs,
+      graph: chosen?.graph,
+      deploymentInputs: chosen?.deploymentInputs ?? [],
       attempts: outcome.attempts,
       // Judged against what the user asked for, not what the model produced: an unsupported service the model
       // silently swapped for another one must still be reported.
-      notices: detectServiceNotices(request, outcome.graph?.nodes.map((n) => n.resourceType)),
+      notices: detectServiceNotices(request, chosen?.graph?.nodes.map((n) => n.resourceType)),
       sanitized,
-      issues: outcome.ok ? [] : last.issues.map((i) => i.message),
+      issues: outcome.ok ? [] : (outcome.best?.issues ?? last.issues).map((i) => i.message),
       stage: last.stage,
       historyId,
     };

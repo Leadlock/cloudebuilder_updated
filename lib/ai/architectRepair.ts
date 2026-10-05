@@ -23,7 +23,16 @@ export function extractJson(text: string): unknown {
 }
 
 export interface RepairAttempt { attempt: number; ok: boolean; stage: string; issues: SpecIssue[] }
-export interface RepairOutcome { ok: boolean; attempts: RepairAttempt[]; spec?: ReturnType<typeof evaluateSpec>['spec']; graph?: ReturnType<typeof evaluateSpec>['graph']; deploymentInputs?: ReturnType<typeof evaluateSpec>['deploymentInputs'] }
+type Evaluated = ReturnType<typeof evaluateSpec>;
+/** The closest a failed run got: a design that compiled and was laid out but still has gate issues. */
+export interface BestEffort { spec: Evaluated['spec']; graph: NonNullable<Evaluated['graph']>; deploymentInputs: NonNullable<Evaluated['deploymentInputs']>; issues: SpecIssue[]; autoRepairs: string[] }
+export interface RepairOutcome {
+  ok: boolean; attempts: RepairAttempt[]; spec?: Evaluated['spec']; graph?: Evaluated['graph']; deploymentInputs?: Evaluated['deploymentInputs'];
+  /** What CloudCraft's own verified fixes changed in the accepted design. */
+  autoRepairs?: string[];
+  /** Set when ok is false but a design was built: the attempt with the fewest remaining issues. */
+  best?: BestEffort;
+}
 
 /**
  * Ask the model, validate, and feed failures back for up to `maxAttempts` tries.
@@ -37,8 +46,11 @@ export async function generateWithRepair(
   mapIssues?: (issues: SpecIssue[]) => SpecIssue[],
   /** Optional inference-time clean-up of the parsed design before it is validated (see specSanitizer.ts). */
   prepare?: (json: unknown) => unknown,
+  /** Inference only: apply CloudCraft's verified fixes to each design before judging it (see autoRepair.ts). */
+  options: { autoRepair?: boolean } = {},
 ): Promise<RepairOutcome> {
   const attempts: RepairAttempt[] = [];
+  let best: BestEffort | undefined;
   let prompt = userPrompt;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const text = await complete([{ role: 'system', content: ARCHITECT_SYSTEM_PROMPT }, { role: 'user', content: prompt }]);
@@ -46,12 +58,15 @@ export async function generateWithRepair(
     const json = parsed !== undefined && prepare ? prepare(parsed) : parsed;
     const ev = json === undefined
       ? { ok: false, stage: 'parse' as const, issues: [{ code: 'NOT_JSON', message: 'The reply was not a single JSON object.' }] }
-      : evaluateSpec(json);
+      : evaluateSpec(json, options);
     attempts.push({ attempt, ok: ev.ok, stage: ev.stage, issues: ev.issues });
-    if (ev.ok && 'spec' in ev) return { ok: true, attempts, spec: ev.spec, graph: ev.graph, deploymentInputs: ev.deploymentInputs };
+    if (ev.ok && 'spec' in ev) return { ok: true, attempts, spec: ev.spec, graph: ev.graph, deploymentInputs: ev.deploymentInputs, autoRepairs: (ev as { autoRepairs?: string[] }).autoRepairs };
+    if (ev.graph && ev.deploymentInputs && (!best || ev.issues.length < best.issues.length)) {
+      best = { spec: ev.spec, graph: ev.graph, deploymentInputs: ev.deploymentInputs, issues: ev.issues, autoRepairs: (ev as { autoRepairs?: string[] }).autoRepairs ?? [] };
+    }
     // Send back the design as it was validated (renamed/dropped settings applied), so the issues match what the model sees.
     const previous = prepare && json !== undefined ? JSON.stringify(json) : text;
     prompt = buildRepairPrompt(userPrompt, previous, ev.stage, mapIssues ? mapIssues(ev.issues) : ev.issues);
   }
-  return { ok: false, attempts };
+  return { ok: false, attempts, ...(best ? { best } : {}) };
 }

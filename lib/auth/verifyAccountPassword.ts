@@ -15,14 +15,18 @@ export type PasswordCheck = 'ok' | 'wrong' | 'none' | 'unavailable';
 export interface VerifyDeps {
   getPasswordHash(userId: string): Promise<string | null>;
   verifyHash(password: string, hash: string): Promise<boolean>;
-  cognitoSignIn(email: string, password: string): Promise<{ sub: string }>;
+  /** Signs in with the password. `challenge: true` means Cognito accepted the password and wants a further step (MFA, new password). */
+  cognitoSignIn(email: string, password: string): Promise<{ sub?: string; challenge?: boolean }>;
 }
 
 // Loaded on use, so importing this file (and testing it) does not open the database or the Cognito client.
 const realDeps: VerifyDeps = {
   getPasswordHash: async (id) => (await import('@/lib/repositories/orgRepository')).orgRepository.getPasswordHashById(id),
   verifyHash: verifyPassword,
-  cognitoSignIn: async (email, password) => (await import('@/lib/auth/cognitoService')).CognitoService.signIn(email, password),
+  cognitoSignIn: async (email, password) => {
+    const r = await (await import('@/lib/auth/cognitoService')).CognitoService.signIn(email, password);
+    return r.challenge ? { challenge: true } : { sub: r.sub };
+  },
 };
 
 export async function verifyAccountPassword(input: { userId: string; email?: string; password: string }, deps: VerifyDeps = realDeps): Promise<PasswordCheck> {
@@ -31,6 +35,8 @@ export async function verifyAccountPassword(input: { userId: string; email?: str
   if (!input.email) return 'none';
   try {
     const result = await deps.cognitoSignIn(input.email, input.password);
+    // A challenge (MFA, new password) comes only after Cognito accepted the password.
+    if (result.challenge) return 'ok';
     // The Cognito identity must be this very user, not just someone whose password happens to work for that email.
     return result.sub === input.userId ? 'ok' : 'wrong';
   } catch (err) {

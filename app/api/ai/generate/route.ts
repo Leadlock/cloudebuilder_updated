@@ -84,6 +84,12 @@ export async function POST(req: NextRequest) {
     }
 
     const warnings = [
+      ...(result.needsReview
+        ? [`Review before deploying: the AI's design still has ${result.issues.length} point(s) CloudCraft's checks flag — ${result.issues.slice(0, 4).join('; ')}${result.issues.length > 4 ? '; …' : ''}. Fix them on the canvas (the Security and Validate panels show how) before deploying.`]
+        : []),
+      ...(result.autoRepairs && result.autoRepairs.length > 0
+        ? [`CloudCraft corrected ${result.autoRepairs.length} setting(s) the AI got wrong: ${result.autoRepairs.slice(0, 4).join('; ')}${result.autoRepairs.length > 4 ? '; …' : ''}.`]
+        : []),
       ...describeNotices(result.notices),
       ...describeSanitized(result.sanitized),
       ...(result.deploymentInputs.length > 0
@@ -97,6 +103,7 @@ export async function POST(req: NextRequest) {
       deploymentInputs: result.deploymentInputs,
       notices: result.notices,
       attempts: result.attempts.length,
+      needsReview: result.needsReview === true,
       historyId: result.historyId,
       warning: warnings.length ? warnings.join('\n') : undefined,
     });

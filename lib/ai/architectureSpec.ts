@@ -26,6 +26,7 @@ import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
 import { architectureValidator } from '@/lib/engines/validation/ArchitectureValidator';
 import { toCanonicalGraph, validateCanonicalArchitecture } from '@/lib/domain/canonicalArchitecture';
 import { generateCanonicalTerraform } from '@/lib/engines/assessment/autofix';
+import { autoRepairGraph } from './autoRepair';
 
 // ─── Spec ─────────────────────────────────────────────────────────────────────
 
@@ -473,16 +474,20 @@ export function checkDeployReadiness(nodes: CanvasNode[], edges: CanvasEdge[]): 
 }
 
 /** Parse → compile → gate, in one call. Used by dataset filtering and model evaluation. */
-export function evaluateSpec(input: unknown): { ok: boolean; stage: 'parse' | 'compile' | 'gates' | 'ready'; issues: SpecIssue[]; spec?: ArchitectureSpec; graph?: { nodes: CanvasNode[]; edges: CanvasEdge[] }; readiness?: DeployReadiness; deploymentInputs?: DeploymentInput[] } {
+export function evaluateSpec(input: unknown, options: { autoRepair?: boolean } = {}): { autoRepairs?: string[]; ok: boolean; stage: 'parse' | 'compile' | 'gates' | 'ready'; issues: SpecIssue[]; spec?: ArchitectureSpec; graph?: { nodes: CanvasNode[]; edges: CanvasEdge[] }; readiness?: DeployReadiness; deploymentInputs?: DeploymentInput[] } {
   const parsed = parseSpec(input);
   if (!parsed.spec) return { ok: false, stage: 'parse', issues: parsed.issues };
   const compiled = compileSpec(parsed.spec);
   if (compiled.issues.length) return { ok: false, stage: 'compile', issues: compiled.issues, spec: parsed.spec };
-  const readiness = checkDeployReadiness(compiled.nodes, compiled.edges);
+  // At inference time, fix what CloudCraft's own verified remediations can fix before judging the design (never when building training data).
+  const repaired = options.autoRepair ? autoRepairGraph(compiled.nodes, compiled.edges) : null;
+  const nodes = repaired?.nodes ?? compiled.nodes;
+  const readiness = checkDeployReadiness(nodes, compiled.edges);
   return {
+    ...(repaired && repaired.applied.length > 0 ? { autoRepairs: repaired.applied } : {}),
     ok: readiness.ready, stage: readiness.ready ? 'ready' : 'gates',
     issues: readiness.gates.filter((g) => !g.passed).flatMap((g) => g.details.map((d) => ({ code: g.gate.toUpperCase(), message: d }))),
-    spec: parsed.spec, graph: { nodes: compiled.nodes, edges: compiled.edges }, readiness,
-    deploymentInputs: collectDeploymentInputs(compiled.nodes),
+    spec: parsed.spec, graph: { nodes, edges: compiled.edges }, readiness,
+    deploymentInputs: collectDeploymentInputs(nodes),
   };
 }

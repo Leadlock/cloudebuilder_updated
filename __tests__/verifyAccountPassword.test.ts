@@ -27,6 +27,10 @@ describe('verifyAccountPassword', () => {
     expect(await verifyAccountPassword(input(), deps({ cognitoSignIn: challenge }))).toBe('ok');
   });
 
+  it('counts a returned Cognito challenge as a correct password', async () => {
+    expect(await verifyAccountPassword(input(), deps({ cognitoSignIn: async () => ({ challenge: true }) }))).toBe('ok');
+  });
+
   it('refuses a Cognito identity that is a different user', async () => {
     expect(await verifyAccountPassword(input(), deps({ cognitoSignIn: async () => ({ sub: 'someone-else' }) }))).toBe('wrong');
   });
