@@ -33,7 +33,7 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'6b0817c3a48172f0fa480046ff296c943318a81e2601a56eebfd035ce7808563'>;
+  StorageHashBase<'5ec0a56099dc1f3c7a677c934b3a57b5744dffd268a580996ec1194aa3378e76'>;
 export type ExecutionHash =
   ExecutionHashBase<'e601969d76456cec43d4ac30a97cd9949576e2dd63fc3f3c4753142e71bd8448'>;
 export type ProfileHash =
@@ -359,6 +359,14 @@ export type FieldOutputTypes = {
       readonly source: CodecTypes['pg/text@1']['output'];
       readonly retrievedAt: CodecTypes['pg/text@1']['output'];
       readonly expiresAt: CodecTypes['pg/text@1']['output'];
+    };
+    readonly DeploymentSecret: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly orgId: CodecTypes['pg/text@1']['output'];
+      readonly cloudAccountId: CodecTypes['pg/text@1']['output'];
+      readonly name: CodecTypes['pg/text@1']['output'];
+      readonly valueEnc: CodecTypes['pg/text@1']['output'];
+      readonly createdAt: CodecTypes['pg/text@1']['output'];
     };
     readonly DiscoveryRun: {
       readonly id: CodecTypes['pg/text@1']['output'];
@@ -705,6 +713,14 @@ export type FieldInputTypes = {
       readonly retrievedAt: CodecTypes['pg/text@1']['input'];
       readonly expiresAt: CodecTypes['pg/text@1']['input'];
     };
+    readonly DeploymentSecret: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly orgId: CodecTypes['pg/text@1']['input'];
+      readonly cloudAccountId: CodecTypes['pg/text@1']['input'];
+      readonly name: CodecTypes['pg/text@1']['input'];
+      readonly valueEnc: CodecTypes['pg/text@1']['input'];
+      readonly createdAt: CodecTypes['pg/text@1']['input'];
+    };
     readonly DiscoveryRun: {
       readonly id: CodecTypes['pg/text@1']['input'];
       readonly cloudAccountId: CodecTypes['pg/text@1']['input'];
@@ -1050,6 +1066,14 @@ export type StorageColumnTypes = {
       readonly source: CodecTypes['pg/text@1']['output'];
       readonly targetCurrency: CodecTypes['pg/text@1']['output'];
     };
+    readonly deploymentSecret: {
+      readonly cloudAccountId: CodecTypes['pg/text@1']['output'];
+      readonly createdAt: CodecTypes['pg/text@1']['output'];
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly name: CodecTypes['pg/text@1']['output'];
+      readonly orgId: CodecTypes['pg/text@1']['output'];
+      readonly valueEnc: CodecTypes['pg/text@1']['output'];
+    };
     readonly discoveryRun: {
       readonly cloudAccountId: CodecTypes['pg/text@1']['output'];
       readonly completedAt: CodecTypes['pg/text@1']['output'] | null;
@@ -1394,6 +1418,14 @@ export type StorageColumnInputTypes = {
       readonly retrievedAt: CodecTypes['pg/text@1']['input'];
       readonly source: CodecTypes['pg/text@1']['input'];
       readonly targetCurrency: CodecTypes['pg/text@1']['input'];
+    };
+    readonly deploymentSecret: {
+      readonly cloudAccountId: CodecTypes['pg/text@1']['input'];
+      readonly createdAt: CodecTypes['pg/text@1']['input'];
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly name: CodecTypes['pg/text@1']['input'];
+      readonly orgId: CodecTypes['pg/text@1']['input'];
+      readonly valueEnc: CodecTypes['pg/text@1']['input'];
     };
     readonly discoveryRun: {
       readonly cloudAccountId: CodecTypes['pg/text@1']['input'];
@@ -2629,6 +2661,51 @@ type ContractBase = Omit<
                   readonly name: 'currencyExchangeRate_baseCurrency_targetCurrency_idx_7672893a';
                   readonly prefix: 'currencyExchangeRate_baseCurrency_targetCurrency_idx';
                   readonly columns: readonly ['baseCurrency', 'targetCurrency'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [];
+            };
+            readonly deploymentSecret: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly orgId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly cloudAccountId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly name: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly valueEnc: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly createdAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [];
+              indexes: readonly [
+                {
+                  readonly name: 'deploymentSecret_cloudAccountId_idx_b72ac661';
+                  readonly prefix: 'deploymentSecret_cloudAccountId_idx';
+                  readonly columns: readonly ['cloudAccountId'];
                   readonly unique: false;
                 },
               ];
@@ -4380,6 +4457,10 @@ type ContractBase = Omit<
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'TerraformApproval';
     };
+    readonly deploymentSecret: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'DeploymentSecret';
+    };
   };
   readonly domain: {
     readonly namespaces: {
@@ -5350,6 +5431,47 @@ type ContractBase = Omit<
                 readonly source: { readonly column: 'source' };
                 readonly retrievedAt: { readonly column: 'retrievedAt' };
                 readonly expiresAt: { readonly column: 'expiresAt' };
+              };
+            };
+          };
+          readonly DeploymentSecret: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly orgId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly cloudAccountId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly name: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly valueEnc: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly createdAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: {
+              readonly table: 'deploymentSecret';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly orgId: { readonly column: 'orgId' };
+                readonly cloudAccountId: { readonly column: 'cloudAccountId' };
+                readonly name: { readonly column: 'name' };
+                readonly valueEnc: { readonly column: 'valueEnc' };
+                readonly createdAt: { readonly column: 'createdAt' };
               };
             };
           };

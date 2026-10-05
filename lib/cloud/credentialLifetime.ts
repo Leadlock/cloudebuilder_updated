@@ -77,9 +77,34 @@ export function lifetimeMirror(credentials: object): { lifetime?: Lifetime } {
   return Object.keys(l).length > 0 ? { lifetime: l } : {};
 }
 
-export type WipeReason = 'expired' | 'forgotten';
+/** What a person can change about how long a stored credential is kept. */
+export type LifetimeChange =
+  | { action: 'extend'; hours: number | null }      // hours from now; null: no time limit
+  | { action: 'forgetAfterDeploy'; value: boolean };
 
-/** Thrown when a credential's time is up (or it was forgotten): HTTP 400 so callers show a plain message. */
+/**
+ * The credentials after a lifetime change, or the reason it cannot be made. Temporary credentials (with a session token) stop
+ * working at AWS on their own deadline, so their time cannot be extended here: get new ones instead.
+ */
+export function applyLifetimeChange(credentials: Record<string, unknown>, change: LifetimeChange, now = Date.now()): { ok: true; credentials: Record<string, unknown> } | { ok: false; message: string } {
+  const next: Record<string, unknown> = { ...credentials };
+  if (change.action === 'forgetAfterDeploy') {
+    if (change.value) next['forgetAfterDeploy'] = true; else delete next['forgetAfterDeploy'];
+    return { ok: true, credentials: next };
+  }
+  if (typeof credentials['sessionToken'] === 'string') {
+    return { ok: false, message: 'These are temporary AWS credentials: AWS stops accepting them at its own deadline, so CloudCraft cannot extend them. Connect again with new temporary credentials.' };
+  }
+  const hours = change.hours;
+  if (hours === null) { delete next['expiresAt']; return { ok: true, credentials: next }; }
+  if (!Number.isFinite(hours) || hours <= 0) return { ok: false, message: 'Choose how many hours to keep the key.' };
+  next['expiresAt'] = new Date(now + Math.min(hours, MAX_LIFETIME_HOURS) * 3_600_000).toISOString();
+  return { ok: true, credentials: next };
+}
+
+export type WipeReason = 'expired' | 'forgotten' | 'removed';
+
+/** Thrown when a credential's time is up (or it was erased): HTTP 400 so callers show a plain message. */
 export class CredentialsExpiredError extends Error {
   readonly statusCode = 400;
   readonly code = 'CREDENTIALS_EXPIRED';
@@ -87,6 +112,8 @@ export class CredentialsExpiredError extends Error {
     super(
       reason === 'forgotten'
         ? 'CloudCraft deleted these credentials after your last successful deployment, as you asked. Connect the account again to deploy.'
+        : reason === 'removed'
+        ? 'These credentials were deleted from CloudCraft on request. Connect the account again with a key to use it.'
         : `These credentials expired${at ? ` on ${at.replace('T', ' ').slice(0, 16)} UTC` : ''}, so CloudCraft deleted them. Connect the account again with a new key.`,
     );
     this.name = 'CredentialsExpiredError';

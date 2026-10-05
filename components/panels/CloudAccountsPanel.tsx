@@ -9,12 +9,15 @@
  * again. Credentials are never shown here — they are write-only.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Cloud, RefreshCw, Trash2, Loader2, CheckCircle2, ShieldCheck, Plus, Pencil } from 'lucide-react';
+import { Cloud, RefreshCw, Trash2, Loader2, CheckCircle2, ShieldCheck, Plus, Pencil, Clock, KeyRound } from 'lucide-react';
 import clsx from 'clsx';
 import ConnectAwsAccountForm from '@/components/accounts/ConnectAwsAccountForm';
 import ConnectAzureAccountForm from '@/components/accounts/ConnectAzureAccountForm';
 import DeleteAccountDialog from '@/components/accounts/DeleteAccountDialog';
 import EditAccountDialog from '@/components/accounts/EditAccountDialog';
+import DeploymentPasswords from '@/components/accounts/DeploymentPasswords';
+import EncryptionKeyCard from '@/components/accounts/EncryptionKeyCard';
+import CredentialLifetimeControls from '@/components/accounts/CredentialLifetimeControls';
 import { describeLifetime } from '@/lib/cloud/credentialLifetime';
 
 interface Account {
@@ -43,7 +46,9 @@ function ago(iso: string | null | undefined): string {
   return `checked ${Math.round(s / 86400)} d ago`;
 }
 
-function AccountRow({ account, checking, onRecheck, onEdit, onDelete }: { account: Account; checking: boolean; onRecheck: () => void; onEdit: () => void; onDelete: () => void }) {
+function AccountRow({ account, checking, onRecheck, onEdit, onDelete, onChanged }: { account: Account; checking: boolean; onRecheck: () => void; onEdit: () => void; onDelete: () => void; onChanged: () => void | Promise<void> }) {
+  const [showKeepTime, setShowKeepTime] = useState(false);
+  const [showPasswords, setShowPasswords] = useState(false);
   const id = account.identity ?? {};
   const method = typeof id.authMethod === 'string' ? id.authMethod : undefined;
   const who = typeof id.accountId === 'string' ? id.accountId : typeof id.subscriptionId === 'string' ? id.subscriptionId : '';
@@ -75,6 +80,18 @@ function AccountRow({ account, checking, onRecheck, onEdit, onDelete }: { accoun
             className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs text-gray-400 hover:text-blue-300 hover:bg-blue-950/40 disabled:opacity-60 transition-colors">
             <RefreshCw className={clsx('w-3.5 h-3.5', checking && 'animate-spin')} />{checking ? 'Checking…' : 'Re-check'}
           </button>
+          {account.status !== 'expired' && (
+            <button type="button" onClick={() => setShowKeepTime((v) => !v)} aria-expanded={showKeepTime} title="How long CloudCraft keeps the key" aria-label={`Key time for account ${account.name}`}
+              className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs text-gray-400 hover:text-amber-300 hover:bg-amber-950/30 transition-colors">
+              <Clock className="w-3.5 h-3.5" />Key time
+            </button>
+          )}
+          {account.provider === 'aws' && (
+            <button type="button" onClick={() => setShowPasswords((v) => !v)} aria-expanded={showPasswords} title="Passwords CloudCraft generated for deployments" aria-label={`Deployment passwords for account ${account.name}`}
+              className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs text-gray-400 hover:text-amber-300 hover:bg-amber-950/30 transition-colors">
+              <KeyRound className="w-3.5 h-3.5" />Passwords
+            </button>
+          )}
           <button type="button" onClick={onEdit} title="Edit this account" aria-label={`Edit account ${account.name}`}
             className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs text-gray-400 hover:text-blue-300 hover:bg-blue-950/40 transition-colors">
             <Pencil className="w-3.5 h-3.5" />Edit
@@ -93,10 +110,14 @@ function AccountRow({ account, checking, onRecheck, onEdit, onDelete }: { accoun
       {expired && (
         <p className="mt-2.5 text-xs text-amber-300 leading-relaxed" data-testid="account-expired">
           {timeText === 'expired'
-            ? 'The time limit passed, so CloudCraft deleted the key. Connect the account again with a new key to use it.'
-            : 'CloudCraft deleted the key after your last successful deployment, as you asked. Connect the account again to deploy.'}
+            ? 'The time limit passed, so CloudCraft deleted the key. Click Edit and enter a new key to use it again.'
+            : 'CloudCraft deleted the key after your last successful deployment, as you asked. Click Edit and enter a key to deploy again.'}
         </p>
       )}
+      {showKeepTime && account.status !== 'expired' && (
+        <CredentialLifetimeControls accountId={account.id} forgetAfterDeploy={lifetime.forgetAfterDeploy === true} temporary={lifetime.temporary === true} onChanged={onChanged} />
+      )}
+      {showPasswords && <DeploymentPasswords accountId={account.id} />}
       {account.status === 'invalid' && (
         <div className="mt-2.5 text-xs leading-relaxed" data-testid="account-invalid-reason">
           <p className="text-red-300">{typeof id.validationReason === 'string' ? id.validationReason : 'The last connection check failed.'}</p>
@@ -182,7 +203,7 @@ export default function CloudAccountsPanel() {
           <section className="space-y-2.5" aria-label="Connected accounts">
             <p className="text-gray-400 text-xs font-medium uppercase tracking-wider">Connected accounts ({list.length})</p>
             {list.map((a) => (
-              <AccountRow key={a.id} account={a} checking={checkingId === a.id} onRecheck={() => recheck(a)} onEdit={() => setToEdit(a)} onDelete={() => setToDelete(a)} />
+              <AccountRow key={a.id} account={a} checking={checkingId === a.id} onRecheck={() => recheck(a)} onEdit={() => setToEdit(a)} onDelete={() => setToDelete(a)} onChanged={async () => { await load(); }} />
             ))}
           </section>
         )}
@@ -211,6 +232,8 @@ export default function CloudAccountsPanel() {
               : <ConnectAzureAccountForm key="azure" onConnected={async () => { await load(); setShowConnect(false); }} />}
           </section>
         )}
+
+        <EncryptionKeyCard />
       </div>
 
       {toEdit && (

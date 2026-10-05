@@ -10,7 +10,7 @@
 import { db } from '@/src/prisma/db';
 import { randomUUID as uuidv4 } from 'crypto';
 import { encrypt, decrypt, inspectCiphertext } from '@/lib/crypto/credentials';
-import { CredentialsExpiredError, remainingMs, type WipeReason } from '@/lib/cloud/credentialLifetime';
+import { CredentialsExpiredError, applyLifetimeChange, lifetimeMirror, remainingMs, type LifetimeChange, type WipeReason } from '@/lib/cloud/credentialLifetime';
 
 /**
  * What a stored credential is bound to. Part of the encrypted data's authentication, so a value copied into another account or
@@ -177,9 +177,31 @@ export const cloudAccountRepository = {
     return true;
   },
 
+  /**
+   * Changes how long the stored credentials are kept (extend, remove the limit, or erase after the next successful deployment)
+   * without asking for the key again. Re-encrypts the credentials and keeps the plain mirror in step. Throws
+   * CredentialsExpiredError if they are already gone. Returns null when the account does not exist.
+   */
+  async changeLifetime(id: string, orgId: string, change: LifetimeChange): Promise<{ ok: true; account: DbCloudAccount } | { ok: false; message: string } | null> {
+    const row = await db.orm.public.CloudAccount.where({ id, orgId }).first();
+    if (!row) return null;
+    const plain = await this.getCredentials(id, orgId);
+    if (!plain) return null;
+    const result = applyLifetimeChange(parseJson(plain), change);
+    if (!result.ok) return result;
+    const identity = parseJson(row.identityJson);
+    delete identity['lifetime'];
+    await db.orm.public.CloudAccount.where({ id, orgId }).update({
+      credentialsJson: encrypt(JSON.stringify(result.credentials), credentialContext(orgId, id)),
+      identityJson: JSON.stringify({ ...identity, ...lifetimeMirror(result.credentials) }),
+      updatedAt: now(),
+    });
+    return { ok: true, account: (await this.findById(id, orgId))! };
+  },
+
   /** Every stored credential value with the account it belongs to (never returned by an API: used by key rotation). */
-  async listForRotation(): Promise<{ id: string; orgId: string; credentialsJson: string }[]> {
-    const rows = await db.orm.public.CloudAccount.select('id', 'orgId', 'credentialsJson').all();
+  async listForRotation(orgId?: string): Promise<{ id: string; orgId: string; credentialsJson: string }[]> {
+    const rows = await (orgId ? db.orm.public.CloudAccount.where({ orgId }) : db.orm.public.CloudAccount).select('id', 'orgId', 'credentialsJson').all();
     return rows.map((r) => ({ id: r.id, orgId: r.orgId, credentialsJson: r.credentialsJson }));
   },
 

@@ -13,11 +13,15 @@ const DEV_DEFAULTS: Record<string, string> = {
   TF_VAR_windows_admin_password: 'CloudCraft_WinPass123!',
 };
 
-export function terraformSecretVars(): Record<string, string> {
+/** The passwords CloudCraft can generate for a deployment itself (see deploymentSecrets.ts); the SSH public key cannot be generated. */
+export const GENERATABLE_SECRETS = ['TF_VAR_db_password', 'TF_VAR_sql_admin_password', 'TF_VAR_windows_admin_password'] as const;
+
+export function terraformSecretVars(except: readonly string[] = []): Record<string, string> {
   const production = process.env['NODE_ENV'] === 'production';
   const out: Record<string, string> = {};
   const missing: string[] = [];
   for (const [name, devDefault] of Object.entries(DEV_DEFAULTS)) {
+    if (except.includes(name)) continue;
     const value = process.env[name];
     if (value) out[name] = value;
     else if (production) missing.push(name);

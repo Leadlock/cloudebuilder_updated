@@ -15,7 +15,7 @@ import { credentialsExpiredResponse } from '@/lib/api/credentialErrors';
 import { CloudCredentialsSchema, explainCredentialsProblem, mergeCredentialEdit } from '@/lib/cloud/credentialSchemas';
 import { authMethodOf, isAwsCredentials, type CloudCredentials } from '@/lib/cloud/types';
 import { connectionHintOf } from '@/lib/cloud/connectionHint';
-import { lifetimeMirror } from '@/lib/cloud/credentialLifetime';
+import { CredentialsExpiredError, lifetimeMirror } from '@/lib/cloud/credentialLifetime';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,7 +89,13 @@ export async function PATCH(
     let credentialsJson: string | undefined;
     let identityJson: string | undefined;
     if (patch) {
-      const storedJson = await cloudAccountRepository.getCredentials(id, orgId);
+      // An account whose credentials were erased (time limit, forget-after-deploy, removed) has nothing to keep: the edit must then
+      // supply a complete new set, which is how it is reconnected.
+      let storedJson: string | null;
+      try { storedJson = await cloudAccountRepository.getCredentials(id, orgId); } catch (err) {
+        if (!(err instanceof CredentialsExpiredError)) throw err;
+        storedJson = '{}';
+      }
       if (!storedJson) return notFound('CloudAccount credentials');
       let stored: Record<string, unknown>;
       try { stored = JSON.parse(storedJson) as Record<string, unknown>; } catch { return internalError('Stored credentials are malformed'); }

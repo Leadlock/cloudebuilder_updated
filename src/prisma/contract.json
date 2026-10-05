@@ -48,6 +48,10 @@
       "model": "CurrencyExchangeRate",
       "namespace": "public"
     },
+    "deploymentSecret": {
+      "model": "DeploymentSecret",
+      "namespace": "public"
+    },
     "discoveryRun": {
       "model": "DiscoveryRun",
       "namespace": "public"
@@ -1712,6 +1716,77 @@
               },
               "namespaceId": "public",
               "table": "currencyExchangeRate"
+            }
+          },
+          "DeploymentSecret": {
+            "fields": {
+              "cloudAccountId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "name": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "orgId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "valueEnc": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "fields": {
+                "cloudAccountId": {
+                  "column": "cloudAccountId"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "name": {
+                  "column": "name"
+                },
+                "orgId": {
+                  "column": "orgId"
+                },
+                "valueEnc": {
+                  "column": "valueEnc"
+                }
+              },
+              "namespaceId": "public",
+              "table": "deploymentSecret"
             }
           },
           "DiscoveryRun": {
@@ -5586,6 +5661,57 @@
                 }
               ]
             },
+            "deploymentSecret": {
+              "columns": {
+                "cloudAccountId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "createdAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "name": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "orgId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "valueEnc": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [],
+              "indexes": [
+                {
+                  "columns": [
+                    "cloudAccountId"
+                  ],
+                  "name": "deploymentSecret_cloudAccountId_idx_b72ac661",
+                  "prefix": "deploymentSecret_cloudAccountId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
             "discoveryRun": {
               "columns": {
                 "cloudAccountId": {
@@ -7490,7 +7616,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "6b0817c3a48172f0fa480046ff296c943318a81e2601a56eebfd035ce7808563"
+    "storageHash": "5ec0a56099dc1f3c7a677c934b3a57b5744dffd268a580996ec1194aa3378e76"
   },
   "execution": {
     "executionHash": "e601969d76456cec43d4ac30a97cd9949576e2dd63fc3f3c4753142e71bd8448",

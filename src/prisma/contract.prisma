@@ -621,3 +621,16 @@ model TerraformApproval {
   @@index([projectId, createdAt])
   @@index([orgId, status])
 }
+
+// Random passwords CloudCraft generated for a cloud account's deployments (database / admin passwords), encrypted with the credential key and
+// bound to this row. id is "<cloudAccountId>:<name>". Never returned by an API except to an owner/admin who asks for it.
+model DeploymentSecret {
+  id             String @id
+  orgId          String
+  cloudAccountId String
+  name           String
+  valueEnc       String
+  createdAt      String
+
+  @@index([cloudAccountId])
+}

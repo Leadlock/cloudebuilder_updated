@@ -37,7 +37,7 @@ import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/rep
 import { runTerraform } from './cli';
 import { renderBackendConfig } from './backendConfig';
 import { assertSafeHcl } from '@/lib/engines/terraform/hclSafety';
-import { terraformSecretVars } from './secretVars';
+import { terraformSecretVarsFor } from './deploymentSecrets';
 import { decideAutoUnlock, describeHeldLock, isStateLockError, type LockedOperation } from './stateLock';
 import { initWithRetry, validateConfiguration } from './runSupport';
 import { acquireProjectLock, releaseProjectLock } from './projectLock';
@@ -214,7 +214,7 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
 
     const rawEnv = await resolveExecutionCredentials(credentials);
     const env: Record<string, string> = {
-      ...terraformSecretVars(),
+      ...(await terraformSecretVarsFor(input.orgId, input.cloudAccountId)),
       ...rawEnv,
     };
 
@@ -343,7 +343,7 @@ export async function runApply(planId: string, orgId: string, onOutput?: (chunk:
   const credentials = JSON.parse(credentialsJson) as CloudCredentials;
   const rawEnv = await resolveExecutionCredentials(credentials);
   const env: Record<string, string> = {
-    ...terraformSecretVars(),
+    ...(await terraformSecretVarsFor(orgId, record.cloudAccountId)),
     ...rawEnv,
   };
 
@@ -421,7 +421,7 @@ async function destroyEnvironment(input: { cloudAccountId: string; orgId: string
   const credentialsJson = await cloudAccountRepository.getCredentials(input.cloudAccountId, input.orgId);
   if (!credentialsJson) throw httpError('CloudAccount credentials not found', 404);
   const rawEnv = await resolveExecutionCredentials(JSON.parse(credentialsJson) as CloudCredentials);
-  return { ...terraformSecretVars(), ...rawEnv };
+  return { ...(await terraformSecretVarsFor(input.orgId, input.cloudAccountId)), ...rawEnv };
 }
 
 async function writeTerraformFiles(workDir: string, generated: { files: { filename: string; content: string }[] }, stateBackend: TerraformStateBackendConfig): Promise<void> {

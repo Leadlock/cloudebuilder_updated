@@ -1,0 +1,80 @@
+[
+  {
+    "id": "table.deploymentSecret",
+    "label": "Create table \"deploymentSecret\"",
+    "summary": "Creates table \"deploymentSecret\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "deploymentSecret"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"deploymentSecret\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"deploymentSecret\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"deploymentSecret\"",
+        "sql": "CREATE TABLE \"public\".\"deploymentSecret\" (\n  \"cloudAccountId\" text NOT NULL,\n  \"createdAt\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"name\" text NOT NULL,\n  \"orgId\" text NOT NULL,\n  \"valueEnc\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"deploymentSecret\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"deploymentSecret\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.deploymentSecret.deploymentSecret_cloudAccountId_idx_b72ac661",
+    "label": "Create index \"deploymentSecret_cloudAccountId_idx_b72ac661\" on \"deploymentSecret\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "deploymentSecret_cloudAccountId_idx_b72ac661",
+        "table": "deploymentSecret"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"deploymentSecret_cloudAccountId_idx_b72ac661\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"deploymentSecret_cloudAccountId_idx_b72ac661\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"deploymentSecret_cloudAccountId_idx_b72ac661\"",
+        "sql": "CREATE INDEX \"deploymentSecret_cloudAccountId_idx_b72ac661\" ON \"public\".\"deploymentSecret\" (\"cloudAccountId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"deploymentSecret_cloudAccountId_idx_b72ac661\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"deploymentSecret_cloudAccountId_idx_b72ac661\""
+        ]
+      }
+    ]
+  }
+]
