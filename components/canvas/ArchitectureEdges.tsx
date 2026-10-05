@@ -8,8 +8,8 @@ function EdgeBadge({
   y,
   label,
   stroke,
-  textColor = '#E2E8F0',
-  bgColor = '#0F172A',
+  textColor,
+  bgColor,
   badgeWidth,
 }: {
   x: number;
@@ -21,24 +21,24 @@ function EdgeBadge({
   badgeWidth?: number;
 }) {
   const textStr = String(label);
-  const width = badgeWidth || Math.max(48, textStr.length * 7 + 18);
+  const width = badgeWidth || Math.max(48, textStr.length * 6.8 + 18);
   const height = 20;
   return (
-    <g transform={`translate(${x}, ${y})`}>
+    <g transform={`translate(${x}, ${y})`} className="pointer-events-none select-none">
       <rect
         x={-width / 2}
         y={-height / 2}
         width={width}
         height={height}
         rx={10}
-        fill={bgColor}
+        fill={bgColor || 'var(--edge-badge-bg, #0F172A)'}
         stroke={stroke}
         strokeWidth={1.2}
-        className="filter drop-shadow-md"
+        className="filter drop-shadow-sm transition-colors"
       />
       <text
-        className="text-[10px] font-mono font-bold"
-        fill={textColor}
+        className="text-[10px] font-mono font-semibold"
+        fill={textColor || 'var(--edge-badge-text, #E2E8F0)'}
         textAnchor="middle"
         dominantBaseline="central"
       >
@@ -88,7 +88,7 @@ export const TrafficEdge = memo(({
       <circle r="3" fill="#38BDF8">
         <animateMotion dur="2.5s" repeatCount="indefinite" path={edgePath} />
       </circle>
-      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#38BDF8" textColor="#7DD3FC" />}
+      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#38BDF8" />}
     </>
   );
 });
@@ -135,7 +135,7 @@ export const DataFlowEdge = memo(({
       <circle r="3" fill="#22D3EE">
         <animateMotion dur="1.8s" repeatCount="indefinite" path={edgePath} />
       </circle>
-      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#06B6D4" textColor="#A5F3FC" />}
+      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#06B6D4" />}
     </>
   );
 });
@@ -180,7 +180,7 @@ export const LoadBalancesEdge = memo(({
       <circle r="3.5" fill="#818CF8">
         <animateMotion dur="2s" repeatCount="indefinite" path={edgePath} />
       </circle>
-      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#818CF8" textColor="#C7D2FE" />}
+      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#818CF8" />}
     </>
   );
 });
@@ -225,7 +225,7 @@ export const ConnectsToEdge = memo(({
       <circle r="3" fill="#10B981">
         <animateMotion dur="2.8s" repeatCount="indefinite" path={edgePath} />
       </circle>
-      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#10B981" textColor="#6EE7B7" />}
+      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#10B981" />}
     </>
   );
 });
@@ -271,7 +271,7 @@ export const StoresInEdge = memo(({
       <circle r="3" fill="#14B8A6">
         <animateMotion dur="3.5s" repeatCount="indefinite" path={edgePath} />
       </circle>
-      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#14B8A6" textColor="#5EEAD4" />}
+      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#14B8A6" />}
     </>
   );
 });
@@ -313,7 +313,7 @@ export const ResolvesToEdge = memo(({
         d={edgePath}
         markerEnd={markerEnd}
       />
-      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#38BDF8" textColor="#BAE6FD" />}
+      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#38BDF8" />}
     </>
   );
 });
@@ -355,7 +355,7 @@ export const AssociationEdge = memo(({
         d={edgePath}
         markerEnd={markerEnd}
       />
-      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#64748B" textColor="#CBD5E1" />}
+      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#94A3B8" />}
     </>
   );
 });
@@ -402,7 +402,7 @@ export const ReplicationEdge = memo(({
       <circle r="3.5" fill="#F59E0B">
         <animateMotion dur="2.2s" repeatCount="indefinite" path={edgePath} />
       </circle>
-      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#F59E0B" textColor="#FDE68A" />}
+      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#F59E0B" />}
     </>
   );
 });
@@ -447,7 +447,7 @@ export const CrossCloudEdge = memo(({
       <circle r="3.5" fill="#F59E0B">
         <animateMotion dur="2.5s" repeatCount="indefinite" path={edgePath} />
       </circle>
-      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#F59E0B" textColor="#FEF08A" />}
+      {label && <EdgeBadge x={labelX} y={labelY} label={label as string} stroke="#F59E0B" />}
     </>
   );
 });

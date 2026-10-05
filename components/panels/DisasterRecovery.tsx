@@ -17,7 +17,8 @@ const DR_STRATEGIES = [
 const BASE_COST = 280;
 
 export default function DisasterRecovery() {
-  const { dispatch } = useApp();
+  const { state, dispatch } = useApp();
+  const isLight = state.theme === 'light';
   const [selectedStrategy, setSelectedStrategy] = useState(DR_STRATEGIES[2]);
   const [primaryRegion, setPrimaryRegion] = useState('us-east-1');
   const [drRegion, setDrRegion] = useState('us-west-2');
@@ -29,12 +30,6 @@ export default function DisasterRecovery() {
   async function handleGenerate() {
     setGenerating(true);
     await new Promise((r) => setTimeout(r, 1200));
-    // 'ref-aws-dr-warm-standby' is the only DR strategy with a distinct,
-    // hand-modeled topology today (see lib/templates/referenceArchitectures.ts).
-    // The other strategies (backup, pilot-light, hot-standby, multi-region
-    // active-active) don't yet have their own differentiated diagrams, so we
-    // fall back to the warm-standby topology rather than crash on a
-    // non-existent template id — this is a known gap, not a silent fake.
     const template =
       architectureTemplates.find((t) => t.id === 'ref-aws-dr-warm-standby') ?? architectureTemplates[0];
     const { nodes, edges } = instantiateTemplate(template, {});
@@ -43,44 +38,51 @@ export default function DisasterRecovery() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-900 p-5">
+    <div className={clsx("flex-1 overflow-y-auto px-4 sm:px-6 py-6 pb-36 custom-scrollbar", isLight ? "bg-slate-50 text-slate-900" : "bg-gray-950 text-slate-100")}>
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
-          <Shield className="w-5 h-5 text-red-400" />
+          <Shield className={clsx("w-6 h-6", isLight ? "text-rose-600" : "text-red-400")} />
           <div>
-            <h2 className="text-white font-bold text-lg">Disaster Recovery Designer</h2>
-            <p className="text-gray-400 text-sm">Design a DR strategy for your architecture</p>
+            <h2 className={clsx("font-bold text-lg", isLight ? "text-slate-900" : "text-white")}>Disaster Recovery Designer</h2>
+            <p className={clsx("text-sm", isLight ? "text-slate-500" : "text-gray-400")}>Design a DR strategy for your architecture</p>
           </div>
         </div>
 
         {/* Strategy selector */}
         <div className="mb-5">
-          <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-3">Recovery Strategy</h3>
+          <h3 className={clsx("text-xs font-semibold uppercase tracking-wider mb-3", isLight ? "text-slate-500" : "text-gray-400")}>Recovery Strategy</h3>
           <div className="space-y-2">
             {DR_STRATEGIES.map((s) => (
               <button
                 key={s.id}
                 onClick={() => setSelectedStrategy(s)}
                 className={clsx(
-                  'w-full text-left p-4 rounded-xl border-2 transition-colors',
-                  selectedStrategy.id === s.id ? 'border-red-700 bg-red-900/10' : 'border-gray-700 hover:border-gray-600'
+                  'w-full text-left p-4 rounded-xl border-2 transition-all',
+                  selectedStrategy.id === s.id 
+                    ? (isLight ? 'border-rose-500 bg-rose-50/70 shadow-sm' : 'border-red-700 bg-red-900/10')
+                    : (isLight ? 'border-slate-200 bg-white hover:border-slate-300' : 'border-gray-800 bg-slate-900/50 hover:border-gray-700')
                 )}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <div className={clsx('w-3 h-3 rounded-full border-2', selectedStrategy.id === s.id ? 'border-red-500 bg-red-500' : 'border-gray-600')} />
-                      <p className="text-white font-medium text-sm">{s.name}</p>
-                      <span className={clsx('text-[10px] px-1.5 py-0.5 rounded font-medium', s.complexity === 'low' ? 'bg-emerald-900/40 text-emerald-400' : s.complexity === 'medium' ? 'bg-yellow-900/40 text-yellow-400' : 'bg-red-900/40 text-red-400')}>
+                      <div className={clsx('w-3 h-3 rounded-full border-2', selectedStrategy.id === s.id ? 'border-rose-500 bg-rose-500' : isLight ? 'border-slate-300' : 'border-gray-600')} />
+                      <p className={clsx("font-semibold text-sm", isLight ? "text-slate-900" : "text-white")}>{s.name}</p>
+                      <span className={clsx(
+                        'text-[10px] px-1.5 py-0.5 rounded font-medium',
+                        isLight 
+                          ? (s.complexity === 'low' ? 'bg-emerald-100 text-emerald-800' : s.complexity === 'medium' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800')
+                          : (s.complexity === 'low' ? 'bg-emerald-900/40 text-emerald-400' : s.complexity === 'medium' ? 'bg-yellow-900/40 text-yellow-400' : 'bg-red-900/40 text-red-400')
+                      )}>
                         {s.complexity}
                       </span>
                     </div>
-                    <p className="text-gray-500 text-xs pl-5">{s.description}</p>
+                    <p className={clsx("text-xs pl-5", isLight ? "text-slate-600" : "text-gray-400")}>{s.description}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-white text-xs font-medium">RTO: {s.rto}</p>
-                    <p className="text-gray-400 text-xs">RPO: {s.rpo}</p>
+                    <p className={clsx("text-xs font-semibold", isLight ? "text-slate-900" : "text-white")}>RTO: {s.rto}</p>
+                    <p className={clsx("text-xs", isLight ? "text-slate-500" : "text-gray-400")}>RPO: {s.rpo}</p>
                   </div>
                 </div>
               </button>
@@ -89,13 +91,19 @@ export default function DisasterRecovery() {
         </div>
 
         {/* Region config */}
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 mb-5">
-          <h3 className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-3">Region Configuration</h3>
+        <div className={clsx("border rounded-xl p-4 mb-5", isLight ? "bg-white border-slate-200 shadow-sm" : "bg-gray-800/80 border-gray-700")}>
+          <h3 className={clsx("text-xs font-semibold uppercase tracking-wider mb-3", isLight ? "text-slate-500" : "text-gray-400")}>Region Configuration</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-gray-400 text-xs mb-1.5 block">Primary Region</label>
-              <select value={primaryRegion} onChange={(e) => setPrimaryRegion(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
+              <label className={clsx("text-xs mb-1.5 block font-medium", isLight ? "text-slate-700" : "text-gray-400")}>Primary Region</label>
+              <select 
+                value={primaryRegion} 
+                onChange={(e) => setPrimaryRegion(e.target.value)}
+                className={clsx(
+                  "w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 border",
+                  isLight ? "bg-slate-50 border-slate-300 text-slate-900" : "bg-gray-900 border-gray-700 text-white"
+                )}
+              >
                 <option value="us-east-1">US East (N. Virginia)</option>
                 <option value="us-west-2">US West (Oregon)</option>
                 <option value="eu-west-1">EU (Ireland)</option>
@@ -103,9 +111,15 @@ export default function DisasterRecovery() {
               </select>
             </div>
             <div>
-              <label className="text-gray-400 text-xs mb-1.5 block">DR Region</label>
-              <select value={drRegion} onChange={(e) => setDrRegion(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
+              <label className={clsx("text-xs mb-1.5 block font-medium", isLight ? "text-slate-700" : "text-gray-400")}>DR Region</label>
+              <select 
+                value={drRegion} 
+                onChange={(e) => setDrRegion(e.target.value)}
+                className={clsx(
+                  "w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 border",
+                  isLight ? "bg-slate-50 border-slate-300 text-slate-900" : "bg-gray-900 border-gray-700 text-white"
+                )}
+              >
                 <option value="us-west-2">US West (Oregon)</option>
                 <option value="us-east-2">US East (Ohio)</option>
                 <option value="eu-central-1">EU (Frankfurt)</option>
@@ -118,28 +132,28 @@ export default function DisasterRecovery() {
         </div>
 
         {/* Summary card */}
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 mb-5">
-          <h3 className="text-white font-semibold text-sm mb-4">Strategy Summary — {selectedStrategy.name}</h3>
+        <div className={clsx("border rounded-xl p-4 mb-5", isLight ? "bg-white border-slate-200 shadow-sm" : "bg-gray-800/80 border-gray-700")}>
+          <h3 className={clsx("font-semibold text-sm mb-4", isLight ? "text-slate-900" : "text-white")}>Strategy Summary — {selectedStrategy.name}</h3>
           <div className="grid grid-cols-4 gap-3">
-            <div className="text-center bg-gray-900 rounded-lg py-3">
-              <Clock className="w-4 h-4 text-blue-400 mx-auto mb-1" />
-              <p className="text-white font-bold text-sm">{selectedStrategy.rto}</p>
-              <p className="text-gray-500 text-[10px]">RTO</p>
+            <div className={clsx("text-center rounded-lg py-3", isLight ? "bg-slate-50 border border-slate-200" : "bg-gray-900")}>
+              <Clock className="w-4 h-4 text-blue-500 mx-auto mb-1" />
+              <p className={clsx("font-bold text-sm", isLight ? "text-slate-900" : "text-white")}>{selectedStrategy.rto}</p>
+              <p className={clsx("text-[10px]", isLight ? "text-slate-500" : "text-gray-500")}>RTO</p>
             </div>
-            <div className="text-center bg-gray-900 rounded-lg py-3">
-              <AlertCircle className="w-4 h-4 text-yellow-400 mx-auto mb-1" />
-              <p className="text-white font-bold text-sm">{selectedStrategy.rpo}</p>
-              <p className="text-gray-500 text-[10px]">RPO</p>
+            <div className={clsx("text-center rounded-lg py-3", isLight ? "bg-slate-50 border border-slate-200" : "bg-gray-900")}>
+              <AlertCircle className="w-4 h-4 text-amber-500 mx-auto mb-1" />
+              <p className={clsx("font-bold text-sm", isLight ? "text-slate-900" : "text-white")}>{selectedStrategy.rpo}</p>
+              <p className={clsx("text-[10px]", isLight ? "text-slate-500" : "text-gray-500")}>RPO</p>
             </div>
-            <div className="text-center bg-gray-900 rounded-lg py-3">
-              <DollarSign className="w-4 h-4 text-orange-400 mx-auto mb-1" />
-              <p className="text-orange-400 font-bold text-sm">+${drCost}/mo</p>
-              <p className="text-gray-500 text-[10px]">Add. Cost</p>
+            <div className={clsx("text-center rounded-lg py-3", isLight ? "bg-slate-50 border border-slate-200" : "bg-gray-900")}>
+              <DollarSign className="w-4 h-4 text-orange-500 mx-auto mb-1" />
+              <p className={clsx("font-bold text-sm", isLight ? "text-orange-600" : "text-orange-400")}>+${drCost}/mo</p>
+              <p className={clsx("text-[10px]", isLight ? "text-slate-500" : "text-gray-500")}>Add. Cost</p>
             </div>
-            <div className="text-center bg-gray-900 rounded-lg py-3">
-              <DollarSign className="w-4 h-4 text-gray-400 mx-auto mb-1" />
-              <p className="text-white font-bold text-sm">${totalCost}/mo</p>
-              <p className="text-gray-500 text-[10px]">Total Est.</p>
+            <div className={clsx("text-center rounded-lg py-3", isLight ? "bg-slate-50 border border-slate-200" : "bg-gray-900")}>
+              <DollarSign className={clsx("w-4 h-4 mx-auto mb-1", isLight ? "text-slate-400" : "text-gray-400")} />
+              <p className={clsx("font-bold text-sm", isLight ? "text-slate-900" : "text-white")}>${totalCost}/mo</p>
+              <p className={clsx("text-[10px]", isLight ? "text-slate-500" : "text-gray-500")}>Total Est.</p>
             </div>
           </div>
         </div>
@@ -148,7 +162,7 @@ export default function DisasterRecovery() {
         <button
           onClick={handleGenerate}
           disabled={generating}
-          className="w-full py-3 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white rounded-xl font-medium text-sm transition-colors flex items-center justify-center gap-2"
+          className="w-full py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 shadow-sm"
         >
           {generating ? (
             <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating DR Architecture...</>

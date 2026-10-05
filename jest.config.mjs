@@ -15,7 +15,7 @@ const config = {
     '^@/(.*)$': '<rootDir>/$1',
   },
   transform: {
-    '^.+\\.tsx?$': ['ts-jest', {
+    '^.+\\.[tj]sx?$': ['ts-jest', {
       tsconfig: {
         module: 'commonjs',
         moduleResolution: 'node',

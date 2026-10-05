@@ -42,6 +42,8 @@ export interface AppState {
   providerFilter: 'all' | 'aws' | 'azure';
   architectureVersion: number;
   lastSavedVersion: number;
+  /** Active theme ('dark' for Night mode, 'light' for Light mode) */
+  theme: 'dark' | 'light';
   /** User-selected display currency (e.g. 'USD', 'INR', 'EUR', etc.) */
   displayCurrency: string;
   /** Incremented on RESTORE_VERSION to force InfraCanvas remount */
@@ -62,6 +64,8 @@ type Action =
   | { type: 'SET_ACTIVE_PROJECT'; id: string | null }
   | { type: 'SET_ENVIRONMENT'; env: Environment }
   | { type: 'SET_CURRENCY'; currency: string }
+  | { type: 'SET_THEME'; theme: 'dark' | 'light' }
+  | { type: 'TOGGLE_THEME' }
   | { type: 'TOGGLE_SIDEBAR' }
   | { type: 'SET_MOBILE_SIDEBAR'; open: boolean }
   | { type: 'TOGGLE_MOBILE_SIDEBAR' }
@@ -292,6 +296,22 @@ function reducer(state: AppState, action: Action): AppState {
         return p;
       });
       return { ...state, displayCurrency: currency, projects };
+    }
+
+    case 'SET_THEME': {
+      const theme = action.theme;
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('cloudcraft_theme', theme); } catch {}
+      }
+      return { ...state, theme };
+    }
+
+    case 'TOGGLE_THEME': {
+      const theme = state.theme === 'dark' ? 'light' : 'dark';
+      if (typeof window !== 'undefined') {
+        try { localStorage.setItem('cloudcraft_theme', theme); } catch {}
+      }
+      return { ...state, theme };
     }
 
     // ── Internal: replace project list from API ────────────────────────────────
@@ -937,6 +957,7 @@ const initialState: AppState = {
   autoSaveStatus: 'saved',
   lastSavedTime: 'Just now',
   saveConflict: null,
+  theme: 'dark',
   displayCurrency: 'USD',
   canvasKey: 0,
   apiLoaded: false,
@@ -989,10 +1010,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setWaEnvironment(state.activeEnvironment);
   }, [state.activeProjectId, state.activeEnvironment, state.displayCurrency]);
 
-  // ── On mount: restore saved currency preference ────────────────────────────
+  // ── On mount: restore saved theme & currency preference ───────────────────
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
+        const savedTheme = localStorage.getItem('cloudcraft_theme') as 'dark' | 'light' | null;
+        if (savedTheme && (savedTheme === 'dark' || savedTheme === 'light')) {
+          dispatch({ type: 'SET_THEME', theme: savedTheme });
+        }
         const saved = localStorage.getItem('cloudcraft_display_currency');
         if (saved) {
           dispatch({ type: 'SET_CURRENCY', currency: saved });
@@ -1000,6 +1025,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } catch {}
     }
   }, []);
+
+  // ── Synchronize theme class with document root ─────────────────────────────
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      const root = document.documentElement;
+      if (state.theme === 'light') {
+        root.classList.remove('dark');
+        root.classList.add('light');
+        root.setAttribute('data-theme', 'light');
+      } else {
+        root.classList.remove('light');
+        root.classList.add('dark');
+        root.setAttribute('data-theme', 'dark');
+      }
+    }
+  }, [state.theme]);
 
   // ── On mount: restore user session ─────────────────────────────────────────
   useEffect(() => {
@@ -1529,7 +1570,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
 export function useApp() {
   const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useApp must be used inside AppProvider');
+  if (!ctx) {
+    return { state: initialState, dispatch: () => {} };
+  }
   return ctx;
 }
 

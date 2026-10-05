@@ -63,6 +63,7 @@ function formatDuration(seconds: number): string {
 
 export default function TerraformExecutionPanel() {
   const { state } = useApp();
+  const isLight = state.theme === 'light';
   const activeProject = useActiveProject();
   const currentUser = state.currentUser ?? { id: 'usr-admin-1', role: 'admin' as const, name: 'Cloud Administrator', email: 'admin@cloudcraft.io', orgId: '' };
   const isAdmin = currentUser.role === 'admin';
@@ -577,21 +578,46 @@ export default function TerraformExecutionPanel() {
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
 
   return (
-    <div className="bg-gray-800/50 border border-emerald-900/40 rounded-xl p-4">
+    <div
+      className={clsx(
+        'border rounded-xl p-4 transition-colors',
+        isLight
+          ? 'bg-white border-slate-200 shadow-sm'
+          : 'bg-gray-800/50 border-emerald-900/40'
+      )}
+    >
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
-          <CloudCog className="w-4 h-4 text-emerald-400" />
-          <h3 className="text-white font-semibold text-sm">Real Infrastructure Deployment</h3>
-          <span className="text-[10px] px-2 py-0.5 bg-emerald-900/40 text-emerald-300 border border-emerald-800 rounded-full font-medium">Live</span>
+          <CloudCog className={clsx('w-4 h-4', isLight ? 'text-emerald-600' : 'text-emerald-400')} />
+          <h3 className={clsx('font-semibold text-sm', isLight ? 'text-slate-900' : 'text-white')}>
+            Real Infrastructure Deployment
+          </h3>
+          <span
+            className={clsx(
+              'text-[10px] px-2 py-0.5 rounded-full font-medium border',
+              isLight
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-emerald-900/40 text-emerald-300 border-emerald-800'
+            )}
+          >
+            Live
+          </span>
         </div>
       </div>
-      <p className="text-gray-500 text-xs mb-4">
-        Runs actual <code className="text-gray-400">terraform plan</code>, <code className="text-gray-400">apply</code>, or <code className="text-gray-400">destroy</code> against a connected cloud account using your remote state backend.
+      <p className={clsx('text-xs mb-4', isLight ? 'text-slate-500' : 'text-gray-500')}>
+        Runs actual <code className={clsx('px-1 py-0.5 rounded', isLight ? 'bg-slate-100 text-slate-700' : 'text-gray-400')}>terraform plan</code>, <code className={clsx('px-1 py-0.5 rounded', isLight ? 'bg-slate-100 text-slate-700' : 'text-gray-400')}>apply</code>, or <code className={clsx('px-1 py-0.5 rounded', isLight ? 'bg-slate-100 text-slate-700' : 'text-gray-400')}>destroy</code> against a connected cloud account using your remote state backend.
       </p>
 
       {!isApproved ? (
-        <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
+        <div
+          className={clsx(
+            'p-3 rounded-lg border text-xs flex items-center gap-2',
+            isLight
+              ? 'bg-amber-50 border-amber-200 text-amber-900'
+              : 'bg-amber-950/40 border-amber-500/40 text-amber-300'
+          )}
+        >
+          <AlertTriangle className={clsx('w-4 h-4 shrink-0', isLight ? 'text-amber-600' : 'text-amber-400')} />
           <span className="flex-1">
             Formal Architecture Review approval is required before a Terraform plan can be generated.
             {latestReview?.status === 'invalidated_due_to_changes' && ' The design was changed after it was approved, so it needs to be reviewed and approved again.'}
@@ -601,7 +627,12 @@ export default function TerraformExecutionPanel() {
             type="button"
             onClick={async () => { setCheckingReview(true); await loadReview(); setCheckingReview(false); }}
             disabled={checkingReview}
-            className="shrink-0 px-2.5 py-1 rounded-md bg-amber-900/50 hover:bg-amber-900/80 border border-amber-600/50 text-amber-100 text-[11px] font-medium disabled:opacity-60"
+            className={clsx(
+              "shrink-0 px-2.5 py-1 rounded-md text-[11px] font-medium disabled:opacity-60 transition-colors",
+              isLight
+                ? "bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-900"
+                : "bg-amber-900/50 hover:bg-amber-900/80 border border-amber-600/50 text-amber-100"
+            )}
           >
             {checkingReview ? 'Checking…' : 'Check again'}
           </button>
@@ -610,7 +641,9 @@ export default function TerraformExecutionPanel() {
         <div className="space-y-4">
           {/* Provider + account selection */}
           <div className="flex items-center gap-2">
-            <span className="text-gray-400 text-xs font-medium">Target Cloud:</span>
+            <span className={clsx('text-xs font-medium', isLight ? 'text-slate-600' : 'text-gray-400')}>
+              Target Cloud:
+            </span>
             {(['aws', 'azure'] as const).map((p) => (
               <button
                 key={p}
@@ -622,8 +655,16 @@ export default function TerraformExecutionPanel() {
                 className={clsx(
                   'px-3 py-1 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5',
                   backendProvider === p
-                    ? (p === 'aws' ? 'bg-orange-950/80 border-orange-500 text-orange-300 ring-1 ring-orange-500/40' : 'bg-blue-950/80 border-blue-500 text-blue-300 ring-1 ring-blue-500/40')
-                    : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200',
+                    ? p === 'aws'
+                      ? isLight
+                        ? 'bg-orange-50 border-orange-400 text-orange-800 ring-1 ring-orange-400/40'
+                        : 'bg-orange-950/80 border-orange-500 text-orange-300 ring-1 ring-orange-500/40'
+                      : isLight
+                      ? 'bg-blue-50 border-blue-400 text-blue-800 ring-1 ring-blue-400/40'
+                      : 'bg-blue-950/80 border-blue-500 text-blue-300 ring-1 ring-blue-500/40'
+                    : isLight
+                    ? 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                    : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200'
                 )}
               >
                 <span className={clsx('w-1.5 h-1.5 rounded-full', p === 'aws' ? 'bg-orange-400' : 'bg-blue-400')} />
@@ -633,21 +674,38 @@ export default function TerraformExecutionPanel() {
           </div>
 
           <div>
-            <label htmlFor="tf-account" className="block text-gray-400 text-xs mb-1">Cloud Account</label>
+            <label
+              htmlFor="tf-account"
+              className={clsx('block text-xs mb-1 font-medium', isLight ? 'text-slate-600' : 'text-gray-400')}
+            >
+              Cloud Account
+            </label>
             {loadingAccounts ? (
-              <div className="flex items-center gap-2 text-gray-500 text-xs"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading connected accounts…</div>
+              <div className={clsx('flex items-center gap-2 text-xs', isLight ? 'text-slate-500' : 'text-gray-500')}>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading connected accounts…
+              </div>
             ) : accounts.length === 0 ? (
-              <p className="text-gray-600 text-xs">No connected {backendProvider.toUpperCase()} accounts that can run Terraform. Connect one with an IAM role from the Import panel first.{discoveryOnlyCount > 0 ? ` (${discoveryOnlyCount} account${discoveryOnlyCount === 1 ? '' : 's'} connected with an access key ${discoveryOnlyCount === 1 ? 'is' : 'are'} for discovery only.)` : ''}</p>
+              <p className={clsx('text-xs', isLight ? 'text-slate-500' : 'text-gray-500')}>
+                No connected {backendProvider.toUpperCase()} accounts that can run Terraform. Connect one with an IAM role from the Import panel first.
+                {discoveryOnlyCount > 0 ? ` (${discoveryOnlyCount} account${discoveryOnlyCount === 1 ? '' : 's'} connected with an access key ${discoveryOnlyCount === 1 ? 'is' : 'are'} for discovery only.)` : ''}
+              </p>
             ) : (
               <select
                 id="tf-account"
                 value={selectedAccountId}
                 onChange={(e) => setSelectedAccountId(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className={clsx(
+                  'w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-colors',
+                  isLight
+                    ? 'bg-slate-50 border-slate-300 text-slate-900'
+                    : 'bg-gray-900 border-gray-700 text-white'
+                )}
               >
                 <option value="">Select an account…</option>
                 {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>{a.name} ({a.status})</option>
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.status})
+                  </option>
                 ))}
               </select>
             )}
@@ -655,28 +713,102 @@ export default function TerraformExecutionPanel() {
 
           {/* State backend form */}
           <div>
-            <p className="text-gray-400 text-xs mb-1.5">Remote State Backend — use storage you already have, or let CloudCraft create it in your account</p>
+            <p className={clsx('text-xs mb-1.5', isLight ? 'text-slate-600' : 'text-gray-400')}>
+              Remote State Backend — use storage you already have, or let CloudCraft create it in your account
+            </p>
             {backendProvider === 'aws' ? (
               <div className="grid grid-cols-2 gap-2">
-                <input placeholder="S3 bucket (leave empty to auto-name)" value={awsBackend.bucket} onChange={(e) => setAwsBackend({ ...awsBackend, bucket: e.target.value })}
-                  className="bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                <input placeholder="State key (path)" value={awsBackend.key} onChange={(e) => setAwsBackend({ ...awsBackend, key: e.target.value })}
-                  className="bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                <input placeholder="Region" value={awsBackend.region} onChange={(e) => setAwsBackend({ ...awsBackend, region: e.target.value })}
-                  className="bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                <input placeholder="DynamoDB lock table (optional)" value={awsBackend.dynamodbTable} onChange={(e) => setAwsBackend({ ...awsBackend, dynamodbTable: e.target.value })}
-                  className="bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                <input
+                  placeholder="S3 bucket (leave empty to auto-name)"
+                  value={awsBackend.bucket}
+                  onChange={(e) => setAwsBackend({ ...awsBackend, bucket: e.target.value })}
+                  className={clsx(
+                    'border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500',
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400'
+                      : 'bg-gray-900 border-gray-700 text-white'
+                  )}
+                />
+                <input
+                  placeholder="State key (path)"
+                  value={awsBackend.key}
+                  onChange={(e) => setAwsBackend({ ...awsBackend, key: e.target.value })}
+                  className={clsx(
+                    'border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500',
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400'
+                      : 'bg-gray-900 border-gray-700 text-white'
+                  )}
+                />
+                <input
+                  placeholder="Region"
+                  value={awsBackend.region}
+                  onChange={(e) => setAwsBackend({ ...awsBackend, region: e.target.value })}
+                  className={clsx(
+                    'border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500',
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400'
+                      : 'bg-gray-900 border-gray-700 text-white'
+                  )}
+                />
+                <input
+                  placeholder="DynamoDB lock table (optional)"
+                  value={awsBackend.dynamodbTable}
+                  onChange={(e) => setAwsBackend({ ...awsBackend, dynamodbTable: e.target.value })}
+                  className={clsx(
+                    'border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500',
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400'
+                      : 'bg-gray-900 border-gray-700 text-white'
+                  )}
+                />
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
-                <input placeholder="Resource group" value={azureBackend.resourceGroupName} onChange={(e) => setAzureBackend({ ...azureBackend, resourceGroupName: e.target.value })}
-                  className="bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                <input placeholder="Storage account" value={azureBackend.storageAccountName} onChange={(e) => setAzureBackend({ ...azureBackend, storageAccountName: e.target.value })}
-                  className="bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                <input placeholder="Container" value={azureBackend.containerName} onChange={(e) => setAzureBackend({ ...azureBackend, containerName: e.target.value })}
-                  className="bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                <input placeholder="State key (path)" value={azureBackend.key} onChange={(e) => setAzureBackend({ ...azureBackend, key: e.target.value })}
-                  className="bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                <input
+                  placeholder="Resource group"
+                  value={azureBackend.resourceGroupName}
+                  onChange={(e) => setAzureBackend({ ...azureBackend, resourceGroupName: e.target.value })}
+                  className={clsx(
+                    'border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500',
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400'
+                      : 'bg-gray-900 border-gray-700 text-white'
+                  )}
+                />
+                <input
+                  placeholder="Storage account"
+                  value={azureBackend.storageAccountName}
+                  onChange={(e) => setAzureBackend({ ...azureBackend, storageAccountName: e.target.value })}
+                  className={clsx(
+                    'border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500',
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400'
+                      : 'bg-gray-900 border-gray-700 text-white'
+                  )}
+                />
+                <input
+                  placeholder="Container"
+                  value={azureBackend.containerName}
+                  onChange={(e) => setAzureBackend({ ...azureBackend, containerName: e.target.value })}
+                  className={clsx(
+                    'border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500',
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400'
+                      : 'bg-gray-900 border-gray-700 text-white'
+                  )}
+                />
+                <input
+                  placeholder="State key (path)"
+                  value={azureBackend.key}
+                  onChange={(e) => setAzureBackend({ ...azureBackend, key: e.target.value })}
+                  className={clsx(
+                    'border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500',
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400'
+                      : 'bg-gray-900 border-gray-700 text-white'
+                  )}
+                />
               </div>
             )}
 
@@ -686,21 +818,42 @@ export default function TerraformExecutionPanel() {
                 onClick={handleCreateStateBackend}
                 disabled={!selectedAccountId || !canCreateBackend() || creatingBackend}
                 title="Creates a private, encrypted, versioned bucket (and the lock table, if you named one) in the selected account. Nothing is deleted or changed if it already exists."
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-800 hover:bg-gray-700 border border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-gray-200 transition-colors"
+                className={clsx(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-40 disabled:cursor-not-allowed transition-colors',
+                  isLight
+                    ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700'
+                    : 'bg-gray-800 hover:bg-gray-700 border-gray-700 text-gray-200'
+                )}
               >
-                {creatingBackend ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5 text-emerald-400" />}
+                {creatingBackend ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />}
                 {creatingBackend ? 'Creating state storage…' : 'Create state storage for me'}
               </button>
               {backendCreated && (
-                <div className="rounded-lg border border-emerald-800/60 bg-emerald-950/30 px-3 py-2 text-[11px] text-emerald-200 space-y-0.5">
+                <div
+                  className={clsx(
+                    'rounded-lg border px-3 py-2 text-[11px] space-y-0.5',
+                    isLight
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : 'border-emerald-800/60 bg-emerald-950/30 text-emerald-200'
+                  )}
+                >
                   {backendCreated.map((s) => (
                     <p key={s.what}>{s.outcome === 'created' ? '✓ Created' : '• Already there'}: {s.what}</p>
                   ))}
-                  <p className="text-emerald-300/70">The fields above now hold these names. You can generate the plan.</p>
+                  <p className={isLight ? 'text-emerald-700' : 'text-emerald-300/70'}>
+                    The fields above now hold these names. You can generate the plan.
+                  </p>
                 </div>
               )}
               {backendCreateError && (
-                <p className="rounded-lg border border-rose-800/60 bg-rose-950/30 px-3 py-2 text-[11px] text-rose-200">{backendCreateError}</p>
+                <p
+                  className={clsx(
+                    'rounded-lg border px-3 py-2 text-[11px]',
+                    isLight ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-rose-800/60 bg-rose-950/30 text-rose-200'
+                  )}
+                >
+                  {backendCreateError}
+                </p>
               )}
             </div>
           </div>
@@ -722,7 +875,7 @@ export default function TerraformExecutionPanel() {
               <button
                 onClick={handleGeneratePlan}
                 disabled={!selectedAccountId || !backendReady() || planning}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white transition-colors"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors shadow-sm"
               >
                 {planning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRightLeft className="w-3.5 h-3.5" />}
                 {planning ? 'Generating plan…' : 'Generate Terraform Plan'}
@@ -731,10 +884,15 @@ export default function TerraformExecutionPanel() {
               <button
                 onClick={openDestroyModal}
                 disabled={!selectedAccountId || !backendReady() || planning || destroying}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-rose-950/70 hover:bg-rose-900 border border-rose-800/80 disabled:opacity-40 disabled:cursor-not-allowed text-rose-300 transition-colors"
+                className={clsx(
+                  'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border disabled:opacity-40 disabled:cursor-not-allowed transition-colors',
+                  isLight
+                    ? 'bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-700'
+                    : 'bg-rose-950/70 hover:bg-rose-900 border-rose-800/80 text-rose-300'
+                )}
                 title="Tear down and destroy all cloud infrastructure provisioned for this project"
               >
-                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                 Teardown / Terminate All Services
               </button>
             </div>
@@ -742,20 +900,33 @@ export default function TerraformExecutionPanel() {
 
           {/* Destroying Active State Banner */}
           {destroying && (
-            <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-500/40 text-white space-y-2.5 animate-pulse shadow-xl">
+            <div
+              className={clsx(
+                'p-4 rounded-xl border space-y-2.5 animate-pulse shadow-xl',
+                isLight
+                  ? 'bg-rose-50 border-rose-200 text-rose-900'
+                  : 'bg-rose-950/40 border-rose-500/40 text-white'
+              )}
+            >
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 text-rose-400 animate-spin" />
-                  <span className="font-semibold text-rose-200">Tearing Down Infrastructure in {backendProvider.toUpperCase()}...</span>
+                  <Loader2 className="w-4 h-4 text-rose-500 animate-spin" />
+                  <span className="font-semibold">Tearing Down Infrastructure in {backendProvider.toUpperCase()}...</span>
                 </div>
-                <div className="flex items-center gap-1 text-rose-300 font-mono text-xs">
+                <div className="flex items-center gap-1 font-mono text-xs">
                   <Clock className="w-3.5 h-3.5 animate-spin" /> {formatDuration(elapsedSeconds)}
                 </div>
               </div>
-              <p className="text-[11px] text-gray-300">
+              <p className={clsx('text-[11px]', isLight ? 'text-rose-700' : 'text-gray-300')}>
                 Running the destroy plan you reviewed against your remote state. It keeps running on the server if you leave this page. Azure and AWS delete resources one at a time, so several minutes is normal.
               </p>
-              <pre className="bg-black/60 rounded-lg p-2 text-[10px] text-gray-300 font-mono whitespace-pre-wrap max-h-44 overflow-y-auto" data-testid="destroy-live-log">
+              <pre
+                className={clsx(
+                  'rounded-lg p-2 text-[10px] font-mono whitespace-pre-wrap max-h-44 overflow-y-auto',
+                  isLight ? 'bg-slate-900 text-slate-100' : 'bg-black/60 text-gray-300'
+                )}
+                data-testid="destroy-live-log"
+              >
                 {destroyRun && destroyRun.logTail.length > 0 ? destroyRun.logTail.slice(-14).join('\n') : 'Starting…'}
               </pre>
             </div>
@@ -763,22 +934,39 @@ export default function TerraformExecutionPanel() {
 
           {/* Destroy Success Banner */}
           {destroySuccess && (
-            <div className="p-4 rounded-xl bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 text-xs shadow-xl space-y-2">
+            <div
+              className={clsx(
+                'p-4 rounded-xl border text-xs shadow-xl space-y-2',
+                isLight
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
+              )}
+            >
               <div className="flex items-center gap-2 font-semibold text-sm">
-                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 <span>All Infrastructure Successfully Terminated!</span>
               </div>
-              <p className="text-[11px] text-emerald-300/90">{destroySuccess}</p>
+              <p className="text-[11px] opacity-90">{destroySuccess}</p>
               {destroyOutputTail && (
-                <details className="mt-2 bg-gray-950/80 rounded-lg p-2 border border-emerald-900/40">
-                  <summary className="cursor-pointer text-emerald-400/90 font-medium">View Teardown Log Output</summary>
+                <details
+                  className={clsx(
+                    'mt-2 rounded-lg p-2 border',
+                    isLight ? 'bg-white border-emerald-200' : 'bg-gray-950/80 border-emerald-900/40'
+                  )}
+                >
+                  <summary className="cursor-pointer font-medium text-emerald-700 dark:text-emerald-400/90">
+                    View Teardown Log Output
+                  </summary>
                   <div className="mt-2 bg-black rounded-lg p-2.5 flex items-start gap-2 max-h-40 overflow-y-auto">
-                    <Terminal className="w-3.5 h-3.5 text-gray-500 mt-0.5 shrink-0" />
+                    <Terminal className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
                     <pre className="text-[10px] text-gray-300 font-mono whitespace-pre-wrap">{destroyOutputTail}</pre>
                   </div>
                 </details>
               )}
-              <button onClick={resetPlan} className="mt-2 px-3 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white font-medium text-xs transition-colors">
+              <button
+                onClick={resetPlan}
+                className="mt-2 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-medium text-xs transition-colors shadow-sm"
+              >
                 Dismiss
               </button>
             </div>
@@ -806,39 +994,73 @@ export default function TerraformExecutionPanel() {
           )}
 
           {plan && (
-            <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 shadow-xl">
+            <div
+              className={clsx(
+                'border rounded-xl p-4 shadow-xl transition-colors',
+                isLight ? 'bg-white border-slate-200' : 'bg-gray-900 border-gray-700'
+              )}
+            >
               {/* Header */}
-              <div className="flex items-center justify-between mb-3 border-b border-gray-800 pb-2.5">
+              <div
+                className={clsx(
+                  'flex items-center justify-between mb-3 border-b pb-2.5',
+                  isLight ? 'border-slate-200' : 'border-gray-800'
+                )}
+              >
                 <div className="flex items-center gap-2">
-                  <div className={clsx("w-2.5 h-2.5 rounded-full", applying ? "bg-blue-400 animate-ping" : isAllDone ? "bg-emerald-400" : "bg-emerald-400 animate-pulse")} />
-                  <p className="text-white text-xs font-bold uppercase tracking-wider">
+                  <div
+                    className={clsx(
+                      'w-2.5 h-2.5 rounded-full',
+                      applying ? 'bg-blue-500 animate-ping' : isAllDone ? 'bg-emerald-500' : 'bg-emerald-500 animate-pulse'
+                    )}
+                  />
+                  <p className={clsx('text-xs font-bold uppercase tracking-wider', isLight ? 'text-slate-900' : 'text-white')}>
                     {applying ? 'Live Deployment In Progress' : isAllDone ? 'Deployment Completed' : 'Plan Ready for Apply'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-[10px] text-gray-500 bg-gray-950 px-2 py-0.5 rounded border border-gray-800">
+                  <span
+                    className={clsx(
+                      'font-mono text-[10px] px-2 py-0.5 rounded border',
+                      isLight ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-gray-950 text-gray-500 border-gray-800'
+                    )}
+                  >
                     SHA: {plan.planHash.slice(0, 10)}…
                   </span>
                   <button
                     onClick={resetPlan}
-                    className="text-[11px] px-2.5 py-1 rounded bg-rose-950/60 hover:bg-rose-900 border border-rose-800/80 text-rose-300 transition-colors flex items-center gap-1 font-medium shadow-sm"
+                    className={clsx(
+                      'text-[11px] px-2.5 py-1 rounded border transition-colors flex items-center gap-1 font-medium shadow-sm',
+                      isLight
+                        ? 'bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-700'
+                        : 'bg-rose-950/60 hover:bg-rose-900 border-rose-800/80 text-rose-300'
+                    )}
                     title={applying ? 'Closes this view only. It does NOT stop the deployment, which keeps running on the server.' : 'Clear plan and reset view'}
                   >
-                    <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                    <XCircle className="w-3.5 h-3.5 text-rose-500" />
                     {applying ? 'Hide this view' : 'Clear / Discard'}
                   </button>
                 </div>
               </div>
 
               {/* Summary Stats */}
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs mb-3 bg-gray-950/60 p-2.5 rounded-lg border border-gray-800">
+              <div
+                className={clsx(
+                  'flex flex-wrap items-center justify-between gap-2 text-xs mb-3 p-2.5 rounded-lg border',
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-gray-950/60 border-gray-800'
+                )}
+              >
                 <div className="flex gap-3">
-                  <span className="flex items-center gap-1 text-emerald-400 font-medium"><Plus className="w-3.5 h-3.5" /> {plan.summary.toAdd} to add</span>
-                  <span className="flex items-center gap-1 text-amber-400 font-medium">~ {plan.summary.toChange} to change</span>
-                  <span className="text-gray-500">0 to destroy (blocked)</span>
+                  <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
+                    <Plus className="w-3.5 h-3.5" /> {plan.summary.toAdd} to add
+                  </span>
+                  <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
+                    ~ {plan.summary.toChange} to change
+                  </span>
+                  <span className={clsx(isLight ? 'text-slate-400' : 'text-gray-500')}>0 to destroy (blocked)</span>
                 </div>
                 {applying && (
-                  <div className="flex items-center gap-2 text-xs text-indigo-300 font-mono">
+                  <div className="flex items-center gap-2 text-xs text-indigo-500 dark:text-indigo-300 font-mono">
                     <Clock className="w-3.5 h-3.5 animate-spin" /> Elapsed: {formatDuration(elapsedSeconds)}
                   </div>
                 )}
@@ -855,27 +1077,43 @@ export default function TerraformExecutionPanel() {
 
               {/* Overall Progress Bar (Shown while applying or completed) */}
               {(applying || applyJobId) && (
-                <div className="mb-4 bg-gray-950 border border-gray-800 rounded-xl p-3.5 space-y-2">
+                <div
+                  className={clsx(
+                    'mb-4 border rounded-xl p-3.5 space-y-2',
+                    isLight ? 'bg-slate-50 border-slate-200' : 'bg-gray-950 border-gray-800'
+                  )}
+                >
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-300 font-semibold flex items-center gap-1.5">
+                    <span className={clsx('font-semibold flex items-center gap-1.5', isLight ? 'text-slate-800' : 'text-gray-300')}>
                       {isAllDone ? (
                         <>
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                          <span className="text-emerald-300">All {totalResources} Services Provisioned</span>
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                          <span className={clsx(isLight ? 'text-emerald-700' : 'text-emerald-300')}>
+                            All {totalResources} Services Provisioned
+                          </span>
                         </>
                       ) : (
                         <>
-                          <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
-                          <span>Provisioning Infrastructure ({doneCount} of {totalResources} Complete{progress && progress.counts.running > 0 ? `, ${progress.counts.running} in progress` : ''}{progress && progress.counts.failed > 0 ? `, ${progress.counts.failed} failed` : ''})</span>
+                          <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                          <span>
+                            Provisioning Infrastructure ({doneCount} of {totalResources} Complete{progress && progress.counts.running > 0 ? `, ${progress.counts.running} in progress` : ''}{progress && progress.counts.failed > 0 ? `, ${progress.counts.failed} failed` : ''})
+                          </span>
                         </>
                       )}
                     </span>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-xs text-white">{progressPercent}%</span>
+                      <span className={clsx('font-bold text-xs', isLight ? 'text-slate-900' : 'text-white')}>
+                        {progressPercent}%
+                      </span>
                       {!isAllDone && (
                         <button
                           onClick={resetPlan}
-                          className="text-[10px] px-2 py-0.5 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 transition-colors font-medium"
+                          className={clsx(
+                            'text-[10px] px-2 py-0.5 rounded border font-medium transition-colors',
+                            isLight
+                              ? 'bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-700'
+                              : 'bg-rose-950/80 hover:bg-rose-900 border-rose-800 text-rose-300'
+                          )}
                           title="Closes this view only. It does NOT stop the deployment."
                         >
                           Hide
@@ -885,7 +1123,12 @@ export default function TerraformExecutionPanel() {
                   </div>
 
                   {/* Animated Progress Bar */}
-                  <div className="w-full bg-gray-900 rounded-full h-2.5 overflow-hidden p-0.5 border border-gray-800">
+                  <div
+                    className={clsx(
+                      'w-full rounded-full h-2.5 overflow-hidden p-0.5 border',
+                      isLight ? 'bg-slate-200 border-slate-300' : 'bg-gray-900 border-gray-800'
+                    )}
+                  >
                     <div
                       style={{ width: `${progressPercent}%` }}
                       className={clsx(
@@ -900,34 +1143,64 @@ export default function TerraformExecutionPanel() {
               )}
 
               {applyStatus?.diagnosis && (
-                <div className="mb-3 p-3 rounded-lg bg-amber-950/40 border border-amber-700/50 text-amber-200 text-xs" data-testid="apply-diagnosis">
-                  <p className="flex items-center gap-2 font-semibold"><AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" /> {applyStatus.diagnosis.title}</p>
-                  <p className="mt-1 text-amber-200/90 leading-relaxed">{applyStatus.diagnosis.message}</p>
+                <div
+                  className={clsx(
+                    'mb-3 p-3 rounded-lg border text-xs',
+                    isLight ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-amber-950/40 border-amber-700/50 text-amber-200'
+                  )}
+                  data-testid="apply-diagnosis"
+                >
+                  <p className="flex items-center gap-2 font-semibold">
+                    <AlertTriangle className={clsx('w-4 h-4 shrink-0', isLight ? 'text-amber-600' : 'text-amber-400')} />{' '}
+                    {applyStatus.diagnosis.title}
+                  </p>
+                  <p className="mt-1 opacity-90 leading-relaxed">{applyStatus.diagnosis.message}</p>
                 </div>
               )}
               {progress?.status === 'queued' && !applyStatus?.diagnosis && (
-                <p className="mb-3 text-xs text-gray-400">Queued — waiting for the worker to start Terraform…</p>
+                <p className={clsx('mb-3 text-xs', isLight ? 'text-slate-500' : 'text-gray-400')}>
+                  Queued — waiting for the worker to start Terraform…
+                </p>
               )}
 
               {/* Search & Filter for Services */}
               <div className="flex items-center justify-between gap-2 mb-2">
-                <p className="text-gray-400 text-xs font-semibold">
+                <p className={clsx('text-xs font-semibold', isLight ? 'text-slate-700' : 'text-gray-400')}>
                   Target Cloud Services ({resourceChanges.length})
                 </p>
                 <div className="flex items-center gap-1.5">
                   <div className="relative">
-                    <Search className="w-3 h-3 text-gray-500 absolute left-2 top-2" />
+                    <Search className={clsx('w-3 h-3 absolute left-2 top-2', isLight ? 'text-slate-400' : 'text-gray-500')} />
                     <input
                       placeholder="Search service..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="bg-gray-950 border border-gray-800 rounded-lg pl-6 pr-2 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 w-32 sm:w-40"
+                      className={clsx(
+                        'border rounded-lg pl-6 pr-2 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-emerald-500 w-32 sm:w-40',
+                        isLight
+                          ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400'
+                          : 'bg-gray-950 border-gray-800 text-white'
+                      )}
                     />
                   </div>
-                  <div className="flex bg-gray-950 border border-gray-800 rounded-lg p-0.5 text-[10px]">
+                  <div
+                    className={clsx(
+                      'flex border rounded-lg p-0.5 text-[10px]',
+                      isLight ? 'bg-slate-100 border-slate-300' : 'bg-gray-950 border-gray-800'
+                    )}
+                  >
                     <button
                       onClick={() => setFilterMode('all')}
-                      className={clsx('px-2 py-0.5 rounded font-medium transition-colors', filterMode === 'all' ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300')}
+                      className={clsx(
+                        'px-2 py-0.5 rounded font-medium transition-colors',
+                        filterMode === 'all'
+                          ? isLight
+                            ? 'bg-white text-slate-900 shadow-xs'
+                            : 'bg-gray-800 text-white'
+                          : isLight
+                          ? 'text-slate-600 hover:text-slate-900'
+                          : 'text-gray-500 hover:text-gray-300'
+                      )}
                     >
                       All
                     </button>
@@ -935,13 +1208,31 @@ export default function TerraformExecutionPanel() {
                       <>
                         <button
                           onClick={() => setFilterMode('completed')}
-                          className={clsx('px-2 py-0.5 rounded font-medium transition-colors', filterMode === 'completed' ? 'bg-emerald-950 text-emerald-300' : 'text-gray-500 hover:text-gray-300')}
+                          className={clsx(
+                            'px-2 py-0.5 rounded font-medium transition-colors',
+                            filterMode === 'completed'
+                              ? isLight
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-emerald-950 text-emerald-300'
+                              : isLight
+                              ? 'text-slate-600 hover:text-slate-900'
+                              : 'text-gray-500 hover:text-gray-300'
+                          )}
                         >
                           Done
                         </button>
                         <button
                           onClick={() => setFilterMode('in_progress')}
-                          className={clsx('px-2 py-0.5 rounded font-medium transition-colors', filterMode === 'in_progress' ? 'bg-blue-950 text-blue-300' : 'text-gray-500 hover:text-gray-300')}
+                          className={clsx(
+                            'px-2 py-0.5 rounded font-medium transition-colors',
+                            filterMode === 'in_progress'
+                              ? isLight
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-blue-950 text-blue-300'
+                              : isLight
+                              ? 'text-slate-600 hover:text-slate-900'
+                              : 'text-gray-500 hover:text-gray-300'
+                          )}
                         >
                           Active
                         </button>
@@ -953,7 +1244,12 @@ export default function TerraformExecutionPanel() {
 
               {/* Resource-by-Resource Live Status List */}
               {resourceChanges.length > 0 && (
-                <div className="max-h-60 overflow-y-auto bg-gray-950 rounded-xl p-2 mb-3 border border-gray-800 space-y-1.5 custom-scrollbar">
+                <div
+                  className={clsx(
+                    'max-h-60 overflow-y-auto rounded-xl p-2 mb-3 border space-y-1.5 custom-scrollbar',
+                    isLight ? 'bg-slate-50 border-slate-200' : 'bg-gray-950 border-gray-800'
+                  )}
+                >
                   {filteredResources.map((rc) => {
                     const originalIdx = resourceChanges.findIndex((r) => r.address === rc.address);
                     const row = rowStatus(rc.address, originalIdx);
@@ -970,11 +1266,19 @@ export default function TerraformExecutionPanel() {
                         className={clsx(
                           'flex items-center justify-between p-2 rounded-lg border text-xs transition-all',
                           isFailed
-                            ? 'bg-rose-950/30 border-rose-500/40 text-rose-200'
+                            ? isLight
+                              ? 'bg-rose-50 border-rose-300 text-rose-900'
+                              : 'bg-rose-950/30 border-rose-500/40 text-rose-200'
                             : isDone
-                            ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200'
+                            ? isLight
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                              : 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200'
                             : isRunning
-                            ? 'bg-blue-950/40 border-blue-500/50 text-blue-200 shadow-sm shadow-blue-500/10'
+                            ? isLight
+                              ? 'bg-blue-50 border-blue-300 text-blue-900 shadow-sm'
+                              : 'bg-blue-950/40 border-blue-500/50 text-blue-200 shadow-sm shadow-blue-500/10'
+                            : isLight
+                            ? 'bg-white border-slate-200 text-slate-700'
                             : 'bg-gray-900/40 border-gray-800/80 text-gray-400'
                         )}
                       >
@@ -983,28 +1287,48 @@ export default function TerraformExecutionPanel() {
                             className={clsx(
                               'w-6 h-6 rounded-md flex items-center justify-center shrink-0 border',
                               isDone
-                                ? 'bg-emerald-900/40 border-emerald-500/40 text-emerald-300'
+                                ? isLight
+                                  ? 'bg-emerald-100 border-emerald-300 text-emerald-700'
+                                  : 'bg-emerald-900/40 border-emerald-500/40 text-emerald-300'
                                 : isRunning
-                                ? 'bg-blue-900/40 border-blue-500/50 text-blue-300'
+                                ? isLight
+                                  ? 'bg-blue-100 border-blue-300 text-blue-700'
+                                  : 'bg-blue-900/40 border-blue-500/50 text-blue-300'
+                                : isLight
+                                ? 'bg-slate-100 border-slate-200 text-slate-500'
                                 : 'bg-gray-800 border-gray-700 text-gray-500'
                             )}
                           >
                             <Icon className="w-3.5 h-3.5" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className={clsx('font-mono text-[11px] truncate font-medium', isDone ? 'text-emerald-200' : isRunning ? 'text-white' : 'text-gray-300')}>
+                            <p
+                              className={clsx(
+                                'font-mono text-[11px] truncate font-medium',
+                                isDone
+                                  ? isLight ? 'text-emerald-900' : 'text-emerald-200'
+                                  : isRunning
+                                  ? isLight ? 'text-blue-950 font-bold' : 'text-white'
+                                  : isLight ? 'text-slate-800' : 'text-gray-300'
+                              )}
+                            >
                               {rc.address}
                             </p>
                             {/* Individual Mini Progress Bar for each item */}
-                            <div className="w-full bg-gray-900 rounded-full h-1 mt-1 overflow-hidden">
+                            <div
+                              className={clsx(
+                                'w-full rounded-full h-1 mt-1 overflow-hidden',
+                                isLight ? 'bg-slate-200' : 'bg-gray-900'
+                              )}
+                            >
                               <div
                                 className={clsx(
                                   'h-full transition-all duration-300',
                                   isDone
-                                    ? 'w-full bg-emerald-400'
+                                    ? 'w-full bg-emerald-500'
                                     : isRunning
-                                    ? 'w-2/3 bg-blue-400 animate-pulse'
-                                    : 'w-0 bg-gray-700'
+                                    ? 'w-2/3 bg-blue-500 animate-pulse'
+                                    : 'w-0 bg-gray-400'
                                 )}
                               />
                             </div>
@@ -1014,23 +1338,58 @@ export default function TerraformExecutionPanel() {
                         {/* Status Badges with Ticks */}
                         <div className="shrink-0 flex items-center gap-1.5">
                           {isFailed ? (
-                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-900/50 border border-rose-500/40 text-rose-300 text-[10px] font-semibold">
-                              <XCircle className="w-3 h-3 text-rose-400" /> Failed
+                            <span
+                              className={clsx(
+                                'flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-semibold',
+                                isLight
+                                  ? 'bg-rose-100 border-rose-300 text-rose-800'
+                                  : 'bg-rose-900/50 border-rose-500/40 text-rose-300'
+                              )}
+                            >
+                              <XCircle className="w-3 h-3 text-rose-500" /> Failed
                             </span>
                           ) : isDone ? (
-                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-900/50 border border-emerald-500/40 text-emerald-300 text-[10px] font-semibold">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Done{runningFor !== undefined && runningFor > 0 ? ` · ${formatDuration(runningFor)}` : ''}
+                            <span
+                              className={clsx(
+                                'flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-semibold',
+                                isLight
+                                  ? 'bg-emerald-100 border-emerald-300 text-emerald-800'
+                                  : 'bg-emerald-900/50 border-emerald-500/40 text-emerald-300'
+                              )}
+                            >
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> Done{runningFor !== undefined && runningFor > 0 ? ` · ${formatDuration(runningFor)}` : ''}
                             </span>
                           ) : isRunning ? (
-                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-900/60 border border-blue-500/50 text-blue-300 text-[10px] font-semibold animate-pulse">
-                              <Loader2 className="w-3 h-3 animate-spin text-blue-400" /> Applying{runningFor !== undefined && runningFor > 0 ? ` · ${formatDuration(runningFor)}` : ''}
+                            <span
+                              className={clsx(
+                                'flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-semibold animate-pulse',
+                                isLight
+                                  ? 'bg-blue-100 border-blue-300 text-blue-800'
+                                  : 'bg-blue-900/60 border-blue-500/50 text-blue-300'
+                              )}
+                            >
+                              <Loader2 className="w-3 h-3 animate-spin text-blue-500" /> Applying{runningFor !== undefined && runningFor > 0 ? ` · ${formatDuration(runningFor)}` : ''}
                             </span>
                           ) : isStopped ? (
-                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-900 border border-gray-700 text-gray-400 text-[10px]">
-                              <AlertTriangle className="w-3 h-3" /> Did not finish
+                            <span
+                              className={clsx(
+                                'flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px]',
+                                isLight
+                                  ? 'bg-slate-100 border-slate-300 text-slate-600'
+                                  : 'bg-gray-900 border-gray-700 text-gray-400'
+                              )}
+                            >
+                              <AlertTriangle className="w-3 h-3 text-amber-500" /> Did not finish
                             </span>
                           ) : (
-                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-900 border border-gray-800 text-gray-500 text-[10px]">
+                            <span
+                              className={clsx(
+                                'flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px]',
+                                isLight
+                                  ? 'bg-slate-100 border-slate-200 text-slate-400'
+                                  : 'bg-gray-900 border-gray-800 text-gray-500'
+                              )}
+                            >
                               <Clock className="w-3 h-3" /> Queued
                             </span>
                           )}
@@ -1063,42 +1422,79 @@ export default function TerraformExecutionPanel() {
                       {applying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
                       Confirm &amp; Apply to {backendProvider.toUpperCase()}
                     </button>
-                    <button onClick={resetPlan} className="px-3 py-2 rounded-lg text-xs font-medium bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400">
+                    <button
+                      onClick={resetPlan}
+                      className={clsx(
+                        'px-3 py-2 rounded-lg text-xs font-medium border transition-colors',
+                        isLight
+                          ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700'
+                          : 'bg-gray-800 hover:bg-gray-700 border-gray-700 text-gray-400'
+                      )}
+                    >
                       Discard / Reset
                     </button>
                   </div>
                   <button
                     onClick={openDestroyModal}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-rose-400 hover:text-rose-200 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900/60 transition-colors"
+                    className={clsx(
+                      'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-colors',
+                      isLight
+                        ? 'bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-700'
+                        : 'text-rose-400 hover:text-rose-200 bg-rose-950/40 hover:bg-rose-900/60 border-rose-900/60'
+                    )}
                   >
-                    <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Teardown
+                    <Trash2 className="w-3.5 h-3.5 text-rose-500" /> Teardown
                   </button>
                 </div>
               ) : (
                 <div className="pt-2">
                   {applyStatus?.state === 'completed' && (
-                    <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 text-xs shadow-lg">
+                    <div
+                      className={clsx(
+                        'p-3.5 rounded-xl border text-xs shadow-lg',
+                        isLight
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                          : 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
+                      )}
+                    >
                       <div className="flex items-center gap-2 mb-1.5 font-semibold text-sm">
-                        <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                         <span>All Infrastructure Successfully Provisioned in {backendProvider.toUpperCase()}!</span>
                       </div>
-                      <p className="text-[11px] text-emerald-400/90">{applyStatus.output?.message}</p>
+                      <p className={clsx('text-[11px]', isLight ? 'text-emerald-700' : 'text-emerald-400/90')}>
+                        {applyStatus.output?.message}
+                      </p>
                       {applyStatus.output?.outputTail && (
-                        <details className="mt-2.5 bg-gray-950/80 rounded-lg p-2 border border-emerald-900/40">
-                          <summary className="cursor-pointer text-emerald-400/90 font-medium">View Live Terraform Console Output</summary>
+                        <details
+                          className={clsx(
+                            'mt-2.5 rounded-lg p-2 border',
+                            isLight ? 'bg-white border-emerald-200' : 'bg-gray-950/80 border-emerald-900/40'
+                          )}
+                        >
+                          <summary className="cursor-pointer font-medium text-emerald-700 dark:text-emerald-400/90">
+                            View Live Terraform Console Output
+                          </summary>
                           <div className="mt-2 bg-black rounded-lg p-2.5 flex items-start gap-2 max-h-40 overflow-y-auto">
-                            <Terminal className="w-3.5 h-3.5 text-gray-500 mt-0.5 shrink-0" />
+                            <Terminal className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
                             <pre className="text-[10px] text-gray-300 font-mono whitespace-pre-wrap">{applyStatus.output.outputTail}</pre>
                           </div>
                         </details>
                       )}
                       <div className="mt-3 flex items-center justify-between">
-                        <button onClick={resetPlan} className="px-3 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white font-medium text-xs transition-colors">
+                        <button
+                          onClick={resetPlan}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-medium text-xs transition-colors shadow-sm"
+                        >
                           Start a new deployment
                         </button>
                         <button
                           onClick={openDestroyModal}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 font-semibold text-xs transition-colors"
+                          className={clsx(
+                            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-semibold text-xs transition-colors',
+                            isLight
+                              ? 'bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-700'
+                              : 'bg-rose-950/80 hover:bg-rose-900 border-rose-800 text-rose-300'
+                          )}
                         >
                           <Trash2 className="w-3.5 h-3.5" /> Teardown All Services
                         </button>
@@ -1106,28 +1502,50 @@ export default function TerraformExecutionPanel() {
                     </div>
                   )}
                   {(applyStatus?.state === 'failed' || applyError) && (
-                    <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs shadow-lg">
+                    <div
+                      className={clsx(
+                        'p-3.5 rounded-xl border text-xs shadow-lg',
+                        isLight
+                          ? 'bg-rose-50 border-rose-200 text-rose-900'
+                          : 'bg-rose-950/60 border-rose-500/50 text-rose-300'
+                      )}
+                    >
                       <div className="flex items-center gap-2 mb-1.5 font-semibold">
-                        <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                        <XCircle className="w-4 h-4 text-rose-500 shrink-0" />
                         <span>Deployment encountered an issue</span>
                       </div>
                       <TerraformPermissionHelp
                         message={`${applyStatus?.output?.message ?? applyError ?? ''}\n${progress?.error ?? ''}\n${(progress?.logTail ?? []).join('\n')}`}
                         resourceTypes={resourceChanges.map((c) => c.type)}
                       />
-                      <details className="text-[11px] text-rose-300/90">
-                        <summary className="cursor-pointer text-rose-300 font-medium">Show Terraform&apos;s own message</summary>
-                        <p className="mt-1.5 bg-black/40 p-2 rounded border border-rose-900/30 font-mono whitespace-pre-wrap break-words max-h-60 overflow-auto">
+                      <details className={clsx('text-[11px]', isLight ? 'text-rose-700' : 'text-rose-300/90')}>
+                        <summary className="cursor-pointer font-medium text-rose-700 dark:text-rose-300">
+                          Show Terraform&apos;s own message
+                        </summary>
+                        <p
+                          className={clsx(
+                            'mt-1.5 p-2 rounded border font-mono whitespace-pre-wrap break-words max-h-60 overflow-auto',
+                            isLight ? 'bg-white border-rose-200 text-rose-900' : 'bg-black/40 border-rose-900/30 text-rose-200'
+                          )}
+                        >
                           {applyStatus?.output?.message ?? applyError}
                         </p>
                       </details>
                       <div className="mt-2.5 flex items-center justify-between">
-                        <button onClick={resetPlan} className="text-xs text-rose-400 hover:text-rose-200 underline font-medium">
+                        <button
+                          onClick={resetPlan}
+                          className="text-xs text-rose-600 dark:text-rose-400 hover:underline font-medium"
+                        >
                           Re-plan and try again
                         </button>
                         <button
                           onClick={openDestroyModal}
-                          className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 font-medium text-[11px]"
+                          className={clsx(
+                            'flex items-center gap-1.5 px-2.5 py-1 rounded border font-medium text-[11px] transition-colors',
+                            isLight
+                              ? 'bg-rose-100 hover:bg-rose-200 border-rose-300 text-rose-800'
+                              : 'bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300'
+                          )}
                         >
                           <Trash2 className="w-3 h-3" /> Teardown partially created resources
                         </button>
@@ -1135,16 +1553,26 @@ export default function TerraformExecutionPanel() {
                     </div>
                   )}
                   {(!applyStatus || applyStatus.state === 'active' || applyStatus.state === 'pending') && !applyError && (
-                    <div className="p-3 rounded-xl bg-gray-950 border border-gray-800 flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-xs text-gray-300">
-                        <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                    <div
+                      className={clsx(
+                        'p-3 rounded-xl border flex items-center justify-between',
+                        isLight ? 'bg-slate-50 border-slate-200' : 'bg-gray-950 border-gray-800'
+                      )}
+                    >
+                      <div className={clsx('flex items-center gap-2 text-xs', isLight ? 'text-slate-800' : 'text-gray-300')}>
+                        <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
                         <span>Deployment in progress in {backendProvider.toUpperCase()}...</span>
                       </div>
                       <button
                         onClick={resetPlan}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 font-semibold text-xs transition-colors"
+                        className={clsx(
+                          'flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-semibold text-xs transition-colors',
+                          isLight
+                            ? 'bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-700'
+                            : 'bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300'
+                        )}
                       >
-                        <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                        <XCircle className="w-3.5 h-3.5 text-rose-500" />
                         Hide this view (does not stop the deployment)
                       </button>
                     </div>
@@ -1156,47 +1584,95 @@ export default function TerraformExecutionPanel() {
 
           {/* Teardown Safety Confirmation Modal */}
           {showDestroyModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-              <div className="bg-gray-900 border border-rose-500/50 rounded-2xl p-5 max-w-md w-full shadow-2xl shadow-rose-950/50 space-y-4">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+              <div
+                className={clsx(
+                  'border rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 transition-colors',
+                  isLight ? 'bg-white border-rose-300 shadow-rose-200/50' : 'bg-gray-900 border-rose-500/50 shadow-rose-950/50'
+                )}
+              >
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-rose-950/80 border border-rose-500/50 flex items-center justify-center text-rose-400 shrink-0">
+                  <div
+                    className={clsx(
+                      'w-10 h-10 rounded-xl border flex items-center justify-center shrink-0',
+                      isLight ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-rose-950/80 border-rose-500/50 text-rose-400'
+                    )}
+                  >
                     <AlertOctagon className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="text-white font-bold text-sm">Terminate All Cloud Infrastructure</h4>
-                    <p className="text-gray-400 text-xs mt-0.5">
-                      This action will run <code className="text-rose-300 font-mono">terraform destroy</code> against your live cloud account.
+                    <h4 className={clsx('font-bold text-sm', isLight ? 'text-slate-900' : 'text-white')}>
+                      Terminate All Cloud Infrastructure
+                    </h4>
+                    <p className={clsx('text-xs mt-0.5', isLight ? 'text-slate-600' : 'text-gray-400')}>
+                      This action will run <code className="text-rose-600 dark:text-rose-300 font-mono">terraform destroy</code> against your live cloud account.
                     </p>
                   </div>
                 </div>
 
-                <div className="bg-gray-950/80 rounded-xl p-3 border border-gray-800 text-xs space-y-1.5">
+                <div
+                  className={clsx(
+                    'rounded-xl p-3 border text-xs space-y-1.5',
+                    isLight ? 'bg-slate-50 border-slate-200' : 'bg-gray-950/80 border-gray-800'
+                  )}
+                >
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Project:</span>
-                    <span className="text-white font-medium">{activeProject.name}</span>
+                    <span className={clsx(isLight ? 'text-slate-500' : 'text-gray-500')}>Project:</span>
+                    <span className={clsx('font-medium', isLight ? 'text-slate-900' : 'text-white')}>{activeProject.name}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Account:</span>
-                    <span className="text-white font-medium">{selectedAccount?.name ?? 'Connected Cloud Account'}</span>
+                    <span className={clsx(isLight ? 'text-slate-500' : 'text-gray-500')}>Account:</span>
+                    <span className={clsx('font-medium', isLight ? 'text-slate-900' : 'text-white')}>{selectedAccount?.name ?? 'Connected Cloud Account'}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Remote State:</span>
-                    <span className="text-emerald-400 font-mono text-[11px]">{backendProvider === 'aws' ? awsBackend.bucket : azureBackend.storageAccountName}</span>
+                    <span className={clsx(isLight ? 'text-slate-500' : 'text-gray-500')}>Remote State:</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-mono text-[11px]">
+                      {backendProvider === 'aws' ? awsBackend.bucket : azureBackend.storageAccountName}
+                    </span>
                   </div>
                 </div>
 
-                <div className="bg-gray-950/80 rounded-xl p-3 border border-gray-800 text-xs space-y-1.5" data-testid="destroy-preview">
-                  {destroyPreviewLoading && <p className="text-gray-400 flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" />Planning the teardown against your real state — this takes a minute or two…</p>}
-                  {destroyPreviewError && <TerraformErrorBox message={destroyPreviewError} fallbackTitle="The teardown could not be prepared" lock={activeProject && selectedAccountId && backendReady() ? { projectId: activeProject.id, cloudAccountId: selectedAccountId, stateBackend: buildBackend(), user: currentUser } : undefined} />}
-                  {destroyPreview?.status === 'nothing_to_destroy' && <p className="text-emerald-300">The remote state holds no resources, so there is nothing to destroy.</p>}
+                <div
+                  className={clsx(
+                    'rounded-xl p-3 border text-xs space-y-1.5',
+                    isLight ? 'bg-slate-50 border-slate-200' : 'bg-gray-950/80 border-gray-800'
+                  )}
+                  data-testid="destroy-preview"
+                >
+                  {destroyPreviewLoading && (
+                    <p className={clsx('flex items-center gap-2', isLight ? 'text-slate-600' : 'text-gray-400')}>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Planning the teardown against your real state — this takes a minute or two…
+                    </p>
+                  )}
+                  {destroyPreviewError && (
+                    <TerraformErrorBox message={destroyPreviewError} fallbackTitle="The teardown could not be prepared" lock={activeProject && selectedAccountId && backendReady() ? { projectId: activeProject.id, cloudAccountId: selectedAccountId, stateBackend: buildBackend(), user: currentUser } : undefined} />
+                  )}
+                  {destroyPreview?.status === 'nothing_to_destroy' && (
+                    <p className="text-emerald-700 dark:text-emerald-300">
+                      The remote state holds no resources, so there is nothing to destroy.
+                    </p>
+                  )}
                   {destroyPreview?.status === 'confirmation_required' && (
                     <>
-                      <p className="text-white font-medium">{destroyPreview.resourceCount} resource{destroyPreview.resourceCount === 1 ? '' : 's'} in your remote state will be destroyed:</p>
-                      <ul className="max-h-36 overflow-y-auto text-[11px] text-gray-300 space-y-0.5 font-mono">
-                        {destroyPreview.resources.map((r) => <li key={r.address}>{r.address} <span className="text-gray-500">({r.type})</span></li>)}
-                        {destroyPreview.resourceCount > destroyPreview.resources.length && <li className="text-gray-500">…and {destroyPreview.resourceCount - destroyPreview.resources.length} more</li>}
+                      <p className={clsx('font-medium', isLight ? 'text-slate-900' : 'text-white')}>
+                        {destroyPreview.resourceCount} resource{destroyPreview.resourceCount === 1 ? '' : 's'} in your remote state will be destroyed:
+                      </p>
+                      <ul className={clsx('max-h-36 overflow-y-auto text-[11px] space-y-0.5 font-mono', isLight ? 'text-slate-700' : 'text-gray-300')}>
+                        {destroyPreview.resources.map((r) => (
+                          <li key={r.address}>
+                            {r.address} <span className={clsx(isLight ? 'text-slate-400' : 'text-gray-500')}>({r.type})</span>
+                          </li>
+                        ))}
+                        {destroyPreview.resourceCount > destroyPreview.resources.length && (
+                          <li className={clsx(isLight ? 'text-slate-400' : 'text-gray-500')}>
+                            …and {destroyPreview.resourceCount - destroyPreview.resources.length} more
+                          </li>
+                        )}
                       </ul>
-                      <p className="text-[10px] text-gray-500">This is the real plan Terraform made from your state. Confirming runs exactly this plan; the confirmation expires in 5 minutes and works once.</p>
+                      <p className={clsx('text-[10px]', isLight ? 'text-slate-400' : 'text-gray-500')}>
+                        This is the real plan Terraform made from your state. Confirming runs exactly this plan; the confirmation expires in 5 minutes and works once.
+                      </p>
                     </>
                   )}
                 </div>
@@ -1205,36 +1681,48 @@ export default function TerraformExecutionPanel() {
                   const notice = protectionNotice(destroyPreview?.deletionProtection);
                   if (!notice) return null;
                   return (
-                    <div className="p-3 bg-amber-950/40 border border-amber-600/50 rounded-xl text-amber-100 text-xs space-y-2" data-testid="protection-notice">
-                      <p className="font-semibold flex items-center gap-1.5"><ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" /> {notice.title}</p>
-                      <p className="text-[11px] text-amber-100/90 leading-relaxed">{notice.body}</p>
+                    <div className={clsx("p-3 rounded-xl text-xs space-y-2", isLight ? "bg-amber-50 border border-amber-300 text-amber-900" : "bg-amber-950/40 border border-amber-600/50 text-amber-100")} data-testid="protection-notice">
+                      <p className="font-semibold flex items-center gap-1.5"><ShieldAlert className={clsx("w-4 h-4 shrink-0", isLight ? "text-amber-600" : "text-amber-400")} /> {notice.title}</p>
+                      <p className={clsx("text-[11px] leading-relaxed", isLight ? "text-amber-800" : "text-amber-100/90")}>{notice.body}</p>
                       <ul className="text-[11px] space-y-0.5 font-mono">
-                        {notice.lines.map((l) => <li key={l.address}><span className="text-amber-300 font-sans">{l.kind}:</span> {l.address}</li>)}
+                        {notice.lines.map((l) => <li key={l.address}><span className={clsx("font-sans font-semibold", isLight ? "text-amber-950" : "text-amber-300")}>{l.kind}:</span> {l.address}</li>)}
                       </ul>
-                      <p className="text-[11px] text-amber-200/80">{notice.footer}</p>
+                      <p className={clsx("text-[11px]", isLight ? "text-amber-700" : "text-amber-200/80")}>{notice.footer}</p>
                     </div>
                   );
                 })()}
 
-                <div className="p-3 bg-rose-950/30 border border-rose-900/50 rounded-xl text-rose-300 text-xs space-y-2">
+                <div
+                  className={clsx(
+                    'p-3 border rounded-xl text-xs space-y-2',
+                    isLight
+                      ? 'bg-rose-50 border-rose-200 text-rose-900'
+                      : 'bg-rose-950/30 border-rose-900/50 text-rose-300'
+                  )}
+                >
                   <p className="font-semibold flex items-center gap-1.5">
-                    <Flame className="w-4 h-4 text-rose-400" /> Irreversible Action
+                    <Flame className="w-4 h-4 text-rose-500" /> Irreversible Action
                   </p>
-                  <p className="text-[11px] text-rose-300/80 leading-relaxed">
+                  <p className={clsx('text-[11px] leading-relaxed', isLight ? 'text-rose-700' : 'text-rose-300/80')}>
                     All VPCs, subnets, compute instances, database clusters, load balancers, and caches provisioned for this project will be deleted.
                   </p>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="block text-gray-400 text-xs">
-                    Type <span className="text-white font-bold font-mono">DESTROY</span> to confirm:
+                  <label className={clsx('block text-xs font-medium', isLight ? 'text-slate-700' : 'text-gray-400')}>
+                    Type <span className="font-bold font-mono text-rose-600 dark:text-white">DESTROY</span> to confirm:
                   </label>
                   <input
                     type="text"
                     value={destroyConfirmInput}
                     onChange={(e) => setDestroyConfirmInput(e.target.value)}
                     placeholder="DESTROY"
-                    className="w-full bg-black/60 border border-gray-700 rounded-lg px-3 py-2 text-white font-mono text-xs focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    className={clsx(
+                      'w-full border rounded-lg px-3 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-rose-500',
+                      isLight
+                        ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white'
+                        : 'bg-black/60 border-gray-700 text-white'
+                    )}
                   />
                 </div>
 
@@ -1242,20 +1730,30 @@ export default function TerraformExecutionPanel() {
                   <TerraformApprovalBar projectId={activeProject.id} action="destroy" planId={destroyPreview.planId} planHash={destroyPreview.planHash} user={currentUser} onReady={setDestroyApproved} />
                 )}
 
-                <div className="flex justify-end gap-2 pt-2 border-t border-gray-800">
+                <div
+                  className={clsx(
+                    'flex justify-end gap-2 pt-2 border-t',
+                    isLight ? 'border-slate-200' : 'border-gray-800'
+                  )}
+                >
                   <button
                     onClick={() => {
                       setShowDestroyModal(false);
                       setDestroyConfirmInput('');
                     }}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700"
+                    className={clsx(
+                      'px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
+                      isLight
+                        ? 'border-slate-300 text-slate-700 hover:bg-slate-100 bg-white'
+                        : 'text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 border-gray-700'
+                    )}
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleExecuteDestroy}
                     disabled={destroyConfirmInput !== 'DESTROY' || destroying || !destroyPreview?.confirmationToken || !destroyApproved}
-                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white transition-all shadow-lg shadow-rose-600/30"
+                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-all shadow-lg shadow-rose-600/30"
                   >
                     {destroying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                     Confirm &amp; Destroy All Services

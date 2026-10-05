@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Copy, Check, PackageCheck } from 'lucide-react';
 import type { RunProgressRecord, ProgressResource } from '@/lib/terraform/execution/applyProgress';
+import { useApp } from '@/context/AppContext';
 
 /** Resources a run created for sure: Terraform said "Creation complete" (and gave the cloud provider's id). Data sources are reads, not creations. */
 export function createdResources(progress: RunProgressRecord | null): ProgressResource[] {
@@ -25,6 +26,9 @@ export function createdListText(progress: RunProgressRecord): string {
  * cloud console, plus those that were in progress when a run failed. Built from Terraform's own output, not from the plan.
  */
 export default function CreatedResourcesList({ progress, cloud }: { progress: RunProgressRecord | null; cloud: string }) {
+  const { state } = useApp();
+  const isLight = state.theme === 'light';
+
   const [copied, setCopied] = useState(false);
   const created = createdResources(progress);
   const maybe = maybeCreatedResources(progress);
@@ -36,34 +40,36 @@ export default function CreatedResourcesList({ progress, cloud }: { progress: Ru
   }
 
   return (
-    <details open={finished} className="mb-3 rounded-xl border border-gray-800 bg-gray-950 p-3 text-xs" data-testid="created-resources">
-      <summary className="cursor-pointer flex items-center gap-2 text-gray-200 font-semibold">
-        <PackageCheck className="w-4 h-4 text-emerald-400" />
+    <details open={finished} className={`mb-3 rounded-xl border p-3 text-xs ${isLight ? 'bg-slate-50 border-slate-200' : 'border-gray-800 bg-gray-950'}`} data-testid="created-resources">
+      <summary className={`cursor-pointer flex items-center gap-2 font-semibold ${isLight ? 'text-slate-800' : 'text-gray-200'}`}>
+        <PackageCheck className={`w-4 h-4 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`} />
         {created.length} resource{created.length === 1 ? '' : 's'} created in {cloud}{maybe.length > 0 ? ` · ${maybe.length} may exist` : ''}
-        {!finished && <span className="text-gray-500 font-normal">(so far)</span>}
+        {!finished && <span className={`${isLight ? 'text-slate-400' : 'text-gray-500'} font-normal`}>(so far)</span>}
       </summary>
       <div className="mt-2 space-y-2">
         <ul className="space-y-1">
           {created.map((r) => (
             <li key={r.address} className="flex items-baseline justify-between gap-3">
-              <span className="font-mono text-[11px] text-emerald-200 break-all">{r.address}</span>
-              <span className="font-mono text-[10px] text-gray-400 break-all text-right select-all">{r.id ?? ''}</span>
+              <span className={`font-mono text-[11px] break-all ${isLight ? 'text-emerald-800 font-medium' : 'text-emerald-200'}`}>{r.address}</span>
+              <span className={`font-mono text-[10px] break-all text-right select-all ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>{r.id ?? ''}</span>
             </li>
           ))}
         </ul>
         {maybe.length > 0 && (
           <div>
-            <p className="text-amber-300 font-medium mt-1">Was being created when the run stopped (check whether these exist):</p>
+            <p className={`font-medium mt-1 ${isLight ? 'text-amber-800' : 'text-amber-300'}`}>Was being created when the run stopped (check whether these exist):</p>
             <ul className="mt-1 space-y-1">
-              {maybe.map((r) => <li key={r.address} className="font-mono text-[11px] text-amber-200 break-all">{r.address}</li>)}
+              {maybe.map((r) => <li key={r.address} className={`font-mono text-[11px] break-all ${isLight ? 'text-amber-700' : 'text-amber-200'}`}>{r.address}</li>)}
             </ul>
           </div>
         )}
         <div className="flex items-center justify-between gap-3 pt-1">
-          <p className="text-gray-500 leading-relaxed">
-            To remove everything this project created, use <strong className="text-gray-300">Teardown</strong>: it deletes exactly what Terraform recorded, in the right order. Deleting by hand also works; search the console for the ids above.
+          <p className={`${isLight ? 'text-slate-500' : 'text-gray-500'} leading-relaxed`}>
+            To remove everything this project created, use <strong className={isLight ? 'text-slate-700' : 'text-gray-300'}>Teardown</strong>: it deletes exactly what Terraform recorded, in the right order. Deleting by hand also works; search the console for the ids above.
           </p>
-          <button type="button" onClick={copy} className="shrink-0 flex items-center gap-1 px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300">
+          <button type="button" onClick={copy} className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded border transition-colors ${
+            isLight ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700 shadow-sm' : 'bg-gray-800 hover:bg-gray-700 border-gray-700 text-gray-300'
+          }`}>
             {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}{copied ? 'Copied' : 'Copy list'}
           </button>
         </div>

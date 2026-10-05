@@ -27,6 +27,25 @@ export async function POST(req: NextRequest) {
     // 1. Try AWS Cognito first
     try {
       const cognitoAuth = await CognitoService.signIn(email, password);
+
+      if ('challenge' in cognitoAuth && cognitoAuth.challenge) {
+        return NextResponse.json({
+          success: false,
+          requiresMfa: true,
+          challengeName: cognitoAuth.challengeName,
+          session: cognitoAuth.session,
+          challengeParameters: cognitoAuth.challengeParameters,
+          email: cognitoAuth.email,
+          message: cognitoAuth.challengeName === 'SMS_MFA'
+            ? 'Please enter the SMS verification code sent to your phone.'
+            : cognitoAuth.challengeName === 'EMAIL_OTP'
+            ? 'Please enter the verification code sent to your email.'
+            : cognitoAuth.challengeName === 'MFA_SETUP'
+            ? 'Please set up your authenticator app to continue.'
+            : 'Please enter the 6-digit verification code from your authenticator app.',
+        }, { status: 200 });
+      }
+
       const user = await AuthService.syncCognitoUser({
         id: cognitoAuth.sub,
         email: cognitoAuth.email,

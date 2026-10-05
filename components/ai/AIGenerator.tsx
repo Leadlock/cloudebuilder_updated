@@ -81,6 +81,7 @@ function getCategoryIcon(category: string) {
 
 export default function AIGenerator() {
   const { state, dispatch } = useApp();
+  const isLight = state.theme === 'light';
   const [prompt, setPrompt] = useState('');
   const [provider, setProvider] = useState<CloudProvider>('aws');
   const [step, setStep] = useState<'prompt' | 'questionnaire' | 'generating' | 'result'>('prompt');
@@ -212,29 +213,53 @@ export default function AIGenerator() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-950 p-6 min-h-screen text-slate-100">
+    <div
+      className={clsx(
+        'flex-1 overflow-y-auto px-4 sm:px-6 py-6 pb-36 custom-scrollbar transition-colors',
+        isLight ? 'bg-slate-50 text-slate-800' : 'bg-slate-950 text-slate-100'
+      )}
+    >
       <div className="max-w-3xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8 pb-6 border-b border-slate-800/80">
+        <div
+          className={clsx(
+            'flex items-center justify-between mb-8 pb-6 border-b',
+            isLight ? 'border-slate-200' : 'border-slate-800/80'
+          )}
+        >
           <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 bg-gradient-to-tr from-purple-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-900/30">
+            <div className="w-11 h-11 bg-gradient-to-tr from-purple-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-900/20">
               <Sparkles className="w-6 h-6 text-white" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-white font-bold text-xl tracking-tight">AI Architecture Architect</h1>
-                <span className="px-2 py-0.5 text-[10px] font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-full">
+                <h1 className={clsx('font-bold text-xl tracking-tight', isLight ? 'text-slate-900' : 'text-white')}>
+                  AI Architecture Architect
+                </h1>
+                <span
+                  className={clsx(
+                    'px-2 py-0.5 text-[10px] font-semibold border rounded-full',
+                    isLight
+                      ? 'bg-purple-100 text-purple-700 border-purple-200'
+                      : 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                  )}
+                >
                   Interactive Discovery
                 </span>
               </div>
-              <p className="text-slate-400 text-xs mt-0.5">
+              <p className={clsx('text-xs mt-0.5', isLight ? 'text-slate-500' : 'text-slate-400')}>
                 Guided requirements discovery and customized production-grade cloud topologies
               </p>
             </div>
           </div>
 
           {/* Provider switch */}
-          <div className="flex rounded-lg border border-slate-700 bg-slate-900 p-0.5">
+          <div
+            className={clsx(
+              'flex rounded-lg border p-0.5',
+              isLight ? 'bg-slate-100 border-slate-300' : 'bg-slate-900 border-slate-700'
+            )}
+          >
             {(['aws', 'azure'] as const).map((p) => (
               <button
                 key={p}
@@ -245,6 +270,8 @@ export default function AIGenerator() {
                   'px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-md transition-all',
                   provider === p
                     ? 'bg-purple-600 text-white shadow-sm'
+                    : isLight
+                    ? 'text-slate-600 hover:text-slate-900'
                     : 'text-slate-400 hover:text-slate-200'
                 )}
               >
@@ -256,11 +283,18 @@ export default function AIGenerator() {
 
         {/* Global Error Alert */}
         {error && (
-          <div className="flex items-start gap-2.5 bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs p-3.5 rounded-xl mb-6">
-            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-rose-400" />
+          <div
+            className={clsx(
+              'flex items-start gap-2.5 text-xs p-3.5 rounded-xl mb-6 border',
+              isLight
+                ? 'bg-rose-50 border-rose-200 text-rose-800'
+                : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+            )}
+          >
+            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-rose-500" />
             <div className="flex-1">
-              <p className="font-medium text-rose-200">Error</p>
-              <p className="mt-0.5 text-rose-300/90">{error}</p>
+              <p className={clsx('font-medium', isLight ? 'text-rose-900' : 'text-rose-200')}>Error</p>
+              <p className="mt-0.5 opacity-90">{error}</p>
             </div>
           </div>
         )}
@@ -268,13 +302,25 @@ export default function AIGenerator() {
         {/* STEP 1: PROMPT INPUT */}
         {step === 'prompt' && (
           <div className="space-y-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <div
+              className={clsx(
+                'border rounded-2xl p-5 shadow-xl transition-colors',
+                isLight ? 'bg-white border-slate-200 shadow-slate-100' : 'bg-slate-900 border-slate-800'
+              )}
+            >
               <div className="flex items-center justify-between mb-3">
-                <label className="text-slate-300 text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5">
-                  <BookOpen className="w-3.5 h-3.5 text-purple-400" />
+                <label
+                  className={clsx(
+                    'text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5',
+                    isLight ? 'text-slate-700' : 'text-slate-300'
+                  )}
+                >
+                  <BookOpen className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                   Describe Your Application or Workload
                 </label>
-                <span className="text-slate-500 text-[11px]">CloudCraft will identify gaps & ask clarifying questions</span>
+                <span className={clsx('text-[11px]', isLight ? 'text-slate-400' : 'text-slate-500')}>
+                  CloudCraft will identify gaps & ask clarifying questions
+                </span>
               </div>
               
               <textarea
@@ -286,21 +332,38 @@ export default function AIGenerator() {
                 placeholder="e.g. Build a highly available SaaS application with React frontend, Node.js API, PostgreSQL database, and Redis cache."
                 rows={4}
                 disabled={discoveringQuestions}
-                className="w-full bg-slate-950 border border-slate-700/80 rounded-xl p-3.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 resize-none transition-all"
+                className={clsx(
+                  'w-full border rounded-xl p-3.5 text-sm resize-none transition-all focus:outline-none focus:ring-2 focus:ring-purple-500/50',
+                  isLight
+                    ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-purple-500 focus:bg-white'
+                    : 'bg-slate-950 border-slate-700/80 text-white placeholder-slate-500 focus:border-purple-500'
+                )}
                 autoFocus
               />
 
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4 pt-3 border-t border-slate-800">
-                <span className="text-slate-500 text-xs">⌘+Enter for Guided Discovery</span>
+              <div
+                className={clsx(
+                  'flex flex-col sm:flex-row items-center justify-between gap-3 mt-4 pt-3 border-t',
+                  isLight ? 'border-slate-200' : 'border-slate-800'
+                )}
+              >
+                <span className={clsx('text-xs', isLight ? 'text-slate-400' : 'text-slate-500')}>
+                  ⌘+Enter for Guided Discovery
+                </span>
                 
                 <div className="flex items-center gap-2.5 w-full sm:w-auto">
                   <button
                     onClick={() => handleGenerate(false)}
                     disabled={!prompt.trim() || discoveringQuestions}
-                    className="flex-1 sm:flex-none px-3.5 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 hover:text-white rounded-xl text-xs font-medium border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
+                    className={clsx(
+                      'flex-1 sm:flex-none px-3.5 py-2 disabled:opacity-40 rounded-xl text-xs font-medium border transition-colors flex items-center justify-center gap-1.5',
+                      isLight
+                        ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700'
+                    )}
                     title="Generate directly from prompt without questionnaire"
                   >
-                    <Zap className="w-3.5 h-3.5 text-amber-400" />
+                    <Zap className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
                     Fast Generate
                   </button>
 
@@ -327,9 +390,19 @@ export default function AIGenerator() {
             </div>
 
             {/* Example prompts */}
-            <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4">
-              <p className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <BookOpen className="w-3.5 h-3.5 text-slate-500" />
+            <div
+              className={clsx(
+                'border rounded-2xl p-4 transition-colors',
+                isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/60 border-slate-800/80'
+              )}
+            >
+              <p
+                className={clsx(
+                  'text-xs font-medium uppercase tracking-wider mb-3 flex items-center gap-1.5',
+                  isLight ? 'text-slate-500' : 'text-slate-400'
+                )}
+              >
+                <BookOpen className={clsx('w-3.5 h-3.5', isLight ? 'text-slate-400' : 'text-slate-500')} />
                 Example Architecture Prompts
               </p>
               <div className="space-y-2">
@@ -337,10 +410,22 @@ export default function AIGenerator() {
                   <button
                     key={i}
                     onClick={() => setPrompt(p)}
-                    className="w-full text-left px-3.5 py-2.5 bg-slate-950/70 hover:bg-slate-800/80 border border-slate-800 rounded-xl text-xs text-slate-300 hover:text-white transition-all flex items-center justify-between group"
+                    className={clsx(
+                      'w-full text-left px-3.5 py-2.5 rounded-xl text-xs transition-all flex items-center justify-between group border',
+                      isLight
+                        ? 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700 hover:text-slate-900'
+                        : 'bg-slate-950/70 hover:bg-slate-800/80 border-slate-800 text-slate-300 hover:text-white'
+                    )}
                   >
                     <span className="truncate pr-2">{p}</span>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-purple-400 transition-colors flex-shrink-0" />
+                    <ChevronRight
+                      className={clsx(
+                        'w-3.5 h-3.5 transition-colors flex-shrink-0',
+                        isLight
+                          ? 'text-slate-400 group-hover:text-purple-600'
+                          : 'text-slate-600 group-hover:text-purple-400'
+                      )}
+                    />
                   </button>
                 ))}
               </div>
@@ -352,23 +437,45 @@ export default function AIGenerator() {
         {step === 'questionnaire' && questionnaire && (
           <div className="space-y-6">
             {/* Top Prompt Recap & Back Button */}
-            <div className="flex items-center justify-between bg-slate-900/80 border border-slate-800 rounded-xl p-3.5">
+            <div
+              className={clsx(
+                'flex items-center justify-between border rounded-xl p-3.5',
+                isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/80 border-slate-800'
+              )}
+            >
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setStep('prompt')}
-                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                  className={clsx(
+                    'p-1.5 rounded-lg transition-colors',
+                    isLight
+                      ? 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  )}
                   title="Back to prompt edit"
                 >
                   <ArrowLeft className="w-4 h-4" />
                 </button>
                 <div>
-                  <span className="text-[10px] uppercase font-semibold text-purple-400 tracking-wider">Original Request</span>
-                  <p className="text-xs text-slate-200 line-clamp-1 font-medium">{prompt}</p>
+                  <span
+                    className={clsx(
+                      'text-[10px] uppercase font-semibold tracking-wider',
+                      isLight ? 'text-purple-700' : 'text-purple-400'
+                    )}
+                  >
+                    Original Request
+                  </span>
+                  <p className={clsx('text-xs line-clamp-1 font-medium', isLight ? 'text-slate-800' : 'text-slate-200')}>
+                    {prompt}
+                  </p>
                 </div>
               </div>
               <button
                 onClick={handleResetToRecommended}
-                className="text-[11px] text-purple-400 hover:text-purple-300 hover:underline flex items-center gap-1 font-medium"
+                className={clsx(
+                  'text-[11px] hover:underline flex items-center gap-1 font-medium',
+                  isLight ? 'text-purple-600 hover:text-purple-800' : 'text-purple-400 hover:text-purple-300'
+                )}
               >
                 <Sparkles className="w-3 h-3" />
                 Select All Recommended
@@ -377,16 +484,38 @@ export default function AIGenerator() {
 
             {/* Identified Gaps Banner */}
             {questionnaire.identifiedGaps && questionnaire.identifiedGaps.length > 0 && (
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
-                <div className="flex items-center gap-2 text-amber-300 text-xs font-semibold mb-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+              <div
+                className={clsx(
+                  'border rounded-2xl p-4',
+                  isLight ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-amber-500/10 border-amber-500/30'
+                )}
+              >
+                <div
+                  className={clsx(
+                    'flex items-center gap-2 text-xs font-semibold mb-2',
+                    isLight ? 'text-amber-800' : 'text-amber-300'
+                  )}
+                >
+                  <AlertTriangle className={clsx('w-4 h-4', isLight ? 'text-amber-600' : 'text-amber-400')} />
                   <span>Identified Architecture Gaps to Clarify</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
                   {questionnaire.identifiedGaps.map((gap) => (
-                    <div key={gap.id} className="bg-slate-950/60 border border-amber-500/20 rounded-lg p-2.5 text-[11px]">
-                      <span className="font-semibold text-amber-200 block">{gap.title}</span>
-                      <span className="text-slate-400 text-[10px] mt-0.5 block">{gap.description}</span>
+                    <div
+                      key={gap.id}
+                      className={clsx(
+                        'border rounded-lg p-2.5 text-[11px]',
+                        isLight
+                          ? 'bg-white border-amber-200/80 text-slate-700'
+                          : 'bg-slate-950/60 border-amber-500/20 text-slate-300'
+                      )}
+                    >
+                      <span className={clsx('font-semibold block', isLight ? 'text-amber-900' : 'text-amber-200')}>
+                        {gap.title}
+                      </span>
+                      <span className={clsx('text-[10px] mt-0.5 block', isLight ? 'text-slate-500' : 'text-slate-400')}>
+                        {gap.description}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -400,27 +529,51 @@ export default function AIGenerator() {
                 return (
                   <div
                     key={q.id}
-                    className="bg-slate-900 border border-slate-800 rounded-2xl p-5 transition-all shadow-md"
+                    className={clsx(
+                      'border rounded-2xl p-5 transition-all shadow-md',
+                      isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
+                    )}
                   >
                     <div className="flex items-start justify-between gap-3 mb-2">
                       <div className="flex items-center gap-2">
-                        <div className="p-1.5 bg-slate-800 rounded-lg border border-slate-700">
+                        <div
+                          className={clsx(
+                            'p-1.5 rounded-lg border',
+                            isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-800 border-slate-700'
+                          )}
+                        >
                           {getCategoryIcon(q.category)}
                         </div>
                         <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          <span
+                            className={clsx(
+                              'text-[10px] font-bold uppercase tracking-wider',
+                              isLight ? 'text-slate-500' : 'text-slate-400'
+                            )}
+                          >
                             {q.categoryLabel}
                           </span>
-                          <h3 className="text-sm font-semibold text-white mt-0.5">{q.question}</h3>
+                          <h3 className={clsx('text-sm font-semibold mt-0.5', isLight ? 'text-slate-900' : 'text-white')}>
+                            {q.question}
+                          </h3>
                         </div>
                       </div>
-                      <span className="text-[10px] font-bold text-slate-500 bg-slate-800/80 px-2 py-0.5 rounded-full border border-slate-700/50">
+                      <span
+                        className={clsx(
+                          'text-[10px] font-bold px-2 py-0.5 rounded-full border',
+                          isLight
+                            ? 'text-slate-600 bg-slate-100 border-slate-200'
+                            : 'text-slate-400 bg-slate-800/80 border-slate-700/50'
+                        )}
+                      >
                         {qIndex + 1}/{questionnaire.questions.length}
                       </span>
                     </div>
 
                     {q.rationale && (
-                      <p className="text-[11px] text-slate-400 mb-3 pl-8">{q.rationale}</p>
+                      <p className={clsx('text-[11px] mb-3 pl-8', isLight ? 'text-slate-500' : 'text-slate-400')}>
+                        {q.rationale}
+                      </p>
                     )}
 
                     {/* Options list */}
@@ -435,24 +588,44 @@ export default function AIGenerator() {
                             className={clsx(
                               'text-left p-3 rounded-xl border transition-all flex items-start justify-between gap-3',
                               isSelected
-                                ? 'bg-purple-950/40 border-purple-500/80 shadow-md shadow-purple-900/20 text-white'
+                                ? isLight
+                                  ? 'bg-purple-50 border-purple-400 text-purple-950 shadow-sm ring-1 ring-purple-400/40'
+                                  : 'bg-purple-950/40 border-purple-500/80 shadow-md shadow-purple-900/20 text-white'
+                                : isLight
+                                ? 'bg-slate-50/70 border-slate-200 hover:border-slate-300 text-slate-700 hover:text-slate-900'
                                 : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white'
                             )}
                           >
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
-                                <span className="text-xs font-semibold">{opt.label}</span>
+                                <span className={clsx('text-xs font-semibold', isLight && isSelected && 'text-purple-900')}>
+                                  {opt.label}
+                                </span>
                                 {opt.isRecommended && (
-                                  <span className="px-1.5 py-0.5 text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded">
+                                  <span
+                                    className={clsx(
+                                      'px-1.5 py-0.5 text-[9px] font-bold border rounded',
+                                      isLight
+                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                        : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                                    )}
+                                  >
                                     Recommended
                                   </span>
                                 )}
                               </div>
                               {opt.description && (
-                                <p className="text-[11px] text-slate-400 mt-1">{opt.description}</p>
+                                <p className={clsx('text-[11px] mt-1', isLight ? 'text-slate-600' : 'text-slate-400')}>
+                                  {opt.description}
+                                </p>
                               )}
                               {opt.technicalImpact && (
-                                <div className="mt-1.5 text-[10px] text-purple-300/80 flex items-center gap-1 font-mono">
+                                <div
+                                  className={clsx(
+                                    'mt-1.5 text-[10px] flex items-center gap-1 font-mono',
+                                    isLight ? 'text-purple-700 font-medium' : 'text-purple-300/80'
+                                  )}
+                                >
                                   <span>↳</span>
                                   <span>{opt.technicalImpact}</span>
                                 </div>
@@ -461,9 +634,11 @@ export default function AIGenerator() {
 
                             <div
                               className={clsx(
-                                'w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 mt-0.5',
+                                'w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors',
                                 isSelected
                                   ? 'bg-purple-600 border-purple-500 text-white'
+                                  : isLight
+                                  ? 'border-slate-300 bg-white'
                                   : 'border-slate-600 bg-slate-900'
                               )}
                             >
@@ -479,8 +654,18 @@ export default function AIGenerator() {
             </div>
 
             {/* Extra Requirements input */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-              <label className="text-slate-300 text-xs font-semibold uppercase tracking-wider block mb-1.5">
+            <div
+              className={clsx(
+                'border rounded-2xl p-4 transition-colors',
+                isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900 border-slate-800'
+              )}
+            >
+              <label
+                className={clsx(
+                  'text-xs font-semibold uppercase tracking-wider block mb-1.5',
+                  isLight ? 'text-slate-700' : 'text-slate-300'
+                )}
+              >
                 Additional Custom Requirements (Optional)
               </label>
               <input
@@ -488,42 +673,71 @@ export default function AIGenerator() {
                 value={customRequirements}
                 onChange={(e) => setCustomRequirements(e.target.value)}
                 placeholder="e.g. Must include automated daily backup at 2 AM UTC and KMS CMK key"
-                className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                className={clsx(
+                  'w-full border rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all',
+                  isLight
+                    ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-purple-500'
+                    : 'bg-slate-950 border-slate-700/80 text-white placeholder-slate-500 focus:border-purple-500'
+                )}
               />
             </div>
 
-            {/* Bottom actions */}
-            <div className="flex items-center justify-between gap-3 pt-2">
+            {/* Bottom actions sticky elevated bar */}
+            <div
+              className={clsx(
+                'sticky bottom-6 z-20 backdrop-blur-xl border p-3.5 sm:p-4 rounded-2xl shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3 transition-all',
+                isLight
+                  ? 'bg-white/95 border-slate-200 shadow-slate-200/80'
+                  : 'bg-slate-900/90 border-slate-700/80 glow-emerald'
+              )}
+            >
               <button
                 onClick={() => setStep('prompt')}
-                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-xl text-xs font-medium transition-colors"
+                className={clsx(
+                  'w-full sm:w-auto px-4 py-2.5 border rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 active:scale-[0.98]',
+                  isLight
+                    ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700 hover:text-slate-900'
+                    : 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-200 hover:text-white'
+                )}
               >
-                Back to Prompt
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Prompt</span>
               </button>
 
-              <button
-                onClick={() => handleGenerate(true)}
-                disabled={loading}
-                className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-900/30 transition-all flex items-center gap-2"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>Generate Custom Architecture</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                <button
+                  onClick={() => handleGenerate(true)}
+                  disabled={loading}
+                  className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 active:scale-[0.98] text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-900/40 hover:shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 ring-1 ring-emerald-400/30"
+                >
+                  <Sparkles className="w-4 h-4 text-emerald-100 animate-pulse" />
+                  <span>Generate Custom Architecture</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         )}
 
         {/* STEP 3: GENERATING STATE */}
         {step === 'generating' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center shadow-2xl space-y-6">
+          <div
+            className={clsx(
+              'border rounded-2xl p-8 text-center shadow-2xl space-y-6',
+              isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
+            )}
+          >
             <div className="w-14 h-14 bg-purple-600/20 border border-purple-500/40 rounded-2xl flex items-center justify-center mx-auto">
-              <Loader2 className="w-7 h-7 text-purple-400 animate-spin" />
+              <Loader2 className="w-7 h-7 text-purple-600 dark:text-purple-400 animate-spin" />
             </div>
 
             <div>
-              <h3 className="text-white font-bold text-lg">Synthesizing Architecture</h3>
-              <p className="text-slate-400 text-xs mt-1">Applying Well-Architected rules and tailoring to your answers</p>
+              <h3 className={clsx('font-bold text-lg', isLight ? 'text-slate-900' : 'text-white')}>
+                Synthesizing Architecture
+              </h3>
+              <p className={clsx('text-xs mt-1', isLight ? 'text-slate-500' : 'text-slate-400')}>
+                Applying Well-Architected rules and tailoring to your answers
+              </p>
             </div>
 
             <div className="max-w-md mx-auto space-y-2.5 text-left">
@@ -532,8 +746,16 @@ export default function AIGenerator() {
                 'Isolating compute & database into Multi-AZ private subnets',
                 'Configuring Web Application Firewall (WAF) & Load Balancing',
                 'Executing auto-layout and Well-Architected validation',
-              ].map((s, i) => (
-                <div key={s} className="flex items-center gap-3 text-xs text-slate-300 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+              ].map((s) => (
+                <div
+                  key={s}
+                  className={clsx(
+                    'flex items-center gap-3 text-xs p-2.5 rounded-xl border transition-colors',
+                    isLight
+                      ? 'text-slate-700 bg-slate-50 border-slate-200'
+                      : 'text-slate-300 bg-slate-950/60 border-slate-800'
+                  )}
+                >
                   <div className="w-3.5 h-3.5 border-2 border-purple-500 rounded-full border-t-transparent animate-spin flex-shrink-0" />
                   <span>{s}</span>
                 </div>
@@ -546,62 +768,124 @@ export default function AIGenerator() {
         {step === 'result' && result && (
           <div className="space-y-5">
             {warning && (
-              <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs p-3.5 rounded-xl">
+              <div
+                className={clsx(
+                  'flex items-start gap-2 text-xs p-3.5 rounded-xl border',
+                  isLight
+                    ? 'bg-amber-50 border-amber-200 text-amber-800'
+                    : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                )}
+              >
                 <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                 <span className="whitespace-pre-line">{warning}</span>
               </div>
             )}
 
             {/* Success Summary */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <div
+              className={clsx(
+                'border rounded-2xl p-5 shadow-xl transition-colors',
+                isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
+              )}
+            >
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span
+                  className={clsx(
+                    'text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5',
+                    isLight ? 'text-purple-700' : 'text-purple-400'
+                  )}
+                >
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                   Architecture Generated Successfully
                 </span>
-                <span className="text-[11px] bg-slate-800 px-2 py-0.5 rounded-md text-slate-300 border border-slate-700">
+                <span
+                  className={clsx(
+                    'text-[11px] px-2 py-0.5 rounded-md border font-semibold',
+                    isLight
+                      ? 'bg-slate-100 text-slate-700 border-slate-300'
+                      : 'bg-slate-800 text-slate-300 border-slate-700'
+                  )}
+                >
                   {provider.toUpperCase()}
                 </span>
               </div>
-              <p className="text-slate-200 text-sm leading-relaxed">{result.summary}</p>
+              <p className={clsx('text-sm leading-relaxed', isLight ? 'text-slate-700' : 'text-slate-200')}>
+                {result.summary}
+              </p>
             </div>
 
             {/* Metrics */}
             <div className="grid grid-cols-3 gap-3">
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
-                <Server className="w-4 h-4 text-blue-400 mx-auto mb-1.5" />
-                <p className="text-white font-bold text-xl">{result.nodes.length}</p>
-                <p className="text-slate-400 text-xs">Resources</p>
+              <div
+                className={clsx(
+                  'border rounded-2xl p-4 text-center transition-colors',
+                  isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
+                )}
+              >
+                <Server className="w-4 h-4 text-blue-500 dark:text-blue-400 mx-auto mb-1.5" />
+                <p className={clsx('font-bold text-xl', isLight ? 'text-slate-900' : 'text-white')}>
+                  {result.nodes.length}
+                </p>
+                <p className={clsx('text-xs', isLight ? 'text-slate-500' : 'text-slate-400')}>Resources</p>
               </div>
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
-                <DollarSign className="w-4 h-4 text-amber-400 mx-auto mb-1.5" />
-                <p className="text-amber-400 font-bold text-xl">${result.estimatedCost}</p>
-                <p className="text-slate-400 text-xs">Est. Monthly Cost</p>
+              <div
+                className={clsx(
+                  'border rounded-2xl p-4 text-center transition-colors',
+                  isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
+                )}
+              >
+                <DollarSign className="w-4 h-4 text-amber-500 dark:text-amber-400 mx-auto mb-1.5" />
+                <p className="text-amber-500 dark:text-amber-400 font-bold text-xl">${result.estimatedCost}</p>
+                <p className={clsx('text-xs', isLight ? 'text-slate-500' : 'text-slate-400')}>Est. Monthly Cost</p>
               </div>
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
-                <ShieldCheck className="w-4 h-4 text-emerald-400 mx-auto mb-1.5" />
+              <div
+                className={clsx(
+                  'border rounded-2xl p-4 text-center transition-colors',
+                  isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
+                )}
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-500 dark:text-emerald-400 mx-auto mb-1.5" />
                 <p
                   className={clsx(
                     'font-bold text-xl',
-                    result.securityScore === null ? 'text-slate-500 text-sm' : 'text-emerald-400'
+                    result.securityScore === null
+                      ? isLight
+                        ? 'text-slate-400 text-sm'
+                        : 'text-slate-500 text-sm'
+                      : 'text-emerald-500 dark:text-emerald-400'
                   )}
                 >
                   {result.securityScore === null ? 'Not scored' : `${result.securityScore}%`}
                 </p>
-                <p className="text-slate-400 text-xs">Security Score</p>
+                <p className={clsx('text-xs', isLight ? 'text-slate-500' : 'text-slate-400')}>Security Score</p>
               </div>
             </div>
 
             {/* Suggested resources */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-              <p className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-3">
+            <div
+              className={clsx(
+                'border rounded-2xl p-5 transition-colors',
+                isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
+              )}
+            >
+              <p
+                className={clsx(
+                  'text-xs font-medium uppercase tracking-wider mb-3',
+                  isLight ? 'text-slate-600' : 'text-slate-400'
+                )}
+              >
                 Included Resources & Components
               </p>
               <div className="flex flex-wrap gap-2">
                 {result.suggestedResources.map((r) => (
                   <span
                     key={r}
-                    className="text-xs bg-slate-950 border border-slate-700/80 text-slate-200 px-2.5 py-1 rounded-lg font-mono"
+                    className={clsx(
+                      'text-xs px-2.5 py-1 rounded-lg font-mono border',
+                      isLight
+                        ? 'bg-slate-100 border-slate-200 text-slate-800'
+                        : 'bg-slate-950 border-slate-700/80 text-slate-200'
+                    )}
                   >
                     {r}
                   </span>
@@ -610,25 +894,44 @@ export default function AIGenerator() {
             </div>
 
             {/* Project name input */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-              <label className="text-slate-400 text-xs font-medium mb-1.5 block">Project Name</label>
+            <div
+              className={clsx(
+                'border rounded-2xl p-4 transition-colors',
+                isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
+              )}
+            >
+              <label
+                className={clsx('text-xs font-medium mb-1.5 block', isLight ? 'text-slate-600' : 'text-slate-400')}
+              >
+                Project Name
+              </label>
               <input
                 type="text"
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
+                className={clsx(
+                  'w-full border rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all',
+                  isLight
+                    ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-purple-500'
+                    : 'bg-slate-950 border-slate-700 text-white placeholder-slate-500 focus:border-purple-500'
+                )}
               />
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-3 pt-2">
+            <div className="flex flex-wrap items-center gap-3 pt-4 pb-8">
               <button
                 onClick={() => {
                   setStep('prompt');
                   setResult(null);
                   setQuestionnaire(null);
                 }}
-                className="flex-1 py-2.5 border border-slate-700 text-slate-400 hover:text-white rounded-xl text-xs font-medium transition-colors bg-slate-900 hover:bg-slate-800"
+                className={clsx(
+                  'flex-1 min-w-[120px] py-2.5 border rounded-xl text-xs font-semibold transition-all active:scale-[0.98]',
+                  isLight
+                    ? 'border-slate-300 text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200'
+                    : 'border-slate-700 text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800'
+                )}
               >
                 Start Over
               </button>
@@ -636,7 +939,12 @@ export default function AIGenerator() {
               {questionnaire && (
                 <button
                   onClick={() => setStep('questionnaire')}
-                  className="flex-1 py-2.5 border border-purple-500/40 text-purple-300 hover:text-white rounded-xl text-xs font-medium transition-colors bg-purple-950/30 hover:bg-purple-900/40"
+                  className={clsx(
+                    'flex-1 min-w-[120px] py-2.5 border rounded-xl text-xs font-semibold transition-all active:scale-[0.98]',
+                    isLight
+                      ? 'border-purple-300 text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100'
+                      : 'border-purple-500/40 text-purple-300 hover:text-white bg-purple-950/40 hover:bg-purple-900/50'
+                  )}
                 >
                   Adjust Answers
                 </button>
@@ -645,7 +953,7 @@ export default function AIGenerator() {
               <button
                 onClick={handleApply}
                 disabled={result.nodes.length === 0}
-                className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30"
+                className="flex-1 min-w-[160px] py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30 hover:shadow-emerald-500/25 active:scale-[0.98] ring-1 ring-emerald-400/30"
               >
                 <Sparkles className="w-4 h-4" />
                 <span>Open in Canvas</span>

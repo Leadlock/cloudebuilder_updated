@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useApp } from '@/context/AppContext';
 import { Bot, Loader2, Sparkles, X, ArrowRight, ArrowLeft, Check, AlertTriangle, Shield, Layers, Activity, Cpu, Database, HelpCircle, Zap } from 'lucide-react';
 import { CloudProvider, CanvasNode, CanvasEdge, QuestionnaireResult, QuestionnaireAnswers, ArchitectureQuestion } from '@/types';
 import { rekeyGraph } from '@/lib/domain/instantiateTemplate';
@@ -37,6 +38,8 @@ export default function AiPromptPanel({
   onClose,
   onApplyGraph,
 }: AiPromptPanelProps) {
+  const { state } = useApp();
+  const isLight = state.theme === 'light';
   const [prompt, setPrompt] = useState('');
   const [step, setStep] = useState<'prompt' | 'questionnaire' | 'generating'>('prompt');
   const [loading, setLoading] = useState(false);
@@ -125,19 +128,43 @@ export default function AiPromptPanel({
   };
 
   return (
-    <div className="absolute top-4 left-4 w-[460px] max-h-[85vh] bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col z-50 animate-in slide-in-from-left-4 fade-in duration-200">
+    <div
+      className={clsx(
+        'absolute top-4 left-4 w-[460px] max-h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col z-50 animate-in slide-in-from-left-4 fade-in duration-200 border transition-colors',
+        isLight ? 'bg-white border-slate-200 shadow-slate-300/80' : 'bg-slate-900 border-slate-700/80 shadow-2xl'
+      )}
+    >
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-900/80">
+      <div
+        className={clsx(
+          'flex items-center justify-between px-5 py-3.5 border-b transition-colors',
+          isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/80 border-slate-800'
+        )}
+      >
         <div className="flex items-center gap-2">
-          <Bot className="w-5 h-5 text-fuchsia-400" />
-          <h3 className="text-white font-bold text-sm tracking-tight">AI Cloud Architect</h3>
-          <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-fuchsia-500/20 text-fuchsia-300 rounded border border-fuchsia-500/30 uppercase">
+          <Bot className="w-5 h-5 text-fuchsia-500 dark:text-fuchsia-400" />
+          <h3 className={clsx('font-bold text-sm tracking-tight', isLight ? 'text-slate-900' : 'text-white')}>
+            AI Cloud Architect
+          </h3>
+          <span
+            className={clsx(
+              'px-1.5 py-0.5 text-[10px] font-semibold rounded border uppercase',
+              isLight
+                ? 'bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200'
+                : 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30'
+            )}
+          >
             {provider}
           </span>
         </div>
         <button
           onClick={onClose}
-          className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+          className={clsx(
+            'p-1 rounded-lg transition-colors',
+            isLight
+              ? 'text-slate-400 hover:text-slate-800 hover:bg-slate-200'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+          )}
         >
           <X className="w-4 h-4" />
         </button>
@@ -146,8 +173,13 @@ export default function AiPromptPanel({
       {/* Body */}
       <div className="p-5 overflow-y-auto flex-1 flex flex-col gap-4">
         {error && (
-          <div className="text-xs text-rose-300 bg-rose-500/10 p-3 rounded-xl border border-rose-500/30 flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+          <div
+            className={clsx(
+              'text-xs p-3 rounded-xl border flex items-start gap-2',
+              isLight ? 'text-rose-800 bg-rose-50 border-rose-200' : 'text-rose-300 bg-rose-500/10 border-rose-500/30'
+            )}
+          >
+            <AlertTriangle className={clsx('w-4 h-4 flex-shrink-0 mt-0.5', isLight ? 'text-rose-600' : 'text-rose-400')} />
             <span>{error}</span>
           </div>
         )}
@@ -155,7 +187,7 @@ export default function AiPromptPanel({
         {/* Step 1: Prompt Input */}
         {step === 'prompt' && (
           <div className="flex flex-col gap-3">
-            <p className="text-xs text-slate-400">
+            <p className={clsx('text-xs', isLight ? 'text-slate-600' : 'text-slate-400')}>
               Describe the workload you want to design. The AI will analyze requirements and ask scoping questions to produce a production-grade architecture.
             </p>
 
@@ -163,7 +195,12 @@ export default function AiPromptPanel({
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="e.g. Build a highly available SaaS application with React frontend, Node.js API, PostgreSQL database, and Redis cache."
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-fuchsia-500/50 focus:ring-1 focus:ring-fuchsia-500/50 transition-all min-h-[110px] resize-none"
+              className={clsx(
+                'w-full border rounded-xl p-3 text-sm transition-all min-h-[110px] resize-none focus:outline-none focus:ring-2 focus:ring-fuchsia-500/50',
+                isLight
+                  ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-fuchsia-500'
+                  : 'bg-slate-950 border-slate-700 text-slate-200 placeholder-slate-600 focus:border-fuchsia-500/50'
+              )}
               disabled={loading}
               autoFocus
             />
@@ -173,9 +210,14 @@ export default function AiPromptPanel({
                 type="button"
                 onClick={() => handleGenerate(false)}
                 disabled={!prompt.trim() || loading}
-                className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
+                className={clsx(
+                  'flex-1 py-2 rounded-xl text-xs font-medium border transition-colors flex items-center justify-center gap-1.5',
+                  isLight
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                )}
               >
-                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                <Zap className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
                 <span>Fast Generate</span>
               </button>
 
@@ -205,30 +247,51 @@ export default function AiPromptPanel({
         {/* Step 2: Questionnaire */}
         {step === 'questionnaire' && questionnaire && (
           <div className="flex flex-col gap-3.5">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div
+              className={clsx(
+                'flex items-center justify-between pb-2 border-b',
+                isLight ? 'border-slate-200' : 'border-slate-800'
+              )}
+            >
               <button
                 onClick={() => setStep('prompt')}
-                className="text-xs text-slate-400 hover:text-white flex items-center gap-1"
+                className={clsx(
+                  'text-xs flex items-center gap-1 font-medium transition-colors',
+                  isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white'
+                )}
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 <span>Edit Prompt</span>
               </button>
-              <span className="text-[11px] text-fuchsia-400 font-medium">
+              <span className={clsx('text-[11px] font-medium', isLight ? 'text-fuchsia-700' : 'text-fuchsia-400')}>
                 {questionnaire.questions.length} Questions
               </span>
             </div>
 
             {/* Questions list */}
-            <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-1">
-              {questionnaire.questions.map((q, idx) => {
+            <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-1 custom-scrollbar">
+              {questionnaire.questions.map((q) => {
                 const selected = answers[q.id];
                 return (
-                  <div key={q.id} className="bg-slate-950/70 border border-slate-800 rounded-xl p-3">
-                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-slate-400 mb-1">
+                  <div
+                    key={q.id}
+                    className={clsx(
+                      'border rounded-xl p-3 transition-colors',
+                      isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/70 border-slate-800'
+                    )}
+                  >
+                    <div
+                      className={clsx(
+                        'flex items-center gap-1.5 text-[10px] font-bold uppercase mb-1',
+                        isLight ? 'text-slate-500' : 'text-slate-400'
+                      )}
+                    >
                       {getCategoryIcon(q.category)}
                       <span>{q.categoryLabel}</span>
                     </div>
-                    <p className="text-xs font-medium text-white mb-2">{q.question}</p>
+                    <p className={clsx('text-xs font-medium mb-2', isLight ? 'text-slate-900' : 'text-white')}>
+                      {q.question}
+                    </p>
 
                     <div className="space-y-1.5">
                       {q.options.map((opt) => {
@@ -241,12 +304,20 @@ export default function AiPromptPanel({
                             className={clsx(
                               'w-full text-left p-2 rounded-lg border text-xs transition-all flex items-center justify-between gap-2',
                               isSelected
-                                ? 'bg-fuchsia-950/40 border-fuchsia-500/80 text-white'
+                                ? isLight
+                                  ? 'bg-fuchsia-50 border-fuchsia-400 text-fuchsia-950 ring-1 ring-fuchsia-400/40'
+                                  : 'bg-fuchsia-950/40 border-fuchsia-500/80 text-white'
+                                : isLight
+                                ? 'bg-white border-slate-200 hover:border-slate-300 text-slate-700 hover:text-slate-900'
                                 : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300'
                             )}
                           >
                             <span className="truncate">{opt.label}</span>
-                            {isSelected && <Check className="w-3.5 h-3.5 text-fuchsia-400 flex-shrink-0" />}
+                            {isSelected && (
+                              <Check
+                                className={clsx('w-3.5 h-3.5 flex-shrink-0', isLight ? 'text-fuchsia-600' : 'text-fuchsia-400')}
+                              />
+                            )}
                           </button>
                         );
                       })}
@@ -270,10 +341,14 @@ export default function AiPromptPanel({
         {/* Step 3: Generating */}
         {step === 'generating' && (
           <div className="py-8 text-center flex flex-col items-center gap-3">
-            <Loader2 className="w-8 h-8 text-fuchsia-400 animate-spin" />
+            <Loader2 className="w-8 h-8 text-fuchsia-500 dark:text-fuchsia-400 animate-spin" />
             <div>
-              <p className="text-sm font-semibold text-white">Designing Architecture</p>
-              <p className="text-xs text-slate-400 mt-0.5">Translating answers into connected resources...</p>
+              <p className={clsx('text-sm font-semibold', isLight ? 'text-slate-900' : 'text-white')}>
+                Designing Architecture
+              </p>
+              <p className={clsx('text-xs mt-0.5', isLight ? 'text-slate-500' : 'text-slate-400')}>
+                Translating answers into connected resources...
+              </p>
             </div>
           </div>
         )}

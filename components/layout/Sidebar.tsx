@@ -62,7 +62,8 @@ const NAV_GROUPS = [
 
 export default function Sidebar() {
   const { state, dispatch } = useApp();
-  const { activeView, sidebarCollapsed, mobileSidebarOpen, projects, activeProjectId, currentUser } = state;
+  const { activeView, sidebarCollapsed, mobileSidebarOpen, projects, activeProjectId, currentUser, theme } = state;
+  const isLight = theme === 'light';
   const isAdmin = currentUser?.role === 'admin';
 
   // Resizable sidebar state
@@ -132,22 +133,28 @@ export default function Sidebar() {
   const navContent = (isMobile = false) => (
     <>
       {/* Header / Logo */}
-      <div className="flex items-center justify-between px-3 py-4 border-b border-gray-800 bg-gray-950 shrink-0">
+      <div className={clsx(
+        "flex items-center justify-between px-3 py-4 border-b shrink-0 transition-colors",
+        isLight ? "border-slate-200 bg-white" : "border-gray-800 bg-gray-950"
+      )}>
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center shrink-0 shadow-md shadow-blue-500/20">
             <Cloud className="w-4 h-4 text-white" />
           </div>
           {(!sidebarCollapsed || isMobile) && (
             <div className="min-w-0">
-              <span className="text-white font-bold text-base leading-none block truncate">CloudCraft</span>
-              <p className="text-gray-500 text-[10px] mt-0.5 truncate">Infrastructure Platform</p>
+              <span className={clsx("font-bold text-base leading-none block truncate", isLight ? "text-slate-900" : "text-white")}>CloudCraft</span>
+              <p className={clsx("text-[10px] mt-0.5 truncate font-medium", isLight ? "text-slate-500" : "text-gray-500")}>Infrastructure Platform</p>
             </div>
           )}
         </div>
         {isMobile ? (
           <button
             onClick={() => dispatch({ type: 'SET_MOBILE_SIDEBAR', open: false })}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+            className={clsx(
+              "p-1.5 rounded-lg transition-colors",
+              isLight ? "text-slate-500 hover:text-slate-900 hover:bg-slate-100" : "text-gray-400 hover:text-white hover:bg-gray-800"
+            )}
             title="Close navigation"
           >
             <X className="w-5 h-5" />
@@ -156,7 +163,10 @@ export default function Sidebar() {
           !sidebarCollapsed && (
             <button
               onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
-              className="p-1 text-gray-500 hover:text-white rounded hover:bg-gray-800/80 transition-colors"
+              className={clsx(
+                "p-1 rounded transition-colors",
+                isLight ? "text-slate-400 hover:text-slate-800 hover:bg-slate-100" : "text-gray-500 hover:text-white hover:bg-gray-800/80"
+              )}
               title="Collapse sidebar"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -170,9 +180,9 @@ export default function Sidebar() {
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
             {(!sidebarCollapsed || isMobile) && (
-              <p className="text-gray-600 text-[10px] uppercase tracking-widest font-semibold px-2 mb-1.5">{group.label}</p>
+              <p className={clsx("text-[10px] uppercase tracking-widest font-bold px-2.5 mb-1.5", isLight ? "text-slate-400" : "text-gray-500")}>{group.label}</p>
             )}
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               {group.items.filter((item) => !('adminOnly' in item && item.adminOnly) || isAdmin).map(({ id, label, icon: Icon, requiresProject }) => {
                 const active = activeView === id;
                 const hasArchitecture = !!activeProjectId || (state.draftProject && state.draftProject.nodes.length > 0) || activeView === 'canvas';
@@ -186,14 +196,18 @@ export default function Sidebar() {
                     aria-label={disabled ? `${label} — Select a project first` : label}
                     aria-current={active ? 'page' : undefined}
                     className={clsx(
-                      'w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 text-left',
-                      active ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/20' :
-                      disabled ? 'text-gray-700 cursor-not-allowed' :
-                      'text-gray-400 hover:text-white hover:bg-gray-800/80'
+                      'w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-xs font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-left',
+                      active
+                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/25 ring-1 ring-blue-400/30 font-bold'
+                        : disabled
+                        ? isLight ? 'text-slate-300 cursor-not-allowed opacity-50' : 'text-gray-700 cursor-not-allowed opacity-40'
+                        : isLight
+                        ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 active:scale-[0.98]'
+                        : 'text-gray-400 hover:text-white hover:bg-gray-900/90 active:scale-[0.98]'
                     )}
                   >
                     <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
-                    {(!sidebarCollapsed || isMobile) && <span className="truncate text-xs flex-1">{label}</span>}
+                    {(!sidebarCollapsed || isMobile) && <span className="truncate flex-1">{label}</span>}
                   </button>
                 );
               })}
@@ -204,9 +218,12 @@ export default function Sidebar() {
 
       {/* Project list at bottom-left */}
       {(!sidebarCollapsed || isMobile) && (
-        <div className="border-t border-gray-800 p-2.5 bg-gray-950/90 shrink-0">
-          <div className="flex items-center justify-between mb-1.5 px-1">
-            <span className="text-gray-500 text-[10px] uppercase tracking-wider font-semibold">
+        <div className={clsx(
+          "border-t p-3 shrink-0 transition-colors",
+          isLight ? "border-slate-200 bg-slate-50/80" : "border-gray-800/80 bg-gray-950/95"
+        )}>
+          <div className="flex items-center justify-between mb-2 px-1">
+            <span className={clsx("text-[10px] uppercase tracking-wider font-bold", isLight ? "text-slate-500" : "text-gray-400")}>
               Projects ({projects.length})
             </span>
             <button
@@ -214,15 +231,18 @@ export default function Sidebar() {
                 dispatch({ type: 'SET_VIEW', view: 'dashboard' });
                 if (isMobile) dispatch({ type: 'SET_MOBILE_SIDEBAR', open: false });
               }}
-              className="text-gray-400 hover:text-blue-400 transition-colors p-1 rounded hover:bg-gray-800"
+              className={clsx(
+                "transition-all p-1 rounded-lg",
+                isLight ? "text-slate-500 hover:text-blue-600 hover:bg-slate-200/80" : "text-gray-400 hover:text-blue-400 hover:bg-gray-800/80"
+              )}
               title="Create new project"
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar pr-0.5">
+          <div className="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar pr-0.5">
             {projects.length === 0 ? (
-              <p className="text-gray-600 text-[11px] px-2 py-1.5 italic">No projects yet</p>
+              <p className={clsx("text-[11px] px-2 py-1.5 italic", isLight ? "text-slate-400" : "text-gray-600")}>No projects yet</p>
             ) : (
               projects.map((p) => {
                 const isActive = p.id === activeProjectId;
@@ -239,10 +259,14 @@ export default function Sidebar() {
                     }}
                     title={`${p.name} (${p.provider.toUpperCase()})`}
                     className={clsx(
-                      'w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center gap-2 group transition-all cursor-pointer select-none border',
+                      'w-full text-left px-2.5 py-2 rounded-xl text-xs flex items-center gap-2.5 group transition-all cursor-pointer select-none border',
                       isActive
-                        ? 'bg-blue-950/50 text-blue-200 font-semibold border-blue-700/60 shadow-sm'
-                        : 'text-gray-300 hover:text-white hover:bg-gray-800/80 border-transparent'
+                        ? isLight
+                          ? 'bg-blue-50 text-blue-900 font-bold border-blue-300 shadow-xs'
+                          : 'bg-blue-950/60 text-blue-200 font-semibold border-blue-600/50 shadow-md shadow-blue-950/50'
+                        : isLight
+                        ? 'text-slate-700 hover:text-slate-900 hover:bg-white border-slate-200/90 shadow-2xs'
+                        : 'text-gray-300 hover:text-white hover:bg-gray-900/80 border-gray-800/50'
                     )}
                   >
                     <span
@@ -260,7 +284,10 @@ export default function Sidebar() {
                         e.stopPropagation();
                         setProjectToDelete(p);
                       }}
-                      className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-all p-1 rounded hover:bg-red-500/10"
+                      className={clsx(
+                        "opacity-0 group-hover:opacity-100 transition-all p-1 rounded-lg",
+                        isLight ? "text-slate-400 hover:text-red-600 hover:bg-red-50" : "text-gray-400 hover:text-red-400 hover:bg-red-500/10"
+                      )}
                       title="Delete project"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -277,7 +304,10 @@ export default function Sidebar() {
       {!isMobile && sidebarCollapsed && (
         <button
           onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
-          className="flex items-center justify-center py-3 border-t border-gray-800 text-gray-500 hover:text-gray-300 hover:bg-gray-900/50 transition-colors shrink-0"
+          className={clsx(
+            "flex items-center justify-center py-3 border-t transition-colors shrink-0",
+            isLight ? "border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100" : "border-gray-800 text-gray-500 hover:text-gray-300 hover:bg-gray-900/50"
+          )}
           title="Expand sidebar"
         >
           <ChevronRight className="w-4 h-4" />
@@ -294,7 +324,8 @@ export default function Sidebar() {
           width: sidebarCollapsed ? '56px' : `${sidebarWidth}px`,
         }}
         className={clsx(
-          'hidden lg:flex flex-col bg-gray-950 border-r border-gray-800 shrink-0 h-screen select-none relative group/sidebar',
+          'hidden lg:flex flex-col shrink-0 h-screen select-none relative group/sidebar transition-colors',
+          isLight ? 'bg-white border-r border-slate-200' : 'bg-gray-950 border-r border-gray-800',
           !isResizing && 'transition-[width] duration-200 ease-out'
         )}
       >

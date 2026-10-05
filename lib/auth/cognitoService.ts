@@ -10,9 +10,13 @@ import {
   ConfirmSignUpCommand,
   ResendConfirmationCodeCommand,
   InitiateAuthCommand,
+  RespondToAuthChallengeCommand,
+  AssociateSoftwareTokenCommand,
+  VerifySoftwareTokenCommand,
   ForgotPasswordCommand,
   ConfirmForgotPasswordCommand,
   AuthFlowType,
+  ChallengeNameType,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 import { unverifiedTokenFallbackAllowed } from './localFallback';
@@ -45,6 +49,7 @@ function getVerifier() {
 }
 
 export interface CognitoAuthResult {
+  challenge?: false;
   idToken: string;
   accessToken: string;
   refreshToken?: string;
@@ -53,6 +58,16 @@ export interface CognitoAuthResult {
   email: string;
   name?: string;
 }
+
+export interface CognitoMfaChallengeResult {
+  challenge: true;
+  challengeName: string;
+  session: string;
+  challengeParameters?: Record<string, string>;
+  email: string;
+}
+
+export type CognitoSignInResult = CognitoAuthResult | CognitoMfaChallengeResult;
 
 /** Development-only: decodes an ID token's payload and checks issuer, audience, token use and expiry — NOT its signature. */
 export function readClaimsWithoutSignature(idToken: string): Record<string, unknown> | null {
@@ -128,32 +143,20 @@ export class CognitoService {
   }
 
   /**
-   * Authenticate user with Email and Password using USER_PASSWORD_AUTH.
+   * Helper to verify ID token and package user identity payload.
    */
-  static async signIn(email: string, password: string): Promise<CognitoAuthResult> {
-    const client = getClient();
-    const command = new InitiateAuthCommand({
-      AuthFlow: AuthFlowType.USER_PASSWORD_AUTH,
-      ClientId: CLIENT_ID,
-      AuthParameters: {
-        USERNAME: email,
-        PASSWORD: password,
-      },
-    });
+  private static async processAuthResult(
+    authResult: { IdToken?: string; AccessToken?: string; RefreshToken?: string; ExpiresIn?: number },
+    defaultEmail: string
+  ): Promise<CognitoAuthResult> {
+    const idToken = authResult.IdToken;
+    const accessToken = authResult.AccessToken;
+    const refreshToken = authResult.RefreshToken;
+    const expiresIn = authResult.ExpiresIn;
 
-    const res = await client.send(command);
-    if (!res.AuthenticationResult && res.ChallengeName) {
-      // Cognito only issues a challenge (MFA, new password required...) AFTER the password was accepted.
-      throw Object.assign(new Error(`Cognito asked for a further step: ${res.ChallengeName}`), { name: 'CognitoChallengeException', challenge: res.ChallengeName });
-    }
-    if (!res.AuthenticationResult || !res.AuthenticationResult.IdToken || !res.AuthenticationResult.AccessToken) {
+    if (!idToken || !accessToken) {
       throw new Error('Cognito authentication failed to return tokens');
     }
-
-    const idToken = res.AuthenticationResult.IdToken;
-    const accessToken = res.AuthenticationResult.AccessToken;
-    const refreshToken = res.AuthenticationResult.RefreshToken;
-    const expiresIn = res.AuthenticationResult.ExpiresIn;
 
     // Verify and decode the ID token
     let payload: Record<string, unknown>;
@@ -170,13 +173,182 @@ export class CognitoService {
     }
 
     return {
+      challenge: false,
       idToken,
       accessToken,
       refreshToken,
       expiresIn,
-      sub: (payload.sub as string) || (payload['cognito:username'] as string) || email,
-      email: (payload.email as string) || email,
-      name: (payload.name as string) || (payload['cognito:username'] as string) || email,
+      sub: (payload.sub as string) || (payload['cognito:username'] as string) || defaultEmail,
+      email: (payload.email as string) || defaultEmail,
+      name: (payload.name as string) || (payload['cognito:username'] as string) || defaultEmail,
+    };
+  }
+
+  /**
+   * Authenticate user with Email and Password using USER_PASSWORD_AUTH.
+   * Returns authenticated tokens or an MFA challenge if 2FA is required.
+   */
+  static async signIn(email: string, password: string): Promise<CognitoSignInResult> {
+    const client = getClient();
+    const command = new InitiateAuthCommand({
+      AuthFlow: AuthFlowType.USER_PASSWORD_AUTH,
+      ClientId: CLIENT_ID,
+      AuthParameters: {
+        USERNAME: email,
+        PASSWORD: password,
+      },
+    });
+
+    const res = await client.send(command);
+
+    if (res.ChallengeName && res.Session) {
+      return {
+        challenge: true,
+        challengeName: res.ChallengeName,
+        session: res.Session,
+        challengeParameters: res.ChallengeParameters,
+        email,
+      };
+    }
+
+    if (!res.AuthenticationResult) {
+      throw new Error('Cognito authentication failed to return tokens');
+    }
+
+    return await this.processAuthResult(res.AuthenticationResult, email);
+  }
+
+  /**
+   * Respond to an MFA challenge (TOTP Software Token / SMS / Email OTP / MFA Setup).
+   */
+  static async respondToMfaChallenge(params: {
+    email: string;
+    session: string;
+    challengeName: string;
+    code: string;
+  }): Promise<CognitoSignInResult> {
+    const client = getClient();
+    const trimmedCode = params.code.trim();
+
+    // 1. If this is an MFA_SETUP challenge, first verify and activate the software token with the user's code!
+    if (params.challengeName === 'MFA_SETUP') {
+      const verifyCmd = new VerifySoftwareTokenCommand({
+        Session: params.session,
+        UserCode: trimmedCode,
+        FriendlyDeviceName: 'CloudCraft App',
+      });
+
+      const verifyRes = await client.send(verifyCmd);
+      if (verifyRes.Status !== 'SUCCESS') {
+        throw Object.assign(new Error('Invalid verification code. Please check your authenticator and try again.'), {
+          name: 'CodeMismatchException',
+        });
+      }
+
+      // Complete the MFA_SETUP challenge with the session from VerifySoftwareToken
+      const sessionAfterVerify = verifyRes.Session || params.session;
+      const setupCommand = new RespondToAuthChallengeCommand({
+        ClientId: CLIENT_ID,
+        ChallengeName: 'MFA_SETUP' as ChallengeNameType,
+        Session: sessionAfterVerify,
+        ChallengeResponses: {
+          USERNAME: params.email,
+        },
+      });
+
+      const setupRes = await client.send(setupCommand);
+      if (setupRes.ChallengeName && setupRes.Session) {
+        return {
+          challenge: true,
+          challengeName: setupRes.ChallengeName,
+          session: setupRes.Session,
+          challengeParameters: setupRes.ChallengeParameters,
+          email: params.email,
+        };
+      }
+
+      if (!setupRes.AuthenticationResult) {
+        throw new Error('Cognito MFA setup did not return authentication tokens');
+      }
+
+      return await this.processAuthResult(setupRes.AuthenticationResult, params.email);
+    }
+
+    // 2. Standard MFA challenge (e.g. SOFTWARE_TOKEN_MFA, SMS_MFA, EMAIL_OTP)
+    const challengeResponses: Record<string, string> = {
+      USERNAME: params.email,
+    };
+
+    if (params.challengeName === 'SOFTWARE_TOKEN_MFA') {
+      challengeResponses.SOFTWARE_TOKEN_MFA_CODE = trimmedCode;
+    } else if (params.challengeName === 'SMS_MFA') {
+      challengeResponses.SMS_MFA_CODE = trimmedCode;
+    } else if (params.challengeName === 'EMAIL_OTP') {
+      challengeResponses.EMAIL_OTP_CODE = trimmedCode;
+    } else {
+      challengeResponses[`${params.challengeName}_CODE`] = trimmedCode;
+      challengeResponses.ANSWER = trimmedCode;
+    }
+
+    const command = new RespondToAuthChallengeCommand({
+      ClientId: CLIENT_ID,
+      ChallengeName: params.challengeName as ChallengeNameType,
+      Session: params.session,
+      ChallengeResponses: challengeResponses,
+    });
+
+    const res = await client.send(command);
+
+    if (res.ChallengeName && res.Session) {
+      return {
+        challenge: true,
+        challengeName: res.ChallengeName,
+        session: res.Session,
+        challengeParameters: res.ChallengeParameters,
+        email: params.email,
+      };
+    }
+
+    if (!res.AuthenticationResult) {
+      throw new Error('Cognito MFA challenge response did not return authentication tokens');
+    }
+
+    return await this.processAuthResult(res.AuthenticationResult, params.email);
+  }
+
+  /**
+   * Associate software token (TOTP setup) during an MFA_SETUP challenge or from user settings.
+   */
+  static async associateSoftwareToken(session: string): Promise<{ secretCode?: string; session?: string }> {
+    const client = getClient();
+    const command = new AssociateSoftwareTokenCommand({
+      Session: session,
+    });
+    const res = await client.send(command);
+    return {
+      secretCode: res.SecretCode,
+      session: res.Session,
+    };
+  }
+
+  /**
+   * Verify and activate the newly associated software token.
+   */
+  static async verifySoftwareToken(params: {
+    session: string;
+    userCode: string;
+    friendlyDeviceName?: string;
+  }): Promise<{ status?: string; session?: string }> {
+    const client = getClient();
+    const command = new VerifySoftwareTokenCommand({
+      Session: params.session,
+      UserCode: params.userCode.trim(),
+      FriendlyDeviceName: params.friendlyDeviceName || 'CloudCraft App',
+    });
+    const res = await client.send(command);
+    return {
+      status: res.Status,
+      session: res.Session,
     };
   }
 

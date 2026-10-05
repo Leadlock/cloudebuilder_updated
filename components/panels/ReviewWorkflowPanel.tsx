@@ -24,6 +24,7 @@ import clsx from 'clsx';
 
 export default function ReviewWorkflowPanel() {
   const { state } = useApp();
+  const isLight = state.theme === 'light';
   const activeProject = useActiveProject();
   const [reviews, setReviews] = useState<ArchitectureReview[]>([]);
   const [latestReview, setLatestReview] = useState<ArchitectureReview | null>(null);
@@ -102,7 +103,7 @@ export default function ReviewWorkflowPanel() {
 
   if (!activeProject) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-slate-950 text-slate-400">
+      <div className={clsx("flex-1 flex items-center justify-center", isLight ? "bg-slate-50 text-slate-500" : "bg-slate-950 text-slate-400")}>
         <p>Please open or create a project to access Architecture Review.</p>
       </div>
     );
@@ -208,22 +209,27 @@ export default function ReviewWorkflowPanel() {
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-y-auto bg-slate-950 text-slate-100 p-6 lg:p-8 space-y-6">
+    <div className={clsx(
+      "flex-1 flex flex-col overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 pb-36 space-y-6 custom-scrollbar",
+      isLight ? "bg-slate-50 text-slate-900" : "bg-slate-950 text-slate-100"
+    )}>
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+      <div className={clsx("flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b", isLight ? "border-slate-200" : "border-slate-800")}>
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold text-white tracking-tight">Architecture Review & Approval Workflow</h1>
+            <h1 className={clsx("text-xl font-bold tracking-tight", isLight ? "text-slate-900" : "text-white")}>Architecture Review & Approval Workflow</h1>
             <span
               className={clsx(
-                'text-xs font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider',
-                isAdmin ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                'text-xs font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider border',
+                isAdmin 
+                  ? (isLight ? 'bg-cyan-50 text-cyan-800 border-cyan-200' : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30')
+                  : (isLight ? 'bg-indigo-50 text-indigo-800 border-indigo-200' : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30')
               )}
             >
               Current Role: {currentUser.role.toUpperCase()}
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className={clsx("text-xs mt-1", isLight ? "text-slate-500" : "text-slate-400")}>
             Enterprise change management: submit designs, verify SHA-256 integrity, review diffs, and authorize deployments.
           </p>
         </div>
@@ -231,7 +237,10 @@ export default function ReviewWorkflowPanel() {
         <button
           onClick={fetchReviews}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 transition-colors"
+          className={clsx(
+            "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border",
+            isLight ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-100 shadow-sm" : "bg-slate-800 border-transparent hover:bg-slate-700 text-slate-300"
+          )}
         >
           <RotateCcw className={clsx('w-3.5 h-3.5', loading && 'animate-spin')} />
           Refresh
@@ -242,7 +251,9 @@ export default function ReviewWorkflowPanel() {
         <div
           className={clsx(
             'p-4 rounded-xl border text-xs flex items-center gap-2 font-medium',
-            msg.type === 'success' ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/40 border-rose-500/40 text-rose-300'
+            msg.type === 'success' 
+              ? (isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300')
+              : (isLight ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-rose-950/40 border-rose-500/40 text-rose-300')
           )}
         >
           {msg.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <XCircle className="w-4 h-4 shrink-0" />}
@@ -253,18 +264,21 @@ export default function ReviewWorkflowPanel() {
       {/* Latest Review Status Card */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 shadow-xl">
+          <div className={clsx(
+            "p-6 rounded-2xl border space-y-4",
+            isLight ? "bg-white border-slate-200 shadow-sm" : "bg-slate-900 border-slate-800 shadow-xl"
+          )}>
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider">Current Review Status</h2>
+              <h2 className={clsx("text-sm font-bold uppercase tracking-wider", isLight ? "text-slate-800" : "text-white")}>Current Review Status</h2>
               {latestReview ? (
                 <span
                   className={clsx(
-                    'text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5',
-                    latestReview.status === 'approved' && 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
-                    latestReview.status === 'pending_review' && 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
-                    latestReview.status === 'invalidated_due_to_changes' && 'bg-rose-500/20 text-rose-300 border border-rose-500/40',
-                    latestReview.status === 'rejected' && 'bg-rose-500/20 text-rose-300 border border-rose-500/30',
-                    latestReview.status === 'changes_requested' && 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                    'text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 border',
+                    latestReview.status === 'approved' && (isLight ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'),
+                    latestReview.status === 'pending_review' && (isLight ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-amber-500/20 text-amber-300 border-amber-500/30'),
+                    latestReview.status === 'invalidated_due_to_changes' && (isLight ? 'bg-rose-50 text-rose-800 border-rose-200' : 'bg-rose-500/20 text-rose-300 border-rose-500/40'),
+                    latestReview.status === 'rejected' && (isLight ? 'bg-rose-50 text-rose-800 border-rose-200' : 'bg-rose-500/20 text-rose-300 border-rose-500/30'),
+                    latestReview.status === 'changes_requested' && (isLight ? 'bg-blue-50 text-blue-800 border-blue-200' : 'bg-blue-500/20 text-blue-300 border-blue-500/30')
                   )}
                 >
                   {latestReview.status === 'approved' && <CheckCircle2 className="w-3.5 h-3.5" />}
@@ -273,15 +287,18 @@ export default function ReviewWorkflowPanel() {
                   {latestReview.status.replace(/_/g, ' ')}
                 </span>
               ) : (
-                <span className="text-xs text-slate-500 font-medium">No review submitted yet</span>
+                <span className={clsx("text-xs font-medium", isLight ? "text-slate-500" : "text-slate-500")}>No review submitted yet</span>
               )}
             </div>
 
             {/* Invalidation Alert */}
             {latestReview?.status === 'invalidated_due_to_changes' && (
-              <div className="p-4 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-200 text-xs space-y-2">
-                <div className="flex items-center gap-2 font-bold text-rose-300">
-                  <ShieldAlert className="w-4 h-4 text-rose-400" />
+              <div className={clsx(
+                "p-4 rounded-xl border text-xs space-y-2",
+                isLight ? "bg-rose-50 border-rose-200 text-rose-900" : "bg-rose-950/60 border-rose-500/40 text-rose-200"
+              )}>
+                <div className={clsx("flex items-center gap-2 font-bold", isLight ? "text-rose-800" : "text-rose-300")}>
+                  <ShieldAlert className={clsx("w-4 h-4", isLight ? "text-rose-600" : "text-rose-400")} />
                   APPROVAL INVALIDATED — TAMPER DETECTED
                 </div>
                 <p>
@@ -292,26 +309,26 @@ export default function ReviewWorkflowPanel() {
             )}
 
             {latestReview && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-3 border-y border-slate-800 text-xs">
+              <div className={clsx("grid grid-cols-2 sm:grid-cols-4 gap-3 py-3 border-y text-xs", isLight ? "border-slate-100" : "border-slate-800")}>
                 <div>
-                  <span className="text-slate-500 block text-[10px]">Submitted By</span>
-                  <span className="text-slate-200 font-medium">{latestReview.submittedBy.name}</span>
+                  <span className={clsx("block text-[10px]", isLight ? "text-slate-500" : "text-slate-500")}>Submitted By</span>
+                  <span className={clsx("font-medium", isLight ? "text-slate-800" : "text-slate-200")}>{latestReview.submittedBy.name}</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block text-[10px]">Target Env</span>
-                  <span className="text-slate-200 font-medium uppercase">{latestReview.environment}</span>
+                  <span className={clsx("block text-[10px]", isLight ? "text-slate-500" : "text-slate-500")}>Target Env</span>
+                  <span className={clsx("font-medium uppercase", isLight ? "text-slate-800" : "text-slate-200")}>{latestReview.environment}</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block text-[10px]">Resources</span>
-                  <span className="text-slate-200 font-medium">{latestReview.summary.nodeCount} items</span>
+                  <span className={clsx("block text-[10px]", isLight ? "text-slate-500" : "text-slate-500")}>Resources</span>
+                  <span className={clsx("font-medium", isLight ? "text-slate-800" : "text-slate-200")}>{latestReview.summary.nodeCount} items</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block text-[10px]">Estimated Cost ({activeCurrency})</span>
-                  <span className="text-slate-200 font-medium">
+                  <span className={clsx("block text-[10px]", isLight ? "text-slate-500" : "text-slate-500")}>Estimated Cost ({activeCurrency})</span>
+                  <span className={clsx("font-medium", isLight ? "text-slate-800" : "text-slate-200")}>
                     {formatCurrency(latestReview.summary.estimatedMonthlyCost * (activeCurrency === 'USD' ? 1.0 : exchangeRate), activeCurrency)}/mo
                   </span>
                   {activeCurrency !== 'USD' && (
-                    <span className="text-slate-500 text-[10px] block font-mono">
+                    <span className={clsx("text-[10px] block font-mono", isLight ? "text-slate-500" : "text-slate-500")}>
                       ≈ {formatCurrency(latestReview.summary.estimatedMonthlyCost, 'USD')}/mo
                     </span>
                   )}
@@ -320,13 +337,16 @@ export default function ReviewWorkflowPanel() {
             )}
 
             {latestReview && (
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-400 flex items-center justify-between gap-3">
+              <div className={clsx(
+                "p-3 rounded-xl border text-xs font-mono flex items-center justify-between gap-3",
+                isLight ? "bg-slate-50 border-slate-200 text-slate-700" : "bg-slate-950 border-slate-800 text-slate-400"
+              )}>
                 <div className="flex items-center gap-2 truncate">
-                  <Hash className="w-4 h-4 text-cyan-400 shrink-0" />
-                  <span className="text-slate-500">SHA256:</span>
-                  <span className="text-slate-300 truncate">{latestReview.architectureHash}</span>
+                  <Hash className={clsx("w-4 h-4 shrink-0", isLight ? "text-cyan-600" : "text-cyan-400")} />
+                  <span className={isLight ? "text-slate-500" : "text-slate-500"}>SHA256:</span>
+                  <span className={clsx("truncate font-semibold", isLight ? "text-slate-800" : "text-slate-300")}>{latestReview.architectureHash}</span>
                 </div>
-                <span className="text-[10px] text-slate-500 shrink-0">Deterministic</span>
+                <span className={clsx("text-[10px] shrink-0", isLight ? "text-slate-500" : "text-slate-500")}>Deterministic</span>
               </div>
             )}
 
@@ -335,7 +355,7 @@ export default function ReviewWorkflowPanel() {
               <button
                 onClick={handleSubmitForReview}
                 disabled={actionLoading}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-colors flex items-center gap-2 shadow-lg shadow-indigo-600/20 disabled:opacity-50"
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
               >
                 <Send className="w-3.5 h-3.5" />
                 {actionLoading ? 'Submitting...' : 'Submit Current Architecture for Review'}
@@ -346,7 +366,7 @@ export default function ReviewWorkflowPanel() {
                   <button
                     onClick={handleApprove}
                     disabled={actionLoading}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-colors flex items-center gap-2 shadow-lg shadow-emerald-600/20 disabled:opacity-50"
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
                   >
                     <ShieldCheck className="w-3.5 h-3.5" />
                     Approve Architecture
@@ -355,7 +375,7 @@ export default function ReviewWorkflowPanel() {
                   <button
                     onClick={handleReject}
                     disabled={actionLoading}
-                    className="px-3 py-2 rounded-xl bg-rose-600/80 hover:bg-rose-600 text-white font-semibold text-xs transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                    className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs transition-colors flex items-center gap-1.5 disabled:opacity-50"
                   >
                     <XCircle className="w-3.5 h-3.5" />
                     Reject
@@ -364,7 +384,10 @@ export default function ReviewWorkflowPanel() {
                   <button
                     onClick={handleRequestChanges}
                     disabled={actionLoading}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                    className={clsx(
+                      "px-3 py-2 rounded-xl font-semibold text-xs transition-colors flex items-center gap-1.5 disabled:opacity-50 border",
+                      isLight ? "bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300" : "bg-slate-800 hover:bg-slate-700 text-slate-200 border-transparent"
+                    )}
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
                     Request Changes
@@ -375,7 +398,7 @@ export default function ReviewWorkflowPanel() {
 
             {isAdmin && latestReview && (
               <div className="pt-2">
-                <label className="text-xs text-slate-400 font-medium block mb-1">
+                <label className={clsx("text-xs font-medium block mb-1", isLight ? "text-slate-700" : "text-slate-400")}>
                   Administrator Review Comments (Optional for approval, required for rejection)
                 </label>
                 <input
@@ -383,7 +406,10 @@ export default function ReviewWorkflowPanel() {
                   value={comments}
                   onChange={(e) => setComments(e.target.value)}
                   placeholder="e.g. Approved for production deployment with gp3 storage tier."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                  className={clsx(
+                    "w-full rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500 border",
+                    isLight ? "bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400" : "bg-slate-950 border-slate-800 text-white placeholder-slate-500"
+                  )}
                 />
               </div>
             )}
@@ -392,33 +418,36 @@ export default function ReviewWorkflowPanel() {
 
         {/* Sidebar: Audit History */}
         <div className="space-y-4">
-          <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 shadow-xl">
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider">Review Audit Trail</h3>
+          <div className={clsx(
+            "p-6 rounded-2xl border space-y-4",
+            isLight ? "bg-white border-slate-200 shadow-sm" : "bg-slate-900 border-slate-800 shadow-xl"
+          )}>
+            <h3 className={clsx("text-sm font-bold uppercase tracking-wider", isLight ? "text-slate-800" : "text-white")}>Review Audit Trail</h3>
             <div className="space-y-3 max-h-96 overflow-y-auto custom-scrollbar pr-1">
               {reviews.length === 0 ? (
-                <p className="text-xs text-slate-500">No review records yet.</p>
+                <p className={clsx("text-xs", isLight ? "text-slate-500" : "text-slate-500")}>No review records yet.</p>
               ) : (
                 reviews.map((r) => (
-                  <div key={r.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1 text-xs">
+                  <div key={r.id} className={clsx("p-3 rounded-xl border space-y-1 text-xs", isLight ? "bg-slate-50 border-slate-200" : "bg-slate-950 border-slate-800")}>
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-300 text-[11px]">{r.submittedBy.name}</span>
+                      <span className={clsx("font-bold text-[11px]", isLight ? "text-slate-800" : "text-slate-300")}>{r.submittedBy.name}</span>
                       <span
                         className={clsx(
-                          'text-[9px] font-bold px-1.5 py-0.5 rounded uppercase',
-                          r.status === 'approved' && 'bg-emerald-950 text-emerald-300 border border-emerald-500/30',
-                          r.status === 'pending_review' && 'bg-amber-950 text-amber-300 border border-amber-500/30',
-                          r.status === 'invalidated_due_to_changes' && 'bg-rose-950 text-rose-300 border border-rose-500/40',
-                          r.status === 'rejected' && 'bg-rose-950 text-rose-300 border border-rose-500/30'
+                          'text-[9px] font-bold px-1.5 py-0.5 rounded uppercase border',
+                          r.status === 'approved' && (isLight ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-emerald-950 text-emerald-300 border-emerald-500/30'),
+                          r.status === 'pending_review' && (isLight ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-amber-950 text-amber-300 border-amber-500/30'),
+                          r.status === 'invalidated_due_to_changes' && (isLight ? 'bg-rose-100 text-rose-800 border-rose-200' : 'bg-rose-950 text-rose-300 border-rose-500/40'),
+                          r.status === 'rejected' && (isLight ? 'bg-rose-100 text-rose-800 border-rose-200' : 'bg-rose-950 text-rose-300 border-rose-500/30')
                         )}
                       >
                         {r.status.replace(/_/g, ' ')}
                       </span>
                     </div>
-                    <p className="text-[10px] text-slate-500 font-mono">
+                    <p className={clsx("text-[10px] font-mono", isLight ? "text-slate-500" : "text-slate-500")}>
                       {new Date(r.submittedAt).toLocaleTimeString()} · {r.environment} · {formatCurrency((r.summary?.estimatedMonthlyCost ?? 0) * (activeCurrency === 'USD' ? 1.0 : exchangeRate), activeCurrency)}/mo
                     </p>
                     {r.reviewerComments && (
-                      <p className="text-[11px] text-slate-400 italic">&ldquo;{r.reviewerComments}&rdquo;</p>
+                      <p className={clsx("text-[11px] italic", isLight ? "text-slate-600" : "text-slate-400")}>&ldquo;{r.reviewerComments}&rdquo;</p>
                     )}
                   </div>
                 ))

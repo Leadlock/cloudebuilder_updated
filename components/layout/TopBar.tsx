@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
-import { Bell, Globe, Coins, ShieldCheck, UserCheck, LogOut, User, FileCheck, Menu } from 'lucide-react';
+import { Bell, Globe, Coins, ShieldCheck, UserCheck, LogOut, User, FileCheck, Menu, Sun, Moon } from 'lucide-react';
 import clsx from 'clsx';
 import { AppView, Environment } from '@/types';
 import { cloudRegionService } from '@/lib/cloud/regions/CloudRegionService';
@@ -34,9 +34,16 @@ const ENV_COLORS: Record<Environment, string> = {
   production:  'bg-emerald-900/40 text-emerald-300 border-emerald-800',
 };
 
+const ENV_COLORS_LIGHT: Record<Environment, string> = {
+  development: 'bg-blue-100 text-blue-800 border-blue-300 shadow-sm font-semibold',
+  staging:     'bg-amber-100 text-amber-800 border-amber-300 shadow-sm font-semibold',
+  production:  'bg-emerald-100 text-emerald-800 border-emerald-300 shadow-sm font-semibold',
+};
+
 export default function TopBar() {
   const { state, dispatch } = useApp();
-  const { activeView, activeEnvironment, currentUser } = state;
+  const { activeView, activeEnvironment, currentUser, theme } = state;
+  const isLight = theme === 'light';
   const activeProject = useActiveProject();
   const activeRegion = activeProject?.environments[activeEnvironment]?.region ?? activeProject?.region ?? 'us-east-1';
 
@@ -67,11 +74,17 @@ export default function TopBar() {
   const isAdmin = currentUser?.role === 'admin';
 
   return (
-    <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center px-2.5 sm:px-4 gap-2 sm:gap-3 shrink-0 select-none overflow-x-auto no-scrollbar">
+    <header className={clsx(
+      "h-12 border-b flex items-center px-2.5 sm:px-4 gap-2 sm:gap-3 shrink-0 select-none overflow-x-auto no-scrollbar transition-colors",
+      isLight ? "bg-white border-slate-200 text-slate-900 shadow-sm" : "bg-gray-900 border-gray-800 text-white"
+    )}>
       {/* Mobile Sidebar Hamburger Toggle */}
       <button
         onClick={() => dispatch({ type: 'TOGGLE_MOBILE_SIDEBAR' })}
-        className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0 focus:outline-none"
+        className={clsx(
+          "lg:hidden p-1.5 rounded-lg transition-colors shrink-0 focus:outline-none",
+          isLight ? "text-slate-600 hover:text-slate-900 hover:bg-slate-100" : "text-slate-400 hover:text-white hover:bg-slate-800"
+        )}
         title="Open Navigation Menu"
         aria-label="Open Navigation Menu"
       >
@@ -80,37 +93,48 @@ export default function TopBar() {
 
       {/* Breadcrumb with responsive truncation */}
       <div className="flex items-center gap-1.5 sm:gap-2 text-sm flex-1 min-w-0 mr-1 sm:mr-2 overflow-hidden">
-        <span className="text-gray-500 text-xs shrink-0 hidden xs:inline">CloudCraft</span>
-        <span className="text-gray-700 text-xs shrink-0 hidden xs:inline">/</span>
+        <span className={clsx("text-xs shrink-0 hidden xs:inline", isLight ? "text-slate-500" : "text-gray-500")}>CloudCraft</span>
+        <span className={clsx("text-xs shrink-0 hidden xs:inline", isLight ? "text-slate-400" : "text-gray-700")}>/</span>
         {activeProject && (
           <>
             <button
-              className="text-gray-300 hover:text-white flex items-center gap-1.5 truncate text-xs shrink-0 max-w-[140px] sm:max-w-[280px] font-medium"
+              className={clsx(
+                "flex items-center gap-1.5 truncate text-xs shrink-0 max-w-[140px] sm:max-w-[280px] font-semibold transition-colors",
+                isLight ? "text-slate-700 hover:text-slate-900" : "text-gray-300 hover:text-white"
+              )}
               onClick={() => dispatch({ type: 'SET_VIEW', view: 'canvas' })}
               title={`Active Project: ${activeProject.name}`}
             >
-              <span className={clsx('w-2 h-2 rounded-full shrink-0', activeProject.provider === 'aws' ? 'bg-orange-400' : activeProject.provider === 'azure' ? 'bg-blue-400' : 'bg-purple-400')} />
+              <span className={clsx('w-2 h-2 rounded-full shrink-0', activeProject.provider === 'aws' ? 'bg-orange-500' : activeProject.provider === 'azure' ? 'bg-blue-500' : 'bg-purple-500')} />
               <span className="truncate">{activeProject.name}</span>
             </button>
-            <span className="text-gray-700 text-xs shrink-0">/</span>
+            <span className={clsx("text-xs shrink-0", isLight ? "text-slate-400" : "text-gray-700")}>/</span>
           </>
         )}
-        <span className="text-white font-medium text-xs truncate">{VIEW_LABELS[activeView]}</span>
+        <span className={clsx("font-bold text-xs truncate", isLight ? "text-slate-900" : "text-white")}>{VIEW_LABELS[activeView]}</span>
       </div>
 
       {/* Region Selector (Desktop / Tablet) */}
       {activeProject && (
         <div className="hidden md:flex items-center gap-1.5 shrink-0" title={`Cloud Region: ${activeRegion}`}>
-          <div className="flex items-center bg-gray-800/90 border border-gray-700 rounded-lg px-2 py-1 gap-1.5 text-xs text-gray-300">
-            <Globe className="w-3.5 h-3.5 text-blue-400 shrink-0" aria-hidden="true" />
+          <div className={clsx(
+            "flex items-center rounded-lg px-2 py-1 gap-1.5 text-xs transition-colors border",
+            isLight
+              ? "bg-slate-100 hover:bg-slate-200/80 border-slate-300 text-slate-800 shadow-sm"
+              : "bg-gray-800/90 border-gray-700 text-gray-300"
+          )}>
+            <Globe className="w-3.5 h-3.5 text-blue-500 shrink-0" aria-hidden="true" />
             <select
               aria-label="Cloud Region"
               value={activeRegion}
               onChange={(e) => dispatch({ type: 'SET_REGION', region: e.target.value })}
-              className="bg-transparent text-gray-200 text-xs font-medium focus:outline-none cursor-pointer pr-1 max-w-[110px] truncate"
+              className={clsx(
+                "bg-transparent text-xs font-semibold focus:outline-none cursor-pointer pr-1 max-w-[110px] truncate",
+                isLight ? "text-slate-800" : "text-gray-200"
+              )}
             >
               {cloudRegionService.getRegions(activeProject.provider === 'azure' ? 'azure' : 'aws').map((r) => (
-                <option key={r.id} value={r.id} className="bg-gray-900 text-gray-200">
+                <option key={r.id} value={r.id} className={clsx(isLight ? "bg-white text-slate-900" : "bg-gray-900 text-gray-200")}>
                   {r.id} — {r.displayName}
                 </option>
               ))}
@@ -121,16 +145,24 @@ export default function TopBar() {
 
       {/* Currency Selector */}
       <div className="hidden sm:flex items-center gap-1.5 shrink-0" title={`Display Currency: ${state.displayCurrency}`}>
-        <div className="flex items-center bg-gray-800/90 border border-gray-700 rounded-lg px-2 py-1 gap-1.5 text-xs text-gray-300">
-          <Coins className="w-3.5 h-3.5 text-emerald-400 shrink-0" aria-hidden="true" />
+        <div className={clsx(
+          "flex items-center rounded-lg px-2 py-1 gap-1.5 text-xs transition-colors border",
+          isLight
+            ? "bg-slate-100 hover:bg-slate-200/80 border-slate-300 text-slate-800 shadow-sm"
+            : "bg-gray-800/90 border-gray-700 text-gray-300"
+        )}>
+          <Coins className="w-3.5 h-3.5 text-emerald-500 shrink-0" aria-hidden="true" />
           <select
             aria-label="Display Currency"
             value={state.displayCurrency}
             onChange={(e) => dispatch({ type: 'SET_CURRENCY', currency: e.target.value })}
-            className="bg-transparent text-gray-200 text-xs font-medium focus:outline-none cursor-pointer pr-1"
+            className={clsx(
+              "bg-transparent text-xs font-semibold focus:outline-none cursor-pointer pr-1",
+              isLight ? "text-slate-800" : "text-gray-200"
+            )}
           >
             {Object.values(SUPPORTED_CURRENCIES).map((c) => (
-              <option key={c.code} value={c.code} className="bg-gray-900 text-gray-200">
+              <option key={c.code} value={c.code} className={clsx(isLight ? "bg-white text-slate-900" : "bg-gray-900 text-gray-200")}>
                 {c.code} ({c.symbol})
               </option>
             ))}
@@ -147,7 +179,9 @@ export default function TopBar() {
               onClick={() => dispatch({ type: 'SET_ENVIRONMENT', env })}
               className={clsx(
                 'px-2 py-0.5 rounded text-[10px] font-medium border capitalize transition-colors',
-                activeEnvironment === env ? ENV_COLORS[env] : 'border-transparent text-gray-600 hover:text-gray-400'
+                activeEnvironment === env
+                  ? (isLight ? ENV_COLORS_LIGHT[env] : ENV_COLORS[env])
+                  : (isLight ? 'border-transparent text-slate-500 hover:text-slate-800' : 'border-transparent text-gray-600 hover:text-gray-400')
               )}
             >
               {env === 'development' ? 'Dev' : env === 'staging' ? 'Staging' : 'Prod'}
@@ -163,11 +197,13 @@ export default function TopBar() {
           className={clsx(
             "flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors shrink-0",
             activeView === 'review'
-              ? "bg-indigo-600 border-indigo-500 text-white"
+              ? "bg-indigo-600 border-indigo-500 text-white shadow-sm"
+              : isLight
+              ? "bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700 shadow-sm"
               : "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
           )}
         >
-          <FileCheck className="w-3.5 h-3.5 text-indigo-400" />
+          <FileCheck className="w-3.5 h-3.5 text-indigo-500" />
           <span className="hidden sm:inline">Review</span>
         </button>
       )}
@@ -176,11 +212,37 @@ export default function TopBar() {
       {activeProject && !['dashboard', 'wizard', 'templates', 'ai-generator', 'import', 'disaster-recovery'].includes(activeView) && (
         <button
           onClick={() => dispatch({ type: 'SET_VIEW', view: 'deploy' })}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors shrink-0 shadow-sm"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors shrink-0 shadow-sm active:scale-[0.98]"
         >
           Deploy
         </button>
       )}
+
+      {/* Dark / Night Mode Toggle */}
+      <button
+        type="button"
+        onClick={() => dispatch({ type: 'TOGGLE_THEME' })}
+        className={clsx(
+          "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-xs font-semibold shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-500/50 active:scale-[0.98]",
+          isLight
+            ? "bg-slate-100 hover:bg-slate-200/80 border-slate-300 text-slate-800 shadow-sm"
+            : "bg-gray-800/90 hover:bg-gray-700/90 border-gray-700 text-gray-300 hover:text-white"
+        )}
+        title={isLight ? 'Switch to Night Mode (Dark)' : 'Switch to Light Mode'}
+        aria-label={isLight ? 'Switch to Night Mode' : 'Switch to Light Mode'}
+      >
+        {isLight ? (
+          <>
+            <Moon className="w-3.5 h-3.5 text-indigo-600 animate-in spin-in-45 duration-200" />
+            <span className="hidden sm:inline text-[11px] font-bold">Night</span>
+          </>
+        ) : (
+          <>
+            <Sun className="w-3.5 h-3.5 text-amber-400 animate-in spin-in-45 duration-200" />
+            <span className="hidden sm:inline text-[11px] font-bold">Light</span>
+          </>
+        )}
+      </button>
 
       {/* User profile / RBAC indicator */}
       <div className="relative shrink-0" ref={userMenuRef}>

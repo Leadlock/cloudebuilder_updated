@@ -375,13 +375,30 @@ function toReactFlowEdges(canvasEdges: CanvasEdge[], canvasNodes?: CanvasNode[])
       continue;
     }
 
-    const relType = e.relationshipType || (e.edgeType as string) || 'NETWORK_FLOW';
-    // Containment is purely visual container nesting, not drawn as a network arrow
-    if (relType === 'CONTAINS') {
+    const relRaw = e.relationshipType || (e.edgeType as string) || '';
+    const relUpper = relRaw.toUpperCase();
+    const lbl = (e.label || '').toLowerCase();
+
+    // Containment is purely visual container nesting (VPC/VNet -> Subnet -> Leaf resources),
+    // and must never be drawn as a cluttering network arrow.
+    if (
+      relUpper === 'CONTAINS' ||
+      relUpper === 'CONTAINMENT' ||
+      relUpper === 'IN_CONTAINER' ||
+      relRaw.toLowerCase() === 'containment' ||
+      lbl === 'subnet in vpc' ||
+      lbl === 'subnet in vnet' ||
+      lbl === 'vnet in resource group' ||
+      lbl === 'igw attached to vpc' ||
+      lbl.includes('in vpc') ||
+      lbl.includes('in subnet') ||
+      lbl.includes('in vnet')
+    ) {
       continue;
     }
 
     // Deduplication check
+    const relType = relUpper || 'NETWORK_FLOW';
     const dedupKey = `${e.source}:${relType}:${e.target}`;
     if (seenEdgeKeys.has(dedupKey)) {
       continue;
@@ -413,15 +430,17 @@ function toReactFlowEdges(canvasEdges: CanvasEdge[], canvasNodes?: CanvasNode[])
       relType === 'ASSOCIATED_WITH' ||
       relType === 'DEPENDS_ON' ||
       relType === 'LOGICAL_DEPENDENCY' ||
-      relType === 'security' ||
-      relType === 'management'
+      relType === 'SECURITY' ||
+      relType === 'MANAGEMENT' ||
+      relRaw.toLowerCase() === 'security' ||
+      relRaw.toLowerCase() === 'management'
     ) {
       type = 'association';
       color = '#94A3B8';
-    } else if (relType === 'REPLICATES_TO') {
+    } else if (relType === 'REPLICATES_TO' || relType === 'REPLICATION') {
       type = 'replication';
       color = '#F59E0B';
-    } else if (relType === 'cross-cloud' || e.networkScope === 'cross-cloud') {
+    } else if (relType === 'CROSS-CLOUD' || relType === 'CROSS_CLOUD' || e.networkScope === 'cross-cloud') {
       type = 'crossCloud';
       color = '#F59E0B';
     }
@@ -484,6 +503,7 @@ function toReactFlowEdges(canvasEdges: CanvasEdge[], canvasNodes?: CanvasNode[])
 
 export default function InfraCanvas() {
   const { state, dispatch } = useApp();
+  const isLight = state.theme === 'light';
   const activeProject = useActiveProject();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
@@ -1843,7 +1863,7 @@ export default function InfraCanvas() {
   }
 
   return (
-    <div className="flex flex-1 min-h-0 relative overflow-hidden bg-slate-950">
+    <div className={clsx('flex flex-1 min-h-0 relative overflow-hidden', isLight ? 'bg-slate-50' : 'bg-slate-950')}>
       {/* Redesigned Cloud Service Catalog Palette */}
       <ResourcePalette
         provider={activeProject.provider}
@@ -1851,7 +1871,7 @@ export default function InfraCanvas() {
       />
 
       {/* Main Architecture Canvas */}
-      <div ref={reactFlowWrapper} className="flex-1 relative bg-slate-950">
+      <div ref={reactFlowWrapper} className={clsx('flex-1 relative', isLight ? 'bg-slate-50' : 'bg-slate-950')}>
         {/* Floating Architecture Toolbar */}
         <CanvasToolbar
           canUndo={canUndo}
@@ -1879,23 +1899,28 @@ export default function InfraCanvas() {
           isDraft={!state.activeProjectId || state.activeProjectId === 'draft-project'}
         />
 
-        {/* Resource search — filters/dims canvas nodes by label or resource type,
-            useful once an architecture grows past what's visible at a glance.
-            Positioned below the main toolbar row (not top-4) to avoid
-            overlapping the Add Resource / Auto Layout / Auto-Fix buttons. */}
+        {/* Resource search — filters/dims canvas nodes by label or resource type */}
         <div className="absolute top-16 left-4 z-20 flex items-center gap-2">
           <div className="relative">
-            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={canvasSearchQuery}
               onChange={(e) => setCanvasSearchQuery(e.target.value)}
               placeholder="Search resources…"
-              className="w-48 pl-8 pr-2.5 py-1.5 bg-slate-900/90 border border-slate-700/80 rounded-xl text-xs text-white placeholder:text-slate-500 shadow-2xl backdrop-blur-md focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-all"
+              className={clsx(
+                'w-48 pl-8 pr-2.5 py-1.5 rounded-xl text-xs shadow-xl backdrop-blur-md focus:outline-none transition-all',
+                isLight
+                  ? 'bg-white/95 border border-slate-300 text-slate-900 placeholder:text-slate-400 focus:ring-1 focus:ring-blue-500'
+                  : 'bg-slate-900/90 border border-slate-700/80 text-white placeholder:text-slate-500 focus:ring-1 focus:ring-cyan-500'
+              )}
             />
           </div>
           {normalizedSearch && (
-            <span className="px-2 py-1 rounded-lg text-[11px] font-medium bg-slate-900/90 border border-slate-700/80 text-slate-300 shadow-2xl backdrop-blur-md">
+            <span className={clsx(
+              'px-2 py-1 rounded-lg text-[11px] font-medium shadow-xl backdrop-blur-md border',
+              isLight ? 'bg-white border-slate-300 text-slate-700' : 'bg-slate-900/90 border-slate-700/80 text-slate-300'
+            )}>
               {searchMatchCount} match{searchMatchCount === 1 ? '' : 'es'}
             </span>
           )}
@@ -1903,14 +1928,20 @@ export default function InfraCanvas() {
 
         {/* Multi-cloud filter bar */}
         {activeProject.provider === 'multi' && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 bg-slate-900/90 border border-slate-700/80 rounded-xl px-1.5 py-1 shadow-2xl backdrop-blur-md">
+          <div className={clsx(
+            'absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 border rounded-xl px-1.5 py-1 shadow-2xl backdrop-blur-md',
+            isLight ? 'bg-white/95 border-slate-300' : 'bg-slate-900/90 border-slate-700/80'
+          )}>
             {(['all', 'aws', 'azure'] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setCanvasFilter(f)}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                  canvasFilter === f ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                }`}
+                className={clsx(
+                  'px-3 py-1 rounded-lg text-xs font-semibold transition-colors',
+                  canvasFilter === f
+                    ? (isLight ? 'bg-blue-600 text-white shadow-sm' : 'bg-cyan-600 text-white')
+                    : (isLight ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-white hover:bg-slate-800')
+                )}
               >
                 {f === 'all' ? 'All Providers' : f.toUpperCase()}
               </button>
@@ -1918,34 +1949,37 @@ export default function InfraCanvas() {
           </div>
         )}
 
-        {/* Tools menu — a single compact button instead of a permanently-expanded
-            bar, so it doesn't sit on top of (and block clicks on) canvas nodes
-            that happen to be positioned in the top-right corner. */}
+        {/* Tools menu */}
         <div className="absolute top-4 right-4 z-20" ref={toolsMenuRef}>
           <button
             type="button"
             id="btn-toggle-tools-menu"
             onClick={() => setShowToolsMenu((v) => !v)}
             title="Architecture Tools"
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium shadow-2xl backdrop-blur-md border transition-colors ${
+            className={clsx(
+              'flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium shadow-2xl backdrop-blur-md border transition-colors',
               showToolsMenu || showAiPrompt || showCompliance || showGitOps
-                ? 'bg-slate-800 text-white border-slate-600'
-                : 'bg-slate-900/90 text-slate-300 border-slate-700/80 hover:text-white hover:bg-slate-800'
-            }`}
+                ? (isLight ? 'bg-blue-50 text-blue-700 border-blue-300 font-semibold' : 'bg-slate-800 text-white border-slate-600')
+                : (isLight ? 'bg-white/95 text-slate-700 border-slate-300 hover:text-slate-900 hover:bg-slate-100' : 'bg-slate-900/90 text-slate-300 border-slate-700/80 hover:text-white hover:bg-slate-800')
+            )}
           >
             <Wrench className="w-3.5 h-3.5" />
             <span>Tools</span>
           </button>
 
           {showToolsMenu && (
-            <div className="absolute right-0 top-full mt-1 w-52 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden py-1">
+            <div className={clsx(
+              'absolute right-0 top-full mt-1 w-52 border rounded-xl shadow-2xl overflow-hidden py-1 z-30',
+              isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900 border-slate-700 text-slate-200'
+            )}>
               <button
                 type="button"
                 id="btn-toggle-ai-prompt"
                 onClick={() => { setShowAiPrompt((v) => !v); setShowToolsMenu(false); }}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors ${
-                  showAiPrompt ? 'text-fuchsia-300 bg-fuchsia-500/10' : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                }`}
+                className={clsx(
+                  'w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors',
+                  showAiPrompt ? 'text-fuchsia-600 bg-fuchsia-50 dark:text-fuchsia-300 dark:bg-fuchsia-500/10' : (isLight ? 'text-slate-700 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-300 hover:text-white hover:bg-slate-800')
+                )}
               >
                 <Bot className="w-3.5 h-3.5" />
                 <span>AI Architect</span>
@@ -1954,9 +1988,10 @@ export default function InfraCanvas() {
                 type="button"
                 id="btn-toggle-compliance"
                 onClick={() => { setShowCompliance((v) => !v); setShowToolsMenu(false); }}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors ${
-                  showCompliance ? 'text-emerald-300 bg-emerald-500/10' : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                }`}
+                className={clsx(
+                  'w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors',
+                  showCompliance ? 'text-emerald-700 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-500/10' : (isLight ? 'text-slate-700 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-300 hover:text-white hover:bg-slate-800')
+                )}
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
                 <span>Compliance</span>
@@ -1965,21 +2000,25 @@ export default function InfraCanvas() {
                 type="button"
                 id="btn-toggle-gitops"
                 onClick={() => { setShowGitOps((v) => !v); setShowToolsMenu(false); }}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors ${
-                  showGitOps ? 'text-blue-300 bg-blue-500/10' : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                }`}
+                className={clsx(
+                  'w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors',
+                  showGitOps ? 'text-blue-700 bg-blue-50 dark:text-blue-300 dark:bg-blue-500/10' : (isLight ? 'text-slate-700 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-300 hover:text-white hover:bg-slate-800')
+                )}
               >
                 <GitMerge className="w-3.5 h-3.5" />
                 <span>GitOps</span>
               </button>
-              <div className="h-px bg-slate-800 my-1" />
+              <div className={clsx('h-px my-1', isLight ? 'bg-slate-200' : 'bg-slate-800')} />
               {(['svg', 'png', 'pdf'] as const).map((fmt) => (
                 <button
                   key={fmt}
                   type="button"
                   onClick={() => { handleExport(fmt); setShowToolsMenu(false); }}
                   disabled={exporting}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+                  className={clsx(
+                    'w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors disabled:opacity-50',
+                    isLight ? 'text-slate-700 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                  )}
                 >
                   {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                   <span>Export as {fmt.toUpperCase()}</span>
@@ -2047,12 +2086,15 @@ export default function InfraCanvas() {
           {/* Architecture Blueprint Grid Background */}
           <Background
             variant={BackgroundVariant.Dots}
-            color="#334155"
+            color={isLight ? '#94a3b8' : '#334155'}
             gap={24}
             size={1.2}
-            className="opacity-60"
+            className={isLight ? 'opacity-40' : 'opacity-60'}
           />
-          <Controls className="!bg-slate-900/90 !border-slate-700 !rounded-xl !shadow-2xl overflow-hidden" />
+          <Controls className={clsx(
+            '!rounded-xl !shadow-2xl overflow-hidden',
+            isLight ? '!bg-white/95 !border-slate-300 text-slate-800' : '!bg-slate-900/90 !border-slate-700'
+          )} />
           <MiniMap
             nodeColor={(n) => {
               if (n.data.resourceType?.includes('vpc') || n.data.resourceType?.includes('vnet')) return '#8C4FFF';
@@ -2061,8 +2103,11 @@ export default function InfraCanvas() {
               if (n.data.resourceType?.includes('rds') || n.data.resourceType?.includes('sql')) return '#C925D1';
               return '#38BDF8';
             }}
-            maskColor="rgba(2, 6, 23, 0.75)"
-            className="!bg-slate-900 !border-slate-800 !rounded-xl !shadow-2xl overflow-hidden"
+            maskColor={isLight ? 'rgba(241, 245, 249, 0.75)' : 'rgba(2, 6, 23, 0.75)'}
+            className={clsx(
+              '!rounded-xl !shadow-2xl overflow-hidden',
+              isLight ? '!bg-white !border-slate-300' : '!bg-slate-900 !border-slate-800'
+            )}
           />
         </ReactFlow>
       </div>
@@ -2107,40 +2152,43 @@ export default function InfraCanvas() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-200"
           id="invalid-connection-modal"
         >
-          <div className="bg-slate-900 border border-rose-500/30 rounded-2xl p-6 max-w-lg w-full shadow-2xl shadow-rose-950/20 text-slate-100">
+          <div className={clsx(
+            'border rounded-2xl p-6 max-w-lg w-full shadow-2xl',
+            isLight ? 'bg-white border-rose-200 text-slate-900' : 'bg-slate-900 border-rose-500/30 text-slate-100 shadow-rose-950/20'
+          )}>
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center shrink-0 text-rose-400">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center shrink-0 text-rose-500">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
               <div className="flex-1">
-                <h3 className="text-base font-semibold text-rose-300">
+                <h3 className={clsx('text-base font-semibold', isLight ? 'text-rose-700' : 'text-rose-300')}>
                   {connectionError.title}
                 </h3>
-                <div className="flex items-center gap-2 mt-1 text-xs font-mono text-slate-400">
-                  <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">{connectionError.sourceLabel}</span>
+                <div className={clsx('flex items-center gap-2 mt-1 text-xs font-mono', isLight ? 'text-slate-500' : 'text-slate-400')}>
+                  <span className={clsx('px-2 py-0.5 rounded border', isLight ? 'bg-slate-100 border-slate-200 text-slate-800' : 'bg-slate-800 border-slate-700 text-slate-300')}>{connectionError.sourceLabel}</span>
                   <span>→</span>
-                  <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">{connectionError.targetLabel}</span>
+                  <span className={clsx('px-2 py-0.5 rounded border', isLight ? 'bg-slate-100 border-slate-200 text-slate-800' : 'bg-slate-800 border-slate-700 text-slate-300')}>{connectionError.targetLabel}</span>
                 </div>
               </div>
             </div>
 
-            <p className="text-sm text-slate-300 mt-4 leading-relaxed font-medium">
+            <p className={clsx('text-sm mt-4 leading-relaxed font-medium', isLight ? 'text-slate-700' : 'text-slate-300')}>
               {connectionError.message}
             </p>
 
-            <div className="mt-3 p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-xs text-slate-400 leading-relaxed">
-              <span className="font-semibold text-slate-300 block mb-1">Architectural Rationale:</span>
+            <div className={clsx('mt-3 p-3 rounded-xl border text-xs leading-relaxed', isLight ? 'bg-slate-50 border-slate-200 text-slate-600' : 'bg-slate-950/60 border-slate-800 text-slate-400')}>
+              <span className={clsx('font-semibold block mb-1', isLight ? 'text-slate-800' : 'text-slate-300')}>Architectural Rationale:</span>
               {connectionError.reason}
             </div>
 
             {connectionError.alternatives.length > 0 && (
               <div className="mt-3">
-                <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider block mb-1">
+                <span className={clsx('text-xs font-semibold uppercase tracking-wider block mb-1', isLight ? 'text-emerald-700' : 'text-emerald-400')}>
                   Valid Alternatives:
                 </span>
-                <ul className="text-xs text-slate-300 space-y-1 list-disc list-inside">
+                <ul className={clsx('text-xs space-y-1 list-disc list-inside', isLight ? 'text-slate-600' : 'text-slate-300')}>
                   {connectionError.alternatives.map((alt, i) => (
                     <li key={i}>{alt}</li>
                   ))}
@@ -2153,7 +2201,10 @@ export default function InfraCanvas() {
                 type="button"
                 id="btn-dismiss-connection-error"
                 onClick={() => setConnectionError(null)}
-                className="px-4 py-2 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition-colors"
+                className={clsx(
+                  'px-4 py-2 text-xs font-semibold rounded-xl transition-colors border',
+                  isLight ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800' : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-white'
+                )}
               >
                 Understood
               </button>
@@ -2175,16 +2226,19 @@ export default function InfraCanvas() {
       {/* Provider Change Warning Confirmation Modal */}
       {pendingProviderChange && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-amber-500/60 rounded-2xl p-6 max-w-md w-full shadow-2xl">
-            <div className="flex items-center gap-3 mb-3 text-amber-400">
+          <div className={clsx(
+            'border rounded-2xl p-6 max-w-md w-full shadow-2xl',
+            isLight ? 'bg-white border-amber-300 text-slate-900' : 'bg-slate-900 border-amber-500/60 text-slate-100'
+          )}>
+            <div className="flex items-center gap-3 mb-3 text-amber-500">
               <AlertTriangle className="w-6 h-6 shrink-0" />
-              <h3 className="text-lg font-bold text-white">Change Cloud Mode</h3>
+              <h3 className={clsx('text-lg font-bold', isLight ? 'text-slate-900' : 'text-white')}>Change Cloud Mode</h3>
             </div>
-            <p className="text-sm text-slate-300 mb-3 leading-relaxed">
-              Changing this architecture to <strong className="text-amber-400">{pendingProviderChange.newMode}</strong>-only will remove{' '}
-              <strong className="text-white">{pendingProviderChange.incompatibleCount} incompatible resource{pendingProviderChange.incompatibleCount === 1 ? '' : 's'}</strong>:
+            <p className={clsx('text-sm mb-3 leading-relaxed', isLight ? 'text-slate-700' : 'text-slate-300')}>
+              Changing this architecture to <strong className="text-amber-600 font-semibold">{pendingProviderChange.newMode}</strong>-only will remove{' '}
+              <strong className={isLight ? 'text-slate-900' : 'text-white'}>{pendingProviderChange.incompatibleCount} incompatible resource{pendingProviderChange.incompatibleCount === 1 ? '' : 's'}</strong>:
             </p>
-            <ul className="text-xs bg-slate-950/80 rounded-lg p-3 border border-slate-800 text-slate-400 mb-4 list-disc list-inside space-y-1">
+            <ul className={clsx('text-xs rounded-lg p-3 border mb-4 list-disc list-inside space-y-1', isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-slate-950/80 border-slate-800 text-slate-400')}>
               {pendingProviderChange.incompatibleNodeLabels.map((lbl, i) => (
                 <li key={i}>{lbl}</li>
               ))}
@@ -2192,7 +2246,7 @@ export default function InfraCanvas() {
                 <li>...and {pendingProviderChange.incompatibleCount - pendingProviderChange.incompatibleNodeLabels.length} more</li>
               )}
             </ul>
-            <p className="text-xs text-slate-400 mb-5">
+            <p className={clsx('text-xs mb-5', isLight ? 'text-slate-500' : 'text-slate-400')}>
               CloudCraft never silently deletes resources. Do you want to continue?
             </p>
             <div className="flex items-center justify-end gap-3">
@@ -2200,7 +2254,10 @@ export default function InfraCanvas() {
                 type="button"
                 id="btn-cancel-provider-change"
                 onClick={() => setPendingProviderChange(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-colors"
+                className={clsx(
+                  'px-4 py-2 rounded-xl text-xs font-semibold transition-colors border',
+                  isLight ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700' : 'bg-slate-800 hover:bg-slate-700 border-transparent text-slate-300'
+                )}
               >
                 Cancel
               </button>
@@ -2220,20 +2277,23 @@ export default function InfraCanvas() {
       {/* Save Architecture as Project Modal */}
       {showSaveProjectModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+          <div className={clsx(
+            'border rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95 duration-150',
+            isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-900 border-slate-800 text-white'
+          )}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
                 <Plus className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white">Save as Project</h3>
-                <p className="text-xs text-slate-400">Save this visual architecture into your CloudCraft account</p>
+                <h3 className={clsx('text-base font-bold', isLight ? 'text-slate-900' : 'text-white')}>Save as Project</h3>
+                <p className={clsx('text-xs', isLight ? 'text-slate-500' : 'text-slate-400')}>Save this visual architecture into your CloudCraft account</p>
               </div>
             </div>
 
             <form onSubmit={handleConfirmSaveProject} className="space-y-4">
               <div>
-                <label className="text-xs text-slate-300 font-medium block mb-1">Project Name</label>
+                <label className={clsx('text-xs font-medium block mb-1', isLight ? 'text-slate-700' : 'text-slate-300')}>Project Name</label>
                 <input
                   type="text"
                   required
@@ -2241,12 +2301,17 @@ export default function InfraCanvas() {
                   value={saveProjectName}
                   onChange={(e) => setSaveProjectName(e.target.value)}
                   placeholder="e.g. Production E-Commerce Platform"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+                  className={clsx(
+                    'w-full border rounded-xl px-3 py-2 text-xs focus:outline-none',
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                      : 'bg-slate-950 border-slate-800 text-white placeholder-slate-500 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500'
+                  )}
                 />
               </div>
 
               <div>
-                <label className="text-xs text-slate-300 font-medium block mb-1">Primary Cloud Provider</label>
+                <label className={clsx('text-xs font-medium block mb-1', isLight ? 'text-slate-700' : 'text-slate-300')}>Primary Cloud Provider</label>
                 <div className="grid grid-cols-3 gap-2">
                   {(['aws', 'azure', 'multi'] as const).map((p) => (
                     <button
@@ -2256,7 +2321,9 @@ export default function InfraCanvas() {
                       className={clsx(
                         'py-2 px-3 rounded-xl border text-xs font-semibold transition-all text-center',
                         saveProjectProvider === p
-                          ? 'bg-cyan-600/20 border-cyan-500 text-cyan-300 shadow-md shadow-cyan-500/10'
+                          ? (isLight ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-sm' : 'bg-cyan-600/20 border-cyan-500 text-cyan-300 shadow-md shadow-cyan-500/10')
+                          : isLight
+                          ? 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
                           : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
                       )}
                     >
@@ -2266,22 +2333,25 @@ export default function InfraCanvas() {
                 </div>
               </div>
 
-              <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 text-slate-400 text-xs flex items-center justify-between">
+              <div className={clsx('p-3 rounded-xl border text-xs flex items-center justify-between', isLight ? 'bg-slate-50 border-slate-200 text-slate-600' : 'bg-slate-950/60 border-slate-800/80 text-slate-400')}>
                 <span>Total Canvas Resources:</span>
-                <span className="font-semibold text-white">{nodes.length} nodes</span>
+                <span className={clsx('font-semibold', isLight ? 'text-slate-900' : 'text-white')}>{nodes.length} nodes</span>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowSaveProjectModal(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-colors"
+                  className={clsx(
+                    'px-4 py-2 rounded-xl text-xs font-semibold transition-colors border',
+                    isLight ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700' : 'bg-slate-800 hover:bg-slate-700 border-transparent text-slate-300'
+                  )}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl text-xs font-semibold transition-all shadow-lg shadow-cyan-600/20"
+                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold transition-all shadow-lg shadow-blue-600/20"
                 >
                   Save Project
                 </button>
@@ -2294,26 +2364,32 @@ export default function InfraCanvas() {
       {/* Discard Confirmation Modal */}
       {showDiscardModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-rose-500/50 rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3 mb-3 text-rose-400">
-              <div className="w-10 h-10 rounded-xl bg-rose-950/80 border border-rose-500/40 flex items-center justify-center text-rose-400">
+          <div className={clsx(
+            'border rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95 duration-150',
+            isLight ? 'bg-white border-rose-300 text-slate-900' : 'bg-slate-900 border-rose-500/50 text-white'
+          )}>
+            <div className="flex items-center gap-3 mb-3 text-rose-500">
+              <div className={clsx('w-10 h-10 rounded-xl border flex items-center justify-center', isLight ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-rose-950/80 border-rose-500/40 text-rose-400')}>
                 <Trash2 className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white">Discard Architecture?</h3>
-                <p className="text-xs text-rose-300/80">This action will clear the entire visual builder canvas</p>
+                <h3 className={clsx('text-base font-bold', isLight ? 'text-slate-900' : 'text-white')}>Discard Architecture?</h3>
+                <p className={clsx('text-xs', isLight ? 'text-rose-700' : 'text-rose-300/80')}>This action will clear the entire visual builder canvas</p>
               </div>
             </div>
 
-            <p className="text-xs text-slate-300 mb-5 leading-relaxed">
-              Are you sure you want to discard your changes? All <strong className="text-white">{nodes.length} cloud resources</strong> and their connections will be removed.
+            <p className={clsx('text-xs mb-5 leading-relaxed', isLight ? 'text-slate-600' : 'text-slate-300')}>
+              Are you sure you want to discard your changes? All <strong className={isLight ? 'text-slate-900' : 'text-white'}>{nodes.length} cloud resources</strong> and their connections will be removed.
             </p>
 
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setShowDiscardModal(false)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-colors"
+                className={clsx(
+                  'px-4 py-2 rounded-xl text-xs font-semibold transition-colors border',
+                  isLight ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700' : 'bg-slate-800 hover:bg-slate-700 border-transparent text-slate-300'
+                )}
               >
                 Keep Editing
               </button>
@@ -2331,10 +2407,13 @@ export default function InfraCanvas() {
 
       {/* Floating Status Notification Banner */}
       {bannerMessage && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-slate-900/95 border border-slate-700 text-white text-xs font-semibold shadow-2xl backdrop-blur-md animate-fade-in">
-          {bannerMessage.type === 'success' && <Check className="w-4 h-4 text-emerald-400 shrink-0" />}
-          {bannerMessage.type === 'info' && <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />}
-          {bannerMessage.type === 'error' && <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />}
+        <div className={clsx(
+          'absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-semibold shadow-2xl backdrop-blur-md animate-fade-in border',
+          isLight ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-slate-900/95 border-slate-700 text-white'
+        )}>
+          {bannerMessage.type === 'success' && <Check className="w-4 h-4 text-emerald-500 shrink-0" />}
+          {bannerMessage.type === 'info' && <Sparkles className={clsx('w-4 h-4 shrink-0', isLight ? 'text-blue-600' : 'text-cyan-400')} />}
+          {bannerMessage.type === 'error' && <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />}
           <span>{bannerMessage.text}</span>
         </div>
       )}

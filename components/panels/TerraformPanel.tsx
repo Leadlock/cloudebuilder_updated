@@ -15,6 +15,7 @@ const FILE_ICONS: Record<string, string> = {
 
 export default function TerraformPanel() {
   const { state } = useApp();
+  const isLight = state.theme === 'light';
   const activeProject = useActiveProject();
   const [activeFile, setActiveFile] = useState<string>('main.tf');
   const [copied, setCopied] = useState(false);
@@ -101,11 +102,11 @@ export default function TerraformPanel() {
 
   if (nodeCount === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-950">
+      <div className={clsx("flex-1 flex items-center justify-center", isLight ? "bg-slate-50" : "bg-gray-950")}>
         <div className="text-center px-8 py-12">
-          <FileCode2 className="w-12 h-12 text-gray-700 mx-auto mb-4" />
-          <p className="text-gray-400 font-medium text-lg">No resources to generate</p>
-          <p className="text-gray-600 text-sm mt-1">Add resources to the canvas to generate Terraform code</p>
+          <FileCode2 className={clsx("w-12 h-12 mx-auto mb-4", isLight ? "text-slate-300" : "text-gray-700")} />
+          <p className={clsx("font-medium text-lg", isLight ? "text-slate-700" : "text-gray-400")}>No resources to generate</p>
+          <p className={clsx("text-sm mt-1", isLight ? "text-slate-500" : "text-gray-600")}>Add resources to the canvas to generate Terraform code</p>
         </div>
       </div>
     );
@@ -113,11 +114,11 @@ export default function TerraformPanel() {
 
   if (apiLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-950">
+      <div className={clsx("flex-1 flex items-center justify-center", isLight ? "bg-slate-50" : "bg-gray-950")}>
         <div className="text-center" role="status" aria-label="Generating Terraform">
-          <div className="w-12 h-12 border-4 border-blue-700 border-t-blue-400 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-400 font-medium">Generating Terraform…</p>
-          <p className="text-gray-600 text-sm mt-1">Calling backend Terraform generator</p>
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className={clsx("font-medium", isLight ? "text-slate-800" : "text-gray-400")}>Generating Terraform…</p>
+          <p className={clsx("text-sm mt-1", isLight ? "text-slate-500" : "text-gray-600")}>Calling backend Terraform generator</p>
         </div>
       </div>
     );
@@ -125,14 +126,17 @@ export default function TerraformPanel() {
 
   if (error) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-950 p-6">
-        <div className="text-center max-w-md bg-gray-900 border border-red-800/60 rounded-xl p-8 shadow-xl">
-          <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-4" aria-hidden="true" />
-          <h3 className="text-white font-semibold text-lg mb-2">Terraform Generation Failed</h3>
-          <p className="text-gray-400 text-sm mb-6">{error}</p>
+      <div className={clsx("flex-1 flex items-center justify-center p-6", isLight ? "bg-slate-50" : "bg-gray-950")}>
+        <div className={clsx(
+          "text-center max-w-md border rounded-xl p-8 shadow-xl",
+          isLight ? "bg-white border-rose-200" : "bg-gray-900 border-red-800/60"
+        )}>
+          <AlertTriangle className={clsx("w-12 h-12 mx-auto mb-4", isLight ? "text-rose-600" : "text-red-400")} aria-hidden="true" />
+          <h3 className={clsx("font-semibold text-lg mb-2", isLight ? "text-slate-900" : "text-white")}>Terraform Generation Failed</h3>
+          <p className={clsx("text-sm mb-6", isLight ? "text-slate-600" : "text-gray-400")}>{error}</p>
           <button
             onClick={() => setRetryCount((c) => c + 1)}
-            className="px-4 py-2 bg-red-800 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
+            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-rose-500"
           >
             Retry Generation
           </button>
@@ -187,12 +191,12 @@ export default function TerraformPanel() {
   }
 
   return (
-    <div className="flex flex-1 min-h-0 bg-gray-950">
+    <div className={clsx("flex flex-1 min-h-0", isLight ? "bg-slate-50" : "bg-gray-950")}>
       {/* File tree */}
-      <div className="w-48 bg-gray-900 border-r border-gray-800 flex flex-col shrink-0">
-        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-800">
-          <FolderOpen className="w-3.5 h-3.5 text-gray-500" />
-          <span className="text-gray-400 text-xs font-medium">terraform/</span>
+      <div className={clsx("w-48 flex flex-col shrink-0 border-r", isLight ? "bg-slate-100/80 border-slate-200" : "bg-gray-900 border-gray-800")}>
+        <div className={clsx("flex items-center gap-2 px-3 py-2.5 border-b", isLight ? "border-slate-200" : "border-gray-800")}>
+          <FolderOpen className={clsx("w-3.5 h-3.5", isLight ? "text-slate-500" : "text-gray-500")} />
+          <span className={clsx("text-xs font-medium", isLight ? "text-slate-700" : "text-gray-400")}>terraform/</span>
         </div>
         <div className="flex-1 py-1">
           {fileNames.map((file) => (
@@ -200,8 +204,10 @@ export default function TerraformPanel() {
               key={file}
               onClick={() => setActiveFile(file)}
               className={clsx(
-                'w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors text-left',
-                currentFile === file ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
+                'w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors text-left font-medium',
+                currentFile === file 
+                  ? (isLight ? 'bg-white text-blue-600 shadow-xs border-r-2 border-blue-600' : 'bg-gray-800 text-white')
+                  : (isLight ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50')
               )}
             >
               <span className="text-[10px]">{FILE_ICONS[file] ?? '📄'}</span>
@@ -209,10 +215,13 @@ export default function TerraformPanel() {
             </button>
           ))}
         </div>
-        <div className="p-2 border-t border-gray-800">
+        <div className={clsx("p-2 border-t", isLight ? "border-slate-200" : "border-gray-800")}>
           <button
             onClick={handleDownload}
-            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white rounded-lg text-xs transition-colors"
+            className={clsx(
+              "w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors border",
+              isLight ? "bg-white border-slate-300 text-slate-700 hover:bg-slate-50 shadow-xs" : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:bg-gray-700"
+            )}
           >
             <Download className="w-3 h-3" />
             Download All
@@ -224,72 +233,77 @@ export default function TerraformPanel() {
       <div className="flex flex-col flex-1 min-w-0">
         {/* Warnings banner */}
         {warnings.length > 0 && (
-          <div className="shrink-0 border-b border-amber-800/50 bg-amber-950/40">
+          <div className={clsx("shrink-0 border-b", isLight ? "bg-amber-50 border-amber-200" : "border-amber-800/50 bg-amber-950/40")}>
             <button
               onClick={() => setWarningsExpanded((v) => !v)}
               className="w-full flex items-center justify-between px-4 py-2 text-left"
             >
-              <span className="flex items-center gap-2 text-amber-300 text-xs font-medium">
-                <AlertTriangle className="w-3.5 h-3.5" />
+              <span className={clsx("flex items-center gap-2 text-xs font-medium", isLight ? "text-amber-800" : "text-amber-300")}>
+                <AlertTriangle className={clsx("w-3.5 h-3.5", isLight ? "text-amber-600" : "text-amber-400")} />
                 {warnings.length} resource{warnings.length === 1 ? '' : 's'} on this canvas will NOT deploy as generated — {warningsExpanded ? 'hide' : 'show'} details
               </span>
             </button>
             {warningsExpanded && (
               <ul className="px-4 pb-3 space-y-1.5">
                 {warnings.map((w, i) => (
-                  <li key={i} className="text-amber-200/80 text-xs font-mono leading-snug">• {w}</li>
+                  <li key={i} className={clsx("text-xs font-mono leading-snug", isLight ? "text-amber-900" : "text-amber-200/80")}>• {w}</li>
                 ))}
               </ul>
             )}
           </div>
         )}
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800 bg-gray-900 shrink-0">
+        <div className={clsx("flex items-center justify-between px-4 py-2.5 border-b shrink-0", isLight ? "bg-white border-slate-200" : "bg-gray-900 border-gray-800")}>
           <div className="flex items-center gap-3">
-            <Code2 className="w-4 h-4 text-blue-400" />
-            <span className="text-white font-mono text-sm font-medium">{currentFile}</span>
-            <span className="text-gray-600 text-xs">{lineCount} lines</span>
-            <span className="text-xs px-1.5 py-0.5 bg-emerald-900/30 text-emerald-400 rounded">API</span>
+            <Code2 className={clsx("w-4 h-4", isLight ? "text-blue-600" : "text-blue-400")} />
+            <span className={clsx("font-mono text-sm font-semibold", isLight ? "text-slate-900" : "text-white")}>{currentFile}</span>
+            <span className={clsx("text-xs", isLight ? "text-slate-500" : "text-gray-600")}>{lineCount} lines</span>
+            <span className={clsx("text-xs px-1.5 py-0.5 rounded font-medium", isLight ? "bg-emerald-100 text-emerald-800" : "bg-emerald-900/30 text-emerald-400")}>API</span>
           </div>
           <div className="flex gap-2">
             <button
               onClick={handleRegenerate}
               disabled={regenerating}
-              className="flex items-center gap-1.5 px-3 py-1 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400 hover:text-white rounded-lg text-xs transition-colors"
+              className={clsx(
+                "flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-colors border",
+                isLight ? "bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700" : "bg-gray-800 hover:bg-gray-700 border-gray-700 text-gray-400 hover:text-white"
+              )}
             >
               <RefreshCw className={clsx('w-3 h-3', regenerating && 'animate-spin')} />
               Regenerate
             </button>
             <button
               onClick={handleCopy}
-              className="flex items-center gap-1.5 px-3 py-1 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white rounded-lg text-xs transition-colors"
+              className={clsx(
+                "flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-colors border",
+                isLight ? "bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700" : "bg-gray-800 hover:bg-gray-700 border-gray-700 text-gray-300 hover:text-white"
+              )}
             >
-              {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+              {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
               {copied ? 'Copied!' : 'Copy'}
             </button>
           </div>
         </div>
 
         {/* Code */}
-        <div className="flex-1 overflow-auto">
+        <div className={clsx("flex-1 overflow-auto", isLight ? "bg-slate-50" : "bg-gray-950")}>
           <div className="flex">
             {/* Line numbers */}
-            <div className="shrink-0 select-none text-right pr-4 pt-4 pb-4 bg-gray-950 border-r border-gray-800/50" style={{ minWidth: 44 }}>
+            <div className={clsx("shrink-0 select-none text-right pr-4 pt-4 pb-4 border-r", isLight ? "bg-slate-100/70 border-slate-200 text-slate-400" : "bg-gray-950 border-gray-800/50 text-gray-700")} style={{ minWidth: 44 }}>
               {code.split('\n').map((_, i) => (
-                <div key={i} className="text-gray-700 text-xs font-mono leading-5">{i + 1}</div>
+                <div key={i} className="text-xs font-mono leading-5">{i + 1}</div>
               ))}
             </div>
             {/* Code */}
-            <pre key={key} className="flex-1 p-4 text-xs font-mono text-gray-300 leading-5 overflow-x-auto">
+            <pre key={key} className={clsx("flex-1 p-4 text-xs font-mono leading-5 overflow-x-auto", isLight ? "text-slate-800" : "text-gray-300")}>
               {code.split('\n').map((line, i) => {
-                // Basic syntax highlighting
                 let className = '';
-                if (line.trimStart().startsWith('#')) className = 'text-gray-600';
-                else if (/^\s*resource\s/.test(line) || /^\s*provider\s/.test(line) || /^\s*terraform\s/.test(line) || /^\s*variable\s/.test(line) || /^\s*output\s/.test(line)) className = 'text-blue-400';
-                else if (/=\s*"/.test(line)) className = 'text-gray-200';
-                else if (/^\s*(true|false)\s*$/.test(line.split('=')[1]?.trim() ?? '')) className = 'text-orange-400';
+                if (line.trimStart().startsWith('#')) className = isLight ? 'text-slate-400 italic' : 'text-gray-600';
+                else if (/^\s*resource\s/.test(line) || /^\s*provider\s/.test(line) || /^\s*terraform\s/.test(line) || /^\s*variable\s/.test(line) || /^\s*output\s/.test(line)) className = isLight ? 'text-blue-600 font-bold' : 'text-blue-400';
+                else if (/=\s*"/.test(line)) className = isLight ? 'text-emerald-700' : 'text-gray-200';
+                else if (/^\s*(true|false)\s*$/.test(line.split('=')[1]?.trim() ?? '')) className = isLight ? 'text-amber-600 font-semibold' : 'text-orange-400';
                 return (
-                  <div key={i} className={className ?? 'text-gray-300'}>
+                  <div key={i} className={className || (isLight ? 'text-slate-800' : 'text-gray-300')}>
                     {line || ' '}
                   </div>
                 );
@@ -299,11 +313,11 @@ export default function TerraformPanel() {
         </div>
 
         {/* Footer */}
-        <div className="shrink-0 px-4 py-2 border-t border-gray-800 bg-gray-900 flex items-center justify-between">
-          <span className="text-gray-600 text-xs">
+        <div className={clsx("shrink-0 px-4 py-2 border-t flex items-center justify-between", isLight ? "bg-white border-slate-200" : "bg-gray-900 border-gray-800")}>
+          <span className={clsx("text-xs font-mono", isLight ? "text-slate-500" : "text-gray-600")}>
             {activeProject.provider === 'multi' ? 'hashicorp/aws + hashicorp/azurerm' : `hashicorp/${activeProject.provider === 'aws' ? 'aws ~> 5.0' : 'azurerm ~> 3.0'}`}
           </span>
-          <span className="text-gray-700 text-xs">⚠ Review before applying to production</span>
+          <span className={clsx("text-xs", isLight ? "text-amber-700 font-medium" : "text-gray-700")}>⚠ Review before applying to production</span>
         </div>
       </div>
     </div>

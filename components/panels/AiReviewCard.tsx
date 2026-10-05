@@ -4,15 +4,28 @@ import { Sparkles, Loader2, AlertTriangle, CheckCircle2, Send, BookOpen, Lightbu
 import clsx from 'clsx';
 import type { CanvasNode, CanvasEdge } from '@/types';
 import type { AiReviewResult, AiSecurityReview, AiSecurityPriority, AiWellArchitectedReview, AiReviewMode } from '@/lib/services/AiReviewService';
+import { useApp } from '@/context/AppContext';
 
-const SEVERITY_STYLE: Record<string, string> = {
+const SEVERITY_STYLE_DARK: Record<string, string> = {
   critical: 'text-red-300 bg-red-900/30 border-red-800',
   high: 'text-orange-300 bg-orange-900/30 border-orange-800',
   medium: 'text-yellow-300 bg-yellow-900/30 border-yellow-800',
   low: 'text-blue-300 bg-blue-900/30 border-blue-800',
   informational: 'text-slate-300 bg-slate-800 border-slate-700',
 };
-const sevClass = (s: string) => SEVERITY_STYLE[s] ?? SEVERITY_STYLE.informational;
+
+const SEVERITY_STYLE_LIGHT: Record<string, string> = {
+  critical: 'text-red-700 bg-red-50 border-red-200',
+  high: 'text-orange-700 bg-orange-50 border-orange-200',
+  medium: 'text-amber-700 bg-amber-50 border-amber-200',
+  low: 'text-blue-700 bg-blue-50 border-blue-200',
+  informational: 'text-slate-700 bg-slate-100 border-slate-200',
+};
+
+const sevClass = (s: string, isLight = false) => {
+  const styles = isLight ? SEVERITY_STYLE_LIGHT : SEVERITY_STYLE_DARK;
+  return styles[s] ?? styles.informational;
+};
 
 const COPY: Record<AiReviewMode, { title: string; button: string; placeholder: string; footer: string }> = {
   general: {
@@ -35,6 +48,13 @@ const COPY: Record<AiReviewMode, { title: string; button: string; placeholder: s
 export type AnyReview = AiReviewResult | AiSecurityReview | AiWellArchitectedReview;
 
 export default function AiReviewCard({ nodes, edges, mode = 'general', onReview }: { nodes: CanvasNode[]; edges: CanvasEdge[]; mode?: AiReviewMode; /** Called with each completed review (and the nodes it was run on) so a parent can reuse it, e.g. in an export. */ onReview?: (review: AnyReview, nodes: CanvasNode[]) => void }) {
+  let isLight = false;
+  try {
+    const { state } = useApp();
+    isLight = state?.theme === 'light';
+  } catch {
+    isLight = false;
+  }
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,17 +83,17 @@ export default function AiReviewCard({ nodes, edges, mode = 'general', onReview 
   }
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 mb-6" data-testid="ai-review-card" data-mode={mode}>
+    <div className={clsx('border rounded-2xl p-5 mb-6 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-800/80 border-gray-700/80 backdrop-blur-md')} data-testid="ai-review-card" data-mode={mode}>
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-fuchsia-400" />
-          <h3 className="text-white font-semibold text-sm">{copy.title}</h3>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-fuchsia-900/30 text-fuchsia-300">grounded in CloudCraft&apos;s analysis</span>
+          <Sparkles className={clsx('w-4 h-4', isLight ? 'text-fuchsia-600' : 'text-fuchsia-400')} />
+          <h3 className={clsx('font-semibold text-sm', isLight ? 'text-slate-900' : 'text-white')}>{copy.title}</h3>
+          <span className={clsx('text-[10px] px-2 py-0.5 rounded-full border', isLight ? 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200' : 'bg-fuchsia-900/30 text-fuchsia-300 border-fuchsia-800/50')}>grounded in CloudCraft&apos;s analysis</span>
         </div>
         <button
           onClick={() => run(false, Boolean(review))}   // "Review again" asks the model afresh; the first review may come from the cache
           disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-50 text-white text-xs font-semibold transition-colors shadow-sm"
         >
           {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
           {review ? 'Review again' : copy.button}
@@ -86,9 +106,9 @@ export default function AiReviewCard({ nodes, edges, mode = 'general', onReview 
           onChange={(e) => setQuestion(e.target.value)}
           maxLength={500}
           placeholder={copy.placeholder}
-          className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-fuchsia-500"
+          className={clsx('flex-1 border rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-fuchsia-500 transition-all', isLight ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400' : 'bg-gray-900 border-gray-700 text-white placeholder-gray-500')}
         />
-        <button type="submit" disabled={loading || !question.trim()} aria-label="Ask" className="px-3 rounded-lg border border-gray-700 text-gray-300 hover:text-white disabled:opacity-40">
+        <button type="submit" disabled={loading || !question.trim()} aria-label="Ask" className={clsx('px-3 rounded-lg border transition-all', isLight ? 'border-slate-300 text-slate-600 hover:text-slate-900 hover:bg-slate-100 disabled:opacity-40' : 'border-gray-700 text-gray-300 hover:text-white hover:bg-gray-700 disabled:opacity-40')}>
           <Send className="w-3.5 h-3.5" />
         </button>
       </form>
@@ -103,28 +123,28 @@ export default function AiReviewCard({ nodes, edges, mode = 'general', onReview 
       {review && (
         <div className="mt-4 space-y-4">
           {review.answer && (
-            <div className="bg-fuchsia-900/20 border border-fuchsia-800/50 rounded-lg p-3">
-              <p className="text-fuchsia-300 text-[10px] font-semibold uppercase tracking-wide mb-1">Answer</p>
-              <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-line">{review.answer}</p>
+            <div className={clsx('border rounded-lg p-3', isLight ? 'bg-fuchsia-50 border-fuchsia-200' : 'bg-fuchsia-900/20 border-fuchsia-800/50')}>
+              <p className={clsx('text-[10px] font-semibold uppercase tracking-wide mb-1', isLight ? 'text-fuchsia-800' : 'text-fuchsia-300')}>Answer</p>
+              <p className={clsx('text-sm leading-relaxed whitespace-pre-line', isLight ? 'text-slate-800' : 'text-gray-200')}>{review.answer}</p>
             </div>
           )}
 
-          <p className="text-gray-300 text-sm leading-relaxed">{review.summary}</p>
+          <p className={clsx('text-sm leading-relaxed', isLight ? 'text-slate-700' : 'text-gray-300')}>{review.summary}</p>
 
-          {mode === 'general' && <GeneralBody review={review as AiReviewResult} />}
-          {mode === 'security' && <SecurityBody review={review as AiSecurityReview} />}
-          {mode === 'well-architected' && <WellArchitectedBody review={review as AiWellArchitectedReview} />}
+          {mode === 'general' && <GeneralBody review={review as AiReviewResult} isLight={isLight} />}
+          {mode === 'security' && <SecurityBody review={review as AiSecurityReview} isLight={isLight} />}
+          {mode === 'well-architected' && <WellArchitectedBody review={review as AiWellArchitectedReview} isLight={isLight} />}
 
           {'suggestions' in review && review.suggestions.length > 0 && (
-            <div className="border border-dashed border-gray-600 rounded-lg p-3" data-testid="ai-suggestions">
-              <p className="flex items-center gap-1.5 text-gray-400 text-[10px] font-semibold uppercase tracking-wide mb-1">
+            <div className={clsx('border border-dashed rounded-lg p-3', isLight ? 'border-purple-300 bg-purple-50/50' : 'border-gray-600')} data-testid="ai-suggestions">
+              <p className={clsx('flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide mb-1', isLight ? 'text-purple-800' : 'text-gray-400')}>
                 <Lightbulb className="w-3 h-3" /> AI suggestions — not verified by CloudCraft&apos;s analysis
               </p>
-              <ul className="list-disc list-inside text-xs text-gray-400 space-y-0.5">{review.suggestions.map((s) => <li key={s}>{s}</li>)}</ul>
+              <ul className={clsx('list-disc list-inside text-xs space-y-0.5', isLight ? 'text-slate-600' : 'text-gray-400')}>{review.suggestions.map((s) => <li key={s}>{s}</li>)}</ul>
             </div>
           )}
 
-          <p className="flex items-center gap-1.5 text-[10px] text-gray-500">
+          <p className={clsx('flex items-center gap-1.5 text-[10px]', isLight ? 'text-slate-500' : 'text-gray-500')}>
             <BookOpen className="w-3 h-3 shrink-0" />
             Scores and findings come from CloudCraft&apos;s analysis engine; {copy.footer}
           </p>
@@ -134,14 +154,14 @@ export default function AiReviewCard({ nodes, edges, mode = 'general', onReview 
   );
 }
 
-function GeneralBody({ review }: { review: AiReviewResult }) {
+function GeneralBody({ review, isLight = false }: { review: AiReviewResult; isLight?: boolean }) {
   return (
     <>
       {review.strengths.length > 0 && (
         <ul className="space-y-1">
           {review.strengths.map((s) => (
-            <li key={s} className="flex items-start gap-2 text-xs text-gray-300">
-              <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 text-emerald-400 shrink-0" />{s}
+            <li key={s} className={clsx('flex items-start gap-2 text-xs', isLight ? 'text-slate-700' : 'text-gray-300')}>
+              <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 text-emerald-500 shrink-0" />{s}
             </li>
           ))}
         </ul>
@@ -149,18 +169,18 @@ function GeneralBody({ review }: { review: AiReviewResult }) {
 
       {review.priorities.length > 0 && (
         <div className="space-y-2">
-          <p className="text-gray-400 text-[10px] font-semibold uppercase tracking-wide">Fix first</p>
+          <p className={clsx('text-[10px] font-semibold uppercase tracking-wide', isLight ? 'text-slate-500' : 'text-gray-400')}>Fix first</p>
           {review.priorities.map((p, i) => (
-            <div key={p.ruleId} className="bg-gray-900/60 border border-gray-700 rounded-lg p-3">
+            <div key={p.ruleId} className={clsx('border rounded-lg p-3', isLight ? 'bg-slate-50 border-slate-200' : 'bg-gray-900/60 border-gray-700')}>
               <div className="flex items-center gap-2 mb-1 flex-wrap">
-                <span className="text-gray-500 text-xs">{i + 1}.</span>
-                <span className={clsx('text-[10px] px-1.5 py-0.5 rounded border uppercase', sevClass(p.severity))}>{p.severity}</span>
-                <span className="text-white text-xs font-medium">{p.title}</span>
-                <span className="text-gray-600 text-[10px] font-mono">{p.ruleId}</span>
+                <span className={clsx('text-xs', isLight ? 'text-slate-400' : 'text-gray-500')}>{i + 1}.</span>
+                <span className={clsx('text-[10px] px-1.5 py-0.5 rounded border uppercase font-medium', sevClass(p.severity, isLight))}>{p.severity}</span>
+                <span className={clsx('text-xs font-medium', isLight ? 'text-slate-900' : 'text-white')}>{p.title}</span>
+                <span className={clsx('text-[10px] font-mono', isLight ? 'text-slate-400' : 'text-gray-600')}>{p.ruleId}</span>
               </div>
-              {p.resources.length > 0 && <p className="text-gray-500 text-[11px] mb-1">{p.resources.join(', ')}</p>}
-              <p className="text-gray-300 text-xs mb-1">{p.problem}</p>
-              <p className="text-xs"><span className="text-blue-400 font-medium">Fix: </span><span className="text-gray-300">{p.fix}</span></p>
+              {p.resources.length > 0 && <p className={clsx('text-[11px] mb-1', isLight ? 'text-slate-500' : 'text-gray-500')}>{p.resources.join(', ')}</p>}
+              <p className={clsx('text-xs mb-1', isLight ? 'text-slate-700' : 'text-gray-300')}>{p.problem}</p>
+              <p className="text-xs"><span className={clsx('font-medium', isLight ? 'text-blue-600' : 'text-blue-400')}>Fix: </span><span className={isLight ? 'text-slate-700' : 'text-gray-300'}>{p.fix}</span></p>
             </div>
           ))}
         </div>
@@ -168,13 +188,13 @@ function GeneralBody({ review }: { review: AiReviewResult }) {
 
       {review.missing.length > 0 && (
         <div>
-          <p className="text-gray-400 text-[10px] font-semibold uppercase tracking-wide mb-1">Gaps</p>
-          <ul className="list-disc list-inside text-xs text-gray-300 space-y-0.5">{review.missing.map((m) => <li key={m}>{m}</li>)}</ul>
+          <p className={clsx('text-[10px] font-semibold uppercase tracking-wide mb-1', isLight ? 'text-slate-500' : 'text-gray-400')}>Gaps</p>
+          <ul className={clsx('list-disc list-inside text-xs space-y-0.5', isLight ? 'text-slate-700' : 'text-gray-300')}>{review.missing.map((m) => <li key={m}>{m}</li>)}</ul>
         </div>
       )}
 
       {review.facts.deploymentInputs.length > 0 && (
-        <div className="text-xs text-amber-300 bg-amber-900/20 border border-amber-800/40 rounded-lg p-3">
+        <div className={clsx('text-xs border rounded-lg p-3', isLight ? 'text-amber-900 bg-amber-50 border-amber-200' : 'text-amber-300 bg-amber-900/20 border-amber-800/40')}>
           Needs your input before deploying: {review.facts.deploymentInputs.map((d) => `${d.resourceLabel} → ${d.setting}`).join('; ')}
         </div>
       )}
@@ -184,25 +204,25 @@ function GeneralBody({ review }: { review: AiReviewResult }) {
 
 const AUTOFIX_LABEL: Record<AiSecurityPriority['autoFix'], string> = { safe: 'safe auto-fix available', review: 'auto-fix needs review', manual: 'manual fix' };
 
-function SecurityBody({ review }: { review: AiSecurityReview }) {
+function SecurityBody({ review, isLight = false }: { review: AiSecurityReview; isLight?: boolean }) {
   const { facts } = review;
   const sev = Object.entries(facts.bySeverity);
   return (
     <>
       <div className="flex flex-wrap gap-2 text-[11px]">
-        <span className="px-2 py-1 rounded bg-gray-900/60 border border-gray-700 text-gray-300">Security score: <b className="text-white">{facts.score ?? 'n/a'}</b> ({facts.rating})</span>
-        {sev.map(([k, v]) => <span key={k} className={clsx('px-2 py-1 rounded border', sevClass(k))}>{v} {k}</span>)}
-        <span className="px-2 py-1 rounded bg-gray-900/60 border border-gray-700 text-gray-400">{facts.autoFix.safe} safe auto-fix · {facts.autoFix.needsReview} need review · {facts.autoFix.manual} manual</span>
+        <span className={clsx('px-2 py-1 rounded border', isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-gray-900/60 border-gray-700 text-gray-300')}>Security score: <b className={isLight ? 'text-slate-900' : 'text-white'}>{facts.score ?? 'n/a'}</b> ({facts.rating})</span>
+        {sev.map(([k, v]) => <span key={k} className={clsx('px-2 py-1 rounded border font-medium', sevClass(k, isLight))}>{v} {k}</span>)}
+        <span className={clsx('px-2 py-1 rounded border', isLight ? 'bg-slate-50 border-slate-200 text-slate-500' : 'bg-gray-900/60 border-gray-700 text-gray-400')}>{facts.autoFix.safe} safe auto-fix · {facts.autoFix.needsReview} need review · {facts.autoFix.manual} manual</span>
       </div>
 
       {review.themes.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-gray-400 text-[10px] font-semibold uppercase tracking-wide">Themes</p>
+          <p className={clsx('text-[10px] font-semibold uppercase tracking-wide', isLight ? 'text-slate-500' : 'text-gray-400')}>Themes</p>
           {review.themes.map((t) => (
             <div key={t.title} className="text-xs">
-              <span className="text-white font-medium">{t.title}</span>
-              <span className="text-gray-400"> — {t.explanation}</span>
-              <span className="text-gray-600 font-mono text-[10px]"> ({t.ruleIds.join(', ')})</span>
+              <span className={clsx('font-medium', isLight ? 'text-slate-900' : 'text-white')}>{t.title}</span>
+              <span className={isLight ? 'text-slate-600' : 'text-gray-400'}> — {t.explanation}</span>
+              <span className={clsx('font-mono text-[10px]', isLight ? 'text-slate-400' : 'text-gray-600')}> ({t.ruleIds.join(', ')})</span>
             </div>
           ))}
         </div>
@@ -210,24 +230,24 @@ function SecurityBody({ review }: { review: AiSecurityReview }) {
 
       {review.priorities.length > 0 && (
         <div className="space-y-2">
-          <p className="text-gray-400 text-[10px] font-semibold uppercase tracking-wide">Fix in this order</p>
+          <p className={clsx('text-[10px] font-semibold uppercase tracking-wide', isLight ? 'text-slate-500' : 'text-gray-400')}>Fix in this order</p>
           {review.priorities.map((p, i) => (
-            <div key={p.ruleId} className="bg-gray-900/60 border border-gray-700 rounded-lg p-3" data-testid="ai-security-priority">
+            <div key={p.ruleId} className={clsx('border rounded-lg p-3', isLight ? 'bg-slate-50 border-slate-200' : 'bg-gray-900/60 border-gray-700')} data-testid="ai-security-priority">
               <div className="flex items-center gap-2 mb-1 flex-wrap">
-                <span className="text-gray-500 text-xs">{i + 1}.</span>
-                <span className={clsx('text-[10px] px-1.5 py-0.5 rounded border uppercase', sevClass(p.severity))}>{p.severity}</span>
-                <span className="text-white text-xs font-medium">{p.title}</span>
-                <span className="text-gray-600 text-[10px] font-mono">{p.ruleId}</span>
-                <span className="ml-auto text-[10px] text-gray-400">{AUTOFIX_LABEL[p.autoFix]}</span>
+                <span className={clsx('text-xs', isLight ? 'text-slate-400' : 'text-gray-500')}>{i + 1}.</span>
+                <span className={clsx('text-[10px] px-1.5 py-0.5 rounded border uppercase font-medium', sevClass(p.severity, isLight))}>{p.severity}</span>
+                <span className={clsx('text-xs font-medium', isLight ? 'text-slate-900' : 'text-white')}>{p.title}</span>
+                <span className={clsx('text-[10px] font-mono', isLight ? 'text-slate-400' : 'text-gray-600')}>{p.ruleId}</span>
+                <span className={clsx('ml-auto text-[10px]', isLight ? 'text-slate-500' : 'text-gray-400')}>{AUTOFIX_LABEL[p.autoFix]}</span>
               </div>
-              {p.resources.length > 0 && <p className="text-gray-500 text-[11px] mb-1">{p.resources.join(', ')}</p>}
-              <p className="text-gray-300 text-xs mb-1">{p.problem}</p>
-              <p className="text-xs"><span className="text-blue-400 font-medium">Fix: </span><span className="text-gray-300">{p.fix}</span></p>
+              {p.resources.length > 0 && <p className={clsx('text-[11px] mb-1', isLight ? 'text-slate-500' : 'text-gray-500')}>{p.resources.join(', ')}</p>}
+              <p className={clsx('text-xs mb-1', isLight ? 'text-slate-700' : 'text-gray-300')}>{p.problem}</p>
+              <p className="text-xs"><span className={clsx('font-medium', isLight ? 'text-blue-600' : 'text-blue-400')}>Fix: </span><span className={isLight ? 'text-slate-700' : 'text-gray-300'}>{p.fix}</span></p>
               {p.steps.length > 0 && (
                 <details className="mt-1.5">
-                  <summary className="text-[11px] text-gray-500 cursor-pointer">Steps{p.terraform ? ' and Terraform' : ''}</summary>
-                  <ol className="list-decimal list-inside text-[11px] text-gray-400 mt-1 space-y-0.5">{p.steps.map((s) => <li key={s}>{s}</li>)}</ol>
-                  {p.terraform && <pre className="mt-1 text-[10px] text-gray-300 bg-gray-950 border border-gray-700 rounded p-2 overflow-x-auto">{p.terraform}</pre>}
+                  <summary className={clsx('text-[11px] cursor-pointer', isLight ? 'text-slate-500' : 'text-gray-500')}>Steps{p.terraform ? ' and Terraform' : ''}</summary>
+                  <ol className={clsx('list-decimal list-inside text-[11px] mt-1 space-y-0.5', isLight ? 'text-slate-600' : 'text-gray-400')}>{p.steps.map((s) => <li key={s}>{s}</li>)}</ol>
+                  {p.terraform && <pre className={clsx('mt-1 text-[10px] rounded p-2 overflow-x-auto border', isLight ? 'text-slate-800 bg-slate-100 border-slate-200' : 'text-gray-300 bg-gray-950 border-gray-700')}>{p.terraform}</pre>}
                 </details>
               )}
             </div>
@@ -238,21 +258,21 @@ function SecurityBody({ review }: { review: AiSecurityReview }) {
   );
 }
 
-function WellArchitectedBody({ review }: { review: AiWellArchitectedReview }) {
+function WellArchitectedBody({ review, isLight = false }: { review: AiWellArchitectedReview; isLight?: boolean }) {
   return (
     <>
       <div className="grid gap-2 sm:grid-cols-2" data-testid="ai-wa-pillars">
         {review.pillars.map((p) => (
-          <div key={p.key} className="bg-gray-900/60 border border-gray-700 rounded-lg p-3">
+          <div key={p.key} className={clsx('border rounded-lg p-3', isLight ? 'bg-slate-50 border-slate-200' : 'bg-gray-900/60 border-gray-700')}>
             <div className="flex items-center justify-between gap-2 mb-1">
-              <span className="text-white text-xs font-medium">{p.label} <span className="text-gray-600 uppercase text-[10px]">{p.provider}</span></span>
-              <span className="text-[11px] text-gray-300">{p.score === null ? 'not scored' : p.score} <span className="text-gray-500">· {p.status}</span></span>
+              <span className={clsx('text-xs font-medium', isLight ? 'text-slate-900' : 'text-white')}>{p.label} <span className={clsx('uppercase text-[10px]', isLight ? 'text-slate-400' : 'text-gray-600')}>{p.provider}</span></span>
+              <span className={clsx('text-[11px]', isLight ? 'text-slate-700' : 'text-gray-300')}>{p.score === null ? 'not scored' : p.score} <span className={clsx(isLight ? 'text-slate-400' : 'text-gray-500')}>· {p.status}</span></span>
             </div>
-            <p className="text-gray-300 text-xs mb-1">{p.assessment}</p>
+            <p className={clsx('text-xs mb-1', isLight ? 'text-slate-600' : 'text-gray-300')}>{p.assessment}</p>
             {p.topFixes.map((f) => (
               <p key={f.ruleId} className="text-xs mt-1">
-                <span className={clsx('text-[10px] px-1.5 py-0.5 rounded border uppercase mr-1.5', sevClass(f.severity))}>{f.severity}</span>
-                <span className="text-blue-400 font-medium">{f.title}: </span><span className="text-gray-300">{f.fix}</span>
+                <span className={clsx('text-[10px] px-1.5 py-0.5 rounded border uppercase mr-1.5 font-medium', sevClass(f.severity, isLight))}>{f.severity}</span>
+                <span className={clsx('font-medium', isLight ? 'text-blue-600' : 'text-blue-400')}>{f.title}: </span><span className={isLight ? 'text-slate-700' : 'text-gray-300'}>{f.fix}</span>
               </p>
             ))}
           </div>
@@ -261,13 +281,13 @@ function WellArchitectedBody({ review }: { review: AiWellArchitectedReview }) {
 
       {review.plan.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-gray-400 text-[10px] font-semibold uppercase tracking-wide">Improvement plan</p>
+          <p className={clsx('text-[10px] font-semibold uppercase tracking-wide', isLight ? 'text-slate-500' : 'text-gray-400')}>Improvement plan</p>
           <ol className="space-y-1.5">
             {review.plan.map((s, i) => (
-              <li key={s.ruleId} className="text-xs text-gray-300">
-                <span className="text-gray-500">{i + 1}. </span>
-                <span className={clsx('text-[10px] px-1.5 py-0.5 rounded border uppercase mr-1.5', sevClass(s.severity))}>{s.severity}</span>
-                <span className="text-white font-medium">{s.title}</span> — {s.action}
+              <li key={s.ruleId} className={clsx('text-xs', isLight ? 'text-slate-700' : 'text-gray-300')}>
+                <span className={isLight ? 'text-slate-400' : 'text-gray-500'}>{i + 1}. </span>
+                <span className={clsx('text-[10px] px-1.5 py-0.5 rounded border uppercase mr-1.5 font-medium', sevClass(s.severity, isLight))}>{s.severity}</span>
+                <span className={clsx('font-medium', isLight ? 'text-slate-900' : 'text-white')}>{s.title}</span> — {s.action}
               </li>
             ))}
           </ol>

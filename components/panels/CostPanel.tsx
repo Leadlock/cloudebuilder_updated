@@ -209,18 +209,20 @@ export default function CostPanel() {
     );
   }
 
+  const isLight = state.theme === 'light';
+
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-900 p-5">
+    <div className={clsx('flex-1 overflow-y-auto px-4 sm:px-6 py-6 pb-36 custom-scrollbar', isLight ? 'bg-slate-50 text-slate-900' : 'bg-gray-950 text-slate-100')}>
       <div className="max-w-4xl mx-auto">
         {isStale && (
-          <div className="bg-amber-900/30 border border-amber-800/50 rounded-xl p-4 flex items-center justify-between mb-6">
+          <div className={clsx('border rounded-xl p-4 flex items-center justify-between mb-6', isLight ? 'bg-amber-50 border-amber-200' : 'bg-amber-900/30 border-amber-800/50')}>
             <div className="flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 text-amber-400" />
-              <p className="text-amber-300 text-sm">You have unsaved changes. Save your architecture to refresh this analysis.</p>
+              <AlertTriangle className={clsx('w-5 h-5', isLight ? 'text-amber-600' : 'text-amber-400')} />
+              <p className={clsx('text-sm', isLight ? 'text-amber-800' : 'text-amber-300')}>You have unsaved changes. Save your architecture to refresh this analysis.</p>
             </div>
             <button 
               onClick={() => dispatch({ type: 'SET_VIEW', view: 'canvas' })}
-              className="px-3 py-1.5 bg-amber-800 hover:bg-amber-700 text-white rounded-lg text-xs font-medium transition-colors"
+              className={clsx('px-3 py-1.5 rounded-lg text-xs font-medium transition-colors', isLight ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-amber-800 hover:bg-amber-700 text-white')}
             >
               Return to Builder
             </button>
@@ -228,9 +230,9 @@ export default function CostPanel() {
         )}
 
         {usingFallback && (
-          <div className="bg-amber-900/30 border border-amber-800/50 rounded-xl p-4 flex items-center gap-3 mb-6">
-            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
-            <p className="text-amber-300 text-sm">
+          <div className={clsx('border rounded-xl p-4 flex items-center gap-3 mb-6', isLight ? 'bg-amber-50 border-amber-200' : 'bg-amber-900/30 border-amber-800/50')}>
+            <AlertTriangle className={clsx('w-5 h-5 shrink-0', isLight ? 'text-amber-600' : 'text-amber-400')} />
+            <p className={clsx('text-sm', isLight ? 'text-amber-800' : 'text-amber-300')}>
               The pricing service is unreachable — showing an <strong>offline fallback estimate</strong> from
               CloudCraft&apos;s static list-price tables. These are not live prices{displayCurrency !== 'USD' ? ', and no exchange rate is available, so figures are shown in USD' : ''}.
             </p>
@@ -241,7 +243,7 @@ export default function CostPanel() {
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
             <DollarSign className="w-5 h-5 text-orange-400" />
-            <h2 className="text-white font-bold text-lg">Cost Estimate</h2>
+            <h2 className={clsx('font-bold text-lg', isLight ? 'text-slate-900' : 'text-white')}>Cost Estimate</h2>
             {overallTier && (
               <span
                 className={clsx('text-xs px-2.5 py-0.5 border rounded-full font-medium', TIER_STYLE[overallTier])}
@@ -258,11 +260,11 @@ export default function CostPanel() {
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5 text-xs text-gray-400 bg-gray-800/70 border border-gray-700/60 rounded-lg px-2.5 py-1">
-              <Globe className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-              <span>Region: <strong className="text-gray-200">{activeRegion}</strong></span>
+            <div className={clsx('flex items-center gap-1.5 text-xs border rounded-lg px-2.5 py-1', isLight ? 'bg-white border-slate-200 text-slate-600 shadow-sm' : 'bg-gray-800/70 border-gray-700/60 text-gray-400')}>
+              <Globe className={clsx('w-3.5 h-3.5 shrink-0', isLight ? 'text-blue-600' : 'text-blue-400')} />
+              <span>Region: <strong className={isLight ? 'text-slate-900' : 'text-gray-200'}>{activeRegion}</strong></span>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-950/50 border border-emerald-800/60 rounded-lg px-2.5 py-1 font-medium">
+            <div className={clsx('flex items-center gap-1.5 text-xs border rounded-lg px-2.5 py-1 font-medium', isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-emerald-950/50 border-emerald-800/60 text-emerald-400')}>
               <span>Display: <strong>{displayCurrency} ({currencyDef.symbol})</strong></span>
             </div>
           </div>
@@ -271,17 +273,17 @@ export default function CostPanel() {
         {/* Live Exchange Rate Status Bar */}
         {displayCurrency !== 'USD' && (
           <div className={clsx(
-            'mb-5 p-3 rounded-xl border flex items-center justify-between gap-3 text-xs',
+            'mb-5 p-3 rounded-xl border flex items-center justify-between gap-3 text-xs transition-all',
             exchangeRate
-              ? 'bg-slate-800/90 border-slate-700 text-slate-300'
-              : 'bg-amber-950/40 border-amber-800/60 text-amber-300'
+              ? (isLight ? 'bg-white border-slate-200 text-slate-700 shadow-sm' : 'bg-slate-800/90 border-slate-700 text-slate-300')
+              : (isLight ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-amber-950/40 border-amber-800/60 text-amber-300')
           )}>
             <div className="flex items-center gap-2">
-              <ArrowRightLeft className={clsx('w-4 h-4 shrink-0', exchangeRate ? 'text-cyan-400' : 'text-amber-400')} />
+              <ArrowRightLeft className={clsx('w-4 h-4 shrink-0', exchangeRate ? (isLight ? 'text-cyan-600' : 'text-cyan-400') : (isLight ? 'text-amber-600' : 'text-amber-400'))} />
               {exchangeRate ? (
                 <div>
-                  <span className="font-semibold text-white">1 USD = {exchangeRate.toFixed(4)} {displayCurrency}</span>
-                  <span className="text-slate-400 ml-2">
+                  <span className={clsx('font-semibold', isLight ? 'text-slate-900' : 'text-white')}>1 USD = {exchangeRate.toFixed(4)} {displayCurrency}</span>
+                  <span className={clsx('ml-2', isLight ? 'text-slate-500' : 'text-slate-400')}>
                     via {exchangeRateSource}
                     {isCachedRate && exchangeRateTime && ` (cached: ${new Date(exchangeRateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
                     {isStaleRate && ' [stale fallback]'}
@@ -289,12 +291,12 @@ export default function CostPanel() {
                 </div>
               ) : (
                 <div>
-                  <span className="font-semibold text-amber-200">Exchange rate unavailable for {displayCurrency}.</span>
-                  <span className="text-amber-300/80 ml-1">Displaying original cloud provider price in USD.</span>
+                  <span className={clsx('font-semibold', isLight ? 'text-amber-900' : 'text-amber-200')}>Exchange rate unavailable for {displayCurrency}.</span>
+                  <span className={clsx('ml-1', isLight ? 'text-amber-700' : 'text-amber-300/80')}>Displaying original cloud provider price in USD.</span>
                 </div>
               )}
             </div>
-            <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+            <span className={clsx('text-[10px] uppercase tracking-wider', isLight ? 'text-slate-400' : 'text-slate-500')}>
               {rateTier === 'UNAVAILABLE' || !exchangeRate ? 'No Conversion' : rateTier === 'CACHED_LIVE' ? (isStaleRate ? 'Cached rate (stale)' : 'Cached rate') : 'Live rate'}
             </span>
           </div>
@@ -310,48 +312,48 @@ export default function CostPanel() {
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-3">
-            <p className="text-gray-400 text-xs mb-1">Monthly ({valueCurrency})</p>
-            <p className="text-xl font-bold text-orange-400">{formatCurrency(total, valueCurrency)}</p>
+          <div className={clsx('border rounded-2xl p-4 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-800 border-gray-700')}>
+            <p className={clsx('text-xs mb-1', isLight ? 'text-slate-500' : 'text-gray-400')}>Monthly ({valueCurrency})</p>
+            <p className="text-2xl font-bold text-orange-500">{formatCurrency(total, valueCurrency)}</p>
             {displayCurrency !== 'USD' && (
-              <p className="text-[11px] text-gray-500 mt-0.5">≈ {formatCurrency(totalUsd, 'USD')}</p>
+              <p className={clsx('text-[11px] mt-0.5', isLight ? 'text-slate-400' : 'text-gray-500')}>≈ {formatCurrency(totalUsd, 'USD')}</p>
             )}
           </div>
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-3">
-            <p className="text-gray-400 text-xs mb-1">Annual ({valueCurrency})</p>
-            <p className="text-xl font-bold text-white">{formatCurrency(annual, valueCurrency)}</p>
+          <div className={clsx('border rounded-2xl p-4 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-800 border-gray-700')}>
+            <p className={clsx('text-xs mb-1', isLight ? 'text-slate-500' : 'text-gray-400')}>Annual ({valueCurrency})</p>
+            <p className={clsx('text-2xl font-bold', isLight ? 'text-slate-900' : 'text-white')}>{formatCurrency(annual, valueCurrency)}</p>
             {displayCurrency !== 'USD' && (
-              <p className="text-[11px] text-gray-500 mt-0.5">≈ {formatCurrency(annualUsd, 'USD')}</p>
+              <p className={clsx('text-[11px] mt-0.5', isLight ? 'text-slate-400' : 'text-gray-500')}>≈ {formatCurrency(annualUsd, 'USD')}</p>
             )}
           </div>
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-3">
-            <p className="text-gray-400 text-xs mb-1">AWS</p>
-            <p className="text-xl font-bold text-orange-300">{formatCurrency(awsCost, valueCurrency)}</p>
+          <div className={clsx('border rounded-2xl p-4 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-800 border-gray-700')}>
+            <p className={clsx('text-xs mb-1', isLight ? 'text-slate-500' : 'text-gray-400')}>AWS</p>
+            <p className="text-2xl font-bold text-orange-500">{formatCurrency(awsCost, valueCurrency)}</p>
           </div>
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-3">
-            <p className="text-gray-400 text-xs mb-1">Azure</p>
-            <p className="text-xl font-bold text-blue-300">{formatCurrency(azureCost, valueCurrency)}</p>
+          <div className={clsx('border rounded-2xl p-4 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-800 border-gray-700')}>
+            <p className={clsx('text-xs mb-1', isLight ? 'text-slate-500' : 'text-gray-400')}>Azure</p>
+            <p className="text-2xl font-bold text-blue-500">{formatCurrency(azureCost, valueCurrency)}</p>
           </div>
         </div>
 
         {/* Potential savings banner */}
         {potential > 0 && (
-          <div className="bg-emerald-900/20 border border-emerald-800 rounded-xl p-3 mb-5 flex items-center gap-3">
-            <TrendingDown className="w-4 h-4 text-emerald-400 shrink-0" aria-hidden="true" />
-            <p className="text-emerald-300 text-sm">
+          <div className={clsx('border rounded-2xl p-3.5 mb-5 flex items-center gap-3', isLight ? 'bg-emerald-50 border-emerald-200' : 'bg-emerald-900/20 border-emerald-800')}>
+            <TrendingDown className="w-5 h-5 text-emerald-500 shrink-0" aria-hidden="true" />
+            <p className={clsx('text-sm', isLight ? 'text-emerald-900' : 'text-emerald-300')}>
               <span className="font-bold">{formatCurrency(potential, valueCurrency)}/mo</span> in potential savings identified
-              {displayCurrency !== 'USD' && <span className="text-emerald-400/70 text-xs ml-1"> (≈ {formatCurrency(potentialUsd, 'USD')}/mo)</span>}
+              {displayCurrency !== 'USD' && <span className={clsx('text-xs ml-1', isLight ? 'text-emerald-700' : 'text-emerald-400/70')}> (≈ {formatCurrency(potentialUsd, 'USD')}/mo)</span>}
             </p>
           </div>
         )}
 
         {/* Cost breakdown chart */}
         {costs.length > 0 && (
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 mb-5">
+          <div className={clsx('border rounded-2xl p-5 mb-5 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-800 border-gray-700')}>
             <div className="flex items-center justify-between mb-4">
-              <p className="text-gray-400 text-xs font-medium uppercase tracking-wider">Cost by Resource ({valueCurrency})</p>
+              <p className={clsx('text-xs font-medium uppercase tracking-wider', isLight ? 'text-slate-500' : 'text-gray-400')}>Cost by Resource ({valueCurrency})</p>
               {displayCurrency !== 'USD' && (
-                <span className="text-[10px] text-gray-500 font-mono">Original USD transparently retained</span>
+                <span className={clsx('text-[10px] font-mono', isLight ? 'text-slate-400' : 'text-gray-500')}>Original USD transparently retained</span>
               )}
             </div>
             <div className="space-y-3">
@@ -365,20 +367,20 @@ export default function CostPanel() {
                         <div className="w-5 h-5 rounded flex items-center justify-center text-white text-[8px] font-bold" style={{ backgroundColor: def?.color ?? '#6B7280' }} aria-hidden="true">
                           {def?.icon}
                         </div>
-                        <span className="text-gray-300 text-xs">{item.nodeLabel}</span>
-                        <span className={clsx('text-[9px] px-1 py-0.5 rounded', item.provider === 'aws' ? 'bg-orange-900/40 text-orange-400' : 'bg-blue-900/40 text-blue-400')}>
+                        <span className={clsx('text-xs font-medium', isLight ? 'text-slate-900' : 'text-gray-300')}>{item.nodeLabel}</span>
+                        <span className={clsx('text-[9px] px-1 py-0.5 rounded font-medium', item.provider === 'aws' ? (isLight ? 'bg-orange-50 text-orange-700 border border-orange-200' : 'bg-orange-900/40 text-orange-400') : (isLight ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-blue-900/40 text-blue-400'))}>
                           {item.provider.toUpperCase()}
                         </span>
                         <TierBadge tier={item.pricingTier ?? 'FALLBACK_ESTIMATE'} stale={item.pricingIsStale} />
                       </div>
                       <div className="text-right">
-                        <span className="text-orange-400 text-xs font-medium">{item.pricingTier === 'UNAVAILABLE' ? 'Price unavailable' : `${formatCurrency(item.monthlyCost, valueCurrency)}/mo`}</span>
+                        <span className="text-orange-500 text-xs font-medium">{item.pricingTier === 'UNAVAILABLE' ? 'Price unavailable' : `${formatCurrency(item.monthlyCost, valueCurrency)}/mo`}</span>
                         {valueCurrency !== 'USD' && (
-                          <span className="text-gray-500 text-[10px] block">≈ {formatCurrency(item.providerCostUsd ?? item.monthlyCost, 'USD')}</span>
+                          <span className={clsx('text-[10px] block', isLight ? 'text-slate-400' : 'text-gray-500')}>≈ {formatCurrency(item.providerCostUsd ?? item.monthlyCost, 'USD')}</span>
                         )}
                       </div>
                     </div>
-                    <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                    <div className={clsx('h-1.5 rounded-full overflow-hidden', isLight ? 'bg-slate-100' : 'bg-gray-700')}>
                       <div className="h-full rounded-full transition-all" style={{ width: `${pct.toFixed(1)}%`, backgroundColor: def?.color ?? '#6B7280' }} />
                     </div>
                   </div>
@@ -391,22 +393,22 @@ export default function CostPanel() {
         {/* Optimizations */}
         {optimizations.length > 0 && (
           <div className="mb-5">
-            <h3 className="text-white font-semibold text-sm mb-3 flex items-center gap-2">
-              <Zap className="w-4 h-4 text-yellow-400" aria-hidden="true" />
+            <h3 className={clsx('font-semibold text-sm mb-3 flex items-center gap-2', isLight ? 'text-slate-900' : 'text-white')}>
+              <Zap className="w-4 h-4 text-amber-500" aria-hidden="true" />
               Cost Optimization Recommendations
             </h3>
             <div className="space-y-3">
               {optimizations.map((opt) => {
                 const optSavings = exchangeRate ? opt.potentialSavings * exchangeRate : opt.potentialSavings;
                 return (
-                  <div key={opt.id} className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+                  <div key={opt.id} className={clsx('border rounded-2xl p-4 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-800 border-gray-700')}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <p className="text-white font-medium text-sm">{opt.title}</p>
-                        <p className="text-gray-500 text-xs mt-0.5 mb-2">{opt.description}</p>
+                        <p className={clsx('font-semibold text-sm', isLight ? 'text-slate-900' : 'text-white')}>{opt.title}</p>
+                        <p className={clsx('text-xs mt-0.5 mb-2', isLight ? 'text-slate-500' : 'text-gray-500')}>{opt.description}</p>
                         <div className="flex items-center gap-3">
-                          <span className="text-emerald-400 text-xs font-medium">Save ~{formatCurrency(optSavings, valueCurrency)}/mo</span>
-                          <span className={clsx('text-xs px-1.5 py-0.5 rounded', opt.effort === 'low' ? 'bg-emerald-900/40 text-emerald-400' : opt.effort === 'medium' ? 'bg-yellow-900/40 text-yellow-400' : 'bg-red-900/40 text-red-400')}>
+                          <span className={clsx('text-xs font-semibold', isLight ? 'text-emerald-700' : 'text-emerald-400')}>Save ~{formatCurrency(optSavings, valueCurrency)}/mo</span>
+                          <span className={clsx('text-xs px-1.5 py-0.5 rounded font-medium border', opt.effort === 'low' ? (isLight ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-emerald-900/40 text-emerald-400 border-emerald-800/50') : opt.effort === 'medium' ? (isLight ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-yellow-900/40 text-yellow-400 border-yellow-800/50') : (isLight ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-red-900/40 text-red-400 border-red-800/50'))}>
                             {opt.effort} effort
                           </span>
                         </div>
@@ -414,7 +416,7 @@ export default function CostPanel() {
                       <button
                         onClick={() => applyOpt(opt.id, opt.nodeId)}
                         aria-label={`Apply optimization: ${opt.title}`}
-                        className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         Apply
                       </button>
@@ -428,21 +430,21 @@ export default function CostPanel() {
 
         {/* Detailed breakdown list */}
         {costs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center bg-gray-800/50 rounded-xl border border-gray-700">
-            <DollarSign className="w-12 h-12 text-gray-700 mb-3" aria-hidden="true" />
-            <p className="text-gray-400 font-medium">No billable resources</p>
-            <p className="text-gray-600 text-sm mt-1">Free resources (VPCs, Subnets, etc.) have no base cost</p>
+          <div className={clsx('flex flex-col items-center justify-center py-16 text-center rounded-2xl border', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-800/50 border-gray-700')}>
+            <DollarSign className={clsx('w-12 h-12 mb-3', isLight ? 'text-slate-300' : 'text-gray-700')} aria-hidden="true" />
+            <p className={clsx('font-medium', isLight ? 'text-slate-700' : 'text-gray-400')}>No billable resources</p>
+            <p className={clsx('text-sm mt-1', isLight ? 'text-slate-500' : 'text-gray-600')}>Free resources (VPCs, Subnets, etc.) have no base cost</p>
           </div>
         ) : (
           <div className="space-y-6">
             {groupedByCategory.map(({ category, items, total: categoryTotal }) => (
               <div key={category}>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wider">
+                  <h3 className={clsx('text-xs font-semibold uppercase tracking-wider', isLight ? 'text-slate-500' : 'text-gray-400')}>
                     {CATEGORY_LABELS[category] ?? category}
-                    <span className="text-gray-600 font-normal ml-2 normal-case">({items.length} resource{items.length === 1 ? '' : 's'})</span>
+                    <span className={clsx('font-normal ml-2 normal-case', isLight ? 'text-slate-400' : 'text-gray-600')}>({items.length} resource{items.length === 1 ? '' : 's'})</span>
                   </h3>
-                  <span className="text-gray-400 text-xs font-medium">{formatCurrency(categoryTotal, valueCurrency)}/mo</span>
+                  <span className={clsx('text-xs font-semibold', isLight ? 'text-slate-700' : 'text-gray-400')}>{formatCurrency(categoryTotal, valueCurrency)}/mo</span>
                 </div>
                 <div className="space-y-3">
             {items.map((item) => {
@@ -452,66 +454,66 @@ export default function CostPanel() {
               const providerHourly = item.providerHourlyUsd ?? (item.hourlyCost ?? 0);
 
               return (
-                <div key={item.nodeId} className="bg-gray-800 border border-gray-700 rounded-xl p-4 transition-all">
+                <div key={item.nodeId} className={clsx('border rounded-2xl p-4 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-800 border-gray-700')}>
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2.5">
                       <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: def?.color ?? '#6B7280' }} aria-hidden="true">
                         {def?.icon}
                       </div>
                       <div>
-                        <p className="text-white font-medium text-sm">{item.nodeLabel}</p>
-                        <p className="text-gray-500 text-xs flex items-center gap-1.5">{def?.label} · <span className="font-mono text-gray-400">{item.provider.toUpperCase()}</span> <TierBadge tier={item.pricingTier ?? 'FALLBACK_ESTIMATE'} stale={item.pricingIsStale} /></p>
+                        <p className={clsx('font-medium text-sm', isLight ? 'text-slate-900' : 'text-white')}>{item.nodeLabel}</p>
+                        <p className={clsx('text-xs flex items-center gap-1.5', isLight ? 'text-slate-500' : 'text-gray-500')}>{def?.label} · <span className={clsx('font-mono font-medium', isLight ? 'text-slate-600' : 'text-gray-400')}>{item.provider.toUpperCase()}</span> <TierBadge tier={item.pricingTier ?? 'FALLBACK_ESTIMATE'} stale={item.pricingIsStale} /></p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-orange-400 font-bold text-lg">{item.pricingTier === 'UNAVAILABLE' ? 'Unavailable' : formatCurrency(item.monthlyCost, valueCurrency)}</p>
+                      <p className="text-orange-500 font-bold text-lg">{item.pricingTier === 'UNAVAILABLE' ? 'Unavailable' : formatCurrency(item.monthlyCost, valueCurrency)}</p>
                       {valueCurrency !== 'USD' && (
-                        <p className="text-gray-500 text-xs">≈ {formatCurrency(providerUsd, 'USD')}</p>
+                        <p className={clsx('text-xs', isLight ? 'text-slate-400' : 'text-gray-500')}>≈ {formatCurrency(providerUsd, 'USD')}</p>
                       )}
                     </div>
                   </div>
 
                   {/* Calculation Details Toggle / Transparency Panel */}
-                  <div className="mt-2 pt-2 border-t border-gray-700/60">
+                  <div className={clsx('mt-2 pt-2 border-t', isLight ? 'border-slate-100' : 'border-gray-700/60')}>
                     <button
                       onClick={() => toggleBreakdown(item.nodeId)}
-                      className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-medium transition-colors"
+                      className={clsx('text-[11px] flex items-center gap-1 font-medium transition-colors', isLight ? 'text-cyan-600 hover:text-cyan-700' : 'text-cyan-400 hover:text-cyan-300')}
                     >
                       <Info className="w-3 h-3" />
                       <span>{isExpanded ? 'Hide calculation details' : 'View pricing breakdown & exchange rate'}</span>
                     </button>
 
                     {isExpanded && (
-                      <div className="mt-2.5 p-3 rounded-lg bg-gray-900/80 border border-gray-700 text-xs space-y-1.5 font-mono text-gray-300">
+                      <div className={clsx('mt-2.5 p-3 rounded-xl border text-xs space-y-1.5 font-mono', isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-gray-900/80 border-gray-700 text-gray-300')}>
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Region:</span>
-                          <span className="text-white">{item.region || activeRegion}</span>
+                          <span className={isLight ? 'text-slate-400' : 'text-gray-500'}>Region:</span>
+                          <span className={isLight ? 'text-slate-900' : 'text-white'}>{item.region || activeRegion}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Provider unit price:</span>
-                          <span className="text-white">{formatCurrency(providerHourly, 'USD')}/hour</span>
+                          <span className={isLight ? 'text-slate-400' : 'text-gray-500'}>Provider unit price:</span>
+                          <span className={isLight ? 'text-slate-900' : 'text-white'}>{formatCurrency(providerHourly, 'USD')}/hour</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Estimated usage:</span>
-                          <span className="text-white">730 hours/month</span>
+                          <span className={isLight ? 'text-slate-400' : 'text-gray-500'}>Estimated usage:</span>
+                          <span className={isLight ? 'text-slate-900' : 'text-white'}>730 hours/month</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-500">Provider monthly estimate:</span>
-                          <span className="text-orange-300">{formatCurrency(providerUsd, 'USD')}/month</span>
+                          <span className={isLight ? 'text-slate-400' : 'text-gray-500'}>Provider monthly estimate:</span>
+                          <span className={isLight ? 'text-orange-600 font-semibold' : 'text-orange-300'}>{formatCurrency(providerUsd, 'USD')}/month</span>
                         </div>
                         {displayCurrency !== 'USD' && (
                           <>
-                            <div className="flex justify-between pt-1 border-t border-gray-800">
-                              <span className="text-gray-500">Real exchange rate:</span>
-                              <span className="text-cyan-300">1 USD = {item.exchangeRate ? item.exchangeRate.toFixed(4) : exchangeRate ? exchangeRate.toFixed(4) : '1.00'} {displayCurrency}</span>
+                            <div className={clsx('flex justify-between pt-1 border-t', isLight ? 'border-slate-200' : 'border-gray-800')}>
+                              <span className={isLight ? 'text-slate-400' : 'text-gray-500'}>Real exchange rate:</span>
+                              <span className={isLight ? 'text-cyan-700 font-semibold' : 'text-cyan-300'}>1 USD = {item.exchangeRate ? item.exchangeRate.toFixed(4) : exchangeRate ? exchangeRate.toFixed(4) : '1.00'} {displayCurrency}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-gray-500">Rate source:</span>
-                              <span className="text-slate-400">{item.exchangeRateSource || exchangeRateSource || 'live-api'}</span>
+                              <span className={isLight ? 'text-slate-400' : 'text-gray-500'}>Rate source:</span>
+                              <span className={isLight ? 'text-slate-500' : 'text-slate-400'}>{item.exchangeRateSource || exchangeRateSource || 'live-api'}</span>
                             </div>
-                            <div className="flex justify-between font-semibold pt-1 border-t border-gray-800">
-                              <span className="text-gray-400">Displayed estimate:</span>
-                              <span className="text-emerald-400">{formatCurrency(item.monthlyCost, valueCurrency)}/month</span>
+                            <div className={clsx('flex justify-between font-semibold pt-1 border-t', isLight ? 'border-slate-200' : 'border-gray-800')}>
+                              <span className={isLight ? 'text-slate-600' : 'text-gray-400'}>Displayed estimate:</span>
+                              <span className={isLight ? 'text-emerald-700' : 'text-emerald-400'}>{formatCurrency(item.monthlyCost, valueCurrency)}/month</span>
                             </div>
                           </>
                         )}
@@ -521,14 +523,14 @@ export default function CostPanel() {
 
                   {/* Sub-breakdown items */}
                   {item.breakdown.length > 0 && (
-                    <div className="border-t border-gray-700/60 mt-2.5 pt-2.5 space-y-1.5">
+                    <div className={clsx('mt-2.5 pt-2.5 space-y-1.5 border-t', isLight ? 'border-slate-100' : 'border-gray-700/60')}>
                       {item.breakdown.map((b, i) => (
                         <div key={i} className="flex justify-between text-xs">
-                          <span className="text-gray-500">{b.label}</span>
-                          <span className="text-gray-400">
+                          <span className={isLight ? 'text-slate-500' : 'text-gray-500'}>{b.label}</span>
+                          <span className={isLight ? 'text-slate-700' : 'text-gray-400'}>
                             {formatCurrency(b.cost, valueCurrency)}
                             {displayCurrency !== 'USD' && b.originalCostUsd !== undefined && (
-                              <span className="text-gray-600 text-[10px] ml-1">({formatCurrency(b.originalCostUsd, 'USD')})</span>
+                              <span className={clsx('text-[10px] ml-1', isLight ? 'text-slate-400' : 'text-gray-600')}>({formatCurrency(b.originalCostUsd, 'USD')})</span>
                             )}
                           </span>
                         </div>
@@ -543,7 +545,7 @@ export default function CostPanel() {
             ))}
           </div>
         )}
-        <p className="text-gray-600 text-xs text-center mt-6">
+        <p className={clsx('text-xs text-center mt-6', isLight ? 'text-slate-400' : 'text-gray-600')}>
           * Cloud list prices retrieved in USD from official APIs and converted using real live exchange rates. Actual invoices may vary based on data transfer and usage.
         </p>
       </div>

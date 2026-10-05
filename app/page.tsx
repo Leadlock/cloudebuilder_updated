@@ -88,17 +88,18 @@ function MainContent() {
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { state, dispatch } = useApp();
+  const isLight = state.theme === 'light';
 
   // Don't decide anything until the /api/auth/session check has resolved —
   // otherwise a returning user with a valid cookie sees the login modal
   // flash (and can even submit it) before their session restores.
   if (!state.sessionChecked) {
-    return <div className="flex h-screen items-center justify-center bg-gray-950" />;
+    return <div className={`flex h-screen items-center justify-center ${isLight ? 'bg-slate-50' : 'bg-gray-950'}`} />;
   }
 
   if (!state.currentUser) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-950">
+      <div className={`flex h-screen items-center justify-center ${isLight ? 'bg-slate-50' : 'bg-gray-950'}`}>
         <LoginModal
           isOpen
           onSuccess={(user) => {
@@ -114,9 +115,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 export default function Home() {
+  const { state } = useApp();
+  const isLight = state.theme === 'light';
+
   return (
     <AuthGate>
-      <div className="flex h-screen overflow-hidden bg-gray-950">
+      <div className={`flex h-screen overflow-hidden ${isLight ? 'bg-slate-50 text-slate-900' : 'bg-gray-950 text-white'}`}>
         <Sidebar />
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
           <TopBar />

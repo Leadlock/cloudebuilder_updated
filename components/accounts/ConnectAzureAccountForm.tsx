@@ -6,11 +6,20 @@
  */
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useApp } from '@/context/AppContext';
 
-const INPUT = 'w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500';
 const EMPTY = { tenantId: '', clientId: '', clientSecret: '', subscriptionId: '' };
 
 export default function ConnectAzureAccountForm({ onConnected }: { onConnected: (accountId: string) => void | Promise<void> }) {
+  const { state } = useApp();
+  const isLight = state.theme === 'light';
+
+  const inputClass = `w-full rounded-lg px-3 py-2 text-sm focus:outline-none transition-colors ${
+    isLight
+      ? 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white'
+      : 'bg-gray-700 border border-gray-600 text-white placeholder-gray-500 focus:border-blue-500'
+  }`;
+
   const [form, setForm] = useState(EMPTY);
   const [name, setName] = useState('');
   const [connecting, setConnecting] = useState(false);
@@ -49,19 +58,19 @@ export default function ConnectAzureAccountForm({ onConnected }: { onConnected: 
 
   return (
     <div className="space-y-3" data-testid="connect-azure-form">
-      <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-3 text-xs text-blue-300">
+      <div className={`border rounded-lg p-3 text-xs ${isLight ? 'bg-sky-50/70 border-sky-200 text-sky-900' : 'bg-blue-900/20 border-blue-800 text-blue-300'}`}>
         <p className="font-medium mb-1">Azure service principal</p>
-        <p className="text-blue-400">Create an app registration in Microsoft Entra ID, add a client secret, and give it the <strong>Reader</strong> role on your subscription. Credentials are stored server-side only.</p>
+        <p className={isLight ? 'text-slate-600' : 'text-blue-400'}>Create an app registration in Microsoft Entra ID, add a client secret, and give it the <strong>Reader</strong> role on your subscription. Credentials are stored server-side only.</p>
       </div>
-      <input type="text" placeholder="Account name (optional)" value={name} onChange={(e) => setName(e.target.value)} className={INPUT} />
-      <input type="text" placeholder="Tenant ID" value={form.tenantId} onChange={(e) => setForm((v) => ({ ...v, tenantId: e.target.value }))} autoComplete="off" spellCheck={false} className={INPUT} />
-      <input type="text" placeholder="Client ID (Application ID)" value={form.clientId} onChange={(e) => setForm((v) => ({ ...v, clientId: e.target.value }))} autoComplete="off" spellCheck={false} className={INPUT} />
-      <input type="password" placeholder="Client Secret (the secret's Value, not its ID)" value={form.clientSecret} onChange={(e) => setForm((v) => ({ ...v, clientSecret: e.target.value }))} autoComplete="new-password" spellCheck={false} className={INPUT} />
-      <input type="text" placeholder="Subscription ID" value={form.subscriptionId} onChange={(e) => setForm((v) => ({ ...v, subscriptionId: e.target.value }))} autoComplete="off" spellCheck={false} className={INPUT} />
+      <input type="text" placeholder="Account name (optional)" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
+      <input type="text" placeholder="Tenant ID" value={form.tenantId} onChange={(e) => setForm((v) => ({ ...v, tenantId: e.target.value }))} autoComplete="off" spellCheck={false} className={inputClass} />
+      <input type="text" placeholder="Client ID (Application ID)" value={form.clientId} onChange={(e) => setForm((v) => ({ ...v, clientId: e.target.value }))} autoComplete="off" spellCheck={false} className={inputClass} />
+      <input type="password" placeholder="Client Secret (the secret's Value, not its ID)" value={form.clientSecret} onChange={(e) => setForm((v) => ({ ...v, clientSecret: e.target.value }))} autoComplete="new-password" spellCheck={false} className={inputClass} />
+      <input type="text" placeholder="Subscription ID" value={form.subscriptionId} onChange={(e) => setForm((v) => ({ ...v, subscriptionId: e.target.value }))} autoComplete="off" spellCheck={false} className={inputClass} />
 
-      {error && <p className="text-red-400 text-xs bg-red-950/40 border border-red-900/50 rounded-lg px-3 py-2" role="alert">{error}</p>}
+      {error && <p className={`text-xs border rounded-lg px-3 py-2 ${isLight ? 'text-rose-700 bg-rose-50 border-rose-200' : 'text-red-400 bg-red-950/40 border-red-900/50'}`} role="alert">{error}</p>}
 
-      <button type="button" onClick={connect} disabled={connecting} className="w-full py-2.5 bg-blue-700 hover:bg-blue-600 disabled:opacity-40 text-white rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2">
+      <button type="button" onClick={connect} disabled={connecting} className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 shadow-md">
         {connecting ? <><Loader2 className="w-4 h-4 animate-spin" /> Connecting…</> : 'Connect Azure Account'}
       </button>
     </div>

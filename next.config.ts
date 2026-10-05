@@ -46,6 +46,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['pdfkit'],
   // Don't advertise the framework version in a response header.
   poweredByHeader: false,
+  devIndicators: false,
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },

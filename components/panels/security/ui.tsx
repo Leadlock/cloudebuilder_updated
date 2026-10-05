@@ -1,6 +1,7 @@
 'use client';
 import clsx from 'clsx';
 import type { EvaluationStatus, Severity, AutoFixSafety } from '@/lib/engines/assessment/types';
+import { useApp } from '@/context/AppContext';
 
 export const SEVERITY_STYLE: Record<Severity, { badge: string; text: string; border: string; label: string }> = {
   CRITICAL: { badge: 'bg-red-900 text-red-200', text: 'text-red-400', border: 'border-red-800/70', label: 'Critical' },
@@ -36,14 +37,20 @@ export function SafetyBadge({ safety }: { safety: AutoFixSafety }) {
 }
 
 export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+  const { state: appState } = useApp();
+  const isLight = appState.theme === 'light';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label={title}>
-      <div className={clsx('bg-gray-900 border border-gray-700 rounded-xl shadow-2xl max-h-[90vh] flex flex-col w-full', wide ? 'max-w-3xl' : 'max-w-xl')}>
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
-          <h3 className="text-white font-semibold text-sm">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-lg leading-none px-2" aria-label="Close">×</button>
+    <div className={`fixed inset-0 z-50 flex items-center justify-center ${isLight ? 'bg-slate-900/40' : 'bg-black/60'} backdrop-blur-sm p-4`} role="dialog" aria-modal="true" aria-label={title}>
+      <div className={clsx('border rounded-2xl shadow-2xl max-h-[90vh] flex flex-col w-full animate-in zoom-in-95 duration-150',
+        isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-gray-900 border-gray-700 text-gray-300',
+        wide ? 'max-w-3xl' : 'max-w-xl'
+      )}>
+        <div className={`flex items-center justify-between px-5 py-3 border-b ${isLight ? 'border-slate-100' : 'border-gray-800'}`}>
+          <h3 className={`font-semibold text-sm ${isLight ? 'text-slate-900' : 'text-white'}`}>{title}</h3>
+          <button onClick={onClose} className={`${isLight ? 'text-slate-400 hover:text-slate-700' : 'text-gray-400 hover:text-white'} text-lg leading-none px-2`} aria-label="Close">×</button>
         </div>
-        <div className="overflow-y-auto p-5 text-sm text-gray-300">{children}</div>
+        <div className="overflow-y-auto p-5 text-sm">{children}</div>
       </div>
     </div>
   );

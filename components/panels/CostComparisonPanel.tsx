@@ -13,6 +13,7 @@ export default function CostComparisonPanel() {
   const { state } = useApp();
   const activeProject = useActiveProject();
   const displayCurrency = state.displayCurrency || 'USD';
+  const isLight = state.theme === 'light';
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,11 +72,11 @@ export default function CostComparisonPanel() {
 
   if (nodeCount === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-slate-950">
+      <div className={clsx('flex-1 flex items-center justify-center', isLight ? 'bg-slate-50 text-slate-500' : 'bg-slate-950 text-slate-400')}>
         <div className="text-center px-8 py-12">
-          <Scale className="w-12 h-12 text-slate-700 mx-auto mb-4" />
-          <p className="text-slate-400 font-medium text-lg">No resources to compare</p>
-          <p className="text-slate-600 text-sm mt-1">Add resources to the canvas to see cost comparisons</p>
+          <Scale className={clsx('w-12 h-12 mx-auto mb-4', isLight ? 'text-slate-300' : 'text-slate-700')} />
+          <p className={clsx('font-medium text-lg', isLight ? 'text-slate-700' : 'text-slate-400')}>No resources to compare</p>
+          <p className={clsx('text-sm mt-1', isLight ? 'text-slate-500' : 'text-slate-600')}>Add resources to the canvas to see cost comparisons</p>
         </div>
       </div>
     );
@@ -83,11 +84,11 @@ export default function CostComparisonPanel() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-slate-950">
+      <div className={clsx('flex-1 flex items-center justify-center', isLight ? 'bg-slate-50' : 'bg-slate-950')}>
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-blue-900 border-t-blue-500 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-400 font-medium">Translating Architecture & Calculating Dual Costs...</p>
-          <p className="text-slate-600 text-sm mt-1">Fetching live prices from AWS and Azure APIs</p>
+          <p className={clsx('font-medium', isLight ? 'text-slate-700' : 'text-slate-400')}>Translating Architecture & Calculating Dual Costs...</p>
+          <p className={clsx('text-sm mt-1', isLight ? 'text-slate-500' : 'text-slate-600')}>Fetching live prices from AWS and Azure APIs</p>
         </div>
       </div>
     );
@@ -95,11 +96,11 @@ export default function CostComparisonPanel() {
 
   if (error) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-slate-950 p-6">
-        <div className="text-center max-w-md bg-slate-900 border border-red-900/50 rounded-2xl p-8">
-          <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h3 className="text-white font-semibold mb-2">Comparison Failed</h3>
-          <p className="text-slate-400 text-sm">{error}</p>
+      <div className={clsx('flex-1 flex items-center justify-center p-6', isLight ? 'bg-slate-50' : 'bg-slate-950')}>
+        <div className={clsx('text-center max-w-md border rounded-2xl p-8', isLight ? 'bg-white border-rose-200 shadow-sm' : 'bg-slate-900 border-red-900/50')}>
+          <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
+          <h3 className={clsx('font-semibold mb-2', isLight ? 'text-slate-900' : 'text-white')}>Comparison Failed</h3>
+          <p className={clsx('text-sm', isLight ? 'text-slate-600' : 'text-slate-400')}>{error}</p>
         </div>
       </div>
     );
@@ -132,11 +133,11 @@ export default function CostComparisonPanel() {
   const aiMatchById = new Map((data.aiMatches ?? []).map((m) => [m.resourceId, m]));
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-950 p-6">
+    <div className={clsx('flex-1 overflow-y-auto px-4 sm:px-6 py-6 pb-36 custom-scrollbar', isLight ? 'bg-slate-50 text-slate-900' : 'bg-slate-950 text-slate-100')}>
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
-          <Scale className="w-6 h-6 text-blue-400" />
-          <h2 className="text-2xl font-bold text-white">Multi-Cloud Cost Comparison</h2>
+          <Scale className={clsx('w-6 h-6', isLight ? 'text-blue-600' : 'text-blue-400')} />
+          <h2 className={clsx('text-2xl font-bold', isLight ? 'text-slate-900' : 'text-white')}>Multi-Cloud Cost Comparison</h2>
         </div>
 
         {usingFallback && (
@@ -173,85 +174,85 @@ export default function CostComparisonPanel() {
         )}
 
         {/* Top Summary Banner */}
-        <div className="bg-gradient-to-r from-slate-900 to-slate-800 border border-slate-700 rounded-2xl p-6 mb-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
+        <div className={clsx('border rounded-2xl p-6 mb-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl transition-all', isLight ? 'bg-white border-slate-200 text-slate-900 shadow-slate-100' : 'bg-gradient-to-r from-slate-900 to-slate-800 border-slate-700 text-white')}>
           <div className="flex-1 text-center md:text-left">
-            <p className="text-slate-400 text-sm mb-1 uppercase tracking-wider font-semibold">Current Provider</p>
+            <p className={clsx('text-xs mb-1 uppercase tracking-wider font-semibold', isLight ? 'text-slate-500' : 'text-slate-400')}>Current Provider</p>
             <div className="flex items-center gap-2 justify-center md:justify-start">
-              <Cloud className={clsx("w-6 h-6", data.currentProvider === 'aws' ? 'text-orange-400' : 'text-blue-400')} />
-              <span className="text-3xl font-bold text-white uppercase">{data.currentProvider}</span>
+              <Cloud className={clsx("w-6 h-6", data.currentProvider === 'aws' ? 'text-orange-500' : 'text-blue-500')} />
+              <span className={clsx("text-3xl font-black uppercase", isLight ? 'text-slate-900' : 'text-white')}>{data.currentProvider}</span>
             </div>
-            <p className="text-2xl text-slate-300 mt-2 font-mono">{formatCurrency(curMonthly, data.targetCurrency)}<span className="text-sm text-slate-500">/mo</span></p>
-            <p className="text-slate-500 text-xs mt-1">{data.current.pricingCoveragePct.toFixed(0)}% pricing coverage{data.current.unsupportedCount > 0 && ` · ${data.current.unsupportedCount} unpriced`}</p>
+            <p className={clsx("text-2xl mt-2 font-mono font-bold", isLight ? 'text-slate-800' : 'text-slate-200')}>{formatCurrency(curMonthly, data.targetCurrency)}<span className={clsx("text-sm", isLight ? 'text-slate-400' : 'text-slate-500')}>/mo</span></p>
+            <p className={clsx("text-xs mt-1", isLight ? 'text-slate-500' : 'text-slate-500')}>{data.current.pricingCoveragePct.toFixed(0)}% pricing coverage{data.current.unsupportedCount > 0 && ` · ${data.current.unsupportedCount} unpriced`}</p>
           </div>
 
           <div className="shrink-0 text-center">
-            <div className="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center mx-auto mb-2">
-              <ArrowRightLeft className="w-6 h-6 text-slate-400" />
+            <div className={clsx("w-12 h-12 rounded-full border flex items-center justify-center mx-auto mb-2", isLight ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-slate-800 border-slate-700 text-slate-400')}>
+              <ArrowRightLeft className="w-6 h-6" />
             </div>
             {Math.abs(diff) > 0.01 && !comparisonUnreliable && (
               <div className={clsx(
                 "px-3 py-1 rounded-full text-xs font-bold border",
                 isTargetCheaper
-                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                  : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                  ? (isLight ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20")
+                  : (isLight ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-rose-500/10 text-rose-400 border-rose-500/20")
               )}>
                 {isTargetCheaper ? '-' : '+'}{diffPct.toFixed(1)}% {isTargetCheaper ? 'Cheaper' : 'More Expensive'}
               </div>
             )}
             {comparisonUnreliable && (
-              <div className="px-3 py-1 rounded-full text-xs font-bold border bg-slate-800 text-slate-400 border-slate-700">
+              <div className={clsx("px-3 py-1 rounded-full text-xs font-bold border", isLight ? "bg-slate-100 text-slate-600 border-slate-200" : "bg-slate-800 text-slate-400 border-slate-700")}>
                 Coverage too low to call
               </div>
             )}
           </div>
 
           <div className="flex-1 text-center md:text-right">
-            <p className="text-slate-400 text-sm mb-1 uppercase tracking-wider font-semibold">Alternative Provider</p>
+            <p className={clsx('text-xs mb-1 uppercase tracking-wider font-semibold', isLight ? 'text-slate-500' : 'text-slate-400')}>Alternative Provider</p>
             <div className="flex items-center gap-2 justify-center md:justify-end">
-              <span className="text-3xl font-bold text-white uppercase">{data.targetProvider}</span>
-              <Cloud className={clsx("w-6 h-6", data.targetProvider === 'aws' ? 'text-orange-400' : 'text-blue-400')} />
+              <span className={clsx("text-3xl font-black uppercase", isLight ? 'text-slate-900' : 'text-white')}>{data.targetProvider}</span>
+              <Cloud className={clsx("w-6 h-6", data.targetProvider === 'aws' ? 'text-orange-500' : 'text-blue-500')} />
             </div>
-            <p className="text-2xl text-slate-300 mt-2 font-mono">{formatCurrency(tgtMonthly, data.targetCurrency)}<span className="text-sm text-slate-500">/mo</span></p>
-            <p className="text-slate-500 text-xs mt-1">{data.translated.pricingCoveragePct.toFixed(0)}% pricing coverage{data.translated.unsupportedCount > 0 && ` · ${data.translated.unsupportedCount} unpriced`}</p>
+            <p className={clsx("text-2xl mt-2 font-mono font-bold", isLight ? 'text-slate-800' : 'text-slate-200')}>{formatCurrency(tgtMonthly, data.targetCurrency)}<span className={clsx("text-sm", isLight ? 'text-slate-400' : 'text-slate-500')}>/mo</span></p>
+            <p className={clsx("text-xs mt-1", isLight ? 'text-slate-500' : 'text-slate-500')}>{data.translated.pricingCoveragePct.toFixed(0)}% pricing coverage{data.translated.unsupportedCount > 0 && ` · ${data.translated.unsupportedCount} unpriced`}</p>
           </div>
         </div>
 
         {activeProject && <CostInsightsCard nodes={activeProject.nodes} />}
 
         {/* Detailed Breakdown */}
-        <h3 className="text-lg font-bold text-white mb-4">Resource Breakdown</h3>
+        <h3 className={clsx("text-lg font-bold mb-4", isLight ? 'text-slate-900' : 'text-white')}>Resource Breakdown</h3>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
           {/* Current Provider Column */}
           <div className="space-y-3">
-            <div className={clsx("p-3 rounded-t-xl border-b-2 font-bold uppercase tracking-wider text-sm", data.currentProvider === 'aws' ? "bg-orange-500/10 border-orange-500 text-orange-400" : "bg-blue-500/10 border-blue-500 text-blue-400")}>
+            <div className={clsx("p-3 rounded-t-xl border-b-2 font-bold uppercase tracking-wider text-sm", data.currentProvider === 'aws' ? (isLight ? "bg-orange-50 border-orange-400 text-orange-700" : "bg-orange-500/10 border-orange-500 text-orange-400") : (isLight ? "bg-blue-50 border-blue-400 text-blue-700" : "bg-blue-500/10 border-blue-500 text-blue-400"))}>
               {data.currentProvider} Architecture
             </div>
             {data.current.items.map((item) => {
               const def = getResourceDefinition(item.resourceType);
               return (
-                <div key={item.nodeId} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+                <div key={item.nodeId} className={clsx('border rounded-2xl p-4 flex items-center justify-between transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900 border-slate-800')}>
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: def?.color ?? '#475569' }}>
                       {def?.icon}
                     </div>
                     <div>
-                      <p className="text-white font-medium text-sm">{item.nodeLabel}
+                      <p className={clsx("font-medium text-sm", isLight ? 'text-slate-900' : 'text-white')}>{item.nodeLabel}
                         {aiMatchById.has(item.nodeId) && (
-                          <span title={`Matched by AI: ${aiMatchById.get(item.nodeId)!.from.replace(/^(aws|azure)_/, '')} → ${aiMatchById.get(item.nodeId)!.to.replace(/^(aws|azure)_/, '')}. ${aiMatchById.get(item.nodeId)!.reason} Priced at default size, so check it.`} className="ml-2 align-middle px-1.5 py-0.5 rounded text-[10px] font-semibold bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/30">AI match</span>
+                          <span title={`Matched by AI: ${aiMatchById.get(item.nodeId)!.from.replace(/^(aws|azure)_/, '')} → ${aiMatchById.get(item.nodeId)!.to.replace(/^(aws|azure)_/, '')}. ${aiMatchById.get(item.nodeId)!.reason} Priced at default size, so check it.`} className="ml-2 align-middle px-1.5 py-0.5 rounded text-[10px] font-semibold bg-fuchsia-500/15 text-fuchsia-600 border border-fuchsia-300">AI match</span>
                         )}
                       </p>
-                      <p className="text-slate-500 text-xs">{def?.label || item.resourceType}{item.region ? ` · ${item.region}` : ''}</p>
+                      <p className={clsx("text-xs", isLight ? 'text-slate-500' : 'text-slate-500')}>{def?.label || item.resourceType}{item.region ? ` · ${item.region}` : ''}</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-slate-200 font-mono font-medium">{formatCurrency(item.monthlyCost, data.targetCurrency)}</p>
+                    <p className={clsx("font-mono font-semibold", isLight ? 'text-slate-800' : 'text-slate-200')}>{formatCurrency(item.monthlyCost, data.targetCurrency)}</p>
                   </div>
                 </div>
               );
             })}
             {data.current.unsupportedCount > 0 && (
-              <p className="text-slate-600 text-xs px-1">
+              <p className={clsx("text-xs px-1", isLight ? 'text-slate-500' : 'text-slate-600')}>
                 + {data.current.unsupportedCount} resource{data.current.unsupportedCount === 1 ? '' : 's'} without a usable price (excluded from the total above)
               </p>
             )}
@@ -259,34 +260,34 @@ export default function CostComparisonPanel() {
 
           {/* Target Provider Column */}
           <div className="space-y-3">
-            <div className={clsx("p-3 rounded-t-xl border-b-2 font-bold uppercase tracking-wider text-sm", data.targetProvider === 'aws' ? "bg-orange-500/10 border-orange-500 text-orange-400" : "bg-blue-500/10 border-blue-500 text-blue-400")}>
+            <div className={clsx("p-3 rounded-t-xl border-b-2 font-bold uppercase tracking-wider text-sm", data.targetProvider === 'aws' ? (isLight ? "bg-orange-50 border-orange-400 text-orange-700" : "bg-orange-500/10 border-orange-500 text-orange-400") : (isLight ? "bg-blue-50 border-blue-400 text-blue-700" : "bg-blue-500/10 border-blue-500 text-blue-400"))}>
               {data.targetProvider} Architecture
             </div>
             {data.translated.items.map((item) => {
               const def = getResourceDefinition(item.resourceType);
               return (
-                <div key={item.nodeId} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+                <div key={item.nodeId} className={clsx('border rounded-2xl p-4 flex items-center justify-between transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900 border-slate-800')}>
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: def?.color ?? '#475569' }}>
                       {def?.icon}
                     </div>
                     <div>
-                      <p className="text-white font-medium text-sm">{item.nodeLabel}
+                      <p className={clsx("font-medium text-sm", isLight ? 'text-slate-900' : 'text-white')}>{item.nodeLabel}
                         {aiMatchById.has(item.nodeId) && (
-                          <span title={`Matched by AI: ${aiMatchById.get(item.nodeId)!.from.replace(/^(aws|azure)_/, '')} → ${aiMatchById.get(item.nodeId)!.to.replace(/^(aws|azure)_/, '')}. ${aiMatchById.get(item.nodeId)!.reason} Priced at default size, so check it.`} className="ml-2 align-middle px-1.5 py-0.5 rounded text-[10px] font-semibold bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/30">AI match</span>
+                          <span title={`Matched by AI: ${aiMatchById.get(item.nodeId)!.from.replace(/^(aws|azure)_/, '')} → ${aiMatchById.get(item.nodeId)!.to.replace(/^(aws|azure)_/, '')}. ${aiMatchById.get(item.nodeId)!.reason} Priced at default size, so check it.`} className="ml-2 align-middle px-1.5 py-0.5 rounded text-[10px] font-semibold bg-fuchsia-500/15 text-fuchsia-600 border border-fuchsia-300">AI match</span>
                         )}
                       </p>
-                      <p className="text-slate-500 text-xs">{def?.label || item.resourceType}{item.region ? ` · ${item.region}` : ''}</p>
+                      <p className={clsx("text-xs", isLight ? 'text-slate-500' : 'text-slate-500')}>{def?.label || item.resourceType}{item.region ? ` · ${item.region}` : ''}</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-slate-200 font-mono font-medium">{formatCurrency(item.monthlyCost, data.targetCurrency)}</p>
+                    <p className={clsx("font-mono font-semibold", isLight ? 'text-slate-800' : 'text-slate-200')}>{formatCurrency(item.monthlyCost, data.targetCurrency)}</p>
                   </div>
                 </div>
               );
             })}
             {data.translated.unsupportedCount > 0 && (
-              <p className="text-slate-600 text-xs px-1">
+              <p className={clsx("text-xs px-1", isLight ? 'text-slate-500' : 'text-slate-600')}>
                 + {data.translated.unsupportedCount} resource{data.translated.unsupportedCount === 1 ? '' : 's'} without a usable price (excluded from the total above)
               </p>
             )}
@@ -294,7 +295,7 @@ export default function CostComparisonPanel() {
 
         </div>
 
-        <div className="mt-8 p-4 bg-blue-900/20 border border-blue-900/50 rounded-xl text-sm text-blue-300/80 text-center">
+        <div className={clsx("mt-8 p-4 rounded-2xl border text-sm text-center", isLight ? 'bg-blue-50 border-blue-200 text-blue-900' : 'bg-blue-900/20 border-blue-900/50 text-blue-300/80')}>
           <p>This comparison translates each resource to its nearest capacity-equivalent SKU in the alternative cloud (e.g. by vCPU/RAM for compute, by allocated storage for databases/object storage) — not just a relabeled resource type. Pricing uses 730 hours/month standard usage where applicable.</p>
         </div>
       </div>

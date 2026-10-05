@@ -4,6 +4,7 @@ import { XCircle, Loader2, Lock, CheckCircle2 } from 'lucide-react';
 import { explainTerraformError } from '@/lib/terraform/execution/errorHints';
 import { ApiTerraformExecutionService, type TerraformLockInspection } from '@/lib/services/ApiTerraformExecutionService';
 import type { TerraformStateBackendConfig } from '@/lib/terraform/execution/types';
+import { useApp } from '@/context/AppContext';
 
 interface LockContext {
   projectId: string;
@@ -24,6 +25,9 @@ export default function TerraformErrorBox({ message, fallbackTitle, onRetry, onD
   onDismiss?: () => void;
   lock?: LockContext;
 }) {
+  const { state: appState } = useApp();
+  const isLight = appState.theme === 'light';
+
   const explained = useMemo(() => explainTerraformError(message), [message]);
   const [checking, setChecking] = useState(false);
   const [releasing, setReleasing] = useState(false);
@@ -51,65 +55,69 @@ export default function TerraformErrorBox({ message, fallbackTitle, onRetry, onD
   }
 
   return (
-    <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs shadow-lg space-y-2.5" role="alert" data-testid="tf-error-box" data-kind={explained?.kind ?? 'unknown'}>
+    <div className={`p-3.5 rounded-xl border text-xs shadow-lg space-y-2.5 ${
+      isLight ? 'bg-rose-50 border-rose-200 text-rose-950' : 'bg-rose-950/60 border-rose-500/50 text-rose-300'
+    }`} role="alert" data-testid="tf-error-box" data-kind={explained?.kind ?? 'unknown'}>
       <div className="flex items-center gap-2 font-semibold">
-        <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
-        <span>{explained?.title ?? fallbackTitle}</span>
+        <XCircle className={`w-4 h-4 shrink-0 ${isLight ? 'text-rose-600' : 'text-rose-400'}`} />
+        <span className={isLight ? 'text-rose-900' : ''}>{explained?.title ?? fallbackTitle}</span>
       </div>
 
       {explained && (
         <div className="space-y-1.5">
-          <p className="text-[11px] text-rose-200/90 leading-relaxed">{explained.summary}</p>
-          <ul className="list-disc list-inside space-y-0.5 text-[11px] text-rose-200/80">{explained.steps.map((s) => <li key={s}>{s}</li>)}</ul>
+          <p className={`text-[11px] leading-relaxed ${isLight ? 'text-rose-900' : 'text-rose-200/90'}`}>{explained.summary}</p>
+          <ul className={`list-disc list-inside space-y-0.5 text-[11px] ${isLight ? 'text-rose-800' : 'text-rose-200/80'}`}>{explained.steps.map((s) => <li key={s}>{s}</li>)}</ul>
         </div>
       )}
 
       {explained?.kind === 'state-lock' && lock && (
-        <div className="rounded-lg border border-rose-900/50 bg-black/30 p-2.5 space-y-2" data-testid="tf-lock-panel">
+        <div className={`rounded-lg border p-2.5 space-y-2 ${isLight ? 'bg-white border-rose-200' : 'border-rose-900/50 bg-black/30'}`} data-testid="tf-lock-panel">
           {released ? (
-            <p className="flex items-center gap-1.5 text-emerald-300 text-[11px]"><CheckCircle2 className="w-3.5 h-3.5" />Lock released. You can try again now.</p>
+            <p className={`flex items-center gap-1.5 text-[11px] ${isLight ? 'text-emerald-800 font-semibold' : 'text-emerald-300'}`}><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />Lock released. You can try again now.</p>
           ) : (
             <>
-              <button onClick={checkLock} disabled={checking} className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800 hover:bg-gray-700 text-white text-[11px] font-medium disabled:opacity-50" data-testid="tf-check-lock">
+              <button onClick={checkLock} disabled={checking} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium disabled:opacity-50 ${
+                isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300' : 'bg-gray-800 hover:bg-gray-700 text-white'
+              }`} data-testid="tf-check-lock">
                 {checking ? <Loader2 className="w-3 h-3 animate-spin" /> : <Lock className="w-3 h-3" />}Check lock
               </button>
-              {inspection && !inspection.locked && <p className="text-emerald-300 text-[11px]">The state is not locked any more — try again.</p>}
+              {inspection && !inspection.locked && <p className={`text-[11px] ${isLight ? 'text-emerald-800 font-semibold' : 'text-emerald-300'}`}>The state is not locked any more — try again.</p>}
               {inspection?.locked && inspection.lock && (
-                <div className="text-[11px] text-gray-300 space-y-1.5">
-                  <p>Held by <b className="text-white">{inspection.lock.who ?? 'unknown'}</b>{inspection.lock.operation ? <> · {inspection.lock.operation}</> : null}{inspection.lock.ageMinutes !== undefined ? <> · {inspection.lock.ageMinutes} min ago</> : null}</p>
+                <div className={`text-[11px] space-y-1.5 ${isLight ? 'text-slate-700' : 'text-gray-300'}`}>
+                  <p>Held by <b className={isLight ? 'text-slate-900' : 'text-white'}>{inspection.lock.who ?? 'unknown'}</b>{inspection.lock.operation ? <> · {inspection.lock.operation}</> : null}{inspection.lock.ageMinutes !== undefined ? <> · {inspection.lock.ageMinutes} min ago</> : null}</p>
                   {inspection.releasable ? (
                     <>
-                      <p className="text-emerald-300">This is a leftover from a run on this machine and nothing is running now, so it is safe to release.</p>
+                      <p className={isLight ? 'text-emerald-800' : 'text-emerald-300'}>This is a leftover from a run on this machine and nothing is running now, so it is safe to release.</p>
                       {confirmRelease ? (
                         <div className="flex items-center gap-2">
-                          <button onClick={releaseLock} disabled={releasing} className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-700 hover:bg-rose-600 text-white text-[11px] font-semibold disabled:opacity-50" data-testid="tf-confirm-release">
+                          <button onClick={releaseLock} disabled={releasing} className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-semibold disabled:opacity-50 shadow-sm" data-testid="tf-confirm-release">
                             {releasing && <Loader2 className="w-3 h-3 animate-spin" />}Yes, release this lock
                           </button>
-                          <button onClick={() => setConfirmRelease(false)} className="text-gray-400 hover:text-gray-200 underline">Cancel</button>
+                          <button onClick={() => setConfirmRelease(false)} className={`${isLight ? 'text-slate-600 hover:text-slate-900' : 'text-gray-400 hover:text-gray-200'} underline`}>Cancel</button>
                         </div>
                       ) : (
-                        <button onClick={() => setConfirmRelease(true)} className="px-2.5 py-1 rounded-md bg-amber-700 hover:bg-amber-600 text-white text-[11px] font-semibold" data-testid="tf-release-lock">Release lock…</button>
+                        <button onClick={() => setConfirmRelease(true)} className="px-2.5 py-1 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-semibold shadow-sm" data-testid="tf-release-lock">Release lock…</button>
                       )}
                     </>
                   ) : (
-                    <p className="text-amber-300" data-testid="tf-lock-refused">{inspection.reason ?? 'CloudCraft will not release this lock.'}</p>
+                    <p className={isLight ? 'text-amber-800 font-medium' : 'text-amber-300'} data-testid="tf-lock-refused">{inspection.reason ?? 'CloudCraft will not release this lock.'}</p>
                   )}
                 </div>
               )}
-              {lockError && <p className="text-rose-300 text-[11px]">{lockError}</p>}
+              {lockError && <p className="text-rose-600 text-[11px]">{lockError}</p>}
             </>
           )}
         </div>
       )}
 
-      <details className="bg-black/40 rounded border border-rose-900/30">
-        <summary className="cursor-pointer px-2 py-1 text-[11px] text-rose-300/90">{explained ? 'Show Terraform\'s own message' : 'Details'}</summary>
-        <pre className="text-[10px] font-mono text-rose-200/90 whitespace-pre-wrap p-2 max-h-60 overflow-y-auto">{message}</pre>
+      <details className={`rounded border ${isLight ? 'bg-slate-100/80 border-slate-200' : 'bg-black/40 border-rose-900/30'}`}>
+        <summary className={`cursor-pointer px-2 py-1 text-[11px] ${isLight ? 'text-rose-800 font-medium' : 'text-rose-300/90'}`}>{explained ? 'Show Terraform\'s own message' : 'Details'}</summary>
+        <pre className={`text-[10px] font-mono whitespace-pre-wrap p-2 max-h-60 overflow-y-auto ${isLight ? 'text-rose-950' : 'text-rose-200/90'}`}>{message}</pre>
       </details>
 
       <div className="flex items-center gap-3">
-        {onRetry && <button onClick={onRetry} className="text-xs text-rose-400 hover:text-rose-200 underline font-medium">Try again</button>}
-        {onDismiss && <button onClick={onDismiss} className="text-xs text-gray-400 hover:text-gray-200 underline font-medium">Dismiss</button>}
+        {onRetry && <button onClick={onRetry} className={`text-xs underline font-medium ${isLight ? 'text-rose-700 hover:text-rose-900' : 'text-rose-400 hover:text-rose-200'}`}>Try again</button>}
+        {onDismiss && <button onClick={onDismiss} className={`text-xs underline font-medium ${isLight ? 'text-slate-600 hover:text-slate-900' : 'text-gray-400 hover:text-gray-200'}`}>Dismiss</button>}
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 import { getResourcesByProvider } from '@/lib/resources';
 import { CloudProvider, ResourceCategory, ResourceDefinition } from '@/types';
 import { CloudServiceIcon } from '@/components/icons/cloud/CloudServiceIcon';
+import { useApp } from '@/context/AppContext';
 import clsx from 'clsx';
 import { useState, useMemo } from 'react';
 import { Search, ChevronDown, ChevronRight, Layers, GripVertical, Sparkles, ChevronLeft, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
@@ -25,6 +26,8 @@ interface ResourcePaletteProps {
 }
 
 export default function ResourcePalette({ provider, onAddResource }: ResourcePaletteProps) {
+  const { state } = useApp();
+  const isLight = state.theme === 'light';
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | 'all'>('all');
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
@@ -68,19 +71,32 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
 
   if (isPaletteCollapsed) {
     return (
-      <div className="w-11 bg-slate-950/95 border-r border-slate-800/80 flex flex-col items-center py-3 shrink-0 select-none z-10 transition-all duration-200">
+      <div
+        className={clsx(
+          'w-11 border-r flex flex-col items-center py-3 shrink-0 select-none z-10 transition-all duration-200',
+          isLight ? 'bg-white/95 border-slate-200' : 'bg-slate-950/95 border-slate-800/80'
+        )}
+      >
         <button
           id="btn-expand-palette"
           onClick={() => setIsPaletteCollapsed(false)}
           title="Expand Resource Palette"
-          className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-cyan-400 hover:text-white border border-slate-800 transition-colors shadow-lg"
+          className={clsx(
+            'p-2 rounded-lg border transition-colors shadow-sm',
+            isLight
+              ? 'bg-slate-100 hover:bg-slate-200 text-cyan-700 border-slate-300'
+              : 'bg-slate-900 hover:bg-slate-800 text-cyan-400 hover:text-white border-slate-800'
+          )}
         >
           <PanelLeftOpen className="w-4 h-4" />
         </button>
-        <div className="my-3 w-4 h-px bg-slate-800" />
+        <div className={clsx('my-3 w-4 h-px', isLight ? 'bg-slate-200' : 'bg-slate-800')} />
         <span
           style={{ writingMode: 'vertical-rl' }}
-          className="text-[11px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-300 cursor-pointer transform rotate-180"
+          className={clsx(
+            'text-[11px] font-bold uppercase tracking-widest cursor-pointer transform rotate-180 transition-colors',
+            isLight ? 'text-slate-500 hover:text-slate-800' : 'text-slate-500 hover:text-slate-300'
+          )}
           onClick={() => setIsPaletteCollapsed(false)}
         >
           Resources ({resources.length})
@@ -90,24 +106,42 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
   }
 
   return (
-    <div className="w-64 bg-slate-950 border-r border-slate-800/80 flex flex-col shrink-0 select-none z-10 transition-all duration-200">
+    <div
+      className={clsx(
+        'w-64 border-r flex flex-col shrink-0 select-none z-10 transition-all duration-200',
+        isLight ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800/80'
+      )}
+    >
       {/* Header & Search */}
-      <div className="p-3 border-b border-slate-800/80 bg-slate-900/40">
+      <div
+        className={clsx(
+          'p-3 border-b transition-colors',
+          isLight ? 'border-slate-200 bg-slate-50/70' : 'border-slate-800/80 bg-slate-900/40'
+        )}
+      >
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">
-            <Layers className="w-4 h-4 text-cyan-400" />
-            <span className="text-white font-bold text-xs tracking-wider uppercase">
+            <Layers className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+            <span className={clsx('font-bold text-xs tracking-wider uppercase', isLight ? 'text-slate-900' : 'text-white')}>
               {provider === 'aws' ? 'AWS Services' : provider === 'azure' ? 'Azure Services' : 'Cloud Services'}
             </span>
           </div>
           <div className="flex items-center gap-1">
-            <span className="text-[10px] font-mono text-slate-500 bg-slate-800/60 px-1.5 py-0.5 rounded">
+            <span
+              className={clsx(
+                'text-[10px] font-mono px-1.5 py-0.5 rounded border',
+                isLight ? 'text-slate-600 bg-slate-100 border-slate-200' : 'text-slate-500 bg-slate-800/60 border-slate-700/50'
+              )}
+            >
               {resources.length}
             </span>
             <button
               id="btn-collapse-palette"
               onClick={() => setIsPaletteCollapsed(true)}
-              className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-800 transition-colors ml-1"
+              className={clsx(
+                'p-1 rounded transition-colors ml-1',
+                isLight ? 'text-slate-500 hover:text-slate-900 hover:bg-slate-200' : 'text-slate-500 hover:text-white hover:bg-slate-800'
+              )}
               title="Collapse resource palette"
             >
               <PanelLeftClose className="w-3.5 h-3.5" />
@@ -118,14 +152,19 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
         {/* Search input */}
         <div className="relative">
           <label htmlFor="resource-search" className="sr-only">Search services</label>
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+          <Search className={clsx('absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5', isLight ? 'text-slate-400' : 'text-slate-500')} />
           <input
             id="resource-search"
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search EC2, VPC, RDS..."
-            className="w-full bg-slate-900 border border-slate-700/80 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors"
+            className={clsx(
+              'w-full border rounded-lg pl-8 pr-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500/50 transition-colors',
+              isLight
+                ? 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-cyan-500'
+                : 'bg-slate-900 border-slate-700/80 text-slate-200 placeholder-slate-500 focus:border-cyan-500'
+            )}
           />
         </div>
       </div>
@@ -141,19 +180,29 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
             <div key={category} className="space-y-1">
               <button
                 onClick={() => toggleCategory(category)}
-                className="w-full flex items-center justify-between px-2 py-1 text-slate-400 hover:text-slate-200 hover:bg-slate-900/50 rounded transition-colors group"
+                className={clsx(
+                  'w-full flex items-center justify-between px-2 py-1 rounded transition-colors group',
+                  isLight
+                    ? 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                )}
               >
                 <div className="flex items-center gap-1.5">
                   {isCollapsed ? (
-                    <ChevronRight className="w-3 h-3 text-slate-500 group-hover:text-cyan-400" />
+                    <ChevronRight className={clsx('w-3 h-3 transition-colors', isLight ? 'text-slate-400 group-hover:text-cyan-600' : 'text-slate-500 group-hover:text-cyan-400')} />
                   ) : (
-                    <ChevronDown className="w-3 h-3 text-slate-500 group-hover:text-cyan-400" />
+                    <ChevronDown className={clsx('w-3 h-3 transition-colors', isLight ? 'text-slate-400 group-hover:text-cyan-600' : 'text-slate-500 group-hover:text-cyan-400')} />
                   )}
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 group-hover:text-slate-200">
+                  <span
+                    className={clsx(
+                      'text-[11px] font-semibold uppercase tracking-wider',
+                      isLight ? 'text-slate-700 group-hover:text-slate-900' : 'text-slate-400 group-hover:text-slate-200'
+                    )}
+                  >
                     {catInfo.title}
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-600 font-mono">
+                <span className={clsx('text-[10px] font-mono', isLight ? 'text-slate-400' : 'text-slate-600')}>
                   {items.length}
                 </span>
               </button>
@@ -185,11 +234,11 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
                         ghost.style.alignItems = 'center';
                         ghost.style.gap = '8px';
                         ghost.style.padding = '6px 12px';
-                        ghost.style.background = '#0F172A';
+                        ghost.style.background = isLight ? '#FFFFFF' : '#0F172A';
                         ghost.style.border = '2px solid #0EA5E9';
                         ghost.style.borderRadius = '10px';
-                        ghost.style.boxShadow = '0 10px 25px rgba(0, 0, 0, 0.6)';
-                        ghost.style.color = '#FFFFFF';
+                        ghost.style.boxShadow = '0 10px 25px rgba(0, 0, 0, 0.2)';
+                        ghost.style.color = isLight ? '#0F172A' : '#FFFFFF';
                         ghost.style.fontWeight = 'bold';
                         ghost.style.fontSize = '12px';
                         ghost.style.zIndex = '99999';
@@ -214,9 +263,19 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
                       }}
                       onClick={() => onAddResource && onAddResource(res.type)}
                       title={`${res.label} — Drag to canvas`}
-                      className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-slate-900/40 border border-slate-800/60 hover:bg-slate-800/80 hover:border-slate-600/80 hover:shadow-md cursor-grab active:cursor-grabbing group transition-all"
+                      className={clsx(
+                        'flex items-center gap-2 px-2.5 py-2 rounded-lg border cursor-grab active:cursor-grabbing group transition-all',
+                        isLight
+                          ? 'bg-slate-50/80 border-slate-200 hover:bg-blue-50/60 hover:border-blue-300 hover:shadow-sm'
+                          : 'bg-slate-900/40 border-slate-800/60 hover:bg-slate-800/80 hover:border-slate-600/80 hover:shadow-md'
+                      )}
                     >
-                      <div className="p-1 rounded-md bg-slate-950/80 border border-slate-800 shrink-0 group-hover:border-slate-700 transition-colors">
+                      <div
+                        className={clsx(
+                          'p-1 rounded-md border shrink-0 transition-colors',
+                          isLight ? 'bg-white border-slate-200 group-hover:border-slate-300' : 'bg-slate-950/80 border-slate-800 group-hover:border-slate-700'
+                        )}
+                      >
                         <CloudServiceIcon
                           provider={res.provider}
                           resourceType={res.type}
@@ -226,21 +285,38 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between">
-                          <p className="text-xs font-semibold text-slate-200 group-hover:text-white truncate">
+                          <p
+                            className={clsx(
+                              'text-xs font-semibold truncate',
+                              isLight ? 'text-slate-800 group-hover:text-blue-700' : 'text-slate-200 group-hover:text-white'
+                            )}
+                          >
                             {res.label}
                           </p>
                           {res.isContainer && (
-                            <span className="text-[9px] font-medium px-1 py-0.2 rounded bg-purple-500/20 text-purple-300">
+                            <span
+                              className={clsx(
+                                'text-[9px] font-medium px-1 py-0.2 rounded border',
+                                isLight
+                                  ? 'bg-purple-100 text-purple-700 border-purple-200'
+                                  : 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                              )}
+                            >
                               Container
                             </span>
                           )}
                         </div>
-                        <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                        <p className={clsx('text-[10px] truncate mt-0.5', isLight ? 'text-slate-500' : 'text-slate-400')}>
                           {res.service || res.description || 'Cloud Resource'}
                         </p>
                       </div>
 
-                      <GripVertical className="w-3 h-3 text-slate-700 group-hover:text-slate-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <GripVertical
+                        className={clsx(
+                          'w-3 h-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity',
+                          isLight ? 'text-slate-400 group-hover:text-slate-600' : 'text-slate-700 group-hover:text-slate-400'
+                        )}
+                      />
                     </div>
                   ))}
                 </div>
@@ -251,10 +327,10 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
 
         {filtered.length === 0 && (
           <div className="px-3 py-8 text-center">
-            <p className="text-slate-500 text-xs">No matching cloud services</p>
+            <p className={clsx('text-xs', isLight ? 'text-slate-500' : 'text-slate-500')}>No matching cloud services</p>
             <button
               onClick={() => setSearch('')}
-              className="mt-2 text-cyan-400 hover:text-cyan-300 text-xs font-medium"
+              className="mt-2 text-cyan-600 dark:text-cyan-400 hover:underline text-xs font-medium"
             >
               Clear search filter
             </button>
@@ -263,9 +339,14 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
       </div>
 
       {/* Palette Footer Tip */}
-      <div className="p-2.5 border-t border-slate-800/80 bg-slate-900/40 text-[11px] text-slate-400 flex items-center justify-between">
+      <div
+        className={clsx(
+          'p-2.5 border-t text-[11px] flex items-center justify-between',
+          isLight ? 'border-slate-200 bg-slate-50 text-slate-600' : 'border-slate-800/80 bg-slate-900/40 text-slate-400'
+        )}
+      >
         <div className="flex items-center gap-2 truncate">
-          <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+          <Sparkles className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400 shrink-0" />
           <span className="truncate">Drag services onto canvas</span>
         </div>
       </div>
