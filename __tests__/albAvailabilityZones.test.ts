@@ -63,6 +63,37 @@ describe('load balancer subnets span two Availability Zones', () => {
     expect(gen([vpc, named('alb', 'aws_alb', 'web_alb', {}, { groupId: 'vpc' })], []).blocking[0]).toMatch(/needs subnets in at least two different Availability Zones/);
   });
 
+  describe('an HTTPS listener needs a certificate', () => {
+    const two = [vpc, named('sa', 'aws_subnet', 'public_a', {}, { groupId: 'vpc' }), named('sb', 'aws_subnet', 'public_b', {}, { groupId: 'vpc' })];
+    const links = [conn('alb', 'sa'), conn('alb', 'sb')];
+    const withAlb = (cfg: Record<string, unknown>) => gen([...two, named('alb', 'aws_alb', 'web_alb', cfg, { groupId: 'vpc' })], links);
+
+    test('HTTPS with no certificate is blocked, with both ways out', () => {
+      const r = withAlb({ listenerProtocol: 'HTTPS', certificateArn: '' });
+      expect(r.blocking).toHaveLength(1);
+      expect(r.blocking[0]).toMatch(/HTTPS listener but no certificate/);
+      expect(r.blocking[0]).toMatch(/ACM Certificate ARN/);
+      expect(r.blocking[0]).toMatch(/change its Listener Protocol to HTTP/);
+    });
+    test('a blank certificate (only spaces) counts as none', () => {
+      expect(withAlb({ listenerProtocol: 'HTTPS', certificateArn: '   ' }).blocking).toHaveLength(1);
+    });
+    test('HTTPS with a certificate is fine', () => {
+      const r = withAlb({ listenerProtocol: 'HTTPS', certificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/abc' });
+      expect(r.blocking).toEqual([]);
+      expect(r.main).toContain('certificate_arn');
+    });
+    test('an HTTP listener needs no certificate', () => {
+      expect(withAlb({ listenerProtocol: 'HTTP' }).blocking).toEqual([]);
+    });
+    test('no protocol and no certificate means HTTP, which is fine', () => {
+      expect(withAlb({}).blocking).toEqual([]);
+    });
+    test('a TLS listener on a network load balancer is checked the same way', () => {
+      expect(withAlb({ listenerProtocol: 'TLS' }).blocking[0]).toMatch(/TLS listener but no certificate/);
+    });
+  });
+
   test('an architecture with no load balancer is never blocked by this', () => {
     expect(gen([vpc, named('s1', 'aws_subnet', 'public_a', {}, { groupId: 'vpc' })], []).blocking).toEqual([]);
   });

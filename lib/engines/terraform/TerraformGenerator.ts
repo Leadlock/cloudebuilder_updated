@@ -424,6 +424,16 @@ locals {
             this._blocking.push(`The load balancer "${r.label}" needs subnets in at least two different Availability Zones, but the subnets it can use are ${where}. AWS only refuses this when it creates the load balancer, after other resources were already built, so CloudCraft stops here instead. Add a second subnet in another Availability Zone (set its Availability Zone) and connect it to the load balancer.`);
           }
 
+          // An HTTPS/TLS listener needs a certificate, and AWS reports its absence only when the listener is created, after the load
+          // balancer (several minutes of work) already exists. Stop the plan instead, and say both ways out.
+          {
+            const hasCertificate = typeof cfg['certificateArn'] === 'string' && cfg['certificateArn'].trim() !== '';
+            const listenerProtocol = (cfg['listenerProtocol'] as string) || (hasCertificate ? 'HTTPS' : 'HTTP');
+            if (!isImported && (listenerProtocol === 'HTTPS' || listenerProtocol === 'TLS') && !hasCertificate) {
+              this._blocking.push(`The load balancer "${r.label}" has an ${listenerProtocol} listener but no certificate. AWS refuses an ${listenerProtocol} listener without one, and only says so after the load balancer itself has been created. Either enter its "ACM Certificate ARN" (AWS Certificate Manager → request a certificate for your domain, then copy its ARN), or, for a test only, change its Listener Protocol to HTTP.`);
+            }
+          }
+
           const isVpcImported = vpc && Boolean(this._cfg(vpc).imported || this._cfg(vpc).importState === 'imported');
           const vpcRef = vpc ? `${isVpcImported ? 'data.' : ''}aws_vpc.${resolver.tfNameOf(vpc.id) ?? 'main'}.id` : this._fallbackVpcRef(r, resolver, connections, resources, warnings);
 
