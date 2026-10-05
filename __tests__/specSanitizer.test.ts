@@ -119,11 +119,12 @@ describe('spreadSubnetZones', () => {
     expect(zonesOf(rs)).toEqual(['eu-west-1a', 'eu-west-1b']);
   });
 
-  it('leaves alone designs that already use two zones, have no zone, or have one subnet', () => {
+  it('leaves alone designs that already use two zones or have one subnet; subnets with no zone get the default one and are spread', () => {
     const ok = [sub('a', 'us-east-1a', true), sub('b', 'us-east-1b', true)];
     expect(spreadSubnetZones(ok)).toEqual([]);
     const none = [sub('a', undefined, true), sub('b', undefined, true)];
-    expect(spreadSubnetZones(none)).toEqual([]);
+    spreadSubnetZones(none);      // the catalog default is us-east-1a for both, which is exactly the one-zone mistake
+    expect(zonesOf(none)).toEqual(['us-east-1a', 'us-east-1b']);
     expect(spreadSubnetZones([sub('a', 'us-east-1a', true)])).toEqual([]);
   });
 
