@@ -8,9 +8,7 @@
  * Result: ok | wrong | none (this account has no password anywhere we can check, e.g. a development identity) | unavailable
  * (Cognito could not be reached or throttled us: neither a yes nor a no).
  */
-import { orgRepository } from '@/lib/repositories/orgRepository';
 import { verifyPassword } from '@/lib/crypto/password';
-import { CognitoService } from '@/lib/auth/cognitoService';
 
 export type PasswordCheck = 'ok' | 'wrong' | 'none' | 'unavailable';
 
@@ -20,10 +18,11 @@ export interface VerifyDeps {
   cognitoSignIn(email: string, password: string): Promise<{ sub: string }>;
 }
 
+// Loaded on use, so importing this file (and testing it) does not open the database or the Cognito client.
 const realDeps: VerifyDeps = {
-  getPasswordHash: (id) => orgRepository.getPasswordHashById(id),
+  getPasswordHash: async (id) => (await import('@/lib/repositories/orgRepository')).orgRepository.getPasswordHashById(id),
   verifyHash: verifyPassword,
-  cognitoSignIn: (email, password) => CognitoService.signIn(email, password),
+  cognitoSignIn: async (email, password) => (await import('@/lib/auth/cognitoService')).CognitoService.signIn(email, password),
 };
 
 export async function verifyAccountPassword(input: { userId: string; email?: string; password: string }, deps: VerifyDeps = realDeps): Promise<PasswordCheck> {
