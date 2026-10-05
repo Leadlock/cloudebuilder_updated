@@ -428,6 +428,8 @@ export interface PreparedDestroy {
   planId: string | null;
   planHash: string | null;
   resources: { address: string; type: string }[];
+  /** Protected resources the plan deletes: deletion protection is switched off on them when the teardown is confirmed. */
+  protectedResources?: { type: string; id: string; address: string }[];
 }
 
 /**
@@ -489,7 +491,7 @@ export async function prepareDestroy(input: ExecuteDestroyInput, onOutput?: (chu
       protectedResources: findProtectedResources(planJson as never), region,
     });
     keep = true;
-    return { planId, planHash, resources };
+    return { planId, planHash, resources, protectedResources: findProtectedResources(planJson as never) };
   } finally {
     if (!keep) await rm(workDir, { recursive: true, force: true }).catch(() => {});
   }

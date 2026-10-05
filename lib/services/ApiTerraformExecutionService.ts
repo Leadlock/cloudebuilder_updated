@@ -55,6 +55,8 @@ export interface TerraformDestroyPreview {
   planHash?: string;
   resourceCount: number;
   resources: { address: string; type: string }[];
+  /** Resources whose deletion protection will be switched off when the teardown is confirmed. */
+  deletionProtection?: { address: string; type: string }[];
 }
 
 /** Live view of a background teardown. */

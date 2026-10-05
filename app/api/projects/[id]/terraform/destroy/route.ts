@@ -92,6 +92,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return ok({
         status: 'confirmation_required', confirmationToken: token, expiresAt, planId: prepared.planId, planHash: prepared.planHash,
         resourceCount: prepared.resources.length, resources: prepared.resources.slice(0, 200),
+        // Shown before the person confirms: what CloudCraft will switch deletion protection off on, ahead of the delete.
+        deletionProtection: (prepared.protectedResources ?? []).map((p) => ({ address: p.address, type: p.type })),
       });
     }
 

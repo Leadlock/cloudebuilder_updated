@@ -15,9 +15,9 @@ import { ElasticLoadBalancingV2Client, ModifyLoadBalancerAttributesCommand } fro
 import { RDSClient, ModifyDBInstanceCommand } from '@aws-sdk/client-rds';
 import { DynamoDBClient, UpdateTableCommand } from '@aws-sdk/client-dynamodb';
 
-export interface ProtectedResource { type: 'aws_lb' | 'aws_db_instance' | 'aws_dynamodb_table'; id: string }
+export interface ProtectedResource { type: 'aws_lb' | 'aws_db_instance' | 'aws_dynamodb_table'; id: string; /** Its Terraform address, shown to the user before they confirm. */ address: string }
 
-interface LoosePlanJson { resource_changes?: { type: string; mode?: string; change: { actions: string[]; before?: Record<string, unknown> | null } }[] }
+interface LoosePlanJson { resource_changes?: { address: string; type: string; mode?: string; change: { actions: string[]; before?: Record<string, unknown> | null } }[] }
 
 /** Resources the destroy plan will delete that currently have deletion protection on, with the id AWS knows them by. */
 export function findProtectedResources(planJson: LoosePlanJson): ProtectedResource[] {
@@ -25,9 +25,9 @@ export function findProtectedResources(planJson: LoosePlanJson): ProtectedResour
   for (const rc of planJson.resource_changes ?? []) {
     if ((rc.mode ?? 'managed') !== 'managed' || !rc.change.actions.includes('delete')) continue;
     const b = rc.change.before ?? {};
-    if (rc.type === 'aws_lb' && b['enable_deletion_protection'] === true && typeof b['arn'] === 'string') found.push({ type: 'aws_lb', id: b['arn'] });
-    else if (rc.type === 'aws_db_instance' && b['deletion_protection'] === true && typeof b['identifier'] === 'string') found.push({ type: 'aws_db_instance', id: b['identifier'] });
-    else if (rc.type === 'aws_dynamodb_table' && b['deletion_protection_enabled'] === true && typeof b['name'] === 'string') found.push({ type: 'aws_dynamodb_table', id: b['name'] });
+    if (rc.type === 'aws_lb' && b['enable_deletion_protection'] === true && typeof b['arn'] === 'string') found.push({ type: 'aws_lb', id: b['arn'], address: rc.address });
+    else if (rc.type === 'aws_db_instance' && b['deletion_protection'] === true && typeof b['identifier'] === 'string') found.push({ type: 'aws_db_instance', id: b['identifier'], address: rc.address });
+    else if (rc.type === 'aws_dynamodb_table' && b['deletion_protection_enabled'] === true && typeof b['name'] === 'string') found.push({ type: 'aws_dynamodb_table', id: b['name'], address: rc.address });
   }
   return found;
 }

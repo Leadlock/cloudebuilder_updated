@@ -17,6 +17,7 @@ import TerraformApprovalBar, { TerraformApprovalInbox } from './TerraformApprova
 import TerraformWorkerNotice from './TerraformWorkerNotice';
 import CreatedResourcesList from './CreatedResourcesList';
 import TerraformPermissionHelp from './TerraformPermissionHelp';
+import { protectionNotice } from '@/lib/terraform/execution/protectionNotice';
 
 interface CloudAccount {
   id: string;
@@ -1199,6 +1200,21 @@ export default function TerraformExecutionPanel() {
                     </>
                   )}
                 </div>
+
+                {(() => {
+                  const notice = protectionNotice(destroyPreview?.deletionProtection);
+                  if (!notice) return null;
+                  return (
+                    <div className="p-3 bg-amber-950/40 border border-amber-600/50 rounded-xl text-amber-100 text-xs space-y-2" data-testid="protection-notice">
+                      <p className="font-semibold flex items-center gap-1.5"><ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" /> {notice.title}</p>
+                      <p className="text-[11px] text-amber-100/90 leading-relaxed">{notice.body}</p>
+                      <ul className="text-[11px] space-y-0.5 font-mono">
+                        {notice.lines.map((l) => <li key={l.address}><span className="text-amber-300 font-sans">{l.kind}:</span> {l.address}</li>)}
+                      </ul>
+                      <p className="text-[11px] text-amber-200/80">{notice.footer}</p>
+                    </div>
+                  );
+                })()}
 
                 <div className="p-3 bg-rose-950/30 border border-rose-900/50 rounded-xl text-rose-300 text-xs space-y-2">
                   <p className="font-semibold flex items-center gap-1.5">
