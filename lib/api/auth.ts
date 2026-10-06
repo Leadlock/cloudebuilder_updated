@@ -11,6 +11,25 @@
  */
 import { NextRequest } from 'next/server';
 import { AuthService } from './authService';
+import { TtlCache } from './ttlCache';
+
+/**
+ * Who belongs to which organisation, and with what role, is asked on EVERY request, and each ask is a database round trip (a quarter of
+ * a second against a remote database). Remembering the answer for a few seconds removes most of that. The answer can be at most
+ * AUTH_CACHE_MS old, and is forgotten at once when this process changes a membership (forgetMembership). Off in tests, which change
+ * roles between calls.
+ */
+export const AUTH_CACHE_MS = process.env.NODE_ENV === 'test' ? 0 : 15_000;
+const orgIdsCache = new TtlCache<string[]>(AUTH_CACHE_MS, 1000);
+const roleCache = new TtlCache<string | null>(AUTH_CACHE_MS, 2000);
+
+/** Call after a membership or role changes in this process, so nobody keeps an old answer. */
+export function forgetMembership(userId?: string): void {
+  if (!userId) { orgIdsCache.clear(); roleCache.clear(); return; }
+  orgIdsCache.delete(userId);
+  for (const key of [...roleKeys]) if (key.startsWith(`${userId}|`)) { roleCache.delete(key); roleKeys.delete(key); }
+}
+const roleKeys = new Set<string>();
 
 export interface RequestIdentity {
   userId: string;
@@ -87,13 +106,17 @@ export function extractIdentity(req: NextRequest): RequestIdentity | null {
  * Phase 2B: calls the DB. In Phase 3 this can be cached in the session JWT.
  */
 export async function resolveOrgIds(userId: string): Promise<string[]> {
+  const cached = AUTH_CACHE_MS > 0 ? orgIdsCache.get(userId) : undefined;
+  if (cached) return cached;
   // Lazy import to avoid pulling DB into non-server modules
   const { db } = await import('@/src/prisma/db');
   const rows = await db.orm.public.OrgMember
     .where({ userId })
     .select('orgId')
     .all();
-  return rows.map((r) => r.orgId);
+  const ids = rows.map((r) => r.orgId);
+  if (AUTH_CACHE_MS > 0) orgIdsCache.set(userId, ids);
+  return ids;
 }
 
 /**
@@ -107,12 +130,19 @@ export async function getOrgRole(
   if (process.env.NODE_ENV === 'development' && userId === 'dev-user-id') {
     return 'owner';
   }
+  const key = `${userId}|${orgId}`;
+  if (AUTH_CACHE_MS > 0) {
+    const cached = roleCache.get(key);
+    if (cached !== undefined) return cached;
+  }
   try {
     const { db } = await import('@/src/prisma/db');
     const member = await db.orm.public.OrgMember
       .where({ orgId, userId })
       .first();
-    return member?.role ?? null;
+    const role = member?.role ?? null;
+    if (AUTH_CACHE_MS > 0) { roleCache.set(key, role); roleKeys.add(key); }
+    return role;
   } catch {
     if (process.env.NODE_ENV === 'development') return 'owner';
     return null;

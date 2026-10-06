@@ -17,6 +17,7 @@
     "contract:emit": "prisma contract emit",
     "db:migrate": "prisma db migrate",
     "db:update": "prisma db update",
+    "db:local": "tsx scripts/local-db.ts",
     "db:reset": "docker compose down -v && docker compose up -d && prisma db init",
     "credentials:rotate": "tsx --env-file=.env --tsconfig tsconfig.json scripts/rotate-credentials.ts",
     "credentials:new-key": "tsx --tsconfig tsconfig.json scripts/new-encryption-key.ts",

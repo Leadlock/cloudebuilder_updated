@@ -16,6 +16,9 @@ import { CredentialsExpiredError, applyLifetimeChange, lifetimeMirror, remaining
  * What a stored credential is bound to. Part of the encrypted data's authentication, so a value copied into another account or
  * another organisation can never be decrypted there.
  */
+const EXPIRY_SWEEP_EVERY_MS = process.env.NODE_ENV === 'test' ? 0 : 60_000;
+const lastExpirySweep = new Map<string, number>();
+
 export const credentialContext = (orgId: string, accountId: string): string => `cloud-account:${orgId}:${accountId}`;
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
@@ -154,8 +157,14 @@ export const cloudAccountRepository = {
     });
   },
 
-  /** Erases the credentials of every account in the organisation whose time is up (decided from the plain mirror, without decrypting). */
-  async expireDue(orgId: string): Promise<number> {
+  /**
+   * Erases the credentials of every account in the organisation whose time is up (decided from the plain mirror, without decrypting).
+   * Runs at most once a minute per organisation: it costs a database round trip and every use of a credential checks its deadline anyway.
+   */
+  async expireDue(orgId: string, force = false): Promise<number> {
+    const last = lastExpirySweep.get(orgId) ?? 0;
+    if (!force && Date.now() - last < EXPIRY_SWEEP_EVERY_MS) return 0;
+    lastExpirySweep.set(orgId, Date.now());
     const rows = await db.orm.public.CloudAccount.where({ orgId }).select('id', 'identityJson').all();
     let wiped = 0;
     for (const r of rows) {

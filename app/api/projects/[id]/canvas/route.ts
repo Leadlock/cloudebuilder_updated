@@ -33,14 +33,16 @@ export async function GET(
     const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return badRequest('orgId required');
 
-    const role = await getOrgRole(identity.userId, orgId);
-    if (!role) return forbidden();
-
-    const project = await projectRepository.findById(projectId, orgId);
-    if (!project) return notFound('Project');
-
+    // The three lookups do not depend on one another, so they run together: each is a database round trip, and doing them one
+    // after another tripled the wait. What each answer means is still decided in the same order below.
     const envKey = (req.nextUrl.searchParams.get('env') ?? 'production') as Environment;
-    const env = await environmentRepository.findByKey(projectId, envKey);
+    const [role, project, env] = await Promise.all([
+      getOrgRole(identity.userId, orgId),
+      projectRepository.findById(projectId, orgId),
+      environmentRepository.findByKey(projectId, envKey),
+    ]);
+    if (!role) return forbidden();
+    if (!project) return notFound('Project');
     if (!env) return notFound('Environment');
 
     const arch = await architectureRepository.findByEnvironment(env.id);

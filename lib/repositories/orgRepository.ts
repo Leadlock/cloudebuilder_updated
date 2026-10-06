@@ -107,6 +107,8 @@ export const orgRepository = {
       .first();
     if (existing) return;
     await db.orm.public.OrgMember.create({ id: uuidv4(), orgId, userId, role });
+    const { forgetMembership } = await import('@/lib/api/auth');
+    forgetMembership(userId);       // a cached "not a member" must not outlive the invitation being accepted
   },
 
   async ensureDevContext(): Promise<{ userId: string; orgId: string }> {
