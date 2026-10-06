@@ -105,6 +105,59 @@ describe('specRepair', () => {
     expect(result.ok).toBe(true);
   });
 
+  describe('Azure mistakes seen in the 101-prompt run', () => {
+    const azure = async (): Promise<Spec> => {
+      const { loadChunks } = await import('@/lib/ai/knowledgeBase');
+      const { sampleOf } = await import('@/lib/ai/verifiedBase');
+      return clone(sampleOf(loadChunks().find((c) => c.id === 'pattern-azure-gateway-app-service')!)) as Spec;
+    };
+    const passes = (spec: unknown) => { const r = evaluateSpec(spec, { autoRepair: true }); return { ok: r.ok, issues: r.issues }; };
+
+    it('attaches a network security group that was created but connected to nothing, and places it in the network', async () => {
+      const a = await azure();
+      const web = a.resources.find((r) => r.id === 'nsg-web')!;
+      a.connections = a.connections.filter((c) => c.from !== 'nsg-web');
+      delete (web as { parent?: string }).parent;
+      expect(passes(a).ok).toBe(false);
+      const { value, report } = repairSpecInput(a);
+      expect(report.groups).toBeGreaterThan(0);
+      expect(passes(value)).toEqual({ ok: true, issues: [] });
+    });
+
+    it('moves a workload placed in the network itself into its subnet', async () => {
+      const a = await azure();
+      const subnet = a.resources.find((r) => r.id === 'web-subnet' || r.type === 'azure_subnet')!;
+      const agw = a.resources.find((r) => r.type === 'azure_app_gateway')!;
+      agw.parent = subnet.parent;       // the VNet instead of the web subnet
+      expect(passes(a).ok).toBe(false);
+      const { value, report } = repairSpecInput(a);
+      expect(report.placed).toBe(1);
+      expect(passes(value)).toEqual({ ok: true, issues: [] });
+    });
+
+    it('removes a traffic line drawn from a subnet', async () => {
+      const a = await azure();
+      const agw = a.resources.find((r) => r.type === 'azure_app_gateway')!;
+      a.connections.push({ from: agw.parent!, to: agw.id });
+      expect(passes(a).ok).toBe(false);
+      const { value, report } = repairSpecInput(a);
+      expect(report.containerEdges).toBe(1);
+      expect(passes(value)).toEqual({ ok: true, issues: [] });
+    });
+
+    it('connects a storage account nothing uses to the app, and resets an invented setting choice', async () => {
+      const a = await azure();
+      a.connections = a.connections.filter((c) => c.to !== 'storage');
+      const app = a.resources.find((r) => r.type === 'azure_app_service')!;
+      app.config = { ...(app.config ?? {}), skuName: 'P99xl' };
+      expect(passes(a).ok).toBe(false);
+      const { value, report } = repairSpecInput(a);
+      expect(report.connections).toBeGreaterThan(0);
+      expect(report.choices).toBe(1);
+      expect(passes(value)).toEqual({ ok: true, issues: [] });
+    });
+  });
+
   it('spreads subnets with no zone across two zones (sanitizer) so the single-zone check passes', () => {
     const { value } = sanitizeSpecInput(sloppy());
     const zones = new Set((value as Spec).resources.filter((r) => r.type === 'aws_subnet').map((r) => r.config!['availabilityZone']));
@@ -113,7 +166,7 @@ describe('specRepair', () => {
 
   it('leaves a design that is already fine untouched', () => {
     const { value, report } = repairSpecInput(good);
-    expect(report).toEqual({ certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0 });
+    expect(report).toEqual({ certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0, placed: 0, containerEdges: 0, groups: 0, choices: 0 });
     expect(value).toEqual(good);
   });
 
@@ -126,8 +179,8 @@ describe('specRepair', () => {
   });
 
   it('describes what it did', () => {
-    expect(describeSpecRepair({ certificates: 1, waf: 1, connections: 2, addressing: 3, gateway: 1, secured: 2, nsgs: 3 })).toHaveLength(7);
-    expect(describeSpecRepair({ certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0 })).toEqual([]);
+    expect(describeSpecRepair({ certificates: 1, waf: 1, connections: 2, addressing: 3, gateway: 1, secured: 2, nsgs: 3, placed: 1, containerEdges: 1, groups: 1, choices: 1 })).toHaveLength(11);
+    expect(describeSpecRepair({ certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0, placed: 0, containerEdges: 0, groups: 0, choices: 0 })).toEqual([]);
   });
 
   it('never makes input that is not a design worse', () => {

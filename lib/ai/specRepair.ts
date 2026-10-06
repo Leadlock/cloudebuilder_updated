@@ -18,17 +18,20 @@
  * a design that compiled stop compiling.
  */
 import { compileSpec, parseSpec } from './architectureSpec';
+import { getResourceDefinition } from '@/lib/resources';
 
 interface SRes { id?: unknown; type?: unknown; label?: unknown; parent?: unknown; config?: Record<string, unknown> }
 interface SConn { from?: unknown; to?: unknown }
 interface Spec { resources?: SRes[]; connections?: SConn[]; [k: string]: unknown }
 
 const CERT_PLACEHOLDER = (region: string) => `arn:aws:acm:${region}:123456789012:certificate/REPLACE-WITH-YOUR-CERTIFICATE-ID`;
-const COMPUTE = new Set(['aws_auto_scaling', 'aws_ec2', 'aws_ecs', 'aws_lambda']);
-const DATA = new Set(['aws_rds', 'aws_elasticache', 'aws_dynamodb', 'aws_s3']);
+const COMPUTE = new Set(['aws_auto_scaling', 'aws_ec2', 'aws_ecs', 'aws_lambda', 'azure_app_service', 'azure_functions', 'azure_vmss', 'azure_vm', 'azure_aks']);
+const DATA = new Set(['aws_rds', 'aws_elasticache', 'aws_dynamodb', 'aws_s3', 'azure_sql', 'azure_cosmos_db', 'azure_redis', 'azure_storage', 'azure_key_vault']);
 // Network edge pieces that must hang off the entry point: a firewall on the load balancer, the internet gateway to it, NAT to the gateway.
-const EDGE = new Set(['aws_waf', 'aws_igw', 'aws_nat']);
-const ENTRY = new Set(['aws_route53', 'aws_cloudfront', 'aws_alb']);
+const EDGE = new Set(['aws_waf', 'aws_igw', 'aws_nat', 'azure_waf']);
+const ENTRY = new Set(['aws_route53', 'aws_cloudfront', 'aws_alb', 'azure_front_door', 'azure_app_gateway', 'azure_lb']);
+/** The things that take traffic from the internet and pass it to compute. */
+const FRONT = ['aws_alb', 'azure_app_gateway', 'azure_front_door', 'azure_lb'];
 const sid = (r: SRes) => String(r.id ?? '');
 
 function problems(spec: Spec): number {
@@ -106,13 +109,14 @@ function connectLooseParts(spec: Spec): number {
     if (loose.length === 0) break;
     const inMain = (types: Set<string> | string) => nodes.filter((r) => seen.has(sid(r)) && (typeof types === 'string' ? r.type === types : types.has(String(r.type))));
 
+    const front = () => FRONT.map((t) => inMain(t)[0]).find(Boolean);
     let changed = false;
     for (const x of loose) {
       const type = String(x.type);
-      if (COMPUTE.has(type)) { const alb = inMain('aws_alb')[0]; if (alb) { link(alb, x); changed = true; } }
+      if (COMPUTE.has(type)) { const lb = front(); if (lb) { link(lb, x); changed = true; } }
       else if (DATA.has(type)) { const caller = inMain(COMPUTE)[0]; if (caller) { link(caller, x); changed = true; } }
       else if (type === 'aws_alb') { const dns = inMain('aws_route53')[0] ?? inMain('aws_cloudfront')[0]; if (dns) { link(dns, x); changed = true; } }
-      else if (type === 'aws_waf') { const target = inMain('aws_alb')[0] ?? inMain('aws_cloudfront')[0]; if (target) { link(x, target); changed = true; } }
+      else if (type === 'aws_waf' || type === 'azure_waf') { const target = front() ?? inMain('aws_cloudfront')[0]; if (target) { link(x, target); changed = true; } }
       else if (type === 'aws_igw') { const alb = inMain('aws_alb')[0]; if (alb) { link(x, alb); changed = true; } }
       else if (type === 'aws_nat') { const igw = inMain('aws_igw')[0]; if (igw) { link(x, igw); changed = true; } }
       else if (type === 'aws_route53' || type === 'aws_cloudfront') { const alb = inMain('aws_alb')[0]; if (alb) { link(x, alb); changed = true; } }
@@ -218,11 +222,89 @@ function addSubnetNsgs(spec: Spec): number {
   return n;
 }
 
-export interface SpecRepairReport { certificates: number; waf: number; connections: number; addressing: number; gateway: number; secured: number; nsgs: number }
+/** Where each kind of resource belongs: the subnet tier it goes in. */
+const TIER: Record<string, 'web' | 'app' | 'data'> = {
+  aws_alb: 'web', aws_nat: 'web', azure_app_gateway: 'web', azure_lb: 'web', azure_bastion: 'web',
+  aws_auto_scaling: 'app', aws_ec2: 'app', aws_ecs: 'app', aws_lambda: 'app', azure_vm: 'app', azure_vmss: 'app', azure_functions: 'app', azure_aks: 'app',
+  aws_rds: 'data', aws_elasticache: 'data', azure_sql: 'data', azure_redis: 'data',
+};
+const TIER_WORDS: Record<'web' | 'app' | 'data', RegExp> = { web: /public|web|gateway/i, app: /app|private|compute|workload/i, data: /data|db|database/i };
+const NETWORK = new Set(['aws_vpc', 'azure_vnet']);
+const SUBNET = new Set(['aws_subnet', 'azure_subnet']);
+
+/** A workload placed straight in the VPC or VNet instead of its subnet goes into the subnet of its tier (spread over the zones). */
+function placeInSubnets(spec: Spec): number {
+  const resources = spec.resources ?? [];
+  const taken = new Map<string, number>();
+  let n = 0;
+  for (const r of resources) {
+    const tier = TIER[String(r.type)];
+    const parent = resources.find((p) => p.id === r.parent);
+    if (!tier || !parent || !NETWORK.has(String(parent.type))) continue;
+    const candidates = resources.filter((x) => SUBNET.has(String(x.type)) && x.parent === parent.id && TIER_WORDS[tier].test(sid(x) + ' ' + String(x.label ?? '')));
+    if (candidates.length === 0) continue;
+    const i = taken.get(tier) ?? 0;
+    taken.set(tier, i + 1);
+    r.parent = candidates[i % candidates.length]!.id;
+    n++;
+  }
+  return n;
+}
+
+/** Placement is shown by nesting, never by a traffic line: a connection to or from a subnet, VPC or boundary (other than a security group) is dropped. */
+function dropContainerEdges(spec: Spec): number {
+  const resources = spec.resources ?? [];
+  const byId = new Map(resources.map((r) => [sid(r), r]));
+  const container = (id: unknown) => { const t = String(byId.get(String(id))?.type ?? ''); return NETWORK.has(t) || SUBNET.has(t) || t.endsWith('_cloud_boundary'); };
+  const guard = (id: unknown) => /_(sg|nsg|nacl|route_table)$/.test(String(byId.get(String(id))?.type ?? ''));
+  const before = (spec.connections ?? []).length;
+  spec.connections = (spec.connections ?? []).filter((c) => !((container(c.from) && !guard(c.to)) || (container(c.to) && !guard(c.from))));
+  return before - spec.connections.length;
+}
+
+/** A security group or NSG with no connection (or placed outside the network) protects the subnet whose name matches it. */
+function attachLooseGroups(spec: Spec): number {
+  const resources = spec.resources ?? [];
+  const connections = (spec.connections ??= []);
+  const network = resources.filter((r) => NETWORK.has(String(r.type)));
+  let n = 0;
+  for (const g of resources.filter((r) => r.type === 'azure_nsg' || r.type === 'aws_sg')) {
+    const net = resources.find((r) => r.id === g.parent && NETWORK.has(String(r.type))) ?? (network.length === 1 ? network[0] : undefined);
+    if (!net) continue;
+    let changed = false;
+    if (g.parent !== net.id) { g.parent = net.id; changed = true; }
+    const attached = connections.some((c) => c.from === g.id || c.to === g.id);
+    if (!attached && g.type === 'azure_nsg') {
+      const guarded = new Set(connections.filter((c) => resources.some((x) => x.id === c.from && x.type === 'azure_nsg')).map((c) => c.to));
+      const open = resources.filter((r) => r.type === 'azure_subnet' && r.parent === net.id && !guarded.has(r.id));
+      const words = (sid(g) + ' ' + String(g.label ?? '')).toLowerCase();
+      const match = open.find((s) => (['web', 'public', 'app', 'data'] as const).some((w) => words.includes(w) && (sid(s) + ' ' + String(s.label ?? '')).toLowerCase().includes(w)));
+      if (match) { connections.push({ from: g.id, to: match.id }); changed = true; }
+    }
+    if (changed) n++;
+  }
+  return n;
+}
+
+/** A setting whose value is not one of the allowed choices (an invented VM size, say) goes back to the default rather than failing the design. */
+function resetInvalidChoices(spec: Spec): number {
+  let n = 0;
+  for (const r of spec.resources ?? []) {
+    const fields = getResourceDefinition(String(r.type))?.configSchema ?? [];
+    for (const f of fields) {
+      const v = r.config?.[f.key];
+      if (v === undefined || f.type !== 'select' || !f.options?.length) continue;
+      if (!f.options.some((o) => String(o.value) === String(v))) { delete r.config![f.key]; n++; }
+    }
+  }
+  return n;
+}
+
+export interface SpecRepairReport { certificates: number; waf: number; connections: number; addressing: number; gateway: number; secured: number; nsgs: number; placed: number; containerEdges: number; groups: number; choices: number }
 
 /** Returns the repaired design (a copy) and what was done. Steps that would make the design compile worse are undone. */
 export function repairSpecInput(input: unknown): { value: unknown; report: SpecRepairReport } {
-  const report: SpecRepairReport = { certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0 };
+  const report: SpecRepairReport = { certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0, placed: 0, containerEdges: 0, groups: 0, choices: 0 };
   if (!input || typeof input !== 'object' || !Array.isArray((input as Spec).resources)) return { value: input, report };
 
   let spec = JSON.parse(JSON.stringify(input)) as Spec;
@@ -232,9 +314,13 @@ export function repairSpecInput(input: unknown): { value: unknown; report: SpecR
     const done = run(trial);
     if (done > 0 && problems(trial) <= before) { spec = trial; report[name] = done; }
   };
+  step('choices', resetInvalidChoices);
+  step('placed', placeInSubnets);
+  step('containerEdges', dropContainerEdges);
   step('addressing', fixAddressing);
   step('gateway', addMissingGateway);
   step('secured', secureDefaults);
+  step('groups', attachLooseGroups);
   step('nsgs', addSubnetNsgs);
   step('certificates', addCertificates);
   step('waf', addWaf);
@@ -248,6 +334,10 @@ export function describeSpecRepair(report: SpecRepairReport): string[] {
   if (report.waf > 0) out.push(`CloudCraft added a web application firewall in front of the internet-facing load balancer.`);
   if (report.secured > 0) out.push(`${report.secured} database or cache service(s) were left with insecure defaults, so CloudCraft made them private-only with auditing and TLS 1.2, as the verified patterns do.`);
   if (report.nsgs > 0) out.push(`${report.nsgs} subnet(s) had no network security group, so one was added to each.`);
+  if (report.choices > 0) out.push(`${report.choices} setting(s) had a value that is not one of the allowed choices, so the default was used instead. Check those resources if you needed something specific.`);
+  if (report.placed > 0) out.push(`${report.placed} resource(s) were placed in the network itself, so each was moved into the subnet of its tier.`);
+  if (report.containerEdges > 0) out.push(`${report.containerEdges} connection(s) were drawn to or from a subnet or network, which is shown by placement and not by a line, so they were removed.`);
+  if (report.groups > 0) out.push(`${report.groups} security group(s) were not attached to anything, so each was attached to the matching subnet.`);
   if (report.addressing > 0) out.push(`Subnets shared one address range, so ${report.addressing} of them were given their own.`);
   if (report.gateway > 0) out.push('The design used an internet gateway it never declared, so one was added.');
   if (report.connections > 0) out.push(`CloudCraft connected ${report.connections} part(s) of the design that the AI had left disconnected.`);
