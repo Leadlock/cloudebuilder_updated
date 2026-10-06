@@ -7,7 +7,7 @@
  * assignments) with the Azure CLI command and the portal steps. Both come BEFORE anything is planned or deployed, and "Check my access"
  * asks the cloud (read-only) whether the account can already create in each place. Nothing here changes the cloud.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ShieldCheck, Copy, Check, Loader2, CheckCircle2, XCircle, HelpCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { ApiTerraformExecutionService, type RequiredPermissionsInfo } from '@/lib/services/ApiTerraformExecutionService';
 
@@ -27,6 +27,7 @@ export default function RequiredPermissionsCard({ projectId, environment, cloudA
   const [open, setOpen] = useState(true);
   const [copied, setCopied] = useState<'policy' | 'commands' | null>(null);
   const [checking, setChecking] = useState(false);
+  const resultRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async (check: boolean) => {
     try {
@@ -45,6 +46,11 @@ export default function RequiredPermissionsCard({ projectId, environment, cloudA
     await load(true);
     setChecking(false);
   }
+
+  // The answer appears under the button, which can be below the visible part of the card: bring it into view.
+  useEffect(() => {
+    if (info?.access) resultRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [info?.access]);
   async function copy(what: 'policy' | 'commands') {
     const text = what === 'policy' ? info?.policy : info?.commands;
     if (!text) return;
@@ -92,13 +98,15 @@ export default function RequiredPermissionsCard({ projectId, environment, cloudA
           <div className="flex flex-wrap gap-1.5">
             {chips.map((s) => {
               const row = info.access?.services.find((x) => x.service === s);
-              const tone = row?.allowed === true ? (isLight ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-emerald-700/60 bg-emerald-950/40 text-emerald-300')
-                : row?.allowed === false ? (isLight ? 'border-rose-300 bg-rose-50 text-rose-800' : 'border-rose-700/60 bg-rose-950/40 text-rose-300')
+              // Solid green for "can create here", solid red for "cannot", plain until the check has answered for that service.
+              const tone = row?.allowed === true ? 'border-emerald-500 bg-emerald-600 text-white'
+                : row?.allowed === false ? 'border-rose-500 bg-rose-600 text-white'
                   : (isLight ? 'border-slate-300 bg-white text-slate-700' : 'border-gray-600 bg-gray-900 text-gray-300');
               return (
-                <span key={s} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[11px] ${tone}`}>
-                  {row?.allowed === true && <CheckCircle2 className="w-3 h-3" />}
-                  {row?.allowed === false && <XCircle className="w-3 h-3" />}
+                <span key={s} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[11px] transition-colors ${tone} ${checking ? 'animate-pulse' : ''}`} data-state={row?.allowed === true ? 'allowed' : row?.allowed === false ? 'denied' : 'unknown'}>
+                  {checking && row?.allowed == null && <Loader2 className="w-3 h-3 animate-spin" />}
+                  {!checking && row?.allowed === true && <CheckCircle2 className="w-3 h-3" />}
+                  {!checking && row?.allowed === false && <XCircle className="w-3 h-3" />}
                   {s}
                 </span>
               );
@@ -162,12 +170,13 @@ export default function RequiredPermissionsCard({ projectId, environment, cloudA
 
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" disabled={checking} onClick={() => void runCheck()} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-60 ${isLight ? 'bg-sky-600 hover:bg-sky-500' : 'bg-sky-700 hover:bg-sky-600'}`}>
-              {checking ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />} Check my access
+              {checking ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />} {checking ? 'Checking…' : 'Check my access'}
             </button>
           </div>
 
           {info.access && (
             <div
+              ref={resultRef}
               role="status"
               className={`flex items-start gap-2 rounded-md border p-2.5 leading-relaxed ${
                 info.access.state === 'ok' ? (isLight ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300')

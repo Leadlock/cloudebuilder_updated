@@ -72,8 +72,10 @@ export function azureRequiredPermissionsFor(files: { filename: string; content: 
   const providers = new Set<string>(['Microsoft.Resources', 'Microsoft.Storage']);        // the resource group and the state storage
   const unknown = new Set<string>();
   for (const t of terraformTypes) {
+    const isData = t.startsWith('data.');
     const p = providerForResourceType(t.replace(/^data\./, ''));
-    if (p) providers.add(p); else unknown.add(t);
+    if (p) providers.add(p);
+    else if (!isData) unknown.add(t);        // a data lookup (for example the current client's identity) is a read, not something to grant
   }
   const needsRoleAssignment = providers.has('Microsoft.Authorization');
   const roles: AzureRole[] = [{ name: 'Contributor', why: 'creates, changes and deletes everything the design contains, and the state storage' }];

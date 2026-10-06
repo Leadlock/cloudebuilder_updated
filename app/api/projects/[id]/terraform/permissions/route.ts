@@ -53,6 +53,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // A key that can deploy by itself has nothing to add.
     if (authMethod === 'access-key-deploy') return ok({ needed: false, authMethod });
 
+    // A check also needs the account's credentials; ask for them while the design is read instead of afterwards (each is a round trip).
+    const credentialsPromise = check ? cloudAccountRepository.getCredentials(cloudAccountId, orgId).catch((e: unknown) => e) : null;
+    credentialsPromise?.catch(() => undefined);
     const ctx = await resolveArchitecture(projectId, orgId, environment);
     if ('error' in ctx) {
       if (ctx.error === 'project_not_found') return notFound('Project');
@@ -77,9 +80,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (!check) return ok(azureBase);
       const rl = await checkRateLimit(`${identity.userId}:terraform-permission-check`, 10, 10 * 60_000);
       if (!rl.allowed) return tooManyRequests(rl.retryAfterSeconds);
-      const stored = await cloudAccountRepository.getCredentials(cloudAccountId, orgId);
+      const stored = await credentialsPromise;
+      if (stored instanceof Error) throw stored;
       if (!stored) return notFound('Cloud account credentials');
-      const creds = JSON.parse(stored) as CloudCredentials;
+      const creds = JSON.parse(stored as string) as CloudCredentials;
       if (!isAzureCredentials(creds)) return ok(azureBase);
       let access;
       try {
@@ -109,9 +113,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const rl = await checkRateLimit(`${identity.userId}:terraform-permission-check`, 10, 10 * 60_000);
     if (!rl.allowed) return tooManyRequests(rl.retryAfterSeconds);
 
-    const credentialsJson = await cloudAccountRepository.getCredentials(cloudAccountId, orgId);
+    const credentialsJson = await credentialsPromise;
+    if (credentialsJson instanceof Error) throw credentialsJson;
     if (!credentialsJson) return notFound('Cloud account credentials');
-    const credentials = JSON.parse(credentialsJson) as CloudCredentials;
+    const credentials = JSON.parse(credentialsJson as string) as CloudCredentials;
     if (!isAwsRoleCredentials(credentials) && !isAwsKeyRoleCredentials(credentials)) return ok(base);
     const { IAMClient, SimulatePrincipalPolicyCommand } = await import('@aws-sdk/client-iam');
     const env = await resolveExecutionCredentials(credentials);

@@ -47,6 +47,11 @@ describe('azureRequiredPermissionsFor', () => {
     expect(p.roles.map((r) => r.name)).toEqual(['Contributor', 'User Access Administrator']);
     expect(p.needsRoleAssignment).toBe(true);
   });
+  it('does not ask for a permission for a data lookup it cannot map (a read the account already has)', () => {
+    const p = azureRequiredPermissionsFor([{ filename: 'main.tf', content: ['data "azurerm_client_config" "current" {}', 'resource "azurerm_virtual_network" "v" {}'].join(String.fromCharCode(10)) }]);
+    expect(p.unknownTypes).toEqual([]);
+    expect(p.providers).toContain('Microsoft.Network');
+  });
   it('reports a type it cannot map', () => {
     expect(azureRequiredPermissionsFor([{ filename: 'main.tf', content: 'resource "azurerm_made_up" "x" {}' }]).unknownTypes).toEqual(['azurerm_made_up']);
   });
