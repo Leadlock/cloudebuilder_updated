@@ -58,3 +58,27 @@ describe('explainTerraformError', () => {
     expect(explainTerraformError('Error: something completely different happened')).toBeNull();
   });
 });
+
+describe('the AWS plugin not starting is a busy computer, not a bad design', () => {
+  const { explainTerraformError } = jest.requireActual('@/lib/terraform/execution/errorHints') as typeof import('@/lib/terraform/execution/errorHints');
+  const raw = 'Terraform could not start the cloud plugin in time (nothing was changed): Error: Failed to load plugin schemas\n\nError while loading schemas for plugin components: Failed to obtain provider schema: Could not load the schema for provider registry.terraform.io/hashicorp/aws: failed to instantiate provider "registry.terraform.io/hashicorp/aws" to obtain schema: timeout while waiting for plugin to start..';
+
+  it('explains it as a machine problem with steps, and keeps the cost warning for teardowns', () => {
+    const e = explainTerraformError(raw)!;
+    expect(e.kind).toBe('plugin-start');
+    expect(e.title).toMatch(/too busy/);
+    expect(e.summary).toMatch(/design is fine/);
+    expect(e.steps.join(' ')).toMatch(/cloudcraft-tf-plugin-cache/);
+    expect(e.steps.join(' ')).toContain('$env:TEMP\\cloudcraft-tf-plugin-cache');       // the backslash survives
+    expect(e.steps.join(' ')).toMatch(/may still cost money/);
+  });
+
+  it('also catches the older wording that called it a rejected configuration', () => {
+    const old = 'Terraform rejected the generated configuration (nothing was changed): Error: Failed to load plugin schemas ... timeout while waiting for plugin to start..';
+    expect(explainTerraformError(old)!.kind).toBe('plugin-start');
+  });
+
+  it('still reports a real invalid configuration as one', () => {
+    expect(explainTerraformError('Terraform rejected the generated configuration (nothing was changed): Error: Reference to undeclared resource')!.kind).toBe('invalid-configuration');
+  });
+});

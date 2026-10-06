@@ -8,6 +8,7 @@
  * SECURITY: No cloud credentials are included in generated output.
  * Generated Terraform uses variables for all sensitive values.
  */
+import { placeholderProblems } from './placeholderChecks';
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
 import { assertSafeHcl, escapeHclString, hclSafeId, sanitizeResourcesForHcl } from './hclSafety';
 
@@ -3937,6 +3938,8 @@ export class TerraformGenerator {
 
     const files = this._buildFiles(awsBlocks, azureBlocks, providers, projectName, input);
     assertSafeHcl(files);
+    // Values AWS would only refuse halfway through an apply: placeholders nobody filled in, and domains AWS reserves.
+    blocking.push(...placeholderProblems(files));
 
     return { files, warnings, resourceMap, providers, ...(blocking.length > 0 ? { blocking } : {}) };
   }

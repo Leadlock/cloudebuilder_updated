@@ -9,7 +9,7 @@ import { parseAccessDenied } from './deployPermissions';
 
 export type TerraformErrorKind =
   | 'state-lock' | 'resource-group-not-empty' | 'network' | 'not-installed' | 'invalid-configuration'
-  | 'credentials' | 'insufficient-permissions' | 'already-exists' | 'quota' | 'timeout' | 'rate-limited' | 'unknown';
+  | 'plugin-start' | 'credentials' | 'insufficient-permissions' | 'already-exists' | 'quota' | 'timeout' | 'rate-limited' | 'unknown';
 
 export interface TerraformErrorExplanation {
   kind: TerraformErrorKind;
@@ -65,6 +65,19 @@ export function explainTerraformError(raw: string | null | undefined): Terraform
         'Check whether those resources are still needed. If not, delete them in the Azure portal (or with the az command line).',
         'Then press Try again — the group itself is then quick to remove.',
         'Do not turn off Terraform\'s safety check (prevent_deletion_if_contains_resources): it would delete everything in the group, including things that are not yours.',
+      ],
+    };
+  }
+
+  if (/could not start the cloud plugin|timeout while waiting for plugin to start|Failed to load plugin schemas|plugin did not respond/i.test(message)) {
+    return {
+      kind: 'plugin-start', title: 'This computer was too busy to start the AWS plugin',
+      summary: 'Terraform starts a large helper program (the AWS plugin) and gives it one minute. This computer did not manage that, usually because it is short of memory or busy (antivirus scanning that file is a common cause). Nothing was changed and the design is fine.',
+      steps: [
+        'Close programs you are not using (browser tabs, IDEs, Docker) so the computer has free memory and processor time, then press Try again.',
+        'The first start after the plugin is downloaded is the slowest. A second try is usually much faster.',
+        'On Windows, add an antivirus exclusion for the folder named cloudcraft-tf-plugin-cache in your temp folder (PowerShell as administrator: Add-MpPreference -ExclusionPath "$env:TEMP\\cloudcraft-tf-plugin-cache"), or set CLOUDCRAFT_TF_PLUGIN_CACHE_DIR to a folder you exclude.',
+        'If you are tearing down infrastructure that was already created, it is still there and may still cost money until the teardown completes. The AWS console can delete it by hand if this keeps failing.',
       ],
     };
   }

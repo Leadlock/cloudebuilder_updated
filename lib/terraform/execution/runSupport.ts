@@ -79,13 +79,16 @@ export async function initWithRetry(cwd: string, env: Record<string, string>, op
 }
 
 /** `terraform validate`. Throws a clear error, before anything else runs, if Terraform rejects the generated files. */
-export async function validateConfiguration(cwd: string, env: Record<string, string>, options: { run?: RunTerraform } = {}): Promise<void> {
+export async function validateConfiguration(cwd: string, env: Record<string, string>, options: { run?: RunTerraform; sleep?: (ms: number) => Promise<void> } = {}): Promise<void> {
   const run = options.run ?? runTerraform;
   try {
-    await run(['validate', '-no-color'], { cwd, env, timeoutMs: 2 * 60 * 1000 });
+    // Read-only, so it is safe to try again when the cloud plugin is slow to start (a busy computer).
+    await retryPluginStartup(() => run(['validate', '-no-color'], { cwd, env, timeoutMs: 2 * 60 * 1000 }), options.sleep, 2);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const detail = message.replace(/^terraform validate failed \(exit \d+\):\s*/i, '').trim();
+    // The plugin not starting says nothing about the configuration: do not call a busy computer a bad design.
+    if (isPluginStartupError(detail)) throw new Error(`Terraform could not start the cloud plugin in time (nothing was changed): ${detail.slice(0, 1500)}`);
     throw new Error(`Terraform rejected the generated configuration (nothing was changed): ${detail.slice(0, 2500)}`);
   }
 }
