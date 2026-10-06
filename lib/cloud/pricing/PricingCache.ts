@@ -14,6 +14,13 @@ import { classifyPricingSource } from './tiers';
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+/** An AI-matched price that lists the same meter line twice was added up twice (the old duplicate-meter bug), so it is wrong. */
+function hasDoubleCountedMeter(v: NormalizedPrice): boolean {
+  if (v.source !== 'azure-retail-api-ai-matched') return false;
+  const meters = (v.assumptions ?? []).filter((l) => / per .+ × /.test(l));
+  return new Set(meters).size < meters.length;
+}
+
 export class PricingCache {
   private _memoryCache: Map<string, NormalizedPrice> = new Map();
   private _storagePath: string | null = null;
@@ -38,6 +45,7 @@ export class PricingCache {
         const raw = fs.readFileSync(this._storagePath, 'utf8');
         const data = JSON.parse(raw) as Record<string, NormalizedPrice>;
         for (const [k, v] of Object.entries(data)) {
+          if (hasDoubleCountedMeter(v)) continue; // saved before duplicate meters were counted once: price it again
           this._memoryCache.set(k, v);
         }
       }
