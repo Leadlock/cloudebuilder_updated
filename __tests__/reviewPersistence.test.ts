@@ -70,8 +70,13 @@ describe('reviews survive a restart', () => {
 
   it('writes nothing under tests unless a file is chosen', () => {
     delete env['CLOUDCRAFT_REVIEWS_FILE'];
+    // A development server running on this machine may have written this file; what matters is that the test run does not touch it.
+    const real = join(process.cwd(), '.cloudcraft-data', 'reviews.json');
+    const before = existsSync(real) ? readFileSync(real, 'utf-8') : null;
     const s = startServer();
-    s.submitReview('p1', 'production', nodes, [], user, summary);
-    expect(existsSync(join(process.cwd(), '.cloudcraft-data', 'reviews.json'))).toBe(false);
+    s.submitReview('p-never-saved', 'production', nodes, [], user, summary);
+    const after = existsSync(real) ? readFileSync(real, 'utf-8') : null;
+    expect(after).toBe(before);
+    expect(after ?? '').not.toContain('p-never-saved');
   });
 });
