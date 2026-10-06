@@ -85,6 +85,13 @@ describe('meter picker: the model chooses rows, code reads the price', () => {
     expect(await pickAzureMeters({ ...redisArgs, ask })).toBeNull();
   });
 
+  test('two rows that are the same meter are one charge, not two', async () => {
+    const twin = row({ productName: 'Azure Redis Cache Standard', skuName: 'C2', meterName: 'C2 Cache', retailPrice: 0.225 });
+    const ask: AskModel = async () => ({ picks: [{ i: 0, quantity: 1 }, { i: 1, quantity: 1 }] });
+    const p = await pickAzureMeters({ ...redisArgs, rows: [twin, { ...twin }], ask });
+    expect(p!.monthlyPrice).toBeCloseTo(0.225 * 730, 4);
+  });
+
   test('a total above the plausible maximum for the type is rejected', async () => {
     const rows = [row({ productName: 'x', skuName: 'C1', meterName: 'C1 Cache', retailPrice: 500 })]; // $365,000/mo
     expect(await pickAzureMeters({ ...redisArgs, rows, ask: async () => ({ picks: [{ i: 0, quantity: 1 }] }) })).toBeNull();
@@ -143,6 +150,13 @@ describe('AI-proposed equivalents', () => {
     const r = await translateResourcesWithAi([res('k', 'aws_eks'), res('q', 'aws_sqs')], 'azure', ask);
     expect(r.matches).toEqual([]);
     expect(r.resources.map((x) => x.resourceType)).toEqual(['aws_eks', 'aws_sqs']); // left as-is: priced as unsupported, never invented
+  });
+
+  test('Route 53 is never matched to a load balancer, even when the model offers it', async () => {
+    const ask: AskModel = async () => ({ matches: [{ resourceType: 'aws_route53', to: 'azure_lb', reason: 'both route traffic' }] });
+    const r = await translateResourcesWithAi([res('d', 'aws_route53')], 'azure', ask);
+    expect(r.matches).toEqual([]);
+    expect(r.resources[0]!.resourceType).toBe('aws_route53');
   });
 
   test('free networking types are not sent to the model', async () => {
