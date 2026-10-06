@@ -17,6 +17,7 @@ import TerraformApprovalBar, { TerraformApprovalInbox } from './TerraformApprova
 import TerraformWorkerNotice from './TerraformWorkerNotice';
 import CreatedResourcesList from './CreatedResourcesList';
 import TerraformPermissionHelp from './TerraformPermissionHelp';
+import RequiredPermissionsCard from './RequiredPermissionsCard';
 import { protectionNotice } from '@/lib/terraform/execution/protectionNotice';
 
 interface CloudAccount {
@@ -710,6 +711,18 @@ export default function TerraformExecutionPanel() {
               </select>
             )}
           </div>
+
+          {/* What the role needs to deploy the approved design: shown before anything is planned */}
+          {isApproved && backendProvider === 'aws' && selectedAccountId && activeProject && (
+            <RequiredPermissionsCard
+              projectId={activeProject.id}
+              environment={state.activeEnvironment}
+              cloudAccountId={selectedAccountId}
+              designKey={latestReview?.architectureHash ?? ''}
+              user={currentUser}
+              isLight={isLight}
+            />
+          )}
 
           {/* State backend form */}
           <div>

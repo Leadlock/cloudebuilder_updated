@@ -110,6 +110,20 @@ export interface TerraformExecutionStatus {
   applyRunning: boolean;
 }
 
+export interface RequiredPermissionsInfo {
+  /** False for an account whose own key can deploy: nothing to add. */
+  needed: boolean;
+  authMethod?: string;
+  roleArn?: string | null;
+  /** The IAM policy to paste on the role (JSON text). */
+  policy?: string;
+  services?: string[];
+  unknownTypes?: string[];
+  includesIam?: boolean;
+  terraformTypeCount?: number;
+  access?: { state: 'ok' | 'partial' | 'cannot-check'; services: { service: string; allowed: boolean | null }[]; message?: string };
+}
+
 export class ApiTerraformExecutionService {
   static async listApprovals(projectId: string, user?: { id: string; role?: string }): Promise<TerraformApprovals> {
     const res = await fetch(`/api/projects/${projectId}/terraform/approvals`, { headers: authHeaders(user), credentials: 'include' });
@@ -163,6 +177,26 @@ export class ApiTerraformExecutionService {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(parseErrorMessage(data, `Plan generation failed (${res.status})`));
+    return data.data;
+  }
+
+  /**
+   * What the connected AWS role needs to deploy the saved architecture: the services, and a least-privilege policy to paste on the role.
+   * With check: true CloudCraft also asks AWS (read-only) whether the role can already create in those services.
+   */
+  static async getRequiredPermissions(
+    projectId: string,
+    environment: string,
+    cloudAccountId: string,
+    check: boolean,
+    user?: { id: string; role?: string },
+  ): Promise<RequiredPermissionsInfo> {
+    const res = await fetch(`/api/projects/${projectId}/terraform/permissions`, {
+      method: 'POST', headers: authHeaders(user), credentials: 'include',
+      body: JSON.stringify({ environment, cloudAccountId, check }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(parseErrorMessage(data, `Could not work out the permissions (${res.status})`));
     return data.data;
   }
 
