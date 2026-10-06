@@ -9,6 +9,8 @@
  * 5. Immutable deployment audit logging.
  */
 import { createHash } from 'crypto';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
+import { dirname, join } from 'path';
 import type { CanvasNode, CanvasEdge } from '@/types';
 import { runSecurityScan } from '@/lib/analysis';
 
@@ -58,8 +60,49 @@ const globalForReviews = globalThis as unknown as {
   __cloudcraft_reviews?: Map<string, ArchitectureReview>;
   __cloudcraft_deployments?: DeploymentRecord[];
 };
-const REVIEWS = globalForReviews.__cloudcraft_reviews ?? new Map<string, ArchitectureReview>();
-const DEPLOYMENTS = globalForReviews.__cloudcraft_deployments ?? [];
+/**
+ * Where reviews and deployment records are kept between restarts. An approval used to live only in this process's memory, so every
+ * restart of the server (a crash, `npm run dev` again, a deploy) silently threw it away and the Deploy tab said "approval required"
+ * again. They are now also written to a small file after every change and read back when the server starts.
+ *
+ * Set CLOUDCRAFT_REVIEWS_FILE to choose the file (use a path on storage that survives restarts). Under tests nothing is written unless
+ * that variable is set. One file means one server instance: running several instances needs these in the shared database instead.
+ */
+function storeFile(): string | null {
+  const explicit = process.env['CLOUDCRAFT_REVIEWS_FILE'];
+  if (explicit) return explicit;
+  if (process.env['NODE_ENV'] === 'test') return null;
+  return join(process.cwd(), '.cloudcraft-data', 'reviews.json');
+}
+
+function loadFromDisk(): { reviews: ArchitectureReview[]; deployments: DeploymentRecord[] } {
+  const file = storeFile();
+  if (!file || !existsSync(file)) return { reviews: [], deployments: [] };
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf-8')) as { reviews?: ArchitectureReview[]; deployments?: DeploymentRecord[] };
+    return { reviews: parsed.reviews ?? [], deployments: parsed.deployments ?? [] };
+  } catch (err) {
+    console.warn('[reviews] could not read', file, '-', err instanceof Error ? err.message : String(err));   // a damaged file starts empty rather than blocking the app
+    return { reviews: [], deployments: [] };
+  }
+}
+
+function persist(): void {
+  const file = storeFile();
+  if (!file) return;
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+    const tmp = `${file}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify({ reviews: [...REVIEWS.values()], deployments: DEPLOYMENTS }), 'utf-8');
+    renameSync(tmp, file);       // replaced in one step, so a crash never leaves half a file
+  } catch (err) {
+    console.warn('[reviews] could not save to', file, '-', err instanceof Error ? err.message : String(err));
+  }
+}
+
+const fromDisk = globalForReviews.__cloudcraft_reviews ? null : loadFromDisk();
+const REVIEWS = globalForReviews.__cloudcraft_reviews ?? new Map<string, ArchitectureReview>((fromDisk?.reviews ?? []).map((r) => [r.id, r]));
+const DEPLOYMENTS = globalForReviews.__cloudcraft_deployments ?? fromDisk?.deployments ?? [];
 if (process.env.NODE_ENV !== 'production') {
   globalForReviews.__cloudcraft_reviews = REVIEWS;
   globalForReviews.__cloudcraft_deployments = DEPLOYMENTS;
@@ -123,6 +166,7 @@ export class ArchitectureReviewService {
     };
 
     REVIEWS.set(reviewId, review);
+    persist();
     return review;
   }
 
@@ -161,6 +205,7 @@ export class ArchitectureReviewService {
     review.reviewedBy = adminUser;
     review.reviewedAt = new Date().toISOString();
     review.reviewerComments = comments;
+    persist();
     return review;
   }
 
@@ -179,6 +224,7 @@ export class ArchitectureReviewService {
     review.reviewedBy = adminUser;
     review.reviewedAt = new Date().toISOString();
     review.reviewerComments = comments;
+    persist();
     return review;
   }
 
@@ -197,6 +243,7 @@ export class ArchitectureReviewService {
     review.reviewedBy = adminUser;
     review.reviewedAt = new Date().toISOString();
     review.reviewerComments = comments;
+    persist();
     return review;
   }
 
@@ -220,6 +267,7 @@ export class ArchitectureReviewService {
       latestReview.invalidatedAt = new Date().toISOString();
       latestReview.invalidationReason =
         'Architecture topology or configuration was modified after approval. Re-review and approval required.';
+      persist();
       return { invalidated: true, review: latestReview };
     }
 
@@ -299,6 +347,7 @@ export class ArchitectureReviewService {
     };
 
     DEPLOYMENTS.unshift(record);
+    persist();
     return record;
   }
 

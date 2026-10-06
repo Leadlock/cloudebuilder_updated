@@ -57,3 +57,6 @@ temp/
 qa_screenshots/
 qa_recordings/
 .scratch/
+
+# Reviews and deployment records kept between restarts (see ArchitectureReviewService)
+/.cloudcraft-data/

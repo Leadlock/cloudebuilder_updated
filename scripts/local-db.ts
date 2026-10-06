@@ -9,7 +9,10 @@
  */
 import { spawnSync } from 'node:child_process';
 
-const LOCAL_URL = 'postgresql://cloudcraft:cloudcraft@localhost:5432/cloudcraft_dev';
+// A database of its own inside the container. The container's default database (cloudcraft_dev) may hold older data from earlier
+// work, at a schema this code does not recognise; it is left exactly as it is.
+const DB_NAME = 'cloudcraft_app';
+const LOCAL_URL = `postgresql://cloudcraft:cloudcraft@localhost:5432/${DB_NAME}`;
 
 function run(cmd: string, args: string[], env: NodeJS.ProcessEnv = process.env): number {
   const r = spawnSync(cmd, args, { stdio: 'inherit', env, shell: process.platform === 'win32' });
@@ -36,6 +39,13 @@ async function main(): Promise<void> {
     if (i === 39) { console.error('\nPostgreSQL did not become ready in time.'); process.exit(1); }
   }
   console.log(' ready.');
+
+  // (No arguments with spaces: on Windows they would be split by the shell.)
+  const exists = ok('docker', ['exec', 'cloudcraft_postgres', 'psql', '-U', 'cloudcraft', '-d', DB_NAME, '-c', '\q']);
+  if (!exists) {
+    console.log(`Creating the database "${DB_NAME}"…`);
+    if (run('docker', ['exec', 'cloudcraft_postgres', 'createdb', '-U', 'cloudcraft', DB_NAME]) !== 0) process.exit(1);
+  }
 
   console.log('Creating the tables (prisma db migrate) in the local database…');
   if (run('npx', ['prisma', 'db', 'migrate'], { ...process.env, DATABASE_URL: LOCAL_URL }) !== 0) process.exit(1);
