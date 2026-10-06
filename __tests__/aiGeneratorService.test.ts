@@ -370,17 +370,30 @@ describe('generateValidatedArchitecture — setting-name clean-up', () => {
     expect(result.sanitized.dropped).toEqual([{ type: invented.resources[0].type, setting: 'totallyMadeUpSetting', resources: [invented.resources[0].id] }]);
   });
 
-  it('still fails a design with a wrong VALUE for a real setting, and sends the cleaned design back for repair', async () => {
+  it('resets a wrong VALUE for a choice setting to its default, and says so, instead of failing the design', async () => {
     const badValue = JSON.parse(JSON.stringify(good));
     badValue.resources.push({ id: 'cw-alarm', type: 'aws_cloudwatch', label: 'Alarm', config: { periodSeconds: 45, invented_thing: true } });
-    badValue.connections.push({ from: badValue.resources[1].id, to: 'cw-alarm' });
+    badValue.connections.push({ from: 'cw-alarm', to: badValue.resources.find((r: { type: string }) => r.type === 'aws_alb').id });   // monitoring points at a workload
+    mockCreate.mockResolvedValueOnce({ output_text: JSON.stringify(badValue) });
+
+    const result = await AiGeneratorService.generateValidatedArchitecture('a web app', 'p', 'e', 'aws');
+
+    expect(result.attempts.map((a) => a.ok)).toEqual([true]);                       // no second round trip to the model
+    expect(result.sanitized.specRepairs?.choices).toBe(1);                         // the reset is reported
+    expect(result.sanitized.dropped.map((d) => d.setting)).toEqual(['invented_thing']);
+  });
+
+  it('still fails a design with a wrong VALUE that is not a choice (a number out of range), and sends the cleaned design back for repair', async () => {
+    const badValue = JSON.parse(JSON.stringify(good));
+    badValue.resources.push({ id: 'cw-alarm', type: 'aws_cloudwatch', label: 'Alarm', config: { threshold: 'lots', invented_thing: true } });
+    badValue.connections.push({ from: 'cw-alarm', to: badValue.resources.find((r: { type: string }) => r.type === 'aws_alb').id });   // monitoring points at a workload
     mockCreate.mockResolvedValueOnce({ output_text: JSON.stringify(badValue) }).mockResolvedValueOnce({ output_text: JSON.stringify(good) });
 
     const result = await AiGeneratorService.generateValidatedArchitecture('a web app', 'p', 'e', 'aws');
 
     expect(result.attempts.map((a) => a.ok)).toEqual([false, true]);
     const repair = (mockCreate.mock.calls[1]![0].input as { content: string }[])[1]!.content;
-    expect(repair).toContain('periodSeconds');          // the real mistake is reported
+    expect(repair).toContain('threshold');              // the real mistake is reported
     expect(repair).not.toContain('invented_thing');     // the dropped setting is not sent back as if it still mattered
   });
 });
