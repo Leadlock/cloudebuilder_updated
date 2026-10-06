@@ -20,7 +20,8 @@ import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepositor
 import { resolveExecutionCredentials } from '@/lib/cloud/credentials/resolveExecutionCredentials';
 import { terraformGenerator } from '@/lib/engines/terraform/TerraformGenerator';
 import { requiredPermissionsFor, checkRoleAccess } from '@/lib/terraform/execution/requiredPermissions';
-import { isAwsKeyRoleCredentials, isAwsRoleCredentials, type CloudCredentials } from '@/lib/cloud/types';
+import { azureRequiredPermissionsFor, azureGrantCommands, checkAzureAccess } from '@/lib/terraform/execution/azurePermissions';
+import { isAwsKeyRoleCredentials, isAwsRoleCredentials, isAzureCredentials, type CloudCredentials } from '@/lib/cloud/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,9 +46,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const account = await cloudAccountRepository.findById(cloudAccountId, orgId);
     if (!account) return notFound('Cloud account');
-    if (account.provider !== 'aws') return badRequest('This is only for AWS accounts.');
+    if (account.provider !== 'aws' && account.provider !== 'azure') return badRequest('This is only for AWS and Azure accounts.');
     const authMethod = typeof account.identity['authMethod'] === 'string' ? account.identity['authMethod'] : undefined;
-    const connection = (account.identity['connection'] ?? {}) as { roleArn?: string };
+    const connection = (account.identity['connection'] ?? {}) as { roleArn?: string; clientId?: string; subscriptionId?: string };
 
     // A key that can deploy by itself has nothing to add.
     if (authMethod === 'access-key-deploy') return ok({ needed: false, authMethod });
@@ -62,6 +63,35 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       architectureId: ctx.arch.id, projectId, projectName: ctx.project.name.replace(/\s+/g, '-').toLowerCase(),
       resources: ctx.arch.resources, connections: ctx.arch.connections,
     });
+    // Azure grants access by role, not by a policy: say which roles, give the commands, and (on request) read the principal's effective permissions.
+    if (account.provider === 'azure') {
+      const az = azureRequiredPermissionsFor(generated.files);
+      const clientId = connection.clientId ?? '';
+      const subscriptionId = connection.subscriptionId ?? '';
+      const azureBase = {
+        needed: true as const, cloud: 'azure' as const, authMethod: authMethod ?? 'service-principal',
+        clientId, subscriptionId, roles: az.roles, providers: az.providers, unknownTypes: az.unknownTypes,
+        needsRoleAssignment: az.needsRoleAssignment, terraformTypeCount: az.terraformTypes.length,
+        commands: clientId && subscriptionId ? azureGrantCommands(az.roles, clientId, subscriptionId) : '',
+      };
+      if (!check) return ok(azureBase);
+      const rl = await checkRateLimit(`${identity.userId}:terraform-permission-check`, 10, 10 * 60_000);
+      if (!rl.allowed) return tooManyRequests(rl.retryAfterSeconds);
+      const stored = await cloudAccountRepository.getCredentials(cloudAccountId, orgId);
+      if (!stored) return notFound('Cloud account credentials');
+      const creds = JSON.parse(stored) as CloudCredentials;
+      if (!isAzureCredentials(creds)) return ok(azureBase);
+      let access;
+      try {
+        const { ClientSecretCredential } = await import('@azure/identity');
+        const token = await new ClientSecretCredential(creds.tenantId, creds.clientId, creds.clientSecret).getToken('https://management.azure.com/.default');
+        access = await checkAzureAccess({ token: token.token, subscriptionId: creds.subscriptionId, providers: az.providers, needsRoleAssignment: az.needsRoleAssignment });
+      } catch (err) {
+        access = { state: 'cannot-check' as const, providers: az.providers.map((provider) => ({ provider, allowed: null })), message: `Could not sign in to Azure with the saved service principal (${err instanceof Error ? err.message.slice(0, 120) : 'error'}). Check its client secret on the Cloud Accounts screen.` };
+      }
+      // The same shape as AWS (one row per "service"), so the card shows both the same way; an Azure row is a resource provider.
+      return ok({ ...azureBase, access: { state: access.state, services: access.providers.map((p) => ({ service: p.provider, allowed: p.allowed })), ...(access.message ? { message: access.message } : {}) } });
+    }
     const needed = requiredPermissionsFor(generated.files, connection.roleArn);
 
     const base = {

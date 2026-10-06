@@ -749,7 +749,7 @@ export default function TerraformExecutionPanel() {
           </div>
 
           {/* What the role needs to deploy the approved design: shown before anything is planned */}
-          {isApproved && backendProvider === 'aws' && selectedAccountId && activeProject && (
+          {isApproved && selectedAccountId && activeProject && (
             <RequiredPermissionsCard
               projectId={activeProject.id}
               environment={state.activeEnvironment}

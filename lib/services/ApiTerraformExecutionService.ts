@@ -122,6 +122,14 @@ export interface RequiredPermissionsInfo {
   includesIam?: boolean;
   terraformTypeCount?: number;
   access?: { state: 'ok' | 'partial' | 'cannot-check'; services: { service: string; allowed: boolean | null }[]; message?: string };
+  /** 'azure' for an Azure service principal: roles and commands instead of a policy. */
+  cloud?: 'azure';
+  clientId?: string;
+  subscriptionId?: string;
+  roles?: { name: string; why: string }[];
+  providers?: string[];
+  needsRoleAssignment?: boolean;
+  commands?: string;
 }
 
 export class ApiTerraformExecutionService {
