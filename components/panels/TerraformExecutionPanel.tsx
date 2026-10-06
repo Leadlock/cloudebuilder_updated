@@ -120,6 +120,8 @@ export default function TerraformExecutionPanel() {
   const [destroyRun, setDestroyRun] = useState<TerraformRunSnapshot | null>(null);
   const destroyPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [destroyConfirmInput, setDestroyConfirmInput] = useState('');
+  // Whether the teardown may switch deletion protection off on the protected resources it deletes (see the notice in the dialog).
+  const [disableProtection, setDisableProtection] = useState(true);
 
   // Live progress tracking
   const [completedCount, setCompletedCount] = useState(0);
@@ -511,7 +513,7 @@ export default function TerraformExecutionPanel() {
     setElapsedSeconds(0);
 
     try {
-      const { runId } = await ApiTerraformExecutionService.startDestroy(activeProject.id, state.activeEnvironment, selectedAccountId, buildBackend(), currentUser, confirmationToken, planId);
+      const { runId } = await ApiTerraformExecutionService.startDestroy(activeProject.id, state.activeEnvironment, selectedAccountId, buildBackend(), currentUser, confirmationToken, planId, disableProtection);
       try { localStorage.setItem(destroyRunKey(activeProject.id), runId); } catch { /* storage unavailable */ }
       pollDestroyRun(activeProject.id, runId);   // the teardown now runs in the background; this watches it
     } catch (err) {
@@ -1600,7 +1602,7 @@ export default function TerraformExecutionPanel() {
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
               <div
                 className={clsx(
-                  'border rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 transition-colors',
+                  'border rounded-2xl p-5 max-w-md w-full max-h-[calc(100vh-2rem)] overflow-y-auto shadow-2xl space-y-4 transition-colors',
                   isLight ? 'bg-white border-rose-300 shadow-rose-200/50' : 'bg-gray-900 border-rose-500/50 shadow-rose-950/50'
                 )}
               >
@@ -1701,6 +1703,15 @@ export default function TerraformExecutionPanel() {
                         {notice.lines.map((l) => <li key={l.address}><span className={clsx("font-sans font-semibold", isLight ? "text-amber-950" : "text-amber-300")}>{l.kind}:</span> {l.address}</li>)}
                       </ul>
                       <p className={clsx("text-[11px]", isLight ? "text-amber-700" : "text-amber-200/80")}>{notice.footer}</p>
+                      <label className={clsx("flex items-start gap-2 pt-1 cursor-pointer text-[11px] leading-relaxed", isLight ? "text-amber-950" : "text-amber-100")} data-testid="disable-protection-option">
+                        <input type="checkbox" className="mt-0.5" checked={disableProtection} onChange={(e) => setDisableProtection(e.target.checked)} />
+                        <span>
+                          <strong>Switch deletion protection off on {notice.lines.length === 1 ? 'this resource' : `these ${notice.lines.length} resources`} and delete {notice.lines.length === 1 ? 'it' : 'them'}.</strong>{' '}
+                          {disableProtection
+                            ? 'Untick this to leave them protected: the rest is deleted, and AWS will refuse the protected ones, which then stay (and keep costing money) until you remove their protection yourself.'
+                            : 'They will stay in your account. AWS refuses to delete a protected resource, so the teardown will report them as failed while everything else is deleted.'}
+                        </span>
+                      </label>
                     </div>
                   );
                 })()}

@@ -36,6 +36,8 @@ const RequestSchema = z.object({
   /** Both absent on the first call (preview); both required on the second (run). */
   confirmationToken: z.string().min(10).max(4000).optional(),
   planId: z.string().min(10).max(100).optional(),
+  /** Second call only: switch deletion protection off on the protected resources the plan deletes. Default yes. */
+  disableProtection: z.boolean().default(true),
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -47,7 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id: projectId } = await params;
     const parsed = await parseBody(req, RequestSchema);
     if (!parsed.ok) return parsed.response;
-    const { environment, cloudAccountId, stateBackend, confirmationToken, planId } = parsed.data;
+    const { environment, cloudAccountId, stateBackend, confirmationToken, planId, disableProtection } = parsed.data;
 
     const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return badRequest('orgId required');
@@ -120,12 +122,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     let runId: string;
     try {
-      ({ runId } = await startDestroyRun({ planId, planHash: prepared.planHash, orgId, projectId, cloudAccountId, stateBackend: backend, user }));
+      ({ runId } = await startDestroyRun({ planId, planHash: prepared.planHash, orgId, projectId, cloudAccountId, stateBackend: backend, user, disableProtection }));
     } catch (startErr) {
       await giveBack();      // the teardown never started: keep the approval usable
       throw startErr;
     }
-    await recordTerraformAudit({ action: 'destroy', outcome: 'allowed', orgId, projectId, userId: identity.userId, planId, planHash: prepared.planHash, detail: approval.approval ? `teardown started (approved by ${approval.approval.decidedBy})` : 'teardown started (approval switched off)' });
+    await recordTerraformAudit({ action: 'destroy', outcome: 'allowed', orgId, projectId, userId: identity.userId, planId, planHash: prepared.planHash, detail: `${approval.approval ? `teardown started (approved by ${approval.approval.decidedBy})` : 'teardown started (approval switched off)'}${(prepared.protectedResources?.length ?? 0) > 0 ? `; deletion protection ${disableProtection ? 'switched off' : 'left on'} for ${prepared.protectedResources!.length} resource(s)` : ''}` });
     return created({ status: 'started', runId });
   } catch (err) {
     if (err instanceof TerraformNotInstalledError) return badRequest(err.message);

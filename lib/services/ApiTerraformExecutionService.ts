@@ -283,12 +283,14 @@ export class ApiTerraformExecutionService {
     user: { id: string; role?: string } | undefined,
     confirmationToken: string,
     planId: string,
+    /** Switch deletion protection off on the protected resources the teardown deletes (default), or leave them protected. */
+    disableProtection = true,
   ): Promise<{ status: 'started'; runId: string }> {
     const res = await fetch(`/api/projects/${projectId}/terraform/destroy`, {
       method: 'POST',
       headers: authHeaders(user),
       credentials: 'include',
-      body: JSON.stringify({ environment, cloudAccountId, stateBackend, confirmationToken, planId }),
+      body: JSON.stringify({ environment, cloudAccountId, stateBackend, confirmationToken, planId, disableProtection }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(parseErrorMessage(data, `Teardown failed to start (${res.status})`));

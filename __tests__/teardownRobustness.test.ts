@@ -105,6 +105,27 @@ describe('deletion protection does not block a teardown', () => {
     expect(done.logTail.join('\n')).toMatch(/3 resource\(s\) have deletion protection on/);
   });
 
+  test('when the person unticks the option, no protection is switched off and the log says which resources stay protected', async () => {
+    scriptTerraform(PROTECTED);
+    const prep = await prepareDestroy(input('proj-keep'));
+    mockRunTerraform.mockImplementation(async (args: string[], o: RunOpts) => { if (args[0] === 'apply') o.onOutput?.('ok'); return { stdout: '', stderr: '' }; });
+    const { runId } = await startDestroyRun({ planId: prep.planId!, planHash: prep.planHash!, orgId: 'org-1', projectId: 'proj-keep', cloudAccountId: 'acct-1', stateBackend: backend, user: admin, disableProtection: false });
+    const done = await waitForRun(runId);
+    expect(sends).toEqual([]);                                                       // nothing was switched off
+    const log = done.logTail.join(' ');
+    expect(log).toMatch(/chose to leave deletion protection on for 3 resource/);
+    expect(log).toContain('aws_lb.web');
+    expect(log).not.toMatch(/switching it off/);
+  });
+
+  test('the option defaults to switching protection off, as before', async () => {
+    scriptTerraform(PROTECTED);
+    const prep = await prepareDestroy(input('proj-default'));
+    mockRunTerraform.mockImplementation(async (args: string[], o: RunOpts) => { if (args[0] === 'apply') o.onOutput?.('ok'); return { stdout: '', stderr: '' }; });
+    await waitForRun((await startDestroyRun({ planId: prep.planId!, planHash: prep.planHash!, orgId: 'org-1', projectId: 'proj-default', cloudAccountId: 'acct-1', stateBackend: backend, user: admin })).runId);
+    expect(sends).toHaveLength(3);
+  });
+
   test('nothing is touched when nothing is protected', async () => {
     scriptTerraform([{ address: 'aws_vpc.main', type: 'aws_vpc', actions: ['delete'], before: {} }]);
     const prep = await prepareDestroy(input('proj-open'));

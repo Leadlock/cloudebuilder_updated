@@ -148,6 +148,16 @@ describe('/api/projects/[id]/terraform/destroy — preview, then run, then watch
       expect(mockConsumeApproval).toHaveBeenCalledWith({ orgId: 'org-1', projectId: 'proj-1', action: 'destroy', planId: p.data.planId, planHash: 'c'.repeat(64), userId: expect.any(String) });
     });
 
+    it('passes the deletion-protection choice to the teardown: on by default, off when the person unticks it', async () => {
+      const p1 = await (await call(body())).json() as Preview;
+      await call(body({ confirmationToken: p1.data.confirmationToken, planId: p1.data.planId }));
+      expect(mockStart.mock.calls.at(-1)![0]).toMatchObject({ disableProtection: true });
+
+      const p2 = await (await call(body())).json() as Preview;
+      await call(body({ confirmationToken: p2.data.confirmationToken, planId: p2.data.planId, disableProtection: false }));
+      expect(mockStart.mock.calls.at(-1)![0]).toMatchObject({ disableProtection: false });
+    });
+
     it('refuses to start without one (403 APPROVAL_REQUIRED), starts nothing, and does NOT use up the confirmation token', async () => {
       const p = await (await call(body())).json() as Preview;
       mockConsumeApproval.mockResolvedValueOnce(refusal);

@@ -514,6 +514,8 @@ export interface StartDestroyInput {
   cloudAccountId: string;
   stateBackend: TerraformStateBackendConfig;
   user: { id: string; name: string; email: string; role: string };
+  /** Switch deletion protection off on the protected resources the plan deletes. Default true; false leaves them protected (AWS then refuses them). */
+  disableProtection?: boolean;
 }
 
 /**
@@ -532,17 +534,20 @@ export async function startDestroyRun(input: StartDestroyInput): Promise<{ runId
   if (!taken) { releaseProjectLock(input.projectId); throw httpError('The destroy preview was just used. Preview it again.', 409); }
 
   const run = startRun({ runId: randomUUID(), orgId: input.orgId, projectId: input.projectId, kind: 'destroy' });
-  void runDestroyPlan({ run, prepared: taken, env, userId: input.user.id });
+  void runDestroyPlan({ run, prepared: taken, env, userId: input.user.id, disableProtection: input.disableProtection !== false });
   return { runId: run.runId };
 }
 
-async function runDestroyPlan(args: { run: RunHandle; prepared: PreparedDestroyPlan; env: Record<string, string>; userId: string }): Promise<void> {
-  const { run, prepared, env, userId } = args;
+async function runDestroyPlan(args: { run: RunHandle; prepared: PreparedDestroyPlan; env: Record<string, string>; userId: string; disableProtection: boolean }): Promise<void> {
+  const { run, prepared, env, userId, disableProtection } = args;
   const audit = { action: 'destroy' as const, orgId: prepared.orgId, projectId: prepared.projectId, userId, planId: prepared.planId, planHash: prepared.planHash };
   try {
     run.append(`[CloudCraft] Destroying ${prepared.resources.length} resource(s) from the plan you reviewed.\n`);
     // AWS refuses to delete a protected load balancer, database or table: switch protection off on exactly those the plan deletes.
-    if (prepared.protectedResources && prepared.protectedResources.length > 0 && env['AWS_ACCESS_KEY_ID']) {
+    if (prepared.protectedResources && prepared.protectedResources.length > 0 && !disableProtection) {
+      run.append(`[CloudCraft] You chose to leave deletion protection on for ${prepared.protectedResources.length} resource(s): ${prepared.protectedResources.map((p) => p.address).join(', ')}. AWS will refuse to delete them; everything else is deleted.\n`);
+    }
+    if (prepared.protectedResources && prepared.protectedResources.length > 0 && disableProtection && env['AWS_ACCESS_KEY_ID']) {
       run.append(`[CloudCraft] ${prepared.protectedResources.length} resource(s) have deletion protection on; switching it off so they can be removed.\n`);
       await disableDeletionProtection(prepared.protectedResources, protectionClients(env, prepared.region ?? env['AWS_DEFAULT_REGION'] ?? 'us-east-1'), run.append);
     }
