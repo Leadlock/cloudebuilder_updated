@@ -19,6 +19,7 @@ import CreatedResourcesList from './CreatedResourcesList';
 import TerraformPermissionHelp from './TerraformPermissionHelp';
 import RequiredPermissionsCard from './RequiredPermissionsCard';
 import { protectionNotice } from '@/lib/terraform/execution/protectionNotice';
+import { suggestAzureBackend } from '@/lib/terraform/execution/backendSuggestions';
 
 interface CloudAccount {
   id: string;
@@ -395,6 +396,20 @@ export default function TerraformExecutionPanel() {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     }
   }, [applyStatus?.state, plan?.summary.resourceChanges.length]);
+
+  // Azure: fill the empty state-storage fields with names that are valid and unique to this subscription, so "Create state storage for me"
+  // is usable at once. Anything the person typed (or a saved choice) is left exactly as it is; only empty fields are filled.
+  const selectedSubscriptionId = (accounts.find((a) => a.id === selectedAccountId) as { identity?: { subscriptionId?: string } } | undefined)?.identity?.subscriptionId;
+  useEffect(() => {
+    if (backendProvider !== 'azure' || !selectedAccountId) return;
+    const suggestion = suggestAzureBackend(selectedSubscriptionId);
+    setAzureBackend((prev) => ({
+      resourceGroupName: prev.resourceGroupName || suggestion.resourceGroupName,
+      storageAccountName: prev.storageAccountName || suggestion.storageAccountName,
+      containerName: prev.containerName || suggestion.containerName,
+      key: prev.key || suggestion.key,
+    }));
+  }, [backendProvider, selectedAccountId, selectedSubscriptionId]);
 
   if (!activeProject) return null;
 
