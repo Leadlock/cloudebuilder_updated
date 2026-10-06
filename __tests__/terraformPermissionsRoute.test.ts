@@ -51,6 +51,8 @@ describe('permissions route', () => {
     expect(d.services).toEqual(['dynamodb', 'ec2', 'ecs', 'iam', 's3']);
     expect(d.includesIam).toBe(true);
     expect(JSON.parse(d.policy).Statement[0].Action).toEqual(['dynamodb:*', 'ec2:*', 'ecs:*', 's3:*']);
+    const selfCheck = JSON.parse(d.policy).Statement.find((x: { Sid: string }) => x.Sid === 'CloudCraftCheckOwnAccess');
+    expect(selfCheck).toMatchObject({ Action: ['iam:SimulatePrincipalPolicy'], Resource: ROLE });     // so "Check my access" can answer once attached
     expect(mockCreds).not.toHaveBeenCalled();
     expect(mockIamSend).not.toHaveBeenCalled();
   });

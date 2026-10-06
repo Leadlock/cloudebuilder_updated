@@ -37,7 +37,20 @@ describe('requiredPermissionsFor', () => {
     const small = requiredPermissionsFor([{ filename: 'main.tf', content: 'resource "aws_sqs_queue" "q" {}' }]);
     expect(small.services).toEqual(['dynamodb', 's3', 'sqs']);
     expect(small.includesIam).toBe(false);
-    expect(JSON.parse(small.json).Statement).toHaveLength(1);
+    expect(JSON.parse(small.json).Statement).toHaveLength(2);        // the services, and the read-only self-check
+    expect(JSON.parse(small.json).Statement[0].Sid).toBe('CloudCraftDeployServices');
+  });
+
+  it('also lets the role ask IAM what it may do, read-only and limited to the role itself when its ARN is known', () => {
+    const arn = 'arn:aws:iam::123456789012:role/CloudCraft';
+    const withArn = JSON.parse(requiredPermissionsFor(files, arn).json) as { Statement: { Sid: string; Action: string[]; Resource: string }[] };
+    const check = withArn.Statement.find((x) => x.Sid === 'CloudCraftCheckOwnAccess')!;
+    expect(check.Action).toEqual(['iam:SimulatePrincipalPolicy']);
+    expect(check.Resource).toBe(arn);
+    const without = JSON.parse(requiredPermissionsFor(files).json) as { Statement: { Sid: string; Resource: string }[] };
+    expect(without.Statement.find((x) => x.Sid === 'CloudCraftCheckOwnAccess')!.Resource).toBe('*');
+    // The deploy statement itself never grants the check action or anything beyond the design's services.
+    expect(withArn.Statement[0]!.Action.some((a) => a.startsWith('iam:'))).toBe(false);
   });
 
   it('reports a type it cannot map instead of ignoring it', () => {

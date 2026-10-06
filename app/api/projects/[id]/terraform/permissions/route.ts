@@ -62,7 +62,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       architectureId: ctx.arch.id, projectId, projectName: ctx.project.name.replace(/\s+/g, '-').toLowerCase(),
       resources: ctx.arch.resources, connections: ctx.arch.connections,
     });
-    const needed = requiredPermissionsFor(generated.files);
+    const needed = requiredPermissionsFor(generated.files, connection.roleArn);
 
     const base = {
       needed: true as const,

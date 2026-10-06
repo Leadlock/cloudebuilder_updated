@@ -29,10 +29,20 @@ export interface RequiredPermissions extends DeployPolicy {
   terraformTypes: string[];
 }
 
-export function requiredPermissionsFor(files: { filename: string; content: string }[]): RequiredPermissions {
+/**
+ * The statement that lets the role ask IAM what it is allowed to do ("Check my access"). It is read-only, creates nothing, and is
+ * limited to the role itself when its ARN is known, so it adds no reach beyond answering that one question.
+ */
+export function selfCheckStatement(roleArn: string | null | undefined): object {
+  return { Sid: 'CloudCraftCheckOwnAccess', Effect: 'Allow', Action: ['iam:SimulatePrincipalPolicy'], Resource: roleArn || '*' };
+}
+
+export function requiredPermissionsFor(files: { filename: string; content: string }[], roleArn?: string | null): RequiredPermissions {
   const terraformTypes = terraformTypesIn(files);
   const policy = buildDeployPolicy([...terraformTypes, ...STATE_TYPES]);
-  return { ...policy, terraformTypes };
+  const doc = JSON.parse(policy.json) as { Version: string; Statement: object[] };
+  doc.Statement.push(selfCheckStatement(roleArn));
+  return { ...policy, json: JSON.stringify(doc, null, 2), terraformTypes };
 }
 
 /** One create action per service, enough to tell "can create things here" from "cannot". */

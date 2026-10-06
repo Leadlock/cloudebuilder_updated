@@ -117,14 +117,27 @@ export default function RequiredPermissionsCard({ projectId, environment, cloudA
             <button type="button" disabled={checking} onClick={() => void runCheck()} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-60 ${isLight ? 'bg-sky-600 hover:bg-sky-500' : 'bg-sky-700 hover:bg-sky-600'}`}>
               {checking ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />} Check my access
             </button>
-            {info.access && (
-              <span className={`inline-flex items-center gap-1 font-medium ${info.access.state === 'ok' ? (isLight ? 'text-emerald-700' : 'text-emerald-400') : info.access.state === 'partial' ? (isLight ? 'text-rose-700' : 'text-rose-400') : muted}`}>
-                {info.access.state === 'ok' && <><CheckCircle2 className="w-3.5 h-3.5" /> The role can create everything this design needs.</>}
-                {info.access.state === 'partial' && <><XCircle className="w-3.5 h-3.5" /> {info.access.message}</>}
-                {info.access.state === 'cannot-check' && <><HelpCircle className="w-3.5 h-3.5" /> {info.access.message}</>}
-              </span>
-            )}
           </div>
+
+          {info.access && (
+            <div
+              role="status"
+              className={`flex items-start gap-2 rounded-md border p-2.5 leading-relaxed ${
+                info.access.state === 'ok' ? (isLight ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300')
+                  : info.access.state === 'partial' ? (isLight ? 'border-rose-300 bg-rose-50 text-rose-800' : 'border-rose-700/60 bg-rose-950/30 text-rose-300')
+                    : (isLight ? 'border-slate-300 bg-white text-slate-700' : 'border-gray-600 bg-gray-900 text-gray-300')}`}
+              data-testid="access-result"
+            >
+              {info.access.state === 'ok' && <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />}
+              {info.access.state === 'partial' && <XCircle className="w-4 h-4 shrink-0 mt-0.5" />}
+              {info.access.state === 'cannot-check' && <HelpCircle className="w-4 h-4 shrink-0 mt-0.5" />}
+              <span>
+                {info.access.state === 'ok' && 'The role can create everything this design needs.'}
+                {info.access.state !== 'ok' && info.access.message}
+                {info.access.state === 'cannot-check' && ' No ticks can be shown until the role can answer this. The policy above now includes that one read-only permission: copy it again, replace the CloudCraftDeploy inline policy, then press Check my access again.'}
+              </span>
+            </div>
+          )}
 
           <p className={`text-[11px] leading-relaxed ${muted}`}>
             Quicker for a test or sandbox account: attach AWS&apos;s own <strong>AdministratorAccess</strong> policy instead (nothing to paste), and remove it afterwards. The check only asks AWS what the role is allowed to do; it creates nothing.
