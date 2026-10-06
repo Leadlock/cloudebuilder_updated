@@ -161,8 +161,8 @@
     "subnet-connection+unknown-parent": 1
   },
   "tokensEstimate": {
-    "train": 2728799,
-    "validation": 251514,
+    "train": 2736669,
+    "validation": 251923,
     "perEpochTrainNote": "Estimated at 4 characters per token; billing uses the real tokenizer.",
     "systemPrompt": 683
   },

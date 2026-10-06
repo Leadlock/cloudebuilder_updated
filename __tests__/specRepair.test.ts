@@ -83,6 +83,28 @@ describe('specRepair', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('Azure: adds missing network security groups and secures SQL and Redis defaults, and then the design passes', async () => {
+    const { loadChunks } = await import('@/lib/ai/knowledgeBase');
+    const { sampleOf } = await import('@/lib/ai/verifiedBase');
+    const chunk = loadChunks().find((c) => c.id === 'pattern-azure-gateway-app-service')!;
+    const azure = clone(sampleOf(chunk)) as Spec;
+    expect(evaluateSpec(azure).ok).toBe(true);
+    const nsgIds = azure.resources.filter((r) => r.type === 'azure_nsg').map((r) => r.id);
+    azure.resources = azure.resources.filter((r) => r.type !== 'azure_nsg');
+    azure.connections = azure.connections.filter((c) => !nsgIds.includes(c.from));
+    for (const r of azure.resources) {
+      if (r.type === 'azure_sql' && r.config) { delete r.config['auditingEnabled']; delete r.config['publicNetworkAccess']; }
+      if (r.type === 'azure_redis' && r.config) r.config['publicNetworkAccessEnabled'] = true;
+    }
+    expect(evaluateSpec(azure, { autoRepair: true }).ok).toBe(false);
+    const { value, report } = repairSpecInput(azure);
+    expect(report.nsgs).toBe(nsgIds.length);
+    expect(report.secured).toBeGreaterThan(0);
+    const result = evaluateSpec(value, { autoRepair: true });
+    expect(result.issues).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
   it('spreads subnets with no zone across two zones (sanitizer) so the single-zone check passes', () => {
     const { value } = sanitizeSpecInput(sloppy());
     const zones = new Set((value as Spec).resources.filter((r) => r.type === 'aws_subnet').map((r) => r.config!['availabilityZone']));
@@ -91,7 +113,7 @@ describe('specRepair', () => {
 
   it('leaves a design that is already fine untouched', () => {
     const { value, report } = repairSpecInput(good);
-    expect(report).toEqual({ certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0 });
+    expect(report).toEqual({ certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0 });
     expect(value).toEqual(good);
   });
 
@@ -104,8 +126,8 @@ describe('specRepair', () => {
   });
 
   it('describes what it did', () => {
-    expect(describeSpecRepair({ certificates: 1, waf: 1, connections: 2, addressing: 3, gateway: 1 })).toHaveLength(5);
-    expect(describeSpecRepair({ certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0 })).toEqual([]);
+    expect(describeSpecRepair({ certificates: 1, waf: 1, connections: 2, addressing: 3, gateway: 1, secured: 2, nsgs: 3 })).toHaveLength(7);
+    expect(describeSpecRepair({ certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0 })).toEqual([]);
   });
 
   it('never makes input that is not a design worse', () => {

@@ -9,7 +9,9 @@
  *  2. an internet-facing load balancer with no web application firewall gets one, attached to it;
  *  3. subnets that share an address range (the model leaves it out, so every subnet gets the catalog default) get their own /24
  *     inside the network's range; a connection that names an internet gateway the design never declared gets one added;
- *  4. parts of the design that are not connected to the entry point are connected the usual way: load balancer to the compute it
+ *  4. Azure data services left with their insecure defaults get the settings the verified patterns use (SQL auditing and threat detection on,
+ *     private-only access, TLS 1.2; Redis private-only, no plain-text port), and Azure subnets with no network security group get one;
+ *  5. parts of the design that are not connected to the entry point are connected the usual way: load balancer to the compute it
  *     should serve, compute to the data stores, DNS to the load balancer.
  *
  * Every step is checked: if the repaired design compiles with MORE problems than before, that step is undone. Nothing here can make
@@ -169,11 +171,58 @@ function addMissingGateway(spec: Spec): number {
   return 1;
 }
 
-export interface SpecRepairReport { certificates: number; waf: number; connections: number; addressing: number; gateway: number }
+/** Settings the verified patterns give these services. Only keys the design left out, or set to the insecure value, are changed. */
+const SECURE_SETTINGS: Record<string, { set: Record<string, unknown>; insecure: Record<string, unknown> }> = {
+  azure_sql: {
+    set: { publicNetworkAccess: false, allowAzureServices: false, minimumTlsVersion: '1.2', auditingEnabled: true, threatDetectionEnabled: true },
+    insecure: { publicNetworkAccess: true, allowAzureServices: true, auditingEnabled: false, threatDetectionEnabled: false },
+  },
+  azure_redis: {
+    set: { enableNonSslPort: false, publicNetworkAccessEnabled: false, minimumTlsVersion: '1.2' },
+    insecure: { enableNonSslPort: true, publicNetworkAccessEnabled: true },
+  },
+};
+
+function secureDefaults(spec: Spec): number {
+  let n = 0;
+  for (const r of spec.resources ?? []) {
+    const rule = SECURE_SETTINGS[String(r.type)];
+    if (!rule) continue;
+    const cfg = (r.config ??= {});
+    let changed = false;
+    for (const [k, v] of Object.entries(rule.set)) {
+      if (!(k in cfg) || cfg[k] === rule.insecure[k]) { if (cfg[k] !== v) { cfg[k] = v; changed = true; } }
+    }
+    if (changed) n++;
+  }
+  return n;
+}
+
+/** Every Azure subnet is protected by a network security group: the web tier takes HTTPS only, the rest only private traffic. */
+function addSubnetNsgs(spec: Spec): number {
+  const resources = spec.resources ?? [];
+  const connections = (spec.connections ??= []);
+  let n = 0;
+  for (const subnet of resources.filter((r) => r.type === 'azure_subnet')) {
+    const protectedAlready = connections.some((c) => c.to === subnet.id && resources.some((x) => x.id === c.from && x.type === 'azure_nsg'));
+    if (protectedAlready) continue;
+    const vnet = resources.find((r) => r.id === subnet.parent && r.type === 'azure_vnet');
+    if (!vnet) continue;
+    const id = ('nsg-' + sid(subnet).replace(/-subnet$/, '')).slice(0, 63);
+    if (resources.some((r) => r.id === id)) continue;
+    const web = /web|public|gateway|bastion/i.test(sid(subnet) + String(subnet.label ?? ''));
+    resources.push({ id, type: 'azure_nsg', label: String(subnet.label ?? sid(subnet)).replace(/ Subnet$/i, '') + ' NSG', parent: vnet.id, config: web ? { allowHttp: false, allowHttps: true } : { allowHttp: false, allowHttps: false, sourceCidr: '10.0.0.0/8' } });
+    connections.push({ from: id, to: subnet.id });
+    n++;
+  }
+  return n;
+}
+
+export interface SpecRepairReport { certificates: number; waf: number; connections: number; addressing: number; gateway: number; secured: number; nsgs: number }
 
 /** Returns the repaired design (a copy) and what was done. Steps that would make the design compile worse are undone. */
 export function repairSpecInput(input: unknown): { value: unknown; report: SpecRepairReport } {
-  const report: SpecRepairReport = { certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0 };
+  const report: SpecRepairReport = { certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0 };
   if (!input || typeof input !== 'object' || !Array.isArray((input as Spec).resources)) return { value: input, report };
 
   let spec = JSON.parse(JSON.stringify(input)) as Spec;
@@ -185,6 +234,8 @@ export function repairSpecInput(input: unknown): { value: unknown; report: SpecR
   };
   step('addressing', fixAddressing);
   step('gateway', addMissingGateway);
+  step('secured', secureDefaults);
+  step('nsgs', addSubnetNsgs);
   step('certificates', addCertificates);
   step('waf', addWaf);
   step('connections', connectLooseParts);
@@ -195,6 +246,8 @@ export function describeSpecRepair(report: SpecRepairReport): string[] {
   const out: string[] = [];
   if (report.certificates > 0) out.push(`The load balancer had no certificate setting, so a placeholder was added: replace it with your own ACM certificate before deploying.`);
   if (report.waf > 0) out.push(`CloudCraft added a web application firewall in front of the internet-facing load balancer.`);
+  if (report.secured > 0) out.push(`${report.secured} database or cache service(s) were left with insecure defaults, so CloudCraft made them private-only with auditing and TLS 1.2, as the verified patterns do.`);
+  if (report.nsgs > 0) out.push(`${report.nsgs} subnet(s) had no network security group, so one was added to each.`);
   if (report.addressing > 0) out.push(`Subnets shared one address range, so ${report.addressing} of them were given their own.`);
   if (report.gateway > 0) out.push('The design used an internet gateway it never declared, so one was added.');
   if (report.connections > 0) out.push(`CloudCraft connected ${report.connections} part(s) of the design that the AI had left disconnected.`);
