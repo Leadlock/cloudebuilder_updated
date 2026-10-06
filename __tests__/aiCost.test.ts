@@ -6,6 +6,7 @@ import { findCostAnomalies } from '@/lib/cost/ai/plausibility';
 import { pickAzureMeters, selectCandidates } from '@/lib/cost/ai/meterPicker';
 import { translateResourcesWithAi, _clearEquivalentCache } from '@/lib/cost/ai/equivalents';
 import { buildCostInsights, withoutFigures } from '@/lib/cost/ai/insights';
+import { CloudCostComparisonService } from '@/lib/engines/comparison/CloudCostComparisonService';
 import { runCostComparison } from '@/lib/engines/comparison/runCostComparison';
 import { AzurePricingProvider } from '@/lib/cloud/pricing/AzurePricingProvider';
 import { classifyPricingSource } from '@/lib/cloud/pricing/tiers';
@@ -152,11 +153,11 @@ describe('AI-proposed equivalents', () => {
     expect(r.resources.map((x) => x.resourceType)).toEqual(['aws_eks', 'aws_sqs']); // left as-is: priced as unsupported, never invented
   });
 
-  test('Route 53 is never matched to a load balancer, even when the model offers it', async () => {
-    const ask: AskModel = async () => ({ matches: [{ resourceType: 'aws_route53', to: 'azure_lb', reason: 'both route traffic' }] });
-    const r = await translateResourcesWithAi([res('d', 'aws_route53')], 'azure', ask);
+  test('Route 53 and CloudWatch have fixed Azure equivalents, so the model is not asked about them', async () => {
+    const ask = jest.fn(async () => ({ matches: [{ resourceType: 'aws_route53', to: 'azure_lb', reason: 'both route traffic' }] }));
+    const r = await translateResourcesWithAi([res('d', 'aws_route53'), res('c', 'aws_cloudwatch')].map((x) => CloudCostComparisonService.translateResources([x], 'azure')[0]!), 'azure', ask as unknown as AskModel);
+    expect(r.resources.map((x) => x.resourceType)).toEqual(['azure_dns', 'azure_monitor']);
     expect(r.matches).toEqual([]);
-    expect(r.resources[0]!.resourceType).toBe('aws_route53');
   });
 
   test('free networking types are not sent to the model', async () => {

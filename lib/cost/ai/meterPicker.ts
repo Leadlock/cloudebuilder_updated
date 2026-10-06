@@ -12,7 +12,7 @@ import type { NormalizedPrice } from '@/lib/cloud/pricing/types';
 import { maxPlausibleMonthlyUsd } from './plausibility';
 import type { AskModel } from './askModel';
 
-/** Which Retail Prices API service(s) hold each resource type's meters (Azure files some of them under the "Global" region). */
+/** Which Retail Prices API service(s) hold each resource type's meters (Azure files some of them under the "Global" region, or with no region at all, as Azure DNS does). */
 export const AZURE_METER_SOURCES: Record<string, { service: string }> = {
   azure_redis: { service: 'Redis Cache' },
   azure_cosmos_db: { service: 'Azure Cosmos DB' },
@@ -20,6 +20,8 @@ export const AZURE_METER_SOURCES: Record<string, { service: string }> = {
   azure_bastion: { service: 'Azure Bastion' },
   azure_app_service: { service: 'Azure App Service' },
   azure_public_ip: { service: 'Virtual Network' },
+  azure_dns: { service: 'Azure DNS' },
+  azure_monitor: { service: 'Azure Monitor' },
 };
 
 export const AI_MATCHED_SOURCE = 'azure-retail-api-ai-matched';
@@ -32,7 +34,7 @@ const ANCHOR_FACTOR = 8;
 const DROP = /spot|low priority|dev\/test|devtest|secondary|reservation|\bpreview\b/i;
 
 export function azureMeterFilter(service: string, region: string): string {
-  return `serviceName eq '${service}' and (armRegionName eq '${region}' or armRegionName eq 'Global') and priceType eq 'Consumption'`;
+  return `serviceName eq '${service}' and (armRegionName eq '${region}' or armRegionName eq 'Global' or armRegionName eq '') and priceType eq 'Consumption'`;
 }
 
 const tokens = (v: unknown): string[] => String(v ?? '').toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 1);

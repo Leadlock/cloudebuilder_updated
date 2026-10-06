@@ -18,13 +18,6 @@ interface ResourceLike { id: string; resourceType: string; provider: string; con
 /** Types that never cost anything on their own, or are only drawing helpers: not worth asking about. */
 const NOT_BILLABLE = /(_vpc|_vnet|_subnet|_sg|_nsg|_nacl|_route_table|_igw|_internet|_iam|_resource_group|_nic|_cloud_boundary|_unsupported|_unknown)$/;
 
-/**
- * Types that must never be matched by the model, because the catalogue has no service that does the same job and any candidate is a different
- * product with a different price. Route 53 (DNS) was matched to a Load Balancer ($18 against $0.50) because both "route traffic". They stay
- * unmatched, which the cost screen shows as having no equivalent, rather than as a wrong price.
- */
-const NO_EQUIVALENT = new Set(['aws_route53']);
-
 const sourceTypeCache = new Map<string, string | null>();
 
 function catalogue(target: Provider) {
@@ -45,7 +38,7 @@ export async function translateResourcesWithAi<T extends ResourceLike>(
   const allowed = new Set(candidates.map((c) => c.type));
 
   // Types the fixed table left alone (it only swaps the provider tag for a type it has no mapping for).
-  const unmapped = [...new Set(resources.filter((r, i) => base[i]!.resourceType === r.resourceType && !NOT_BILLABLE.test(r.resourceType) && !NO_EQUIVALENT.has(r.resourceType)).map((r) => r.resourceType))];
+  const unmapped = [...new Set(resources.filter((r, i) => base[i]!.resourceType === r.resourceType && !NOT_BILLABLE.test(r.resourceType)).map((r) => r.resourceType))];
   const wanted = unmapped.filter((t) => !sourceTypeCache.has(`${target}:${t}`));
 
   if (wanted.length > 0) {
@@ -71,7 +64,6 @@ export async function translateResourcesWithAi<T extends ResourceLike>(
   const out = base.map((b, i) => {
     const src = resources[i]!;
     if (b.resourceType !== src.resourceType) return b; // the fixed table handled it
-    if (NO_EQUIVALENT.has(src.resourceType)) return b;  // never guessed: see NO_EQUIVALENT
     const cached = sourceTypeCache.get(`${target}:${src.resourceType}`);
     if (!cached) return b;
     const { to, reason } = JSON.parse(cached) as { to: string; reason: string };

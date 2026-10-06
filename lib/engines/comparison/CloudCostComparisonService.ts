@@ -34,6 +34,8 @@ const AWS_TO_AZURE_TYPE: Record<string, string> = {
   aws_cloudfront: 'azure_front_door',
   aws_cloud_boundary: 'azure_cloud_boundary',
   aws_waf: 'azure_waf',
+  aws_route53: 'azure_dns',
+  aws_cloudwatch: 'azure_monitor',
 };
 const AZURE_TO_AWS_TYPE: Record<string, string> = Object.fromEntries(
   Object.entries(AWS_TO_AZURE_TYPE).map(([aws, azure]) => [azure, aws]),
@@ -320,6 +322,10 @@ const BRAND_LABEL: Partial<Record<string, { match: string[]; replacement: string
   azure_front_door:  { match: ['Front Door'], replacement: 'Front Door' },
   aws_waf:           { match: ['AWS WAF WebACL', 'AWS WAF'], replacement: 'AWS WAF' },
   azure_waf:         { match: ['Azure WAF Policy', 'Azure WAF'], replacement: 'Azure WAF' },
+  aws_route53:       { match: ['Route 53 DNS', 'Route 53'], replacement: 'Route 53' },
+  azure_dns:         { match: ['Azure DNS', 'DNS'], replacement: 'Azure DNS' },
+  aws_cloudwatch:    { match: ['CloudWatch Alarms', 'CloudWatch'], replacement: 'CloudWatch' },
+  azure_monitor:     { match: ['Azure Monitor', 'Monitor'], replacement: 'Azure Monitor' },
 };
 
 function translateLabel(originalLabel: string, sourceType: string, targetType: string): string {
