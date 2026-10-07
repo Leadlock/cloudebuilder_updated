@@ -16,12 +16,15 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
   const { state } = useApp();
   const isLight = state.theme === 'light';
 
-  const [mode, setMode] = useState<'signin' | 'signup' | 'confirm' | 'mfa'>('signin');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'confirm' | 'mfa' | 'forgot_password' | 'reset_password'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [name, setName] = useState('');
   const [orgName, setOrgName] = useState('');
   const [code, setCode] = useState('');
+  const [resetCode, setResetCode] = useState('');
   const [mfaCode, setMfaCode] = useState('');
   const [mfaSession, setMfaSession] = useState('');
   const [mfaChallengeName, setMfaChallengeName] = useState('SOFTWARE_TOKEN_MFA');
@@ -66,6 +69,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
     setError(null);
     setInfoMessage(null);
 
+    // 1. Account Confirmation
     if (mode === 'confirm') {
       try {
         const res = await fetch('/api/auth/confirm', {
@@ -90,6 +94,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
       return;
     }
 
+    // 2. MFA Challenge
     if (mode === 'mfa') {
       try {
         const res = await fetch('/api/auth/mfa/verify', {
@@ -127,6 +132,72 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
       return;
     }
 
+    // 3. Forgot Password Request
+    if (mode === 'forgot_password') {
+      try {
+        const res = await fetch('/api/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim() }),
+        });
+
+        const data = await res.json();
+        if (!res.ok || data.ok === false) {
+          throw new Error(data.error?.message ?? data.error ?? data.message ?? 'Failed to send password reset code');
+        }
+
+        setMode('reset_password');
+        setInfoMessage(data.data?.message ?? data.message ?? `A verification code was sent to ${email}. Enter the code and your new password below.`);
+      } catch (err: any) {
+        setError(err.message || 'Failed to send reset code');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // 4. Reset Password Confirmation
+    if (mode === 'reset_password') {
+      if (newPassword !== confirmNewPassword) {
+        setError('New passwords do not match. Please verify.');
+        setLoading(false);
+        return;
+      }
+
+      if (newPassword.length < 8) {
+        setError('Password must be at least 8 characters.');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: email.trim(),
+            code: resetCode.trim(),
+            newPassword,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok || data.ok === false) {
+          throw new Error(data.error?.message ?? data.error ?? data.message ?? 'Failed to reset password');
+        }
+
+        setPassword(newPassword);
+        setMode('signin');
+        setInfoMessage(data.data?.message ?? data.message ?? 'Password reset successfully! You can now sign in with your new password.');
+      } catch (err: any) {
+        setError(err.message || 'Failed to reset password');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // 5. Sign In or Sign Up
     const endpoint = mode === 'signin' ? '/api/auth/login' : '/api/auth/signup';
     const body = mode === 'signin' ? { email, password } : { email, password, name, orgName };
 
@@ -190,16 +261,29 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
     setResending(true);
     setError(null);
     try {
-      const res = await fetch('/api/auth/resend-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error?.message ?? data.error ?? 'Failed to resend code');
+      if (mode === 'reset_password' || mode === 'forgot_password') {
+        const res = await fetch('/api/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim() }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error?.message ?? data.error ?? 'Failed to resend reset code');
+        }
+        setInfoMessage('A fresh password reset code has been sent to your email.');
+      } else {
+        const res = await fetch('/api/auth/resend-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error?.message ?? data.error ?? 'Failed to resend code');
+        }
+        setInfoMessage('A new verification code has been sent to your email.');
       }
-      setInfoMessage('A new verification code has been sent to your email.');
     } catch (err: any) {
       setError(err.message || 'Failed to resend code');
     } finally {
@@ -221,7 +305,11 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
         <div className={`px-6 pt-6 pb-4 border-b ${isLight ? 'border-slate-100 bg-slate-50/60' : 'border-slate-800 bg-slate-900/60'}`}>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
-              <Lock className="w-5 h-5" />
+              {mode === 'forgot_password' || mode === 'reset_password' ? (
+                <KeyRound className="w-5 h-5" />
+              ) : (
+                <Lock className="w-5 h-5" />
+              )}
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -232,14 +320,18 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                   AWS Cognito
                 </span>
               </div>
-              <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Cloud Architecture Design & Governance</p>
+              <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                {mode === 'forgot_password' || mode === 'reset_password'
+                  ? 'Password Recovery'
+                  : 'Cloud Architecture Design & Governance'}
+              </p>
             </div>
           </div>
         </div>
 
         <div className="p-6 space-y-4">
-          {/* Mode toggle (hidden in confirm and mfa modes) */}
-          {mode !== 'confirm' && mode !== 'mfa' ? (
+          {/* Mode toggle (shown only in signin and signup modes) */}
+          {mode === 'signin' || mode === 'signup' ? (
             <div className={`grid grid-cols-2 gap-1 p-1 rounded-xl border ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
               <button
                 type="button"
@@ -304,7 +396,113 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
           )}
 
           <form onSubmit={handleSubmit} className="space-y-3">
-            {mode === 'mfa' ? (
+            {mode === 'forgot_password' ? (
+              <div className="space-y-3">
+                <div>
+                  <h3 className={`text-sm font-semibold mb-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    Forgot your password?
+                  </h3>
+                  <p className={`text-xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                    Enter your work email address and we&apos;ll send you a 6-digit verification code to reset your password.
+                  </p>
+                </div>
+
+                <div>
+                  <label className={`text-xs font-medium block mb-1 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Work Email</label>
+                  <div className="relative">
+                    <Mail className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${isLight ? 'text-slate-400' : 'text-slate-500'}`} />
+                    <input
+                      type="email"
+                      required
+                      autoFocus
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className={`${inputClass} pl-9`}
+                      placeholder="name@company.com"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : mode === 'reset_password' ? (
+              <div className="space-y-3">
+                <div>
+                  <label className={`text-xs font-medium block mb-1 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Account Email</label>
+                  <input
+                    type="email"
+                    disabled
+                    value={email}
+                    className={`w-full rounded-xl px-3 py-2 text-xs cursor-not-allowed border ${
+                      isLight ? 'bg-slate-100 border-slate-200 text-slate-500' : 'bg-slate-950/60 border-slate-800 text-slate-400'
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className={`text-xs font-medium block mb-1 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                    6-Digit Reset Code
+                  </label>
+                  <div className="relative">
+                    <KeyRound className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${isLight ? 'text-slate-400' : 'text-slate-500'}`} />
+                    <input
+                      type="text"
+                      required
+                      autoFocus
+                      maxLength={6}
+                      value={resetCode}
+                      onChange={(e) => setResetCode(e.target.value.trim())}
+                      className={`w-full border rounded-xl pl-9 pr-3 py-2 text-sm text-center tracking-widest font-mono focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 ${
+                        isLight ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white' : 'bg-slate-950 border-slate-800 text-white placeholder-slate-500'
+                      }`}
+                      placeholder="123456"
+                    />
+                  </div>
+                  <div className="flex justify-between items-center mt-1.5">
+                    <span className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>Check your inbox & spam folder</span>
+                    <button
+                      type="button"
+                      disabled={resending}
+                      onClick={handleResendCode}
+                      className="text-[11px] text-cyan-600 hover:text-cyan-700 dark:text-cyan-400 dark:hover:text-cyan-300 font-medium flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${resending ? 'animate-spin' : ''}`} />
+                      Resend Code
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className={`text-xs font-medium block mb-1 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>New Password</label>
+                  <div className="relative">
+                    <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${isLight ? 'text-slate-400' : 'text-slate-500'}`} />
+                    <input
+                      type="password"
+                      required
+                      minLength={8}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className={`${inputClass} pl-9`}
+                      placeholder="At least 8 characters"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className={`text-xs font-medium block mb-1 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Confirm New Password</label>
+                  <div className="relative">
+                    <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${isLight ? 'text-slate-400' : 'text-slate-500'}`} />
+                    <input
+                      type="password"
+                      required
+                      minLength={8}
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      className={`${inputClass} pl-9`}
+                      placeholder="Re-type new password"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : mode === 'mfa' ? (
               <>
                 <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/60 border-slate-800'} space-y-3`}>
                   <div className="flex items-center gap-2">
@@ -480,7 +678,22 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                 </div>
 
                 <div>
-                  <label className={`text-xs font-medium block mb-1 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Password</label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className={`text-xs font-medium ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Password</label>
+                    {mode === 'signin' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMode('forgot_password');
+                          setError(null);
+                          setInfoMessage(null);
+                        }}
+                        className="text-[11px] text-cyan-600 hover:text-cyan-700 dark:text-cyan-400 dark:hover:text-cyan-300 font-medium transition-colors"
+                      >
+                        Forgot password?
+                      </button>
+                    )}
+                  </div>
                   <div className="relative">
                     <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${isLight ? 'text-slate-400' : 'text-slate-500'}`} />
                     <input
@@ -532,6 +745,10 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                     ? 'Verifying Code...'
                     : mode === 'mfa'
                     ? 'Verifying MFA Code...'
+                    : mode === 'forgot_password'
+                    ? 'Sending Reset Code...'
+                    : mode === 'reset_password'
+                    ? 'Resetting Password...'
                     : 'Creating Cognito account...'}
                 </>
               ) : (
@@ -541,6 +758,10 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                   ? 'Verify Code & Sign In'
                   : mode === 'mfa'
                   ? 'Verify Code & Complete Sign In'
+                  : mode === 'forgot_password'
+                  ? 'Send Reset Code'
+                  : mode === 'reset_password'
+                  ? 'Reset Password & Sign In'
                   : 'Create Account'
               )}
             </button>

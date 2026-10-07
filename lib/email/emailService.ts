@@ -145,9 +145,13 @@ ${params.acceptUrl}
       const info = await transporter.sendMail({
         from: fromAddress,
         to: params.toEmail,
+        replyTo: fromAddress,
         subject,
         text,
         html,
+        headers: {
+          'X-Auto-Response-Suppress': 'OOF, AutoReply',
+        },
       });
 
       console.log(`[EmailService] Invitation email delivered to ${params.toEmail} (Message ID: ${info.messageId})`);

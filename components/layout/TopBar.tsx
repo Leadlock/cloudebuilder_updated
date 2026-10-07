@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
-import { Bell, Globe, Coins, ShieldCheck, UserCheck, LogOut, User, FileCheck, Menu, Sun, Moon } from 'lucide-react';
+import { Bell, Globe, Coins, ShieldCheck, UserCheck, LogOut, User, FileCheck, Menu, Sun, Moon, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 import { AppView, Environment } from '@/types';
 import { cloudRegionService } from '@/lib/cloud/regions/CloudRegionService';
@@ -75,235 +75,265 @@ export default function TopBar() {
 
   return (
     <header className={clsx(
-      "h-12 border-b flex items-center px-2.5 sm:px-4 gap-2 sm:gap-3 shrink-0 select-none overflow-x-auto no-scrollbar transition-colors",
+      "h-12 border-b flex items-center justify-between px-2.5 sm:px-4 gap-2 sm:gap-3 shrink-0 select-none relative z-40 transition-colors",
       isLight ? "bg-white border-slate-200 text-slate-900 shadow-sm" : "bg-gray-900 border-gray-800 text-white"
     )}>
-      {/* Mobile Sidebar Hamburger Toggle */}
-      <button
-        onClick={() => dispatch({ type: 'TOGGLE_MOBILE_SIDEBAR' })}
-        className={clsx(
-          "lg:hidden p-1.5 rounded-lg transition-colors shrink-0 focus:outline-none",
-          isLight ? "text-slate-600 hover:text-slate-900 hover:bg-slate-100" : "text-slate-400 hover:text-white hover:bg-slate-800"
-        )}
-        title="Open Navigation Menu"
-        aria-label="Open Navigation Menu"
-      >
-        <Menu className="w-5 h-5" />
-      </button>
+      {/* Left / Middle Scrollable Section */}
+      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 overflow-x-auto no-scrollbar py-1">
+        {/* Mobile Sidebar Hamburger Toggle */}
+        <button
+          onClick={() => dispatch({ type: 'TOGGLE_MOBILE_SIDEBAR' })}
+          className={clsx(
+            "lg:hidden p-1.5 rounded-lg transition-colors shrink-0 focus:outline-none",
+            isLight ? "text-slate-600 hover:text-slate-900 hover:bg-slate-100" : "text-slate-400 hover:text-white hover:bg-slate-800"
+          )}
+          title="Open Navigation Menu"
+          aria-label="Open Navigation Menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
 
-      {/* Breadcrumb with responsive truncation */}
-      <div className="flex items-center gap-1.5 sm:gap-2 text-sm flex-1 min-w-0 mr-1 sm:mr-2 overflow-hidden">
-        <span className={clsx("text-xs shrink-0 hidden xs:inline", isLight ? "text-slate-500" : "text-gray-500")}>CloudCraft</span>
-        <span className={clsx("text-xs shrink-0 hidden xs:inline", isLight ? "text-slate-400" : "text-gray-700")}>/</span>
+        {/* Breadcrumb with responsive truncation */}
+        <div className="flex items-center gap-1.5 sm:gap-2 text-sm shrink-0 min-w-0 mr-1 sm:mr-2 overflow-hidden">
+          <span className={clsx("text-xs shrink-0 hidden xs:inline", isLight ? "text-slate-500" : "text-gray-500")}>CloudCraft</span>
+          <span className={clsx("text-xs shrink-0 hidden xs:inline", isLight ? "text-slate-400" : "text-gray-700")}>/</span>
+          {activeProject && (
+            <>
+              <button
+                className={clsx(
+                  "flex items-center gap-1.5 truncate text-xs shrink-0 max-w-[140px] sm:max-w-[280px] font-semibold transition-colors",
+                  isLight ? "text-slate-700 hover:text-slate-900" : "text-gray-300 hover:text-white"
+                )}
+                onClick={() => dispatch({ type: 'SET_VIEW', view: 'canvas' })}
+                title={`Active Project: ${activeProject.name}`}
+              >
+                <span className={clsx('w-2 h-2 rounded-full shrink-0', activeProject.provider === 'aws' ? 'bg-orange-500' : activeProject.provider === 'azure' ? 'bg-blue-500' : 'bg-purple-500')} />
+                <span className="truncate">{activeProject.name}</span>
+              </button>
+              <span className={clsx("text-xs shrink-0", isLight ? "text-slate-400" : "text-gray-700")}>/</span>
+            </>
+          )}
+          <span className={clsx("font-bold text-xs truncate", isLight ? "text-slate-900" : "text-white")}>{VIEW_LABELS[activeView]}</span>
+        </div>
+
+        {/* Region Selector (Desktop / Tablet) */}
         {activeProject && (
-          <>
-            <button
-              className={clsx(
-                "flex items-center gap-1.5 truncate text-xs shrink-0 max-w-[140px] sm:max-w-[280px] font-semibold transition-colors",
-                isLight ? "text-slate-700 hover:text-slate-900" : "text-gray-300 hover:text-white"
-              )}
-              onClick={() => dispatch({ type: 'SET_VIEW', view: 'canvas' })}
-              title={`Active Project: ${activeProject.name}`}
-            >
-              <span className={clsx('w-2 h-2 rounded-full shrink-0', activeProject.provider === 'aws' ? 'bg-orange-500' : activeProject.provider === 'azure' ? 'bg-blue-500' : 'bg-purple-500')} />
-              <span className="truncate">{activeProject.name}</span>
-            </button>
-            <span className={clsx("text-xs shrink-0", isLight ? "text-slate-400" : "text-gray-700")}>/</span>
-          </>
+          <div className="hidden md:flex items-center gap-1.5 shrink-0" title={`Cloud Region: ${activeRegion}`}>
+            <div className={clsx(
+              "flex items-center rounded-lg px-2 py-1 gap-1.5 text-xs transition-colors border",
+              isLight
+                ? "bg-slate-100 hover:bg-slate-200/80 border-slate-300 text-slate-800 shadow-sm"
+                : "bg-gray-800/90 border-gray-700 text-gray-300"
+            )}>
+              <Globe className="w-3.5 h-3.5 text-blue-500 shrink-0" aria-hidden="true" />
+              <select
+                aria-label="Cloud Region"
+                value={activeRegion}
+                onChange={(e) => dispatch({ type: 'SET_REGION', region: e.target.value })}
+                className={clsx(
+                  "bg-transparent text-xs font-semibold focus:outline-none cursor-pointer pr-1 max-w-[110px] truncate",
+                  isLight ? "text-slate-800" : "text-gray-200"
+                )}
+              >
+                {cloudRegionService.getRegions(activeProject.provider === 'azure' ? 'azure' : 'aws').map((r) => (
+                  <option key={r.id} value={r.id} className={clsx(isLight ? "bg-white text-slate-900" : "bg-gray-900 text-gray-200")}>
+                    {r.id} — {r.displayName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         )}
-        <span className={clsx("font-bold text-xs truncate", isLight ? "text-slate-900" : "text-white")}>{VIEW_LABELS[activeView]}</span>
-      </div>
 
-      {/* Region Selector (Desktop / Tablet) */}
-      {activeProject && (
-        <div className="hidden md:flex items-center gap-1.5 shrink-0" title={`Cloud Region: ${activeRegion}`}>
+        {/* Currency Selector */}
+        <div className="hidden sm:flex items-center gap-1.5 shrink-0" title={`Display Currency: ${state.displayCurrency}`}>
           <div className={clsx(
             "flex items-center rounded-lg px-2 py-1 gap-1.5 text-xs transition-colors border",
             isLight
               ? "bg-slate-100 hover:bg-slate-200/80 border-slate-300 text-slate-800 shadow-sm"
               : "bg-gray-800/90 border-gray-700 text-gray-300"
           )}>
-            <Globe className="w-3.5 h-3.5 text-blue-500 shrink-0" aria-hidden="true" />
+            <Coins className="w-3.5 h-3.5 text-emerald-500 shrink-0" aria-hidden="true" />
             <select
-              aria-label="Cloud Region"
-              value={activeRegion}
-              onChange={(e) => dispatch({ type: 'SET_REGION', region: e.target.value })}
+              aria-label="Display Currency"
+              value={state.displayCurrency}
+              onChange={(e) => dispatch({ type: 'SET_CURRENCY', currency: e.target.value })}
               className={clsx(
-                "bg-transparent text-xs font-semibold focus:outline-none cursor-pointer pr-1 max-w-[110px] truncate",
+                "bg-transparent text-xs font-semibold focus:outline-none cursor-pointer pr-1",
                 isLight ? "text-slate-800" : "text-gray-200"
               )}
             >
-              {cloudRegionService.getRegions(activeProject.provider === 'azure' ? 'azure' : 'aws').map((r) => (
-                <option key={r.id} value={r.id} className={clsx(isLight ? "bg-white text-slate-900" : "bg-gray-900 text-gray-200")}>
-                  {r.id} — {r.displayName}
+              {Object.values(SUPPORTED_CURRENCIES).map((c) => (
+                <option key={c.code} value={c.code} className={clsx(isLight ? "bg-white text-slate-900" : "bg-gray-900 text-gray-200")}>
+                  {c.code} ({c.symbol})
                 </option>
               ))}
             </select>
           </div>
         </div>
-      )}
 
-      {/* Currency Selector */}
-      <div className="hidden sm:flex items-center gap-1.5 shrink-0" title={`Display Currency: ${state.displayCurrency}`}>
-        <div className={clsx(
-          "flex items-center rounded-lg px-2 py-1 gap-1.5 text-xs transition-colors border",
-          isLight
-            ? "bg-slate-100 hover:bg-slate-200/80 border-slate-300 text-slate-800 shadow-sm"
-            : "bg-gray-800/90 border-gray-700 text-gray-300"
-        )}>
-          <Coins className="w-3.5 h-3.5 text-emerald-500 shrink-0" aria-hidden="true" />
-          <select
-            aria-label="Display Currency"
-            value={state.displayCurrency}
-            onChange={(e) => dispatch({ type: 'SET_CURRENCY', currency: e.target.value })}
+        {/* Env switcher (only when project is active) */}
+        {activeProject && (
+          <div className="hidden sm:flex items-center gap-1 shrink-0">
+            {(['development', 'staging', 'production'] as Environment[]).map((env) => (
+              <button
+                key={env}
+                onClick={() => dispatch({ type: 'SET_ENVIRONMENT', env })}
+                className={clsx(
+                  'px-2 py-0.5 rounded text-[10px] font-medium border capitalize transition-colors',
+                  activeEnvironment === env
+                    ? (isLight ? ENV_COLORS_LIGHT[env] : ENV_COLORS[env])
+                    : (isLight ? 'border-transparent text-slate-500 hover:text-slate-800' : 'border-transparent text-gray-600 hover:text-gray-400')
+                )}
+              >
+                {env === 'development' ? 'Dev' : env === 'staging' ? 'Staging' : 'Prod'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Review shortcut */}
+        {activeProject && (
+          <button
+            onClick={() => dispatch({ type: 'SET_VIEW', view: 'review' })}
             className={clsx(
-              "bg-transparent text-xs font-semibold focus:outline-none cursor-pointer pr-1",
-              isLight ? "text-slate-800" : "text-gray-200"
+              "flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors shrink-0",
+              activeView === 'review'
+                ? "bg-indigo-600 border-indigo-500 text-white shadow-sm"
+                : isLight
+                ? "bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700 shadow-sm"
+                : "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
             )}
           >
-            {Object.values(SUPPORTED_CURRENCIES).map((c) => (
-              <option key={c.code} value={c.code} className={clsx(isLight ? "bg-white text-slate-900" : "bg-gray-900 text-gray-200")}>
-                {c.code} ({c.symbol})
-              </option>
-            ))}
-          </select>
-        </div>
+            <FileCheck className="w-3.5 h-3.5 text-indigo-500" />
+            <span className="hidden sm:inline">Review</span>
+          </button>
+        )}
+
+        {/* Deploy button */}
+        {activeProject && !['dashboard', 'wizard', 'templates', 'ai-generator', 'import', 'disaster-recovery'].includes(activeView) && (
+          <button
+            onClick={() => dispatch({ type: 'SET_VIEW', view: 'deploy' })}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors shrink-0 shadow-sm active:scale-[0.98]"
+          >
+            Deploy
+          </button>
+        )}
       </div>
 
-      {/* Env switcher (only when project is active) */}
-      {activeProject && (
-        <div className="hidden sm:flex items-center gap-1 shrink-0">
-          {(['development', 'staging', 'production'] as Environment[]).map((env) => (
-            <button
-              key={env}
-              onClick={() => dispatch({ type: 'SET_ENVIRONMENT', env })}
-              className={clsx(
-                'px-2 py-0.5 rounded text-[10px] font-medium border capitalize transition-colors',
-                activeEnvironment === env
-                  ? (isLight ? ENV_COLORS_LIGHT[env] : ENV_COLORS[env])
-                  : (isLight ? 'border-transparent text-slate-500 hover:text-slate-800' : 'border-transparent text-gray-600 hover:text-gray-400')
-              )}
-            >
-              {env === 'development' ? 'Dev' : env === 'staging' ? 'Staging' : 'Prod'}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Review shortcut */}
-      {activeProject && (
+      {/* Right Fixed Section (Theme Toggle + User Profile Dropdown) */}
+      <div className="flex items-center gap-2 shrink-0">
+        {/* Dark / Night Mode Toggle */}
         <button
-          onClick={() => dispatch({ type: 'SET_VIEW', view: 'review' })}
+          type="button"
+          onClick={() => dispatch({ type: 'TOGGLE_THEME' })}
           className={clsx(
-            "flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors shrink-0",
-            activeView === 'review'
-              ? "bg-indigo-600 border-indigo-500 text-white shadow-sm"
-              : isLight
-              ? "bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700 shadow-sm"
-              : "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
+            "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-xs font-semibold shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-500/50 active:scale-[0.98]",
+            isLight
+              ? "bg-slate-100 hover:bg-slate-200/80 border-slate-300 text-slate-800 shadow-sm"
+              : "bg-gray-800/90 hover:bg-gray-700/90 border-gray-700 text-gray-300 hover:text-white"
           )}
+          title={isLight ? 'Switch to Night Mode (Dark)' : 'Switch to Light Mode'}
+          aria-label={isLight ? 'Switch to Night Mode' : 'Switch to Light Mode'}
         >
-          <FileCheck className="w-3.5 h-3.5 text-indigo-500" />
-          <span className="hidden sm:inline">Review</span>
+          {isLight ? (
+            <>
+              <Moon className="w-3.5 h-3.5 text-indigo-600 animate-in spin-in-45 duration-200" />
+              <span className="hidden sm:inline text-[11px] font-bold">Night</span>
+            </>
+          ) : (
+            <>
+              <Sun className="w-3.5 h-3.5 text-amber-400 animate-in spin-in-45 duration-200" />
+              <span className="hidden sm:inline text-[11px] font-bold">Light</span>
+            </>
+          )}
         </button>
-      )}
 
-      {/* Deploy button */}
-      {activeProject && !['dashboard', 'wizard', 'templates', 'ai-generator', 'import', 'disaster-recovery'].includes(activeView) && (
-        <button
-          onClick={() => dispatch({ type: 'SET_VIEW', view: 'deploy' })}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors shrink-0 shadow-sm active:scale-[0.98]"
-        >
-          Deploy
-        </button>
-      )}
-
-      {/* Dark / Night Mode Toggle */}
-      <button
-        type="button"
-        onClick={() => dispatch({ type: 'TOGGLE_THEME' })}
-        className={clsx(
-          "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-xs font-semibold shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-500/50 active:scale-[0.98]",
-          isLight
-            ? "bg-slate-100 hover:bg-slate-200/80 border-slate-300 text-slate-800 shadow-sm"
-            : "bg-gray-800/90 hover:bg-gray-700/90 border-gray-700 text-gray-300 hover:text-white"
-        )}
-        title={isLight ? 'Switch to Night Mode (Dark)' : 'Switch to Light Mode'}
-        aria-label={isLight ? 'Switch to Night Mode' : 'Switch to Light Mode'}
-      >
-        {isLight ? (
-          <>
-            <Moon className="w-3.5 h-3.5 text-indigo-600 animate-in spin-in-45 duration-200" />
-            <span className="hidden sm:inline text-[11px] font-bold">Night</span>
-          </>
-        ) : (
-          <>
-            <Sun className="w-3.5 h-3.5 text-amber-400 animate-in spin-in-45 duration-200" />
-            <span className="hidden sm:inline text-[11px] font-bold">Light</span>
-          </>
-        )}
-      </button>
-
-      {/* User profile / RBAC indicator */}
+      {/* User profile / RBAC indicator & Dropdown */}
       <div className="relative shrink-0" ref={userMenuRef}>
         <button
           onClick={() => setUserMenuOpen((v) => !v)}
-          className="flex items-center gap-1.5 sm:gap-2 px-1.5 sm:px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors focus:outline-none"
-          title={`Signed in as ${currentUser?.name || 'Guest'} (${currentUser?.role || 'user'})`}
+          className={clsx(
+            "flex items-center gap-1.5 sm:gap-2 px-2 py-1 rounded-lg transition-colors border focus:outline-none",
+            isLight
+              ? "bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800"
+              : "bg-gray-800 hover:bg-gray-700 border-gray-700 text-white"
+          )}
+          title={`Signed in as ${currentUser?.name || currentUser?.email || 'Guest'} (${currentUser?.role || 'user'})`}
         >
           <div className={clsx(
-            "w-7 h-7 rounded-full flex items-center justify-center text-xs text-white font-bold shadow-sm",
+            "w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold shadow-sm shrink-0",
             isAdmin ? "bg-gradient-to-tr from-cyan-600 to-blue-600" : "bg-gradient-to-tr from-indigo-600 to-purple-600"
           )}>
-            {currentUser?.name?.[0] || 'U'}
+            {(currentUser?.name || currentUser?.email || 'U')[0].toUpperCase()}
           </div>
           <span className={clsx(
             "hidden sm:inline-block text-[10px] font-bold px-1.5 py-0.5 rounded uppercase",
-            isAdmin ? "bg-cyan-950 text-cyan-300 border border-cyan-500/40" : "bg-indigo-950 text-indigo-300 border border-indigo-500/40"
+            isAdmin ? (isLight ? "bg-cyan-100 text-cyan-800 border border-cyan-300" : "bg-cyan-950 text-cyan-300 border border-cyan-500/40")
+                    : (isLight ? "bg-indigo-100 text-indigo-800 border border-indigo-300" : "bg-indigo-950 text-indigo-300 border border-indigo-500/40")
           )}>
             {currentUser?.role || 'user'}
           </span>
+          <ChevronDown className={clsx("w-3.5 h-3.5 opacity-60 transition-transform", userMenuOpen && "rotate-180")} />
         </button>
 
         {/* Dropdown Menu */}
         {userMenuOpen && (
-          <div className="absolute right-0 mt-2 w-64 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl p-2 z-50 text-xs space-y-2">
-            <div className="px-3 py-2 border-b border-slate-800">
-              <p className="text-white font-bold truncate">{currentUser?.name || 'Guest User'}</p>
-              <p className="text-slate-400 text-[11px] truncate font-mono">{currentUser?.email || 'Not authenticated'}</p>
+          <div className={clsx(
+            "absolute right-0 mt-2 w-64 rounded-xl shadow-2xl p-2 z-50 text-xs space-y-1.5 border animate-in fade-in zoom-in-95 duration-150",
+            isLight ? "bg-white border-slate-200 text-slate-900" : "bg-slate-900 border-slate-800 text-white"
+          )}>
+            <div className={clsx("px-3 py-2 border-b", isLight ? "border-slate-100 bg-slate-50/50 rounded-t-lg" : "border-slate-800")}>
+              <p className={clsx("font-bold truncate", isLight ? "text-slate-900" : "text-white")}>
+                {currentUser?.name || 'Guest User'}
+              </p>
+              <p className={clsx("text-[11px] truncate font-mono", isLight ? "text-slate-500" : "text-slate-400")}>
+                {currentUser?.email || 'Not authenticated'}
+              </p>
               <div className="mt-1 flex items-center gap-1.5">
-                <span className="text-[10px] text-slate-500 uppercase font-semibold">Active Role:</span>
+                <span className={clsx("text-[10px] uppercase font-semibold", isLight ? "text-slate-500" : "text-slate-500")}>Role:</span>
                 <span className={clsx(
                   "text-[9px] font-bold px-1.5 py-0.2 rounded uppercase",
-                  isAdmin ? "bg-cyan-500/20 text-cyan-300" : "bg-indigo-500/20 text-indigo-300"
+                  isAdmin
+                    ? (isLight ? "bg-cyan-100 text-cyan-800" : "bg-cyan-500/20 text-cyan-300")
+                    : (isLight ? "bg-indigo-100 text-indigo-800" : "bg-indigo-500/20 text-indigo-300")
                 )}>
                   {currentUser?.role || 'user'}
                 </span>
               </div>
             </div>
 
-            {/* Sign in with another account */}
+            {/* Switch / Sign In */}
             <button
               onClick={() => {
                 setUserMenuOpen(false);
                 dispatch({ type: 'SET_LOGIN_MODAL', open: true });
               }}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors text-left"
+              className={clsx(
+                "w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-left",
+                isLight ? "text-slate-700 hover:text-slate-900 hover:bg-slate-100" : "text-slate-300 hover:text-white hover:bg-slate-800"
+              )}
             >
-              <User className="w-3.5 h-3.5 text-blue-400" />
+              <User className="w-3.5 h-3.5 text-blue-500" />
               <span>Switch Account / Sign In</span>
             </button>
 
             {/* Logout */}
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 transition-colors text-left border-t border-slate-800"
+              className={clsx(
+                "w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-left border-t font-semibold",
+                isLight
+                  ? "border-slate-100 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                  : "border-slate-800 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40"
+              )}
             >
-              <LogOut className="w-3.5 h-3.5 text-rose-400" />
-              <span>Sign Out</span>
+              <LogOut className="w-3.5 h-3.5 text-rose-500" />
+              <span>Sign Out (Logout)</span>
             </button>
           </div>
         )}
+      </div>
       </div>
 
       <LoginModal
