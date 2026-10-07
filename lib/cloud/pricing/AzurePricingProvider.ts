@@ -61,6 +61,11 @@ export class AzurePricingProvider implements ICloudPricingProvider {
           return await this._getAksPrice(configuration, cleanRegion);
         case 'azure_key_vault':
           return await this._getKeyVaultPrice(configuration, cleanRegion);
+        case 'azure_front_door':
+          return await this._getFrontDoorPrice(configuration, cleanRegion);
+        case 'azure_cosmos_db':
+          // The direct lookup first; the AI meter picker stays as a fallback for a price list that is laid out differently.
+          return (await this._getCosmosPrice(configuration, cleanRegion)) ?? (await this._getAiMatchedPrice(resourceType, configuration, cleanRegion));
         case 'azure_resource_group':
         case 'azure_vnet':
         case 'azure_subnet':
@@ -459,6 +464,112 @@ export class AzurePricingProvider implements ICloudPricingProvider {
         'Worker node VM costs calculated separately in node pool',
         `Region: ${region}`,
       ],
+    };
+  }
+
+  /**
+   * Front Door: the fixed monthly base fee of the SKU (Standard or Premium), from the official list. The fee is the same in every pricing
+   * zone, so the rows are compared and the price is used only when they agree (the US Government zone is priced higher and is not meant).
+   * Request and data-transfer charges depend on traffic, so they are not included, and the line says so.
+   */
+  private async _getFrontDoorPrice(config: Record<string, unknown>, region: string): Promise<NormalizedPrice | null> {
+    const tier = /premium/i.test(String(config['sku'] ?? '')) ? 'Premium' : 'Standard';
+    let items: AzureRetailPriceItem[] = [];
+    try {
+      items = await this._fetchRetailPrices("(serviceName eq 'Azure Front Door Service' or serviceName eq 'Azure Front Door') and priceType eq 'Consumption' and contains(meterName,'Base Fees')");
+    } catch {
+      return null;
+    }
+    const rows = items.filter((i) => i.skuName === tier && i.meterName === `${tier} Base Fees` && !/gov/i.test(i.armRegionName) && i.retailPrice > 0);
+    const prices = [...new Set(rows.map((r) => r.retailPrice))];
+    if (rows.length === 0 || prices.length !== 1) return null;
+    const monthlyPrice = monthlyFromRetailItem(rows[0]!);
+    if (monthlyPrice === null) return null;
+    return {
+      provider: 'azure',
+      service: 'Azure Front Door',
+      resourceType: 'azure_front_door',
+      region,
+      sku: tier,
+      pricingModel: 'on-demand',
+      unit: '1 Month',
+      unitPrice: monthlyPrice / HOURS_PER_MONTH,
+      monthlyPrice,
+      currency: 'USD',
+      description: `Azure Front Door ${tier} base fee`,
+      source: 'azure-retail-api',
+      retrievedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      assumptions: [
+        `${tier} base fee: ${rows[0]!.retailPrice} a month`,
+        'Data transfer and request-volume charges not included',
+        `Region: ${region}`,
+      ],
+    };
+  }
+
+  /**
+   * Cosmos DB: official rates, with the usage the design cannot know stated as assumptions on the line.
+   *  - Serverless: $ per million request units, times an assumed 100 million a month (estimatedMonthlyMillionRus), plus storage.
+   *  - Provisioned (autoscale): the autoscale rate per 100 RU/s-hour times the maximum RU/s all month, which is an upper bound (autoscale drops
+   *    to 10% of the maximum when idle), plus storage. The earlier built-in table used the manual-throughput rate here, a third too low.
+   *  - Storage: $ per GB-month times an assumed 10 GB (estimatedStorageGb).
+   * Null when any needed row is missing, so the built-in estimator (or the AI picker) prices it and the line is labelled accordingly.
+   */
+  private async _getCosmosPrice(config: Record<string, unknown>, region: string): Promise<NormalizedPrice | null> {
+    const provisioned = String(config['throughputMode'] ?? 'Serverless') === 'Provisioned';
+    const storageGb = Number(config['estimatedStorageGb'] ?? 10);
+    if (!Number.isFinite(storageGb) || storageGb < 0) return null;
+    let items: AzureRetailPriceItem[] = [];
+    try {
+      items = await this._fetchRetailPrices(`serviceName eq 'Azure Cosmos DB' and armRegionName eq '${region}' and priceType eq 'Consumption'`);
+    } catch {
+      return null;
+    }
+    const storage = items.find((i) => i.meterName === 'Data Stored' && i.skuName === (provisioned ? 'RUm' : 'RUs') && i.retailPrice > 0);
+    if (!storage) return null;
+    const storageMonthly = storageGb * storage.retailPrice;
+    const assumptions: string[] = [];
+    let throughputMonthly: number;
+    let label: string;
+    if (provisioned) {
+      const maxRu = Math.max(1000, Number(config['maxThroughputRu'] ?? 4000));
+      const autoscale = items.find((i) => /autoscale/i.test(i.productName) && /100 RUs$/.test(i.meterName) && /hour/i.test(i.unitOfMeasure) && i.retailPrice > 0);
+      if (!autoscale) return null;
+      throughputMonthly = (maxRu / 100) * autoscale.retailPrice * HOURS_PER_MONTH;
+      label = `autoscale ${maxRu} RU/s max`;
+      assumptions.push(`Autoscale ${maxRu} RU/s at ${autoscale.retailPrice} per 100 RU/s-hour = ${throughputMonthly.toFixed(2)}/mo`);
+      assumptions.push('Assumed billed at the maximum RU/s all month, an upper bound: autoscale drops to 10% of the maximum when idle');
+    } else {
+      const serverless = items.find((i) => /serverless/i.test(i.productName) && i.meterName === '1M RUs' && i.retailPrice > 0);
+      if (!serverless) return null;
+      const millionRus = Number(config['estimatedMonthlyMillionRus'] ?? 100);
+      if (!Number.isFinite(millionRus) || millionRus < 0) return null;
+      throughputMonthly = millionRus * serverless.retailPrice;
+      label = `serverless, ${millionRus} million RUs`;
+      assumptions.push(`Serverless: ${serverless.retailPrice} per million request units = ${throughputMonthly.toFixed(2)}/mo`);
+      assumptions.push(`Assumed usage: ${millionRus} million request units a month (set estimatedMonthlyMillionRus to change it)`);
+    }
+    assumptions.push(`Assumed storage: ${storageGb} GB at ${storage.retailPrice} per GB-month = ${storageMonthly.toFixed(2)}/mo (set estimatedStorageGb to change it)`);
+    assumptions.push('Backups beyond the free periodic backup, multi-region replication and analytical storage not included');
+    assumptions.push(`Region: ${region}`);
+    const monthlyPrice = throughputMonthly + storageMonthly;
+    return {
+      provider: 'azure',
+      service: 'Azure Cosmos DB',
+      resourceType: 'azure_cosmos_db',
+      region,
+      sku: provisioned ? 'Autoscale' : 'Serverless',
+      pricingModel: 'consumption',
+      unit: provisioned ? '100 RU/s-hour' : '1M RUs',
+      unitPrice: monthlyPrice / HOURS_PER_MONTH,
+      monthlyPrice,
+      currency: 'USD',
+      description: `Azure Cosmos DB (${label}, ${storageGb} GB)`,
+      source: 'azure-retail-api',
+      retrievedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      assumptions,
     };
   }
 

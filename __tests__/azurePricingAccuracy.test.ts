@@ -56,6 +56,81 @@ const VCORE_ROWS = [
   row({ serviceName: 'SQL Database', productName: 'SQL Database Single/Elastic Pool General Purpose - Storage', skuName: 'General Purpose Zone Redundancy', meterName: 'General Purpose Zone Redundancy Data Stored', unitOfMeasure: '1 GB/Month', retailPrice: 0.23 }),
 ];
 
+describe('Azure Front Door (live)', () => {
+  // Real rows (2026-10-07): the base fee is the same in every pricing zone; the US Government zone is priced higher and is not meant.
+  const FD = [
+    row({ serviceName: 'Azure Front Door Service', skuName: 'Standard', meterName: 'Standard Base Fees', retailPrice: 35, unitOfMeasure: '1/Month', armRegionName: 'Zone 1' }),
+    row({ serviceName: 'Azure Front Door Service', skuName: 'Standard', meterName: 'Standard Base Fees', retailPrice: 35, unitOfMeasure: '1/Month', armRegionName: 'Zone 6' }),
+    row({ serviceName: 'Azure Front Door Service', skuName: 'Standard', meterName: 'Standard Base Fees', retailPrice: 43.75, unitOfMeasure: '1/Month', armRegionName: 'US Gov Zone 1' }),
+    row({ serviceName: 'Azure Front Door Service', skuName: 'Premium', meterName: 'Premium Base Fees', retailPrice: 330, unitOfMeasure: '1/Month', armRegionName: 'Zone 1' }),
+    row({ serviceName: 'Azure Front Door Service', skuName: 'Premium', meterName: 'Premium Base Fees', retailPrice: 412.5, unitOfMeasure: '1/Month', armRegionName: 'US Gov Zone 1' }),
+    row({ serviceName: 'Azure Front Door Service', skuName: 'Standard', meterName: 'Standard Edge Actions Base Fee', retailPrice: 0.1, unitOfMeasure: '1 Month', armRegionName: 'Zone 1' }),
+  ];
+  const ask = (sku: string) => prov.getPrice({ provider: 'azure', resourceType: 'azure_front_door', region: 'eastus', configuration: { sku } });
+
+  test('Standard is the $35 base fee and Premium the $330 one, ignoring the Government zone and the edge-actions fee', async () => {
+    serve(FD);
+    expect((await ask('Standard_AzureFrontDoor'))!.monthlyPrice).toBe(35);
+    expect((await ask('Premium_AzureFrontDoor'))!.monthlyPrice).toBe(330);
+    const p = (await ask('Standard_AzureFrontDoor'))!;
+    expect(p.source).toBe('azure-retail-api');
+    expect(p.assumptions.join(' ')).toMatch(/Data transfer and request-volume charges not included/);
+  });
+
+  test('zones that disagree on the base fee are ambiguous, so nothing is guessed (null)', async () => {
+    serve([...FD, row({ serviceName: 'Azure Front Door Service', skuName: 'Standard', meterName: 'Standard Base Fees', retailPrice: 36, unitOfMeasure: '1/Month', armRegionName: 'Zone 2' })]);
+    expect(await ask('Standard_AzureFrontDoor')).toBeNull();
+  });
+
+  test('no base-fee row for the SKU is null', async () => {
+    serve(FD.filter((r) => r.skuName !== 'Premium'));
+    expect(await ask('Premium_AzureFrontDoor')).toBeNull();
+  });
+});
+
+describe('Azure Cosmos DB (live)', () => {
+  // Real rows (eastus, 2026-10-07).
+  const CD = [
+    row({ serviceName: 'Azure Cosmos DB', productName: 'Azure Cosmos DB serverless', skuName: 'RUs', meterName: '1M RUs', retailPrice: 0.25, unitOfMeasure: '1M' }),
+    row({ serviceName: 'Azure Cosmos DB', productName: 'Azure Cosmos DB autoscale', skuName: 'AP1', meterName: 'AP1 100 RUs', retailPrice: 0.012, unitOfMeasure: '1/Hour' }),
+    row({ serviceName: 'Azure Cosmos DB', productName: 'Azure Cosmos DB autoscale', skuName: 'AP1', meterName: 'AP1 Entry Price', retailPrice: 0.032, unitOfMeasure: '1/Hour' }),
+    row({ serviceName: 'Azure Cosmos DB', productName: 'Azure Cosmos DB', skuName: 'RUs', meterName: 'Data Stored', retailPrice: 0.25, unitOfMeasure: '1 GB/Month' }),
+    row({ serviceName: 'Azure Cosmos DB', productName: 'Azure Cosmos DB', skuName: 'RUm', meterName: 'Data Stored', retailPrice: 0.25, unitOfMeasure: '1 GB/Month' }),
+    row({ serviceName: 'Azure Cosmos DB', productName: 'Azure Cosmos DB', skuName: 'RUs', meterName: '100 RU/s', retailPrice: 0.008, unitOfMeasure: '1/Hour' }),
+  ];
+  const ask = (configuration: Record<string, unknown>) => prov.getPrice({ provider: 'azure', resourceType: 'azure_cosmos_db', region: 'eastus', configuration });
+
+  test('serverless: 100 million RUs and 10 GB cost $25 + $2.50 (hand-checked $27.50), with the assumptions stated', async () => {
+    serve(CD);
+    const p = (await ask({ throughputMode: 'Serverless' }))!;
+    expect(p.source).toBe('azure-retail-api');
+    expect(p.monthlyPrice).toBeCloseTo(100 * 0.25 + 10 * 0.25, 2);
+    expect(p.assumptions.filter((a) => a.startsWith('Assumed '))).toHaveLength(2);
+  });
+
+  test('serverless usage follows the resource\'s own estimates', async () => {
+    serve(CD);
+    expect((await ask({ throughputMode: 'Serverless', estimatedMonthlyMillionRus: 400, estimatedStorageGb: 100 }))!.monthlyPrice).toBeCloseTo(400 * 0.25 + 100 * 0.25, 2);
+  });
+
+  test('autoscale 4000 RU/s uses the autoscale rate, not the manual one (hand-checked $350.40 + $2.50)', async () => {
+    serve(CD);
+    const p = (await ask({ throughputMode: 'Provisioned', maxThroughputRu: 4000 }))!;
+    expect(p.monthlyPrice).toBeCloseTo((4000 / 100) * 0.012 * 730 + 10 * 0.25, 2);
+    expect(p.monthlyPrice).toBeGreaterThan((4000 / 100) * 0.008 * 730 + 2.5); // the old built-in figure was a third lower
+    expect(p.assumptions.join(' ')).toMatch(/upper bound/);
+  });
+
+  test('a missing row is never guessed (null)', async () => {
+    serve(CD.filter((r) => r.meterName !== '1M RUs'));
+    expect(await ask({ throughputMode: 'Serverless' })).toBeNull();
+    serve(CD.filter((r) => !/autoscale/i.test(r.productName)));
+    expect(await ask({ throughputMode: 'Provisioned' })).toBeNull();
+    serve(CD.filter((r) => r.meterName !== 'Data Stored'));
+    expect(await ask({ throughputMode: 'Serverless' })).toBeNull();
+  });
+});
+
 describe('Azure virtual machine (live)', () => {
   // Real rows (eastus, 2026-10-07). skuName spells the size "D2s v3" while the size name is Standard_D2s_v3, so the lookup must use armSkuName.
   const VM_ROWS = [

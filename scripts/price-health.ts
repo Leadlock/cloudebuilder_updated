@@ -25,6 +25,9 @@ const AZURE: Reference[] = [
   { name: 'azure_sql GP_Gen5_2 zone redundant 200GB', query: { provider: 'azure', resourceType: 'azure_sql', region: 'eastus', configuration: { tier: 'GP_Gen5_2', maxSizeGb: 200, zoneRedundant: true } } },
   { name: 'azure_sql S1 DTU', query: { provider: 'azure', resourceType: 'azure_sql', region: 'eastus', configuration: { tier: 'S1', maxSizeGb: 250 } } },
   { name: 'azure_app_gateway', query: { provider: 'azure', resourceType: 'azure_app_gateway', region: 'eastus', configuration: {} } },
+  { name: 'azure_front_door Standard base fee', query: { provider: 'azure', resourceType: 'azure_front_door', region: 'eastus', configuration: { sku: 'Standard_AzureFrontDoor' } } },
+  { name: 'azure_cosmos_db serverless 100M RUs 10GB', query: { provider: 'azure', resourceType: 'azure_cosmos_db', region: 'eastus', configuration: { throughputMode: 'Serverless' } } },
+  { name: 'azure_cosmos_db autoscale 4000 RU/s 10GB', query: { provider: 'azure', resourceType: 'azure_cosmos_db', region: 'eastus', configuration: { throughputMode: 'Provisioned', maxThroughputRu: 4000 } } },
   { name: 'azure_storage Standard_LRS 100GB', query: { provider: 'azure', resourceType: 'azure_storage', region: 'eastus', configuration: { sku: 'Standard_LRS', estimatedCapacityGb: 100 } } },
 ];
 

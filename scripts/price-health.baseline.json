@@ -3,5 +3,8 @@
   "azure_sql S1 DTU": 29.43,
   "azure_app_gateway": 157.68,
   "azure_storage Standard_LRS 100GB": 2.08,
-  "azure_vm Standard_D2s_v3": 82.88
+  "azure_vm Standard_D2s_v3": 82.88,
+  "azure_front_door Standard base fee": 35,
+  "azure_cosmos_db serverless 100M RUs 10GB": 27.5,
+  "azure_cosmos_db autoscale 4000 RU/s 10GB": 352.9
 }
