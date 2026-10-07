@@ -1,0 +1,7 @@
+{
+  "azure_sql GP_Gen5_2 zone redundant 200GB": 401.58,
+  "azure_sql S1 DTU": 29.43,
+  "azure_app_gateway": 157.68,
+  "azure_storage Standard_LRS 100GB": 2.08,
+  "azure_vm Standard_D2s_v3": 82.88
+}

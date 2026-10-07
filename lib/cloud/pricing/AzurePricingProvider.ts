@@ -134,7 +134,9 @@ export class AzurePricingProvider implements ICloudPricingProvider {
     const size = (config['size'] as string) || 'Standard_B2s';
     // Remove "Standard_" prefix for meter matching if needed
     const bareSize = size.replace(/^Standard_/i, '');
-    const filter = `serviceName eq 'Virtual Machines' and armRegionName eq '${region}' and contains(skuName, '${bareSize}') and priceType eq 'Consumption'`;
+    // armSkuName is the exact size name (Standard_D2s_v3). skuName spells it differently ("D2s v3", with a space), so matching the size inside
+    // skuName found no rows for most sizes and every VM silently used the built-in price.
+    const filter = `serviceName eq 'Virtual Machines' and armRegionName eq '${region}' and armSkuName eq '${size}' and priceType eq 'Consumption'`;
     
     const items = await this._fetchRetailPrices(filter);
     // Find non-spot, non-low-priority Linux instance

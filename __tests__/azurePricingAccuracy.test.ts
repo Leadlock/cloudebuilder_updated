@@ -56,6 +56,25 @@ const VCORE_ROWS = [
   row({ serviceName: 'SQL Database', productName: 'SQL Database Single/Elastic Pool General Purpose - Storage', skuName: 'General Purpose Zone Redundancy', meterName: 'General Purpose Zone Redundancy Data Stored', unitOfMeasure: '1 GB/Month', retailPrice: 0.23 }),
 ];
 
+describe('Azure virtual machine (live)', () => {
+  // Real rows (eastus, 2026-10-07). skuName spells the size "D2s v3" while the size name is Standard_D2s_v3, so the lookup must use armSkuName.
+  const VM_ROWS = [
+    row({ serviceName: 'Virtual Machines', productName: 'Virtual Machines DSv3 Series', skuName: 'D2s v3', armSkuName: 'Standard_D2s_v3', meterName: 'D2s v3', retailPrice: 0.096 }),
+    row({ serviceName: 'Virtual Machines', productName: 'Virtual Machines DSv3 Series Windows', skuName: 'D2s v3', armSkuName: 'Standard_D2s_v3', meterName: 'D2s v3', retailPrice: 0.188 }),
+    row({ serviceName: 'Virtual Machines', productName: 'Virtual Machines DSv3 Series', skuName: 'D2s v3 Spot', armSkuName: 'Standard_D2s_v3', meterName: 'D2s v3 Spot', retailPrice: 0.018816 }),
+    row({ serviceName: 'Virtual Machines', productName: 'Virtual Machines DSv3 Series', skuName: 'D2s v3 Low Priority', armSkuName: 'Standard_D2s_v3', meterName: 'D2s v3 Low Priority', retailPrice: 0.019 }),
+  ];
+
+  test('asks for the exact size and prices the Linux pay-as-you-go row (hand-checked $70.08 compute + $12.80 disk)', async () => {
+    serve(VM_ROWS);
+    const p = await prov.getPrice({ provider: 'azure', resourceType: 'azure_vm', region: 'eastus', configuration: { size: 'Standard_D2s_v3', osDiskGb: 128 } });
+    expect(p!.source).toBe('azure-retail-api');
+    expect(p!.monthlyPrice).toBeCloseTo(0.096 * 730 + 128 * 0.1, 2);
+    const url = decodeURIComponent(String((global.fetch as jest.Mock).mock.calls[0]![0]));
+    expect(url).toContain("armSkuName eq 'Standard_D2s_v3'");
+  });
+});
+
 describe('Azure SQL Database, vCore model (live)', () => {
   const vq = (zoneRedundant: boolean, maxSizeGb = 200) => ({ provider: 'azure' as const, resourceType: 'azure_sql', region: 'eastus', configuration: { tier: 'GP_Gen5_2', maxSizeGb, zoneRedundant } });
 
