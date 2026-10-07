@@ -2,6 +2,7 @@
 import clsx from 'clsx';
 import type { EvaluationStatus, Severity, AutoFixSafety } from '@/lib/engines/assessment/types';
 import { useApp } from '@/context/AppContext';
+import { useEscapeKey } from '@/lib/ui/useEscapeKey';
 
 export const SEVERITY_STYLE: Record<Severity, { badge: string; text: string; border: string; label: string }> = {
   CRITICAL: { badge: 'bg-red-900 text-red-200', text: 'text-red-400', border: 'border-red-800/70', label: 'Critical' },
@@ -39,6 +40,7 @@ export function SafetyBadge({ safety }: { safety: AutoFixSafety }) {
 export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   const { state: appState } = useApp();
   const isLight = appState.theme === 'light';
+  useEscapeKey(onClose);
 
   return (
     <div className={`fixed inset-0 z-50 flex items-center justify-center ${isLight ? 'bg-slate-900/40' : 'bg-black/60'} backdrop-blur-sm p-4`} role="dialog" aria-modal="true" aria-label={title}>

@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
+import { useEscapeKey } from '@/lib/ui/useEscapeKey';
 import { architectureTemplates } from '@/lib/templates';
 import { CloudProvider, ArchitectureTemplate } from '@/types';
 import { LayoutGrid, DollarSign, Server, X, Sparkles, ArrowRight, Layers } from 'lucide-react';
@@ -64,6 +65,7 @@ export default function TemplateGallery() {
 
   // Rename modal state
   const [selectedTemplate, setSelectedTemplate] = useState<ArchitectureTemplate | null>(null);
+  useEscapeKey(selectedTemplate && !loading ? () => setSelectedTemplate(null) : undefined);
   const [customProjectName, setCustomProjectName] = useState('');
 
   const activeCurrency = state.displayCurrency || 'USD';

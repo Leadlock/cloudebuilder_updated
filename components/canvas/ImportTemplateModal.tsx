@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { useEscapeKey } from '@/lib/ui/useEscapeKey';
 import {
   LayoutGrid,
   Search,
@@ -38,6 +39,7 @@ export default function ImportTemplateModal({
   onImport,
 }: ImportTemplateModalProps) {
   const { state } = useApp();
+  useEscapeKey(isOpen ? onClose : undefined);
   const isLight = state.theme === 'light';
   const [providerFilter, setProviderFilter] = useState<'all' | 'aws' | 'azure' | 'multi'>('all');
   const [searchQuery, setSearchQuery] = useState('');

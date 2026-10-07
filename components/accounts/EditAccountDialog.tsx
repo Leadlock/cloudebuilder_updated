@@ -5,6 +5,7 @@
  * the connection is checked again straight away.
  */
 import { useState } from 'react';
+import { useEscapeKey } from '@/lib/ui/useEscapeKey';
 import { Pencil, Loader2 } from 'lucide-react';
 import { checkAwsConnectInput } from '@/lib/cloud/awsConnectInput';
 import type { ConnectionHint } from '@/lib/cloud/connectionHint';
@@ -45,6 +46,7 @@ export default function EditAccountDialog({ account, onClose, onSaved }: { accou
   const [removeExternalId, setRemoveExternalId] = useState(false);
   const [azure, setAzure] = useState({ tenantId: hint.tenantId ?? '', clientId: hint.clientId ?? '', clientSecret: '', subscriptionId: hint.subscriptionId ?? '' });
   const [saving, setSaving] = useState(false);
+  useEscapeKey(saving ? undefined : onClose); // not while the changes are being saved
   const [error, setError] = useState<string | null>(null);
 
   /** Only what changed: a typed value, a changed field. Empty secrets are left out, which keeps the current ones. */

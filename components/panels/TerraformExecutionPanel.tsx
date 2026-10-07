@@ -4,6 +4,7 @@ import { useApp, useActiveProject } from '@/context/AppContext';
 import { ApiTerraformExecutionService, type TerraformPlanResult, type TerraformApplyStatus, type TerraformDestroyPreview, type TerraformRunSnapshot } from '@/lib/services/ApiTerraformExecutionService';
 import { ApiReviewService } from '@/lib/services/ApiReviewService';
 import type { ArchitectureReview } from '@/lib/services/ArchitectureReviewService';
+import { useEscapeKey } from '@/lib/ui/useEscapeKey';
 import type { TerraformStateBackendConfig } from '@/lib/terraform/execution/types';
 import {
   CloudCog, Loader2, CheckCircle2, XCircle, AlertTriangle, ShieldAlert, Plus, ArrowRightLeft,
@@ -134,6 +135,8 @@ export default function TerraformExecutionPanel() {
   const [destroyRun, setDestroyRun] = useState<TerraformRunSnapshot | null>(null);
   const destroyPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [destroyConfirmInput, setDestroyConfirmInput] = useState('');
+  // Escape cancels the teardown confirmation (the same as its Cancel button), but never while the teardown is running.
+  useEscapeKey(showDestroyModal && !destroying ? () => { setShowDestroyModal(false); setDestroyConfirmInput(''); } : undefined);
   // Whether the teardown may switch deletion protection off on the protected resources it deletes (see the notice in the dialog).
   const [disableProtection, setDisableProtection] = useState(true);
 

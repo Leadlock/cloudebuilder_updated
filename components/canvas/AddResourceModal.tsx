@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useMemo } from 'react';
+import { useEscapeKey } from '@/lib/ui/useEscapeKey';
 import { getResourcesByProvider } from '@/lib/resources';
 import { CloudProvider } from '@/types';
 import { CloudServiceIcon } from '@/components/icons/cloud/CloudServiceIcon';
@@ -23,6 +24,7 @@ export default function AddResourceModal({
   const { state } = useApp();
   const isLight = state.theme === 'light';
   const [search, setSearch] = useState('');
+  useEscapeKey(isOpen ? onClose : undefined);
 
   const resources = useMemo(() => {
     return getResourcesByProvider(provider);

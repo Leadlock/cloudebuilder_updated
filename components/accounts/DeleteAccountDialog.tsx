@@ -1,6 +1,7 @@
 'use client';
 /** Confirmation before deleting a connected cloud account (its stored credentials and discovery history go with it). */
 import { useState } from 'react';
+import { useEscapeKey } from '@/lib/ui/useEscapeKey';
 import { Trash2, Loader2 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 
@@ -12,6 +13,7 @@ export default function DeleteAccountDialog({ account, onClose, onDeleted }: {
   const { state } = useApp();
   const isLight = state.theme === 'light';
   const [deleting, setDeleting] = useState(false);
+  useEscapeKey(deleting ? undefined : onClose); // not while the deletion is running
   const [error, setError] = useState<string | null>(null);
 
   async function confirm() {

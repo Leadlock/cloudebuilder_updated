@@ -1,5 +1,6 @@
 'use client';
 import React, { useState } from 'react';
+import { useEscapeKey } from '@/lib/ui/useEscapeKey';
 import { ProviderMode, ScaleProfile, Region, AWS_REGIONS, AZURE_REGIONS } from '@/types';
 import { useApp } from '@/context/AppContext';
 import { Cloud, Server, Sparkles, Cpu, Globe, Activity, Check, ArrowRight, ShieldCheck, X } from 'lucide-react';
@@ -29,6 +30,7 @@ const SCALE_PRESETS = [
 
 export default function CanvasStartModal({ isOpen, onClose, onStart }: CanvasStartModalProps) {
   const { state } = useApp();
+  useEscapeKey(isOpen && onClose ? onClose : undefined);
   const isLight = state.theme === 'light';
   const [providerMode, setProviderMode] = useState<ProviderMode>('AWS');
   const [buildMode, setBuildMode] = useState<'manual' | 'ai'>('manual');
