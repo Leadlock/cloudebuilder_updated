@@ -20,7 +20,8 @@ const InviteSchema = z.object({
 });
 
 function acceptUrl(req: NextRequest, token: string): string {
-  return new URL(`/invite/accept?token=${token}`, req.nextUrl.origin).toString();
+  const base = process.env.APP_URL || req.nextUrl.origin;
+  return new URL(`/invite/accept?token=${token}`, base).toString();
 }
 
 export async function GET(req: NextRequest) {

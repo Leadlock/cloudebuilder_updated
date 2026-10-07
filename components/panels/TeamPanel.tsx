@@ -64,6 +64,7 @@ export default function TeamPanel() {
   }, [refresh]);
 
   const [lastEmailSent, setLastEmailSent] = useState<boolean | null>(null);
+  const [lastEmailError, setLastEmailError] = useState<string | null>(null);
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,6 +73,7 @@ export default function TeamPanel() {
     setError(null);
     setLastAcceptUrl(null);
     setLastEmailSent(null);
+    setLastEmailError(null);
     try {
       const res = await fetch('/api/auth/invite', {
         method: 'POST',
@@ -83,6 +85,7 @@ export default function TeamPanel() {
       if (!res.ok) throw new Error(data.error?.message ?? 'Failed to send invite');
       setLastAcceptUrl(data.data.acceptUrl);
       setLastEmailSent(data.data.emailSent ?? false);
+      setLastEmailError(data.data.emailError ?? null);
       setInviteEmail('');
       refresh();
     } catch (err: any) {
@@ -170,17 +173,30 @@ export default function TeamPanel() {
             {lastAcceptUrl && (
               <div className={clsx(
                 "mt-4 p-4 rounded-xl border text-xs space-y-2",
-                isLight ? "bg-blue-50 border-blue-200 text-blue-900" : "bg-blue-950/30 border-blue-500/30 text-blue-200"
+                lastEmailSent
+                  ? (isLight ? "bg-emerald-50 border-emerald-200 text-emerald-900" : "bg-emerald-950/30 border-emerald-500/30 text-emerald-200")
+                  : (isLight ? "bg-amber-50 border-amber-200 text-amber-900" : "bg-amber-950/30 border-amber-500/30 text-amber-200")
               )}>
                 <div className="flex items-center gap-2">
-                  <Check className={clsx("w-4 h-4 shrink-0", isLight ? "text-emerald-600" : "text-emerald-400")} />
+                  {lastEmailSent ? (
+                    <Check className={clsx("w-4 h-4 shrink-0", isLight ? "text-emerald-600" : "text-emerald-400")} />
+                  ) : (
+                    <Clock className={clsx("w-4 h-4 shrink-0", isLight ? "text-amber-600" : "text-amber-400")} />
+                  )}
                   <span className={clsx("font-semibold", isLight ? "text-slate-900" : "text-white")}>
                     {lastEmailSent
                       ? 'Invitation email delivered via AWS SES!'
                       : 'Invite created. Share this link directly with your teammate:'}
                   </span>
                 </div>
-                <div className={clsx("flex items-center gap-2 border rounded-lg px-3 py-2", isLight ? "bg-white border-blue-200" : "bg-gray-950 border-gray-800")}>
+                {!lastEmailSent && lastEmailError && (
+                  <p className={clsx("text-[11px] leading-relaxed", isLight ? "text-amber-800" : "text-amber-300/90")}>
+                    <strong>Note (AWS SES Sandbox):</strong> {lastEmailError.includes('not verified') 
+                      ? 'AWS SES is in Sandbox mode and will only deliver emails to verified email identities. To deliver to any email, request SES Production access or add the recipient to Verified Identities in the AWS SES Console (eu-north-1).'
+                      : lastEmailError}
+                  </p>
+                )}
+                <div className={clsx("flex items-center gap-2 border rounded-lg px-3 py-2", isLight ? "bg-white border-slate-200" : "bg-gray-950 border-gray-800")}>
                   <span className={clsx("truncate flex-1 font-mono", isLight ? "text-slate-800" : "text-gray-300")}>{lastAcceptUrl}</span>
                   <button onClick={() => copyLink(lastAcceptUrl)} className={clsx("transition-colors shrink-0", isLight ? "text-slate-500 hover:text-slate-900" : "text-gray-400 hover:text-white")}>
                     {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}

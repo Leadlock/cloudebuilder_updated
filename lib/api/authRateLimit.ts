@@ -30,9 +30,13 @@ export const AUTH_LIMITS = {
   signupEmail:     { limit: 3,  windowMs: 60 * MIN },
   resendIp:        { limit: 10, windowMs: 60 * MIN },
   resendEmail:     { limit: 3,  windowMs: 10 * MIN },
-  confirmIp:       { limit: 20, windowMs: 15 * MIN },
-  confirmAttempts: { limit: 5,  windowMs: 10 * MIN },   // code guesses per (address, email)
-  inviteIp:        { limit: 20, windowMs: 15 * MIN },
+  confirmIp:           { limit: 20, windowMs: 15 * MIN },
+  confirmAttempts:     { limit: 5,  windowMs: 10 * MIN },   // code guesses per (address, email)
+  inviteIp:            { limit: 20, windowMs: 15 * MIN },
+  forgotPasswordIp:    { limit: 10, windowMs: 60 * MIN },
+  forgotPasswordEmail: { limit: 3,  windowMs: 15 * MIN },
+  resetPasswordIp:     { limit: 15, windowMs: 15 * MIN },
+  resetPasswordPair:   { limit: 5,  windowMs: 15 * MIN },
 } as const;
 
 export function trustedProxyHops(): number {
@@ -62,18 +66,20 @@ async function consume(entries: [string, Limit][]): Promise<NextResponse | null>
   return null;
 }
 
-export type AuthAction = 'login' | 'signup' | 'resend' | 'confirm' | 'invite';
+export type AuthAction = 'login' | 'signup' | 'resend' | 'confirm' | 'invite' | 'forgot-password' | 'reset-password';
 
 /** Spends one attempt from the limits for this action. Returns the 429 response to send, or null when allowed. */
 export async function limitAuthAttempt(req: NextRequest, action: AuthAction, email?: string): Promise<NextResponse | null> {
   const ip = clientIp(req);
   const e = email ? norm(email) : '';
   switch (action) {
-    case 'login':   return consume([[`auth:login:ip:${ip}`, AUTH_LIMITS.loginIp]]);
-    case 'signup':  return consume([[`auth:signup:ip:${ip}`, AUTH_LIMITS.signupIp], [`auth:signup:email:${e}`, AUTH_LIMITS.signupEmail]]);
-    case 'resend':  return consume([[`auth:resend:ip:${ip}`, AUTH_LIMITS.resendIp], [`auth:resend:email:${e}`, AUTH_LIMITS.resendEmail]]);
-    case 'confirm': return consume([[`auth:confirm:ip:${ip}`, AUTH_LIMITS.confirmIp], [`auth:confirm:pair:${ip}:${e}`, AUTH_LIMITS.confirmAttempts]]);
-    case 'invite':  return consume([[`auth:invite:ip:${ip}`, AUTH_LIMITS.inviteIp]]);
+    case 'login':           return consume([[`auth:login:ip:${ip}`, AUTH_LIMITS.loginIp]]);
+    case 'signup':          return consume([[`auth:signup:ip:${ip}`, AUTH_LIMITS.signupIp], [`auth:signup:email:${e}`, AUTH_LIMITS.signupEmail]]);
+    case 'resend':          return consume([[`auth:resend:ip:${ip}`, AUTH_LIMITS.resendIp], [`auth:resend:email:${e}`, AUTH_LIMITS.resendEmail]]);
+    case 'confirm':         return consume([[`auth:confirm:ip:${ip}`, AUTH_LIMITS.confirmIp], [`auth:confirm:pair:${ip}:${e}`, AUTH_LIMITS.confirmAttempts]]);
+    case 'invite':          return consume([[`auth:invite:ip:${ip}`, AUTH_LIMITS.inviteIp]]);
+    case 'forgot-password': return consume([[`auth:forgot:ip:${ip}`, AUTH_LIMITS.forgotPasswordIp], [`auth:forgot:email:${e}`, AUTH_LIMITS.forgotPasswordEmail]]);
+    case 'reset-password':  return consume([[`auth:reset:ip:${ip}`, AUTH_LIMITS.resetPasswordIp], [`auth:reset:pair:${ip}:${e}`, AUTH_LIMITS.resetPasswordPair]]);
   }
 }
 

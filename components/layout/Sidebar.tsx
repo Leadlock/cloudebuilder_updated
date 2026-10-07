@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Box, Code2, ShieldCheck, DollarSign, Rocket,
   ChevronLeft, ChevronRight, Cloud, Plus, Trash2, Wand2, LayoutGrid,
   Sparkles, Brain, History, GitBranch, Shield, Upload, CheckSquare, FileCheck,
-  Activity, Scale, Users, X, GripVertical, Link2
+  Activity, Scale, Users, X, GripVertical, Link2, LogOut, User
 } from 'lucide-react';
 import clsx from 'clsx';
 import { AppView, Project } from '@/types';
@@ -128,6 +128,16 @@ export default function Sidebar() {
   const confirmDeleteProject = (id: string) => {
     dispatch({ type: 'DELETE_PROJECT', id });
     setProjectToDelete(null);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+      dispatch({ type: 'SET_USER', user: null });
+      dispatch({ type: 'SET_LOGIN_MODAL', open: true });
+    } catch (e) {
+      console.error('Logout failed:', e);
+    }
   };
 
   const navContent = (isMobile = false) => (
@@ -297,6 +307,53 @@ export default function Sidebar() {
               })
             )}
           </div>
+        </div>
+      )}
+
+      {/* User Profile & Logout Footer */}
+      {(!sidebarCollapsed || isMobile) ? (
+        <div className={clsx(
+          "border-t p-2.5 shrink-0 flex items-center justify-between gap-2 transition-colors",
+          isLight ? "border-slate-200 bg-white" : "border-gray-800 bg-gray-950"
+        )}>
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className={clsx(
+              "w-7 h-7 rounded-full flex items-center justify-center text-xs text-white font-bold shrink-0 shadow-sm",
+              isAdmin ? "bg-gradient-to-tr from-cyan-600 to-blue-600" : "bg-gradient-to-tr from-indigo-600 to-purple-600"
+            )}>
+              {(currentUser?.name || currentUser?.email || 'U')[0].toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className={clsx("text-xs font-semibold truncate leading-tight", isLight ? "text-slate-900" : "text-white")}>
+                {currentUser?.name || 'Guest User'}
+              </p>
+              <p className={clsx("text-[10px] truncate font-mono", isLight ? "text-slate-500" : "text-gray-400")}>
+                {currentUser?.email || 'Not signed in'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleLogout}
+            className={clsx(
+              "p-1.5 rounded-lg transition-colors shrink-0 text-rose-500 hover:text-rose-600",
+              isLight ? "hover:bg-rose-50" : "hover:bg-rose-950/40"
+            )}
+            title="Sign Out (Logout)"
+            aria-label="Sign Out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <div className="border-t p-2 flex justify-center shrink-0">
+          <button
+            onClick={handleLogout}
+            className="p-2 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-950/40 transition-colors"
+            title="Sign Out (Logout)"
+            aria-label="Sign Out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       )}
 
