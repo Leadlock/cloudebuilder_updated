@@ -8,6 +8,7 @@ import { ok, created, notFound, forbidden, unauthorized, internalError, badReque
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId, resolveArchitecture } from '@/lib/api/phase2d';
 import { costEstimator } from '@/lib/engines/cost/CostEstimator';
+import { ensureAwsPricingAccess } from '@/lib/cloud/pricing/awsPricingAccess';
 import { db } from '@/src/prisma/db';
 import { randomUUID } from 'crypto';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
@@ -93,6 +94,9 @@ export async function POST(
           architectureId: arch.id,
         }))
       : arch.resources;
+
+    // Same price source as the cost comparison, so the two screens agree: AWS list prices through the organization's connected role.
+    await ensureAwsPricingAccess(orgId);
 
     // Run real estimation with currency conversion
     const result = await costEstimator.estimateAsync({

@@ -15,6 +15,7 @@ import { costEstimator } from '@/lib/engines/cost/CostEstimator';
 import { runCostComparison } from '@/lib/engines/comparison/runCostComparison';
 import { aiCostAvailable, askFoundryJson } from '@/lib/cost/ai/askModel';
 import { buildCostInsights, type CostInsights } from '@/lib/cost/ai/insights';
+import { ensureAwsPricingAccess } from '@/lib/cloud/pricing/awsPricingAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,6 +73,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const hit = cache.get(key);
     if (hit && Date.now() - hit.at < CACHE_MS) return ok(hit.insights);
 
+    await ensureAwsPricingAccess(orgId);
     const run = await runCostComparison({
       architectureId: arch.id, projectId, resources, projectRegion: project.region, targetCurrency: 'USD', aiMatching: true,
     });
