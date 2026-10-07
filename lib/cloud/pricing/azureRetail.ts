@@ -35,5 +35,6 @@ export function monthlyFromRetailItem(item: Pick<AzureRetailPriceItem, 'retailPr
   if (/hour/.test(unit)) return item.retailPrice * HOURS_PER_MONTH;
   if (/day/.test(unit)) return item.retailPrice * (HOURS_PER_MONTH / 24);
   if (/month/.test(unit)) return item.retailPrice;
+  if (unit === '1') return item.retailPrice; // a flat charge per item with no time unit, billed monthly (an Azure DNS zone: $0.50 for one zone)
   return null;
 }

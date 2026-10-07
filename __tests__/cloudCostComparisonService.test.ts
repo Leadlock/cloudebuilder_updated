@@ -58,9 +58,9 @@ describe('CloudCostComparisonService — resourceType translation', () => {
     expect(translated.resourceType).toBe('aws_waf');
   });
 
-  it('leaves aws_route53 unmapped — Azure has no equivalent DNS zone resource type in this catalog', () => {
-    const [translated] = CloudCostComparisonService.translateNodes([makeNode({ resourceType: 'aws_route53' })], 'azure');
-    expect(translated.resourceType).toBe('aws_route53');
+  it.each([['aws_route53', 'azure_dns'], ['aws_cloudwatch', 'azure_monitor']])('translates %s to %s and back', (aws, azure) => {
+    expect(CloudCostComparisonService.translateNodes([makeNode({ resourceType: aws })], 'azure')[0]!.resourceType).toBe(azure);
+    expect(CloudCostComparisonService.translateNodes([makeNode({ resourceType: azure, provider: 'azure' })], 'aws')[0]!.resourceType).toBe(aws);
   });
 });
 

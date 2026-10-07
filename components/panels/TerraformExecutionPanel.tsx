@@ -19,6 +19,7 @@ import CreatedResourcesList from './CreatedResourcesList';
 import TerraformPermissionHelp from './TerraformPermissionHelp';
 import RequiredPermissionsCard from './RequiredPermissionsCard';
 import { protectionNotice } from '@/lib/terraform/execution/protectionNotice';
+import { suggestAzureBackend } from '@/lib/terraform/execution/backendSuggestions';
 
 interface CloudAccount {
   id: string;
@@ -292,31 +293,45 @@ export default function TerraformExecutionPanel() {
     return () => clearInterval(t);
   }, [isApproved, loadReview]);
 
+  // The connected accounts. This panel stays mounted while another screen is shown, so an account connected on the Cloud Accounts screen
+  // would not appear here until a reload if they were loaded only once. They are loaded again whenever this screen is shown, when the
+  // window regains focus, and on request ("Refresh"). A failed load is reported as a failure, never as "no accounts".
+  const [accountsError, setAccountsError] = useState<string | null>(null);
+  const loadAccounts = useCallback(async (isCancelled: () => boolean = () => false) => {
+    setLoadingAccounts(true);
+    try {
+      const res = await fetch(`/api/cloud-accounts?provider=${backendProvider}`, { credentials: 'include' });
+      const data = await res.json().catch(() => null) as { ok: boolean; data: CloudAccount[]; error?: { message?: string } } | null;
+      if (isCancelled()) return;
+      if (!res.ok || !data?.ok) { setAccountsError(data?.error?.message ?? `Could not load your accounts (${res.status}).`); return; }
+      setAccountsError(null);
+      const ofProvider = data.data.filter((a) => a.provider === backendProvider);
+      // An account connected with an access key alone is for discovery only; Terraform needs a role, a deploy-capable key or a service principal.
+      const list = ofProvider.filter((a) => (a as { identity?: { authMethod?: string } }).identity?.authMethod !== 'access-key');
+      setDiscoveryOnlyCount(ofProvider.length - list.length);
+      setAccounts(list);
+      setSelectedAccountId((prev) => {
+        if (prev && list.some((a) => a.id === prev)) return prev;
+        return list.length > 0 ? list[0].id : '';
+      });
+    } catch (err) {
+      if (!isCancelled()) setAccountsError(err instanceof Error ? err.message : 'Could not load your accounts.');
+    } finally {
+      if (!isCancelled()) setLoadingAccounts(false);
+    }
+  }, [backendProvider]);
+
   useEffect(() => {
     let cancelled = false;
-    setLoadingAccounts(true);
-    fetch(`/api/cloud-accounts?provider=${backendProvider}`)
-      .then((r) => r.json())
-      .then((data: { ok: boolean; data: CloudAccount[] }) => {
-        if (cancelled) return;
-        const ofProvider = data.ok ? data.data.filter((a) => a.provider === backendProvider) : [];
-        // An account connected with an access key is for discovery only; Terraform needs a role.
-        const list = ofProvider.filter((a) => (a as { identity?: { authMethod?: string } }).identity?.authMethod !== 'access-key');
-        setDiscoveryOnlyCount(ofProvider.length - list.length);
-        setAccounts(list);
-        setSelectedAccountId((prev) => {
-          if (prev && list.some((a) => a.id === prev)) return prev;
-          return list.length > 0 ? list[0].id : '';
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setAccounts([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingAccounts(false);
-      });
+    void loadAccounts(() => cancelled);
     return () => { cancelled = true; };
-  }, [backendProvider]);
+  }, [loadAccounts, state.activeView]);
+
+  useEffect(() => {
+    const onFocus = () => { void loadAccounts(); };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [loadAccounts]);
 
   // Track timer and simulated progress while applying or destroying
   useEffect(() => {
@@ -381,6 +396,20 @@ export default function TerraformExecutionPanel() {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     }
   }, [applyStatus?.state, plan?.summary.resourceChanges.length]);
+
+  // Azure: fill the empty state-storage fields with names that are valid and unique to this subscription, so "Create state storage for me"
+  // is usable at once. Anything the person typed (or a saved choice) is left exactly as it is; only empty fields are filled.
+  const selectedSubscriptionId = (accounts.find((a) => a.id === selectedAccountId) as { identity?: { subscriptionId?: string } } | undefined)?.identity?.subscriptionId;
+  useEffect(() => {
+    if (backendProvider !== 'azure' || !selectedAccountId) return;
+    const suggestion = suggestAzureBackend(selectedSubscriptionId);
+    setAzureBackend((prev) => ({
+      resourceGroupName: prev.resourceGroupName || suggestion.resourceGroupName,
+      storageAccountName: prev.storageAccountName || suggestion.storageAccountName,
+      containerName: prev.containerName || suggestion.containerName,
+      key: prev.key || suggestion.key,
+    }));
+  }, [backendProvider, selectedAccountId, selectedSubscriptionId]);
 
   if (!activeProject) return null;
 
@@ -689,7 +718,12 @@ export default function TerraformExecutionPanel() {
               </div>
             ) : accounts.length === 0 ? (
               <p className={clsx('text-xs', isLight ? 'text-slate-500' : 'text-gray-500')}>
-                No connected {backendProvider.toUpperCase()} accounts that can run Terraform. Connect one with an IAM role from the Import panel first.
+                {accountsError
+                  ? <>Could not load your connected accounts: {accountsError} </>
+                  : <>No connected {backendProvider.toUpperCase()} accounts that can run Terraform. {backendProvider === 'azure'
+                    ? 'Connect one with a service principal on the Cloud Accounts screen.'
+                    : 'Connect one on the Cloud Accounts screen: Simple (an administrator user\'s access key) or Safer (access key plus IAM role).'} </>}
+                <button type="button" onClick={() => void loadAccounts()} className={clsx('underline underline-offset-2', isLight ? 'text-sky-700' : 'text-sky-400')}>Refresh</button>
                 {discoveryOnlyCount > 0 ? ` (${discoveryOnlyCount} account${discoveryOnlyCount === 1 ? '' : 's'} connected with an access key ${discoveryOnlyCount === 1 ? 'is' : 'are'} for discovery only.)` : ''}
               </p>
             ) : (
@@ -715,7 +749,7 @@ export default function TerraformExecutionPanel() {
           </div>
 
           {/* What the role needs to deploy the approved design: shown before anything is planned */}
-          {isApproved && backendProvider === 'aws' && selectedAccountId && activeProject && (
+          {isApproved && selectedAccountId && activeProject && (
             <RequiredPermissionsCard
               projectId={activeProject.id}
               environment={state.activeEnvironment}

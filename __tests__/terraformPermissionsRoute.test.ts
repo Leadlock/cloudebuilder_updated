@@ -21,6 +21,8 @@ jest.mock('@aws-sdk/client-iam', () => ({
   SimulatePrincipalPolicyCommand: jest.fn().mockImplementation((input: unknown) => input),
 }));
 
+jest.mock('@azure/identity', () => ({ ClientSecretCredential: jest.fn().mockImplementation(() => ({ getToken: async () => ({ token: 'azure-token' }) })) }));
+
 import { NextRequest } from 'next/server';
 import { POST } from '@/app/api/projects/[id]/terraform/permissions/route';
 import { CredentialsExpiredError } from '@/lib/cloud/credentialLifetime';
@@ -64,11 +66,11 @@ describe('permissions route', () => {
     expect(mockGenerate).not.toHaveBeenCalled();
   });
 
-  it('refuses a member who is not an owner or admin, and an Azure account', async () => {
+  it('refuses a member who is not an owner or admin, and a cloud that is neither AWS nor Azure', async () => {
     mockOrgRole.mockResolvedValue('member');
     expect((await post({ cloudAccountId: 'acct-1' })).status).toBe(403);
     mockOrgRole.mockResolvedValue('owner');
-    mockFind.mockResolvedValue(account('service-principal', 'azure'));
+    mockFind.mockResolvedValue(account('service-principal', 'gcp'));
     expect((await post({ cloudAccountId: 'acct-1' })).status).toBe(400);
   });
 
@@ -88,5 +90,47 @@ describe('permissions route', () => {
   it('with check and credentials that expired: a plain 410, not a 500', async () => {
     mockCreds.mockRejectedValue(new CredentialsExpiredError('expired'));
     expect((await post({ cloudAccountId: 'acct-1', check: true })).status).toBe(410);
+  });
+});
+
+describe('permissions route for Azure', () => {
+  const azureAccount = () => ({ id: 'acct-az', provider: 'azure', name: 'Az', status: 'active', identity: { authMethod: 'service-principal', connection: { clientId: 'client-1', subscriptionId: 'sub-1', tenantId: 't' } } });
+  const azureHcl = ['resource "azurerm_resource_group" "rg" {}', 'resource "azurerm_virtual_network" "v" {}', 'resource "azurerm_mssql_server" "s" {}'].join(String.fromCharCode(10));
+  const realFetch = global.fetch;
+  afterEach(() => { global.fetch = realFetch; });
+
+  beforeEach(() => {
+    mockFind.mockResolvedValue(azureAccount());
+    mockGenerate.mockReturnValue({ files: [{ filename: 'main.tf', content: azureHcl }] });
+  });
+
+  it('returns the role, the providers and the CLI command for this principal, without calling Azure', async () => {
+    global.fetch = jest.fn() as never;
+    const d = (await data(await post({ cloudAccountId: 'acct-az' }))).data!;
+    expect(d).toMatchObject({ needed: true, cloud: 'azure', clientId: 'client-1', subscriptionId: 'sub-1', needsRoleAssignment: false });
+    expect(d.roles.map((r: { name: string }) => r.name)).toEqual(['Contributor']);
+    expect(d.providers).toEqual(['Microsoft.Network', 'Microsoft.Resources', 'Microsoft.Sql', 'Microsoft.Storage']);
+    expect(d.commands).toBe('az role assignment create --assignee client-1 --role "Contributor" --scope /subscriptions/sub-1');
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(d.policy).toBeUndefined();                     // an Azure account gets roles, not an AWS policy
+  });
+
+  it('with check: reads the effective permissions of the principal and reports Reader as missing the providers', async () => {
+    mockCreds.mockResolvedValue(JSON.stringify({ tenantId: 't', clientId: 'client-1', clientSecret: 'super-secret-value', subscriptionId: 'sub-1' }));
+    global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ value: [{ actions: ['*/read'], notActions: [] }] }) })) as never;
+    const res = await post({ cloudAccountId: 'acct-az', check: true });
+    const d = (await data(res)).data!;
+    expect(d.access.state).toBe('partial');
+    expect(d.access.services.map((x: { service: string; allowed: boolean }) => [x.service, x.allowed]).slice(0, 2)).toEqual([['Microsoft.Network', false], ['Microsoft.Resources', false]]);
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toContain('/subscriptions/sub-1/providers/Microsoft.Authorization/permissions');
+    expect((global.fetch as jest.Mock).mock.calls[0][1].headers.Authorization).toBe('Bearer azure-token');
+    expect(JSON.stringify(d)).not.toContain('super-secret-value');
+  });
+
+  it('with check and Contributor: everything ticks', async () => {
+    mockCreds.mockResolvedValue(JSON.stringify({ tenantId: 't', clientId: 'client-1', clientSecret: 's', subscriptionId: 'sub-1' }));
+    global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ value: [{ actions: ['*'], notActions: ['Microsoft.Authorization/*/Write'] }] }) })) as never;
+    const d = (await data(await post({ cloudAccountId: 'acct-az', check: true }))).data!;
+    expect(d.access.state).toBe('ok');
   });
 });

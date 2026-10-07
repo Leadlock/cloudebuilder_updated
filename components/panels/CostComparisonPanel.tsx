@@ -9,6 +9,20 @@ import clsx from 'clsx';
 import { getResourceDefinition } from '@/lib/resources';
 import CostInsightsCard from './CostInsightsCard';
 
+/** Plain-language reasons a service costs very different amounts on the two clouds, for the services present in this architecture. */
+const PRICE_DIFFERENCE_NOTES: [RegExp, string][] = [
+  [/load_?balancer|alb|elb|lb|app_?gateway/i, 'Load balancers: AWS charges a small hourly fee plus usage. Azure Application Gateway has a fixed monthly fee (about $146) plus usage, so it costs more even when idle.'],
+  [/rds|sql|postgres|mysql|database/i, 'Databases: sizes do not line up one to one. A managed AWS instance is mapped to the nearest Azure tier by vCPU, which can be a pricier tier. Treat the database line as an approximation.'],
+  [/redis|elasticache|cache/i, 'Caches: AWS prices each node. Azure Standard and Premium caches include a replica in one price, so the two are only close at the same size and tier.'],
+  [/waf/i, 'Web firewall: AWS charges per rule and per request; Azure charges a base fee for the policy. Totals depend on how many rules you use.'],
+  [/route53|dns/i, 'DNS: Route 53 has no matching service in this comparison, so it is left unpriced on the other side rather than guessed.'],
+];
+
+function priceDifferenceNotes(resourceTypes: string[]): string[] {
+  const text = resourceTypes.join(' ');
+  return PRICE_DIFFERENCE_NOTES.filter(([re]) => re.test(text)).map(([, note]) => note);
+}
+
 export default function CostComparisonPanel() {
   const { state } = useApp();
   const activeProject = useActiveProject();
@@ -294,6 +308,15 @@ export default function CostComparisonPanel() {
           </div>
 
         </div>
+
+        {priceDifferenceNotes(data.current.items.map((i) => i.resourceType)).length > 0 && (
+          <div className={clsx('mt-8 p-4 rounded-2xl border text-sm', isLight ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-amber-900/20 border-amber-900/50 text-amber-200/90')}>
+            <p className="font-semibold mb-2">Why these prices can differ so much</p>
+            <ul className="list-disc pl-5 space-y-1">
+              {priceDifferenceNotes(data.current.items.map((i) => i.resourceType)).map((n) => <li key={n}>{n}</li>)}
+            </ul>
+          </div>
+        )}
 
         <div className={clsx("mt-8 p-4 rounded-2xl border text-sm text-center", isLight ? 'bg-blue-50 border-blue-200 text-blue-900' : 'bg-blue-900/20 border-blue-900/50 text-blue-300/80')}>
           <p>This comparison translates each resource to its nearest capacity-equivalent SKU in the alternative cloud (e.g. by vCPU/RAM for compute, by allocated storage for databases/object storage) — not just a relabeled resource type. Pricing uses 730 hours/month standard usage where applicable.</p>

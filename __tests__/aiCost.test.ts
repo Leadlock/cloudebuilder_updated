@@ -6,6 +6,7 @@ import { findCostAnomalies } from '@/lib/cost/ai/plausibility';
 import { pickAzureMeters, selectCandidates } from '@/lib/cost/ai/meterPicker';
 import { translateResourcesWithAi, _clearEquivalentCache } from '@/lib/cost/ai/equivalents';
 import { buildCostInsights, withoutFigures } from '@/lib/cost/ai/insights';
+import { CloudCostComparisonService } from '@/lib/engines/comparison/CloudCostComparisonService';
 import { runCostComparison } from '@/lib/engines/comparison/runCostComparison';
 import { AzurePricingProvider } from '@/lib/cloud/pricing/AzurePricingProvider';
 import { classifyPricingSource } from '@/lib/cloud/pricing/tiers';
@@ -85,6 +86,13 @@ describe('meter picker: the model chooses rows, code reads the price', () => {
     expect(await pickAzureMeters({ ...redisArgs, ask })).toBeNull();
   });
 
+  test('two rows that are the same meter are one charge, not two', async () => {
+    const twin = row({ productName: 'Azure Redis Cache Standard', skuName: 'C2', meterName: 'C2 Cache', retailPrice: 0.225 });
+    const ask: AskModel = async () => ({ picks: [{ i: 0, quantity: 1 }, { i: 1, quantity: 1 }] });
+    const p = await pickAzureMeters({ ...redisArgs, rows: [twin, { ...twin }], ask });
+    expect(p!.monthlyPrice).toBeCloseTo(0.225 * 730, 4);
+  });
+
   test('a total above the plausible maximum for the type is rejected', async () => {
     const rows = [row({ productName: 'x', skuName: 'C1', meterName: 'C1 Cache', retailPrice: 500 })]; // $365,000/mo
     expect(await pickAzureMeters({ ...redisArgs, rows, ask: async () => ({ picks: [{ i: 0, quantity: 1 }] }) })).toBeNull();
@@ -143,6 +151,13 @@ describe('AI-proposed equivalents', () => {
     const r = await translateResourcesWithAi([res('k', 'aws_eks'), res('q', 'aws_sqs')], 'azure', ask);
     expect(r.matches).toEqual([]);
     expect(r.resources.map((x) => x.resourceType)).toEqual(['aws_eks', 'aws_sqs']); // left as-is: priced as unsupported, never invented
+  });
+
+  test('Route 53 and CloudWatch have fixed Azure equivalents, so the model is not asked about them', async () => {
+    const ask = jest.fn(async () => ({ matches: [{ resourceType: 'aws_route53', to: 'azure_lb', reason: 'both route traffic' }] }));
+    const r = await translateResourcesWithAi([res('d', 'aws_route53'), res('c', 'aws_cloudwatch')].map((x) => CloudCostComparisonService.translateResources([x], 'azure')[0]!), 'azure', ask as unknown as AskModel);
+    expect(r.resources.map((x) => x.resourceType)).toEqual(['azure_dns', 'azure_monitor']);
+    expect(r.matches).toEqual([]);
   });
 
   test('free networking types are not sent to the model', async () => {
