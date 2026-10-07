@@ -2082,6 +2082,10 @@ export default function InfraCanvas() {
           minZoom={0.2}
           maxZoom={2.0}
           onlyRenderVisibleElements
+          // Without this, selecting a container (cloud boundary, VPC, subnet) raises it above everything inside it (z-index 997), so its
+          // children could not be clicked until you clicked outside the container. Stacking is set per node type above (containers
+          // behind their children), and a selected node keeps its place.
+          elevateNodesOnSelect={false}
         >
           {/* Architecture Blueprint Grid Background */}
           <Background

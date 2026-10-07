@@ -71,7 +71,7 @@ export default function Sidebar() {
   const [isResizing, setIsResizing] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const widthRef = useRef(sidebarWidth);
-  widthRef.current = sidebarWidth;
+  useEffect(() => { widthRef.current = sidebarWidth; }, [sidebarWidth]);
 
   // Load persisted width on mount
   useEffect(() => {

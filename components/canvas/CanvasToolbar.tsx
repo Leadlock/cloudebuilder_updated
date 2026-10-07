@@ -80,7 +80,7 @@ export default function CanvasToolbar({
   return (
     <div
       className={clsx(
-        'absolute top-3 left-3 sm:top-4 sm:left-4 z-20 max-w-[calc(100vw-1.5rem)] sm:max-w-[calc(100vw-2rem)] overflow-x-auto no-scrollbar flex items-center gap-1 p-1 rounded-xl shadow-xl backdrop-blur-md select-none border transition-colors',
+        'absolute top-3 left-3 sm:top-4 sm:left-4 z-20 max-w-[calc(100%-7.5rem)] overflow-x-auto [scrollbar-width:thin] flex items-center gap-1 p-1 rounded-xl shadow-xl backdrop-blur-md select-none border transition-colors',
         isLight ? 'bg-white/95 border-slate-200 text-slate-800 shadow-slate-300/60' : 'bg-slate-900/95 border-slate-700/80 text-slate-200 shadow-2xl'
       )}
     >

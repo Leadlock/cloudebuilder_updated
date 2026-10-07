@@ -7,6 +7,7 @@
  */
 process.env['SESSION_SECRET'] = 'a-test-secret-that-is-at-least-32-chars-long';
 
+import { createHmac } from 'crypto';
 import { encodeSessionToken, decodeSessionToken } from '@/lib/crypto/sessionToken';
 
 describe('sessionToken — encode/decode roundtrip', () => {
@@ -67,7 +68,6 @@ describe('sessionToken — malformed input never throws', () => {
   it('returns null for a syntactically valid signature over non-JSON body', () => {
     // Manually construct a token whose body isn't valid JSON, signed correctly,
     // to ensure the JSON.parse failure path returns null rather than throwing.
-    const { createHmac } = require('crypto') as typeof import('crypto');
     const body = Buffer.from('not json at all {{{', 'utf8').toString('base64url');
     const signature = createHmac('sha256', process.env['SESSION_SECRET']!).update(body).digest('base64url');
     expect(decodeSessionToken(`${body}.${signature}`)).toBeNull();

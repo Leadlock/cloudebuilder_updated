@@ -57,6 +57,18 @@ function getResourceIcon(type: string, address: string) {
   return Cpu;
 }
 
+/** The current time, refreshed every second while `active`, so elapsed times keep counting without reading the clock during render. */
+function useNowMs(active: boolean): number {
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    setNow(Date.now());
+    if (!active) return undefined;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+  return now;
+}
+
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -104,6 +116,7 @@ export default function TerraformExecutionPanel() {
   const [applyRunId, setApplyRunId] = useState<string | null>(null);
   const [applyStatus, setApplyStatus] = useState<TerraformApplyStatus | null>(null);
   const [applying, setApplying] = useState(false);
+  const nowMs = useNowMs(applying || applyStatus?.state === 'active');
   const [applyError, setApplyError] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
 
@@ -1306,7 +1319,7 @@ export default function TerraformExecutionPanel() {
                     const isRunning = row.running;
                     const isFailed = row.failed;
                     const isStopped = row.stopped;
-                    const runningFor = isRunning && row.startedAt ? Math.max(row.seconds ?? 0, Math.floor((Date.now() - row.startedAt) / 1000)) : row.seconds;
+                    const runningFor = isRunning && row.startedAt ? Math.max(row.seconds ?? 0, Math.floor((nowMs - row.startedAt) / 1000)) : row.seconds;
                     const Icon = getResourceIcon(rc.type, rc.address);
 
                     return (

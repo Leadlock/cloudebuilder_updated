@@ -48,13 +48,9 @@ const COPY: Record<AiReviewMode, { title: string; button: string; placeholder: s
 export type AnyReview = AiReviewResult | AiSecurityReview | AiWellArchitectedReview;
 
 export default function AiReviewCard({ nodes, edges, mode = 'general', onReview }: { nodes: CanvasNode[]; edges: CanvasEdge[]; mode?: AiReviewMode; /** Called with each completed review (and the nodes it was run on) so a parent can reuse it, e.g. in an export. */ onReview?: (review: AnyReview, nodes: CanvasNode[]) => void }) {
-  let isLight = false;
-  try {
-    const { state } = useApp();
-    isLight = state?.theme === 'light';
-  } catch {
-    isLight = false;
-  }
+  // useApp never throws: outside the provider it returns the initial state, so no try/catch is needed (and a hook inside one is flagged).
+  const { state } = useApp();
+  const isLight = state?.theme === 'light';
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

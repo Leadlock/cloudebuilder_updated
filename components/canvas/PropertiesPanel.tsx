@@ -317,6 +317,9 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
     return () => { isCancelled = true; };
   }, [node?.id, activeProject?.id]);
 
+  // Declared before the early returns: a hook after them runs only when a node is selected, so selecting one changed the hook count and React threw.
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
   if (!node) return null;
   const def = getResourceDefinition(node.resourceType);
   if (!def) return null;
@@ -336,8 +339,6 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
   const cloudArn = (node.config?.arn as string) || (node.config?.providerResourceId as string) || '';
   const cloudRegion = (node.config?.region as string) || node.region || '';
   const cloudSource = (node.config?.source as string) || (provider === 'azure' ? 'azure-arm' : 'aws-api');
-
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const rawStatus = (node.config?.status as string) || (node.config?.cloudStatus as string) || (node.config?.state as string) || '';
   const normalizedStatus = rawStatus ? String(rawStatus).toLowerCase().trim() : '';
