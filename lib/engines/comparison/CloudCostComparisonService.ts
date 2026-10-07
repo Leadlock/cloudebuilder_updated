@@ -92,17 +92,17 @@ const AWS_RDS_SPECS: ComputeSpec[] = [
 /**
  * Azure SQL tier -> approximate vCPU equivalent, used only to pick the nearest tier for an RDS instance class.
  *
- * Microsoft's own guidance puts about 100 DTUs (S3) at one vCore, so a 2-vCPU RDS instance is about S4 (200 DTUs), not S1 (20 DTUs): the
- * earlier mapping put every instance class at S0-S4 by vCPU 1/2/4/8/16, which sized a 2-vCPU database at one tenth of its capacity and made
- * Azure look several times cheaper than it is. Above 2 vCPU the vCore model (GP_Gen5_N, General Purpose) is used, priced per vCore by the static
- * table in lib/engines/cost/azurePricing.ts. DTU is not literally vCPU: this is an approximation, not a precise conversion.
+ * From 2 vCPU up the vCore model (GP_Gen5_N, General Purpose) is used, because a vCore is the same kind of unit as an RDS vCPU. A DTU tier is a blend
+ * of CPU, memory and I/O, not a size, so a DTU tier next to an RDS instance is not a like-for-like comparison. The earlier mapping put a 2-vCPU
+ * instance at the S4 DTU tier ($294/mo), which the cost screen then had to flag as not the same size. Below 2 vCPU only the small DTU tiers
+ * exist, so those remain; they are an approximation. vCore tiers are priced live per vCore by lib/cloud/pricing/AzurePricingProvider.ts.
  */
 const AZURE_SQL_TIERS: Array<{ key: string; vcpuEquivalent: number }> = [
   { key: 'S0', vcpuEquivalent: 0.1 },
   { key: 'S1', vcpuEquivalent: 0.2 },
   { key: 'S2', vcpuEquivalent: 0.5 },
   { key: 'S3', vcpuEquivalent: 1 },
-  { key: 'S4', vcpuEquivalent: 2 },
+  { key: 'GP_Gen5_2', vcpuEquivalent: 2 },
   { key: 'GP_Gen5_4', vcpuEquivalent: 4 },
   { key: 'GP_Gen5_8', vcpuEquivalent: 8 },
   { key: 'GP_Gen5_16', vcpuEquivalent: 16 },

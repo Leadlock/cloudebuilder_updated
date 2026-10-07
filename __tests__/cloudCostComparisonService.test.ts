@@ -123,11 +123,11 @@ describe('CloudCostComparisonService — RDS <-> Azure SQL config translation', 
     expect(large.config.tier).toMatch(priced);
   });
 
-  it('sizes a 2-vCPU instance at about 200 DTUs (S4), not a tenth of that', () => {
+  it('sizes a 2-vCPU instance as a 2-vCore General Purpose database, the same unit as the AWS vCPU', () => {
     const [two] = CloudCostComparisonService.translateNodes(
       [makeNode({ resourceType: 'aws_rds', config: { instanceClass: 'db.t3.medium', allocatedStorage: 20 } })], 'azure',
     );
-    expect(two.config.tier).toBe('S4');
+    expect(two.config.tier).toBe('GP_Gen5_2');
     const [sixteen] = CloudCostComparisonService.translateNodes(
       [makeNode({ resourceType: 'aws_rds', config: { instanceClass: 'db.r6g.4xlarge', allocatedStorage: 20 } })], 'azure',
     );

@@ -45,6 +45,39 @@ describe('unit conversion', () => {
   });
 });
 
+/** Real vCore rows (eastus, captured 2026-10-07): the compute price is for all n vCores, zone redundancy is its own row, storage is per GB. */
+const GP = 'SQL Database Single/Elastic Pool General Purpose - Compute Gen5';
+const VCORE_ROWS = [
+  row({ serviceName: 'SQL Database', productName: GP, skuName: '2 vCore', meterName: 'vCore', retailPrice: 0.304434 }),
+  row({ serviceName: 'SQL Database', productName: GP, skuName: '4 vCore', meterName: 'vCore', retailPrice: 0.608868 }),
+  row({ serviceName: 'SQL Database', productName: GP, skuName: '2 vCore Zone Redundancy', meterName: 'Zone Redundancy vCore', retailPrice: 0.18266 }),
+  row({ serviceName: 'SQL Database', productName: 'SQL Database Single/Elastic Pool General Purpose - Storage', skuName: 'General Purpose', meterName: 'General Purpose Data Stored', unitOfMeasure: '1 GB/Month', retailPrice: 0.115 }),
+  row({ serviceName: 'SQL Database', productName: 'SQL Database Single/Elastic Pool General Purpose - Storage', skuName: 'General Purpose', meterName: 'General Purpose Data Stored - Free', unitOfMeasure: '1 GB/Month', retailPrice: 0 }),
+  row({ serviceName: 'SQL Database', productName: 'SQL Database Single/Elastic Pool General Purpose - Storage', skuName: 'General Purpose Zone Redundancy', meterName: 'General Purpose Zone Redundancy Data Stored', unitOfMeasure: '1 GB/Month', retailPrice: 0.23 }),
+];
+
+describe('Azure SQL Database, vCore model (live)', () => {
+  const vq = (zoneRedundant: boolean, maxSizeGb = 200) => ({ provider: 'azure' as const, resourceType: 'azure_sql', region: 'eastus', configuration: { tier: 'GP_Gen5_2', maxSizeGb, zoneRedundant } });
+
+  test('2 vCores, zone redundant, 200 GB: compute + zone redundancy + storage at the zone-redundant rate (hand-checked $401.60)', async () => {
+    serve(VCORE_ROWS);
+    const p = await prov.getPrice(vq(true));
+    expect(p!.source).toBe('azure-retail-api');
+    expect(p!.monthlyPrice).toBeCloseTo((0.304434 + 0.18266) * 730 + 200 * 0.23, 2);
+    expect(p!.assumptions.join(' ')).toMatch(/license/);
+  });
+
+  test('not zone redundant: no zone-redundancy row and the ordinary storage rate (hand-checked $245.23)', async () => {
+    serve(VCORE_ROWS);
+    const p = await prov.getPrice(vq(false));
+    expect(p!.monthlyPrice).toBeCloseTo(0.304434 * 730 + 200 * 0.115, 2);
+  });
+
+  test('a missing row is not guessed from another size (null, so the static table prices it)', async () => {
+    serve(VCORE_ROWS.filter((r) => r.skuName !== '2 vCore Zone Redundancy'));
+    expect(await prov.getPrice(vq(true))).toBeNull();
+  });
+});
 describe('Azure SQL Database (live)', () => {
   test('S1 matches only the S1 meter and converts per-day to per-month (about $29, not $100,000)', async () => {
     serve(SQL_ROWS);
@@ -129,7 +162,7 @@ describe('end to end: a small three-service stack never prices a database in the
       pricing: { getPrice: (q) => prov.getPrice(q).then((p) => p ?? ({ source: 'unavailable' } as never)) },
     }).estimateAsync({ architectureId: 'a', projectId: 'p', resources: [db as unknown as DbArchitectureResource] });
     expect(est.totalMonthlyUsd).toBeGreaterThan(5);
-    // A 2-vCPU database maps to S4 (200 DTUs, about $294/month at list price). The fixture has no S4 row, so the static table prices it.
+    // A 2-vCPU database maps to GP_Gen5_2 (2 vCores). The fixture has no vCore rows, so the static table prices it.
     expect(est.totalMonthlyUsd).toBeLessThan(400);
   });
 });

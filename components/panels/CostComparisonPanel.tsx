@@ -12,7 +12,7 @@ import CostInsightsCard from './CostInsightsCard';
 /** Plain-language reasons a service costs very different amounts on the two clouds, for the services present in this architecture. */
 const PRICE_DIFFERENCE_NOTES: [RegExp, string][] = [
   [/load_?balancer|alb|elb|lb|app_?gateway/i, 'Load balancers: AWS charges a small hourly fee plus usage. Azure Application Gateway has a fixed monthly fee (about $146) plus usage, so it costs more even when idle.'],
-  [/rds|sql|postgres|mysql|database/i, 'Databases: sizes do not line up one to one. A managed AWS instance is mapped to the nearest Azure tier by vCPU, which can be a pricier tier. Treat the database line as an approximation.'],
+  [/rds|sql|postgres|mysql|database/i, 'Databases: matched by vCPU (an AWS vCPU against an Azure vCore). Azure SQL Database includes the SQL Server license, which an AWS PostgreSQL instance does not, and zone redundancy is a separate Azure charge, so Azure is higher at the same size. Azure Database for PostgreSQL would be the closer engine match.'],
   [/redis|elasticache|cache/i, 'Caches: AWS prices each node. Azure Standard and Premium caches include a replica in one price, so the two are only close at the same size and tier.'],
   [/waf/i, 'Web firewall: AWS charges per rule and per request; Azure charges a base fee for the policy. Totals depend on how many rules you use.'],
   [/route53|dns/i, 'DNS: Route 53 is compared with Azure DNS. Both charge per hosted zone plus per million queries, so the totals are close; query volume is the main variable.'],

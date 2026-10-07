@@ -182,8 +182,12 @@ export class AzurePricingProvider implements ICloudPricingProvider {
     const tier = (config['tier'] as string) || 'S0';
     const maxSizeGb = Number(config['maxSizeGb'] || 250);
 
-    // Only the classic DTU tiers (Basic, S0-S12, P1-P15) are single meters. vCore tiers (GP_Gen5_N, BusinessCritical, ...) are priced per
-    // vCore by the static table, so they return null here rather than matching some unrelated meter.
+    // vCore tiers (GP_Gen5_N, BC_Gen5_N) are priced from the live compute, zone-redundancy and storage rows.
+    const vcore = /^(GP|BC)_Gen5_(\d{1,2})$/i.exec(tier);
+    if (vcore) return this._getSqlVcorePrice(vcore[1]!.toUpperCase() as 'GP' | 'BC', Number(vcore[2]), config, region);
+
+    // The classic DTU tiers (Basic, S0-S12, P1-P15) are single meters. Any other tier name returns null here rather than matching some
+    // unrelated meter, and the static table prices it.
     if (!/^(Basic|S\d{1,2}|P\d{1,2})$/i.test(tier)) return null;
 
     const filter = `serviceName eq 'SQL Database' and armRegionName eq '${region}' and skuName eq '${tier}' and priceType eq 'Consumption'`;
@@ -221,6 +225,59 @@ export class AzurePricingProvider implements ICloudPricingProvider {
       assumptions: [
         `Database ${tier} list price: $${item.retailPrice} per ${item.unitOfMeasure} = $${computeMonthly.toFixed(2)}/mo`,
         storageMonthly > 0 ? `Storage above 250GB: $${storageMonthly.toFixed(2)}/mo` : 'Storage up to 250GB is included in the DTU price',
+        `Region: ${region}`,
+      ],
+    };
+  }
+
+  /**
+   * Azure SQL Database in the vCore model, General Purpose or Business Critical, Gen5. Three official meters make the monthly price:
+   *  - compute: the row whose SKU is "<n> vCore" (its price is for all n vCores, per hour);
+   *  - zone redundancy: a separate row, "<n> vCore Zone Redundancy", added when the database is zone redundant (the Multi-AZ counterpart);
+   *  - storage: per GB for the maximum size, at the zone-redundant rate when zone redundant.
+   * Azure SQL prices include the SQL Server license, which an AWS PostgreSQL instance does not have, and the assumptions say so. Null when
+   * any needed row is missing, so the static table prices it and the line is labelled an estimate.
+   */
+  private async _getSqlVcorePrice(family: 'GP' | 'BC', vcores: number, config: Record<string, unknown>, region: string): Promise<NormalizedPrice | null> {
+    const familyName = family === 'GP' ? 'General Purpose' : 'Business Critical';
+    const zoneRedundant = config['zoneRedundant'] === true;
+    const maxSizeGb = Number(config['maxSizeGb'] || 32);
+    const filter = `serviceName eq 'SQL Database' and armRegionName eq '${region}' and priceType eq 'Consumption' and contains(productName,'Single/Elastic Pool ${familyName}')`;
+    let items: AzureRetailPriceItem[] = [];
+    try {
+      items = await this._fetchRetailPrices(filter);
+    } catch {
+      return null;
+    }
+    const compute = items.find((i) => /Compute Gen5/i.test(i.productName) && i.skuName === `${vcores} vCore` && i.meterName === 'vCore' && i.retailPrice > 0);
+    const zone = zoneRedundant ? items.find((i) => /Compute Gen5/i.test(i.productName) && i.skuName === `${vcores} vCore Zone Redundancy` && i.retailPrice > 0) : undefined;
+    const storage = items.find((i) => /Storage/i.test(i.productName) && /Data Stored$/i.test(i.meterName) && !/Free/i.test(i.meterName) && (zoneRedundant ? /Zone Redundancy/i.test(i.skuName) : !/Zone Redundancy/i.test(i.skuName)) && i.retailPrice > 0);
+    if (!compute || (zoneRedundant && !zone) || !storage) return null;
+    const computeMonthly = monthlyFromRetailItem(compute);
+    const zoneMonthly = zone ? monthlyFromRetailItem(zone) : 0;
+    const storageMonthly = maxSizeGb * storage.retailPrice;
+    if (computeMonthly === null || zoneMonthly === null) return null;
+    const monthlyPrice = computeMonthly + zoneMonthly + storageMonthly;
+    return {
+      provider: 'azure',
+      service: 'SQL Database',
+      resourceType: 'azure_sql',
+      region,
+      sku: `${family}_Gen5_${vcores}${zoneRedundant ? '_ZR' : ''}`,
+      pricingModel: 'on-demand',
+      unit: '1 Hour',
+      unitPrice: (computeMonthly + zoneMonthly) / HOURS_PER_MONTH,
+      monthlyPrice,
+      currency: 'USD',
+      description: `Azure SQL Database ${familyName} Gen5, ${vcores} vCores${zoneRedundant ? ', zone redundant' : ''} (${maxSizeGb}GB)`,
+      source: 'azure-retail-api',
+      retrievedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      assumptions: [
+        `${familyName} ${vcores} vCore compute: ${compute.retailPrice} per Hour = ${computeMonthly.toFixed(2)}/mo`,
+        ...(zone ? [`Zone redundancy: ${zone.retailPrice} per Hour = ${(zoneMonthly ?? 0).toFixed(2)}/mo`] : []),
+        `Storage ${maxSizeGb}GB at ${storage.retailPrice}/GB-month = ${storageMonthly.toFixed(2)}/mo`,
+        'Includes the SQL Server license; an AWS PostgreSQL instance has no license cost, so part of any gap is the license.',
         `Region: ${region}`,
       ],
     };
