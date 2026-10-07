@@ -404,6 +404,7 @@ locals {
 
           blocks.push(this._lambda(name, cfg, subnetRefs, sgRef));
           resourceMap[r.id] = `aws_lambda_function.${name}`;
+          warnings.push(`Lambda "${r.label}" deploys a file named placeholder.zip because no code package exists on the canvas. CloudCraft's own deploy creates that file for you. If you run this Terraform yourself, put your function's zip next to main.tf under that name (or change filename in main.tf) before running terraform plan, or it stops with "no such file".`);
           break;
         }
         case 'aws_alb': {
