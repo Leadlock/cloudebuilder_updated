@@ -213,7 +213,17 @@ export default function Dashboard() {
         </span>
       </div>
 
-      {filteredProjects.length === 0 ? (
+      {filteredProjects.length === 0 && state.currentUser && !state.apiLoaded ? (
+        // The projects are still being fetched (a second or more on a remote database). Saying "No projects found" and offering to create one in
+        // the meantime was wrong, so say what is happening instead.
+        <div role="status" aria-live="polite" className={clsx(
+          "flex flex-col items-center justify-center py-16 sm:py-20 text-center rounded-2xl border",
+          isLight ? "bg-white border-slate-200 shadow-xs" : "bg-gray-900/40 border-gray-800/80"
+        )}>
+          <div className="w-8 h-8 mb-4 border-4 border-blue-900 border-t-blue-500 rounded-full animate-spin" />
+          <p className={clsx("font-semibold text-sm", isLight ? "text-slate-800" : "text-gray-300")}>Loading your projects…</p>
+        </div>
+      ) : filteredProjects.length === 0 ? (
         <div className={clsx(
           "flex flex-col items-center justify-center py-16 sm:py-20 text-center rounded-2xl border",
           isLight ? "bg-white border-slate-200 shadow-xs" : "bg-gray-900/40 border-gray-800/80"
