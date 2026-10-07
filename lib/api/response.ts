@@ -87,16 +87,28 @@ type SafeParseResult<T> =
   | { success: true; data: T }
   | { success: false; error: ZodError };
 
+/** Whether a parsed JSON value has a NUL character in any string or object key, however deeply nested. */
+export function containsNulCharacter(value: unknown, depth = 0): boolean {
+  if (depth > 40) return false;
+  if (typeof value === 'string') return value.includes('\u0000');
+  if (Array.isArray(value)) return value.some((v) => containsNulCharacter(v, depth + 1));
+  if (value && typeof value === 'object') return Object.entries(value).some(([k, v]) => k.includes('\u0000') || containsNulCharacter(v, depth + 1));
+  return false;
+}
+
 export async function parseBody<T>(
   req: NextRequest,
   schema: { safeParse: (v: unknown) => SafeParseResult<T> },
 ): Promise<{ ok: true; data: T } | { ok: false; response: NextResponse<ApiError> }> {
   let body: unknown;
   try {
-    body = await req.json();
+    body = JSON.parse(await req.text());
   } catch {
     return { ok: false, response: badRequest('Invalid JSON body') };
   }
+  // A NUL character in any text (or key) is refused by the database, which used to surface as a 500 from whichever route stored or looked up
+  // that field. It is never valid, so it is a 400 here, for every route that reads its body through parseBody.
+  if (containsNulCharacter(body)) return { ok: false, response: badRequest('The request contains an invalid character.') };
   const result = schema.safeParse(body);
   if (!result.success) {
     return { ok: false, response: validationError(result.error) };
