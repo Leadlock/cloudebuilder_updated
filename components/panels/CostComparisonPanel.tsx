@@ -50,6 +50,7 @@ function QualityNote({ quality, item }: { quality?: SideQuality; item: CostItem 
     <>
       <span title={q.notes.join(' ')} data-quality={q.status} className={clsx('ml-2 align-middle px-1.5 py-0.5 rounded text-[10px] font-semibold border', QUALITY_TONE[q.status])}>{QUALITY_LABEL[q.status]}</span>
       {q.status !== 'verified' && q.notes.length > 0 && <span className="block text-[11px] text-amber-600 mt-0.5 font-normal">{q.notes[0]}</span>}
+      {q.assumes.map((a) => <span key={a} className="block text-[11px] text-slate-500 mt-0.5 font-normal" data-testid="price-assumes">{a}</span>)}
       {q.excludes.length > 0 && <span className="block text-[11px] text-slate-500 mt-0.5 font-normal" data-testid="price-excludes">Plus usage not counted: {q.excludes.join('; ')}</span>}
       {q.status !== 'unpriced' && sent !== 'sent' && !open && <button type="button" onClick={() => setOpen(true)} className="block text-[11px] text-slate-500 underline mt-0.5 font-normal">This price looks wrong</button>}
       {open && sent !== 'sent' && (

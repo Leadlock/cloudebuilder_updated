@@ -17,7 +17,7 @@ const line = (o: Partial<CostLineItem>): CostLineItem => ({
 
 describe('assessLine', () => {
   test('a price from the official list that passes every check is verified', () => {
-    expect(assessLine(line({}))).toEqual({ status: 'verified', notes: [], excludes: [] });
+    expect(assessLine(line({}))).toEqual({ status: 'verified', notes: [], excludes: [], assumes: [] });
     expect(assessLine(line({ pricingTier: 'CACHED_LIVE' })).status).toBe('verified');
   });
 
@@ -85,6 +85,25 @@ describe('assessResult', () => {
   test('the oldest price time is the earliest valid one, or null when none is known', () => {
     expect(oldestPriceTime([line({ pricingRetrievedAt: '2026-10-07T10:00:00Z' }), line({ pricingRetrievedAt: '2026-10-06T10:00:00Z' }), line({})])).toBe('2026-10-06T10:00:00Z');
     expect(oldestPriceTime([line({ pricingRetrievedAt: 'garbage' }), line({})])).toBeNull();
+  });
+});
+
+describe('a saved price is only reused for a resource that would be priced the same', () => {
+  const key = (resourceType: string, configuration: Record<string, unknown>) => new PricingCache().makeCacheKey({ provider: 'aws', resourceType, region: 'us-east-1', configuration });
+
+  test.each([
+    ['cache node type', 'aws_elasticache', { nodeType: 'cache.t3.medium', numNodes: 2 }, { nodeType: 'cache.r6g.large', numNodes: 2 }],
+    ['cache node count', 'aws_elasticache', { nodeType: 'cache.t3.medium', numNodes: 2 }, { nodeType: 'cache.t3.medium', numNodes: 3 }],
+    ['task size', 'aws_ecs', { cpu: 256, memory: 512, desiredCount: 2 }, { cpu: 1024, memory: 2048, desiredCount: 2 }],
+    ['task count', 'aws_ecs', { cpu: 256, memory: 512, desiredCount: 2 }, { cpu: 256, memory: 512, desiredCount: 4 }],
+    ['zone redundancy', 'azure_sql', { tier: 'GP_Gen5_2', zoneRedundant: true }, { tier: 'GP_Gen5_2', zoneRedundant: false }],
+    ['assumed traffic', 'aws_cloudfront', { priceClass: 'PriceClass_100', estimatedDataTransferGb: 1000 }, { priceClass: 'PriceClass_100', estimatedDataTransferGb: 5000 }],
+  ])('a different %s gets its own key', (_what, type, a, b) => {
+    expect(key(type, a)).not.toBe(key(type, b));
+  });
+
+  test('a different name, label or tags does not change the key, so identical resources share one saved price', () => {
+    expect(key('aws_ecs', { name: 'api', tags: { team: 'a' }, cpu: 256 })).toBe(key('aws_ecs', { name: 'worker', tags: { team: 'b' }, cpu: 256 }));
   });
 });
 

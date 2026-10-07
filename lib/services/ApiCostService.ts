@@ -55,7 +55,7 @@ export interface CostComparisonResult {
 
 export interface SideQuality {
   /** Keyed by the line's resource id (the same id as CostItem.nodeId). */
-  lines: Record<string, { status: 'verified' | 'estimate' | 'check' | 'unpriced'; notes: string[]; excludes: string[] }>;
+  lines: Record<string, { status: 'verified' | 'estimate' | 'check' | 'unpriced'; notes: string[]; excludes: string[]; assumes: string[] }>;
   summary: { verified: number; estimates: number; check: number; unpriced: number; verifiedUsd: number; estimateUsd: number; checkUsd: number };
   /** When the oldest price on this side was fetched from the official list. */
   oldestPriceAt: string | null;

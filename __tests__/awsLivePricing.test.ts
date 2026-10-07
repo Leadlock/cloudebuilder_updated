@@ -117,6 +117,97 @@ describe('AwsPricingProvider — live AWS Price List Query API', () => {
     });
   });
 
+  describe('ECS Fargate', () => {
+    const row = (usagetype: string, usd: string) => JSON.stringify({
+      product: { productFamily: 'Compute', attributes: { usagetype } },
+      terms: { OnDemand: { t: { priceDimensions: { d: { unit: 'hours', pricePerUnit: { USD: usd }, description: '' } } } } },
+    });
+    // Real us-east-1 rows (2026-10-07), with the Spot, ARM, Windows and ephemeral-storage meters that sit in the same family.
+    const FARGATE = [
+      row('USE1-Fargate-Spot-vCPU-Hours:perCPU', '0.0121440000'),
+      row('USE1-Fargate-ARM-vCPU-Hours:perCPU', '0.0323840000'),
+      row('USE1-Fargate-Windows-vCPU-Hours:perCPU', '0.0910000000'),
+      row('USE1-Fargate-EphemeralStorage-GB-Hours', '0.0001110000'),
+      row('USE1-Fargate-vCPU-Hours:perCPU', '0.0404800000'),
+      row('USE1-Fargate-GB-Hours', '0.0044450000'),
+    ];
+    const ask = async (config: Record<string, unknown>) => {
+      process.env['AWS_PRICING_ACCESS_KEY_ID'] = 'AKIATEST';
+      process.env['AWS_PRICING_SECRET_ACCESS_KEY'] = 'secret';
+      const { AwsPricingProvider } = await import('@/lib/cloud/pricing/AwsPricingProvider');
+      return new AwsPricingProvider().getPrice({ provider: 'aws', resourceType: 'aws_ecs', region: 'us-east-1', configuration: config });
+    };
+
+    // AWS answers each question separately: the per-vCPU meters for cputype=perCPU, the per-GB meters for memorytype=perGB.
+    const answerFargate = (rows = FARGATE) => mockSend.mockImplementation(async (cmd: { Filters: { Field: string }[] }) => ({
+      PriceList: rows.filter((r) => (cmd.Filters.some((f) => f.Field === 'cputype') ? /vCPU/.test(r) : /GB-Hours/.test(r))),
+    }));
+
+    test('1 vCPU / 2 GB x 2 tasks uses only the plain Linux rates (hand-checked $72.08)', async () => {
+      answerFargate();
+      const p = await ask({ launchType: 'FARGATE', cpu: 1024, memory: 2048, desiredCount: 2 });
+      expect(p!.source).toBe('aws-price-list-api');
+      expect(p!.monthlyPrice).toBeCloseTo((1 * 0.04048 + 2 * 0.004445) * 2 * 730, 2);
+    });
+
+    test('the EC2 launch type has no ECS charge of its own, so it is left to the built-in estimator', async () => {
+      answerFargate();
+      expect(await ask({ launchType: 'EC2', cpu: 1024, memory: 2048, desiredCount: 2 })).toBeNull();
+    });
+
+    test('a missing rate is never guessed (null)', async () => {
+      answerFargate([FARGATE[4]!]);
+      expect(await ask({ launchType: 'FARGATE', cpu: 1024, memory: 2048 })).toBeNull();
+    });
+  });
+
+  describe('CloudFront', () => {
+    const dim = (unit: string, begin: string, end: string, usd: string) => ({ unit, beginRange: begin, endRange: end, pricePerUnit: { USD: usd }, description: '' });
+    const item = (usagetype: string, dims: ReturnType<typeof dim>[]) => JSON.stringify({
+      product: { productFamily: 'x', attributes: { usagetype } },
+      terms: { OnDemand: { t: { priceDimensions: Object.fromEntries(dims.map((d, i) => [`d${i}`, d])) } } },
+    });
+    // Real rows (2026-10-07): United States data transfer out in tiers, and HTTPS requests.
+    const TRANSFER = item('US-DataTransfer-Out-Bytes', [dim('GB', '0', '10240', '0.085'), dim('GB', '10240', '51200', '0.080'), dim('GB', '51200', 'Inf', '0.060')]);
+    const REQUESTS = item('US-Requests-Tier2-HTTPS', [dim('Requests', '0', 'Inf', '0.000001')]);
+    const answerByUsage = () => mockSend.mockImplementation(async (cmd: { Filters: { Field: string; Value: string }[] }) => {
+      const usage = cmd.Filters.find((f) => f.Field === 'usagetype')?.Value;
+      return { PriceList: usage === 'US-DataTransfer-Out-Bytes' ? [TRANSFER] : usage === 'US-Requests-Tier2-HTTPS' ? [REQUESTS] : [] };
+    });
+    const ask = async (config: Record<string, unknown>) => {
+      process.env['AWS_PRICING_ACCESS_KEY_ID'] = 'AKIATEST';
+      process.env['AWS_PRICING_SECRET_ACCESS_KEY'] = 'secret';
+      const { AwsPricingProvider } = await import('@/lib/cloud/pricing/AwsPricingProvider');
+      return new AwsPricingProvider().getPrice({ provider: 'aws', resourceType: 'aws_cloudfront', region: 'us-east-1', configuration: config });
+    };
+
+    test('the assumed 1 TB and 10M requests cost $85 + $10 (hand-checked), and the line states the assumption', async () => {
+      answerByUsage();
+      const p = await ask({ priceClass: 'PriceClass_100' });
+      expect(p!.source).toBe('aws-price-list-api');
+      expect(p!.monthlyPrice).toBeCloseTo(1000 * 0.085 + 10_000_000 * 0.000001, 2);
+      expect(p!.assumptions[0]).toMatch(/^Assumed traffic: 1000 GB/);
+    });
+
+    test('data transfer is charged tier by tier: 20,000 GB is 10,240 at $0.085 plus 9,760 at $0.080', async () => {
+      answerByUsage();
+      const p = await ask({ estimatedDataTransferGb: 20_000, estimatedRequests: 0 });
+      expect(p!.monthlyPrice).toBeCloseTo(10_240 * 0.085 + 9_760 * 0.08, 2);
+    });
+
+    test('a class other than 100 says the United States rate is a lower bound', async () => {
+      answerByUsage();
+      const p = await ask({ priceClass: 'PriceClass_All' });
+      expect(p!.assumptions.join(' ')).toMatch(/lower bound/);
+    });
+
+    test('with no answer from the list it falls back to the built-in estimate, never throws', async () => {
+      mockSend.mockResolvedValue({ PriceList: [] });
+      const p = await ask({ priceClass: 'PriceClass_100' });
+      expect(p!.source).toBe('aws-static-rate-table');
+    });
+  });
+
   test('NAT Gateway prices are looked up under the Amazon EC2 service, where AWS lists them', async () => {
     process.env['AWS_PRICING_ACCESS_KEY_ID'] = 'AKIATEST';
     process.env['AWS_PRICING_SECRET_ACCESS_KEY'] = 'secret';
@@ -339,14 +430,14 @@ describe('AwsPricingProvider — live AWS Price List Query API', () => {
     expect(price!.source).toBe('aws-static-rate-table');
   });
 
-  test('resource types with no live wiring (Lambda, CloudFront, DynamoDB) always report the static source', async () => {
+  test('resource types with no live wiring (Lambda, DynamoDB) always report the static source', async () => {
     process.env['AWS_PRICING_ACCESS_KEY_ID'] = 'AKIATEST';
     process.env['AWS_PRICING_SECRET_ACCESS_KEY'] = 'secrettest';
     mockSend.mockResolvedValue({ PriceList: [priceListItem('9.9900000000')] });
 
     const { AwsPricingProvider } = await import('@/lib/cloud/pricing/AwsPricingProvider');
     const provider = new AwsPricingProvider();
-    for (const resourceType of ['aws_lambda', 'aws_cloudfront', 'aws_dynamodb']) {
+    for (const resourceType of ['aws_lambda', 'aws_dynamodb']) {
       const price = await provider.getPrice({ provider: 'aws', resourceType, region: 'us-east-1', configuration: {} });
       expect(price).not.toBeNull();
       expect(price!.source).toBe('aws-static-rate-table');

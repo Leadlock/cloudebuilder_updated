@@ -9,6 +9,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 import type { NormalizedPrice, PriceQuery } from './types';
 import { classifyPricingSource } from './tiers';
 
@@ -19,8 +20,11 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
  * ignored and dropped on the next load instead of being shown for up to 24 hours after the fix (an Azure Redis cache was shown at
  * double its price this way). Version 2 is the first with this prefix.
  */
-export const PRICING_CACHE_VERSION = 2;
+export const PRICING_CACHE_VERSION = 3; // 3: keys cover every setting that can change a price (before, a node type or task size was not in the key)
 const KEY_PREFIX = `v${PRICING_CACHE_VERSION}:`;
+
+/** Settings that name or describe a resource but never change what it costs. */
+const PRICE_IRRELEVANT_SETTINGS = new Set(['name', 'label', 'description', 'tags', 'id', 'containerImage', 'defaultRootObject', 'comment']);
 
 /** An AI-matched price that lists the same meter line twice was added up twice (the old duplicate-meter bug), so it is wrong. */
 function hasDoubleCountedMeter(v: NormalizedPrice): boolean {
@@ -81,7 +85,18 @@ export class PricingCache {
       configuration['storageGb'] ? `st:${configuration['storageGb']}` : '',
     ].filter(Boolean).join('-');
 
-    return `${KEY_PREFIX}${provider.toLowerCase()}:${resourceType.toLowerCase()}:${region.toLowerCase()}:${sku.toLowerCase()}${extra ? `:${extra}` : ''}`;
+    // Every setting that can change a price must change the key: a cache node type, a task size, a node count, a zone-redundancy switch.
+    // Keying on a short list of fields served one resource's saved price to another that differed only in a field not on the list. A hash
+    // of all plain settings (except ones that never affect a price) keeps the key short and exact; a setting that does not matter only
+    // costs an extra fetch, never a wrong price.
+    const settings = Object.entries(configuration)
+      .filter(([k, v]) => !PRICE_IRRELEVANT_SETTINGS.has(k) && (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'))
+      .map(([k, v]) => `${k}=${String(v).slice(0, 80)}`)
+      .sort()
+      .join('|');
+    const settingsHash = createHash('sha1').update(settings).digest('hex').slice(0, 10);
+
+    return `${KEY_PREFIX}${provider.toLowerCase()}:${resourceType.toLowerCase()}:${region.toLowerCase()}:${sku.toLowerCase()}${extra ? `:${extra}` : ''}:${settingsHash}`;
   }
 
   get(key: string, allowStale = true): NormalizedPrice | null {

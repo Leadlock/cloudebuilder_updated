@@ -241,6 +241,8 @@ function getPricingClient(): PricingClient | null {
 
 interface AwsPriceDimension {
   unit: string;
+  beginRange?: string;
+  endRange?: string;
   pricePerUnit: { USD?: string };
   description: string;
 }
@@ -258,7 +260,8 @@ interface AwsPriceListItem {
 async function queryOnDemandPrices(
   serviceCode: string,
   filters: Array<{ field: string; value: string }>,
-): Promise<Array<{ price: number; unit: string; usagetype?: string }>> {
+  maxResults = 10,
+): Promise<Array<{ price: number; unit: string; usagetype?: string; beginRange?: number; endRange?: number }>> {
   const client = getPricingClient();
   if (!client) {
     if (!warnedNoClient) { warnedNoClient = true; console.warn('[AwsPricingProvider] No AWS price list access (no server key and no connected role session): AWS prices use the built-in table.'); }
@@ -271,13 +274,13 @@ async function queryOnDemandPrices(
     const cmd = new GetProductsCommand({
       ServiceCode: serviceCode,
       Filters: filters.map((f) => ({ Type: 'TERM_MATCH', Field: f.field, Value: f.value })),
-      MaxResults: 10,
+      MaxResults: maxResults,
     });
     const res = await client.send(cmd, { abortSignal: controller.signal });
     deniedAt = null; // the price list answered, so any earlier refusal no longer applies
     clearTimeout(timeoutId);
 
-    const results: Array<{ price: number; unit: string; usagetype?: string }> = [];
+    const results: Array<{ price: number; unit: string; usagetype?: string; beginRange?: number; endRange?: number }> = [];
     for (const raw of res.PriceList ?? []) {
       // The SDK hands each product back as a JSON string wrapper object (not a primitive string), so test for an already-parsed product
       // instead of for a string; treating the wrapper as an object made every lookup find no prices.
@@ -291,7 +294,9 @@ async function queryOnDemandPrices(
           if (!usd) continue;
           const price = parseFloat(usd);
           if (!Number.isFinite(price) || price < 0) continue;
-          results.push({ price, unit: dim.unit, usagetype: item.product?.attributes?.['usagetype'] });
+          const begin = Number(dim.beginRange);
+          const end = dim.endRange === 'Inf' ? Infinity : Number(dim.endRange);
+          results.push({ price, unit: dim.unit, usagetype: item.product?.attributes?.['usagetype'], ...(Number.isFinite(begin) ? { beginRange: begin } : {}), ...(Number.isNaN(end) ? {} : { endRange: end }) });
         }
       }
     }
@@ -341,7 +346,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       case 'aws_lambda':
         return this._getLambdaPrice(configuration, cleanRegion, factor);
       case 'aws_cloudfront':
-        return this._getCloudFrontPrice(configuration, cleanRegion, factor);
+        return (await this._getCloudFrontLivePrice(configuration, cleanRegion)) ?? this._getCloudFrontPrice(configuration, cleanRegion, factor);
       case 'aws_ebs':
         return this._getEbsPrice(configuration, cleanRegion, factor);
       case 'aws_dynamodb':
@@ -350,6 +355,8 @@ export class AwsPricingProvider implements ICloudPricingProvider {
         return this._getEksPrice(configuration, cleanRegion, factor);
       case 'aws_elasticache':
         return this._getElastiCachePrice(configuration, cleanRegion);
+      case 'aws_ecs':
+        return this._getEcsPrice(configuration, cleanRegion);
       case 'aws_vpc':
       case 'aws_subnet':
       case 'aws_igw':
@@ -624,6 +631,108 @@ export class AwsPricingProvider implements ICloudPricingProvider {
         'Includes AWS Free Tier: 1,000,000 requests and 400,000 GB-seconds/mo',
         'Estimated production excess over free tier: ~$3.50/mo',
         `Region: ${region}`,
+      ],
+    };
+  }
+
+  /**
+   * Fargate tasks: the official per-vCPU-hour and per-GB-hour rates (Linux, x86) times the task size, task count and 730 hours. The EC2 launch
+   * type has no ECS charge of its own, and any other case, return null so the built-in estimator prices it.
+   */
+  private async _getEcsPrice(config: Record<string, unknown>, region: string): Promise<NormalizedPrice | null> {
+    if (((config['launchType'] as string) || 'FARGATE') !== 'FARGATE') return null;
+    const desired = Math.max(0, Number(config['desiredCount'] ?? 2));
+    const vcpu = Number(config['cpu'] ?? 256) / 1024;
+    const memoryGb = Number(config['memory'] ?? 512) / 1024;
+    // The Compute family is large (hundreds of managed-instance meters) and also holds Spot, Windows, ARM and ephemeral-storage meters. Ask for
+    // the per-vCPU and per-GB meters only (they carry cputype and memorytype), then keep the plain Linux x86 ones, which are a task's price.
+    const where = { field: 'location', value: getRegionLocation(region) };
+    const [cpuRows, memoryRows] = await Promise.all([
+      queryOnDemandPrices('AmazonECS', [where, { field: 'cputype', value: 'perCPU' }], 100),
+      queryOnDemandPrices('AmazonECS', [where, { field: 'memorytype', value: 'perGB' }], 100),
+    ]);
+    const rate = (rows: typeof cpuRows, pattern: RegExp) => rows.find((r) => r.unit === 'hours' && pattern.test(r.usagetype ?? ''))?.price;
+    const perVcpu = rate(cpuRows, /^(?:[A-Z0-9]+-)?Fargate-vCPU-Hours:perCPU$/);
+    const perGb = rate(memoryRows, /^(?:[A-Z0-9]+-)?Fargate-GB-Hours$/);
+    if (perVcpu === undefined || perGb === undefined) {
+      console.warn(`[AwsPricingProvider] No Fargate vCPU/GB rate found for ${region}; the built-in estimate is used. Usage types seen: ${[...new Set([...cpuRows, ...memoryRows].map((r) => `${r.usagetype}(${r.unit})`))].slice(0, 12).join(', ')}`);
+      return null;
+    }
+    const hourly = (vcpu * perVcpu + memoryGb * perGb) * desired;
+    return {
+      provider: 'aws',
+      service: 'AmazonECS (Fargate)',
+      resourceType: 'aws_ecs',
+      region,
+      sku: `Fargate ${vcpu} vCPU / ${memoryGb.toFixed(2)}GB`,
+      pricingModel: 'on-demand',
+      unit: '1 Hour',
+      unitPrice: hourly,
+      monthlyPrice: hourly * 730,
+      currency: 'USD',
+      description: `Fargate ${vcpu} vCPU / ${memoryGb.toFixed(2)}GB x ${desired} task(s)`,
+      source: 'aws-price-list-api',
+      retrievedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      assumptions: [
+        `Launch type: Fargate, ${desired} desired task(s)`,
+        `${vcpu} vCPU / ${memoryGb.toFixed(2)}GB per task`,
+        `${perVcpu} per vCPU-hour and ${perGb} per GB-hour, 730 hours = ${(hourly * 730).toFixed(2)}/mo`,
+        'Ephemeral storage above the free 20 GB is not included',
+        `Region: ${region}`,
+      ],
+    };
+  }
+
+  /**
+   * CloudFront has no monthly base price: the bill is data transferred out (per GB, in tiers) plus requests. The unit rates come from the
+   * official list; the traffic is an ASSUMPTION (1 TB out and 10 million HTTPS requests a month unless the resource sets
+   * estimatedDataTransferGb / estimatedRequests), and the line says so. AWS's always-free 1 TB and 10 million requests are per account, so
+   * they are not applied. The United States rate is used for every price class: Price Class 100 (US, Canada, Europe) has the same rate, and
+   * the Asia, Africa and Oceania edge locations in classes 200 and All cost more, which the line also says. Null when the list does not answer.
+   */
+  private async _getCloudFrontLivePrice(config: Record<string, unknown>, region: string): Promise<NormalizedPrice | null> {
+    const priceClass = (config['priceClass'] as string) || 'PriceClass_100';
+    const dataGb = Number(config['estimatedDataTransferGb'] ?? 1000);
+    const requests = Number(config['estimatedRequests'] ?? 10_000_000);
+    if (!Number.isFinite(dataGb) || dataGb < 0 || !Number.isFinite(requests) || requests < 0) return null;
+    const [transfer, req] = await Promise.all([
+      queryOnDemandPrices('AmazonCloudFront', [{ field: 'usagetype', value: 'US-DataTransfer-Out-Bytes' }]),
+      queryOnDemandPrices('AmazonCloudFront', [{ field: 'usagetype', value: 'US-Requests-Tier2-HTTPS' }]),
+    ]);
+    const tiers = transfer.filter((r) => r.unit === 'GB' && r.beginRange !== undefined).sort((a, b) => a.beginRange! - b.beginRange!);
+    const perRequest = req.find((r) => r.unit === 'Requests')?.price;
+    if (tiers.length === 0 || perRequest === undefined) return null;
+    // Each GB is charged at the rate of the tier it falls in.
+    let transferMonthly = 0;
+    for (const t of tiers) {
+      const end = t.endRange ?? Infinity;
+      const inTier = Math.max(0, Math.min(dataGb, end) - t.beginRange!);
+      transferMonthly += inTier * t.price;
+    }
+    const requestMonthly = requests * perRequest;
+    const monthlyPrice = transferMonthly + requestMonthly;
+    return {
+      provider: 'aws',
+      service: 'AmazonCloudFront',
+      resourceType: 'aws_cloudfront',
+      region,
+      sku: priceClass,
+      pricingModel: 'tier',
+      unit: '1 GB',
+      unitPrice: tiers[0]!.price,
+      monthlyPrice,
+      currency: 'USD',
+      description: `CloudFront ${priceClass}: ${dataGb} GB out and ${requests.toLocaleString('en-US')} HTTPS requests a month`,
+      source: 'aws-price-list-api',
+      retrievedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      assumptions: [
+        `Assumed traffic: ${dataGb} GB out to the internet and ${requests.toLocaleString('en-US')} HTTPS requests a month (set estimatedDataTransferGb and estimatedRequests to change it)`,
+        `Data transfer: ${transferMonthly.toFixed(2)}/mo at ${tiers[0]!.price} per GB for the first tier; requests: ${requestMonthly.toFixed(2)}/mo at ${perRequest} each`,
+        ...(priceClass === 'PriceClass_100' ? [] : ['Priced at the United States rate; edge locations in Asia, Africa and Oceania cost more, so this is a lower bound']),
+        'The always-free 1 TB and 10 million requests a month are per AWS account and are not applied',
+        'The associated WAF web ACL is priced as its own resource',
       ],
     };
   }

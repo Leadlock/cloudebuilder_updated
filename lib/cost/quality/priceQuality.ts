@@ -18,6 +18,8 @@ export interface LineQuality {
   notes: string[];
   /** Usage-based charges the price does not include (data transfer, requests, ...), taken from the price's own assumptions. */
   excludes: string[];
+  /** Assumptions the amount rests on, such as the traffic assumed for a CDN (taken from assumptions that start with "Assumed"). */
+  assumes: string[];
 }
 
 export interface QualitySummary {
@@ -50,7 +52,7 @@ export function excludedCharges(assumptions: string[]): string[] {
 
 export function assessLine(item: CostLineItem): LineQuality {
   if (item.confidence === 'unsupported' || item.pricingTier === 'UNAVAILABLE') {
-    return { status: 'unpriced', notes: ['No usable price was found for this service, so it is left out of the total.'], excludes: [] };
+    return { status: 'unpriced', notes: ['No usable price was found for this service, so it is left out of the total.'], excludes: [], assumes: [] };
   }
   const notes: string[] = [];
   let status: LineQualityStatus = item.pricingTier === 'FALLBACK_ESTIMATE' ? 'estimate' : 'verified';
@@ -71,7 +73,7 @@ export function assessLine(item: CostLineItem): LineQuality {
     notes.push(anomaly.reason);
   }
   if (item.pricingIsStale) notes.push('Saved copy of the official price, past its refresh time. Use Refresh prices to update it.');
-  return { status, notes, excludes: excludedCharges(item.assumptions ?? []) };
+  return { status, notes, excludes: excludedCharges(item.assumptions ?? []), assumes: (item.assumptions ?? []).filter((a) => /^Assumed /i.test(a)) };
 }
 
 export function assessResult(items: CostLineItem[]): { lines: Record<string, LineQuality>; summary: QualitySummary } {
