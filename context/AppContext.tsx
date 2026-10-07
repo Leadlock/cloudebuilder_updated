@@ -1183,6 +1183,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const saveInFlightRef = useRef<boolean>(false);
   const pendingSaveRef = useRef<boolean>(false);
   const saveSeqRef = useRef<number>(0);
+  // The revision the server last confirmed for a project and environment. A queued save starts before React has stored the revision of the
+  // save that just finished, so it used to send the old one, get a 409, fast-forward and send again: two requests for every queued save.
+  const confirmedRevisionRef = useRef<{ key: string; revision: number } | null>(null);
 
   const triggerAutoSave = React.useCallback((immediate = false) => {
     if (autoSaveTimerRef.current) {
@@ -1240,7 +1243,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // Persist active project to backend
           const project = currentState.projects.find((p) => p.id === currentState.activeProjectId);
           if (!project) return;
-          const currentRevision = project.revision ?? 1;
+          const revisionKey = `${project.id}:${currentState.activeEnvironment}`;
+          const confirmed = confirmedRevisionRef.current;
+          const currentRevision = Math.max(project.revision ?? 1, confirmed && confirmed.key === revisionKey ? confirmed.revision : 0);
 
           let res;
           try {
@@ -1296,6 +1301,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             return;
           }
           if (res && res.revision) {
+            confirmedRevisionRef.current = { key: revisionKey, revision: res.revision };
             dispatch({ type: 'UPDATE_PROJECT_REVISION', projectId: project.id, revision: res.revision });
           }
           // Broadcast to other browser tabs

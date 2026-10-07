@@ -7,7 +7,8 @@ const mockIdentity = jest.fn();
 const mockOrgRole = jest.fn();
 jest.mock('@/lib/api/auth', () => ({ extractIdentity: (...a: unknown[]) => mockIdentity(...a), getOrgRole: (...a: unknown[]) => mockOrgRole(...a) }));
 const mockResolveOrg = jest.fn();
-jest.mock('@/lib/api/phase2d', () => ({ resolveOrgId: (...a: unknown[]) => mockResolveOrg(...a) }));
+// resolveArchitecture is what the findings route falls back to when the id is a project id (the properties panel sends one): an id that is not a project of the caller's organization is "not found".
+jest.mock('@/lib/api/phase2d', () => ({ resolveOrgId: (...a: unknown[]) => mockResolveOrg(...a), resolveArchitecture: async () => ({ error: 'project_not_found' }) }));
 
 // One organisation (org-A) owns project pA → environment eA → architecture aA. Nothing else exists.
 jest.mock('@/lib/repositories/projectRepository', () => ({

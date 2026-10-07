@@ -11,7 +11,7 @@
 import { NextRequest } from 'next/server';
 import { ok, forbidden, unauthorized, internalError, badRequest, notFound } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
-import { resolveOrgId } from '@/lib/api/phase2d';
+import { resolveOrgId, resolveArchitecture } from '@/lib/api/phase2d';
 import { architectureInOrg } from '@/lib/api/tenantScope';
 import { wellArchitectedRepository } from '@/lib/repositories/wellArchitectedRepository';
 
@@ -38,9 +38,17 @@ export async function GET(
       return badRequest('architectureId query param required');
     }
 
-    if (!(await architectureInOrg(architectureId, orgId))) return notFound('Architecture');
+    // The properties panel only knows the PROJECT id, not the architecture's own id, so it sends the project id. Accept either: an
+    // architecture id of this organization as is, otherwise treat the value as a project of this organization and use its architecture.
+    // (Before, every lookup from the panel was a 404 that the panel swallowed, so a resource's findings never appeared.)
+    let resolvedArchitectureId = architectureId;
+    if (!(await architectureInOrg(architectureId, orgId))) {
+      const ctx = await resolveArchitecture(architectureId, orgId, req.nextUrl.searchParams.get('env') ?? 'production');
+      if ('error' in ctx) return notFound('Architecture');
+      resolvedArchitectureId = ctx.arch.id;
+    }
 
-    const findings = await wellArchitectedRepository.findingsByResource(resourceId, architectureId);
+    const findings = await wellArchitectedRepository.findingsByResource(resourceId, resolvedArchitectureId);
 
     return ok({
       resourceId,
