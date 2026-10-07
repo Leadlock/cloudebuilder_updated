@@ -209,6 +209,7 @@ let pricingClient: PricingClient | null | undefined; // undefined = not yet reso
 
 /** When AWS last refused the price list to the signed-in identity (a role without pricing:GetProducts), or null. */
 let deniedAt: number | null = null;
+let warnedNoClient = false;
 export function awsPricingDeniedRecently(): boolean {
   return deniedAt !== null && Date.now() - deniedAt < 15 * 60 * 1000;
 }
@@ -219,6 +220,7 @@ let roleClient: { client: PricingClient; expiresAt: number } | null = null;
 export function provideAwsPricingCredentials(creds: { accessKeyId: string; secretAccessKey: string; sessionToken?: string }, expiresAt: number): void {
   roleClient = { client: new PricingClient({ region: 'us-east-1', credentials: creds }), expiresAt };
   deniedAt = null; // a new session may carry a newer policy
+  warnedNoClient = false;
 }
 
 /** Whether a live price lookup can be made right now (a server key, or an unexpired role session). */
@@ -258,7 +260,10 @@ async function queryOnDemandPrices(
   filters: Array<{ field: string; value: string }>,
 ): Promise<Array<{ price: number; unit: string }>> {
   const client = getPricingClient();
-  if (!client) return [];
+  if (!client) {
+    if (!warnedNoClient) { warnedNoClient = true; console.warn('[AwsPricingProvider] No AWS price list access (no server key and no connected role session): AWS prices use the built-in table.'); }
+    return [];
+  }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -269,11 +274,15 @@ async function queryOnDemandPrices(
       MaxResults: 10,
     });
     const res = await client.send(cmd, { abortSignal: controller.signal });
+    deniedAt = null; // the price list answered, so any earlier refusal no longer applies
     clearTimeout(timeoutId);
 
     const results: Array<{ price: number; unit: string }> = [];
     for (const raw of res.PriceList ?? []) {
-      const item: AwsPriceListItem = typeof raw === 'string' ? JSON.parse(raw) : (raw as unknown as AwsPriceListItem);
+      // The SDK hands each product back as a JSON string wrapper object (not a primitive string), so test for an already-parsed product
+      // instead of for a string; treating the wrapper as an object made every lookup find no prices.
+      const asObject = raw as unknown as Partial<AwsPriceListItem> | null;
+      const item: AwsPriceListItem = asObject && typeof asObject === 'object' && asObject.terms ? (asObject as AwsPriceListItem) : JSON.parse(String(raw));
       const onDemand = item.terms?.OnDemand;
       if (!onDemand) continue;
       for (const term of Object.values(onDemand)) {
@@ -286,6 +295,7 @@ async function queryOnDemandPrices(
         }
       }
     }
+    if (results.length === 0) console.warn(`[AwsPricingProvider] The price list returned no prices for ${serviceCode} (${filters.map((f) => `${f.field}=${f.value}`).join(', ')}); the built-in table is used for this line. Products returned: ${(res.PriceList ?? []).length}.`);
     return results;
   } catch (err) {
     clearTimeout(timeoutId);
@@ -548,7 +558,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
     // Rather than guessing AWS's internal `group` attribute value for each,
     // disambiguate by `unit` — "Hrs" vs "GB" — which is a stable, documented
     // part of the API response regardless of exact meter naming.
-    const results = await queryOnDemandPrices('AmazonVPC', [
+    const results = await queryOnDemandPrices('AmazonEC2', [
       { field: 'location', value: getRegionLocation(region) },
       { field: 'productFamily', value: 'NAT Gateway' },
     ]);
@@ -566,7 +576,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
 
     return {
       provider: 'aws',
-      service: 'AmazonVPC (NAT Gateway)',
+      service: 'AmazonEC2 (NAT Gateway)',
       resourceType: 'aws_nat',
       region,
       sku: 'NAT Gateway',

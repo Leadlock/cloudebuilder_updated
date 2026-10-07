@@ -51,6 +51,26 @@ describe('AwsPricingProvider — live AWS Price List Query API', () => {
     process.env = ORIGINAL_ENV;
   });
 
+  // The AWS SDK returns each product as a JSON string WRAPPER object (a String object, typeof 'object'), not a primitive string. Reading it as
+  // an already-parsed product found no prices, so every live lookup silently fell back to the built-in table.
+  test('reads prices from the String wrapper objects the SDK returns', async () => {
+    process.env['AWS_PRICING_ACCESS_KEY_ID'] = 'AKIATEST';
+    process.env['AWS_PRICING_SECRET_ACCESS_KEY'] = 'secret';
+    mockSend.mockResolvedValue({ PriceList: [new String(priceListItem('0.0225', 'Hrs'))] });
+    const { AwsPricingProvider } = await import('@/lib/cloud/pricing/AwsPricingProvider');
+    const price = await new AwsPricingProvider().getPrice({ provider: 'aws', resourceType: 'aws_alb', region: 'us-east-1', configuration: {} });
+    expect(price!.source).toBe('aws-price-list-api');
+  });
+
+  test('NAT Gateway prices are looked up under the Amazon EC2 service, where AWS lists them', async () => {
+    process.env['AWS_PRICING_ACCESS_KEY_ID'] = 'AKIATEST';
+    process.env['AWS_PRICING_SECRET_ACCESS_KEY'] = 'secret';
+    mockSend.mockResolvedValue({ PriceList: [] });
+    const { AwsPricingProvider } = await import('@/lib/cloud/pricing/AwsPricingProvider');
+    await new AwsPricingProvider().getPrice({ provider: 'aws', resourceType: 'aws_nat', region: 'us-east-1', configuration: {} });
+    expect(mockSend.mock.calls[0]![0]).toMatchObject({ ServiceCode: 'AmazonEC2' });
+  });
+
   test('falls back to the static rate table when no credentials are configured, and never calls the SDK', async () => {
     const { AwsPricingProvider } = await import('@/lib/cloud/pricing/AwsPricingProvider');
     const provider = new AwsPricingProvider();

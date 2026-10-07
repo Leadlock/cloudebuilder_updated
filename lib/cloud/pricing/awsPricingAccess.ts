@@ -35,7 +35,8 @@ export async function ensureAwsPricingAccess(orgId: string): Promise<void> {
       }, Date.now() + SESSION_MS);
       return;
     }
-  } catch {
-    // Not available: the built-in table prices AWS, and says so.
+  } catch (err) {
+    // Not available: the built-in table prices AWS, and says so. Only the message is logged, never the credentials.
+    console.warn('[awsPricingAccess] could not get a pricing session:', err instanceof Error ? err.message : String(err));
   }
 }
