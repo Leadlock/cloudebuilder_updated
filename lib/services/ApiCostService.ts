@@ -49,6 +49,8 @@ export interface CostComparisonResult {
   anomalies?: { current: CostAnomalyView[]; translated: CostAnomalyView[] };
   /** How far each line and each side can be trusted (computed in code on the server). */
   quality?: { current: SideQuality; translated: SideQuality };
+  /** Plain-language things the person can fix to get better prices. */
+  notices?: string[];
 }
 
 export interface SideQuality {
@@ -85,6 +87,7 @@ interface ApiCostComparisonResponse {
   aiMatches?: CostComparisonResult['aiMatches'];
   anomalies?: CostComparisonResult['anomalies'];
   quality?: CostComparisonResult['quality'];
+  notices?: string[];
 }
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
@@ -353,6 +356,7 @@ class ApiCostServiceImpl implements ICostService {
       aiMatches: data.aiMatches ?? [],
       anomalies: data.anomalies ?? { current: [], translated: [] },
       ...(data.quality ? { quality: data.quality } : {}),
+      ...(data.notices && data.notices.length > 0 ? { notices: data.notices } : {}),
     };
   }
 

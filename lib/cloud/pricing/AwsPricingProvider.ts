@@ -207,11 +207,18 @@ function getRegionLocation(region: string): string {
 // of which region a price is being looked up for.
 let pricingClient: PricingClient | null | undefined; // undefined = not yet resolved
 
+/** When AWS last refused the price list to the signed-in identity (a role without pricing:GetProducts), or null. */
+let deniedAt: number | null = null;
+export function awsPricingDeniedRecently(): boolean {
+  return deniedAt !== null && Date.now() - deniedAt < 15 * 60 * 1000;
+}
+
 // Temporary credentials of a connected account's role (lib/cloud/pricing/awsPricingAccess.ts), used when no server key is configured.
 let roleClient: { client: PricingClient; expiresAt: number } | null = null;
 
 export function provideAwsPricingCredentials(creds: { accessKeyId: string; secretAccessKey: string; sessionToken?: string }, expiresAt: number): void {
   roleClient = { client: new PricingClient({ region: 'us-east-1', credentials: creds }), expiresAt };
+  deniedAt = null; // a new session may carry a newer policy
 }
 
 /** Whether a live price lookup can be made right now (a server key, or an unexpired role session). */
@@ -282,7 +289,9 @@ async function queryOnDemandPrices(
     return results;
   } catch (err) {
     clearTimeout(timeoutId);
-    console.warn(`[AwsPricingProvider] Live pricing lookup failed for ${serviceCode}:`, err instanceof Error ? err.message : err);
+    const message = err instanceof Error ? err.message : String(err);
+    if (/not authorized to perform: pricing:GetProducts/i.test(message)) deniedAt = Date.now();
+    console.warn(`[AwsPricingProvider] Live pricing lookup failed for ${serviceCode}:`, message);
     return [];
   }
 }

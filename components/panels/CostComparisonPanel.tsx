@@ -15,7 +15,7 @@ const PRICE_DIFFERENCE_NOTES: [RegExp, string][] = [
   [/rds|sql|postgres|mysql|database/i, 'Databases: sizes do not line up one to one. A managed AWS instance is mapped to the nearest Azure tier by vCPU, which can be a pricier tier. Treat the database line as an approximation.'],
   [/redis|elasticache|cache/i, 'Caches: AWS prices each node. Azure Standard and Premium caches include a replica in one price, so the two are only close at the same size and tier.'],
   [/waf/i, 'Web firewall: AWS charges per rule and per request; Azure charges a base fee for the policy. Totals depend on how many rules you use.'],
-  [/route53|dns/i, 'DNS: Route 53 has no matching service in this comparison, so it is left unpriced on the other side rather than guessed.'],
+  [/route53|dns/i, 'DNS: Route 53 is compared with Azure DNS. Both charge per hosted zone plus per million queries, so the totals are close; query volume is the main variable.'],
 ];
 
 function priceDifferenceNotes(resourceTypes: string[]): string[] {
@@ -282,6 +282,7 @@ export default function CostComparisonPanel() {
           return (
             <div data-testid="price-quality" className={clsx('mb-8 rounded-2xl border p-4 text-sm', isLight ? 'bg-white border-slate-200 text-slate-700' : 'bg-slate-900 border-slate-800 text-slate-300')}>
               <p className="font-semibold mb-2">How far these totals can be trusted</p>
+              {(data.notices ?? []).map((n) => <p key={n} className="mb-2 rounded-lg border border-amber-300 bg-amber-500/10 px-3 py-2 text-xs text-amber-700" data-testid="price-notice">{n}</p>)}
               <ul className="space-y-1">
                 {sides.map(({ name, q }) => (
                   <li key={name}>
@@ -326,7 +327,7 @@ export default function CostComparisonPanel() {
                         )}
                         <QualityNote quality={data.quality?.current} id={item.nodeId} />
                       </p>
-                      <p className={clsx("text-xs", isLight ? 'text-slate-500' : 'text-slate-500')}>{def?.label || item.resourceType}{item.region ? ` · ${item.region}` : ''}</p>
+                      <p className={clsx("text-xs", isLight ? 'text-slate-500' : 'text-slate-500')}>{def?.label || item.resourceType.replace(/^(aws|azure)_/, '').replace(/_/g, ' ')}{item.region ? ` · ${item.region}` : ''}</p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -362,7 +363,7 @@ export default function CostComparisonPanel() {
                         )}
                         <QualityNote quality={data.quality?.translated} id={item.nodeId} />
                       </p>
-                      <p className={clsx("text-xs", isLight ? 'text-slate-500' : 'text-slate-500')}>{def?.label || item.resourceType}{item.region ? ` · ${item.region}` : ''}</p>
+                      <p className={clsx("text-xs", isLight ? 'text-slate-500' : 'text-slate-500')}>{def?.label || item.resourceType.replace(/^(aws|azure)_/, '').replace(/_/g, ' ')}{item.region ? ` · ${item.region}` : ''}</p>
                     </div>
                   </div>
                   <div className="text-right">

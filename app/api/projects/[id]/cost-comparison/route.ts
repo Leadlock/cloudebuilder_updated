@@ -11,6 +11,7 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
 import { assessResult, oldestPriceTime } from '@/lib/cost/quality/priceQuality';
 import { ensureAwsPricingAccess } from '@/lib/cloud/pricing/awsPricingAccess';
 import { pricingCache } from '@/lib/cloud/pricing/PricingCache';
+import { awsPricingDeniedRecently } from '@/lib/cloud/pricing/AwsPricingProvider';
 
 export const dynamic = 'force-dynamic';
 
@@ -110,6 +111,10 @@ export async function POST(
       targetCurrency,
       aiMatches: run.aiMatches,
       anomalies: run.anomalies,
+      // Said on screen so an AWS line priced from the built-in table is never an unexplained estimate.
+      notices: awsPricingDeniedRecently()
+        ? ['AWS refused the official price list to your connected role. Add the read-only permission pricing:GetProducts to that role (it is in the policy on the Deploy tab) and AWS prices will come from the official list.']
+        : [],
       quality: {
         current: { ...assessResult(run.current.items), oldestPriceAt: oldestPriceTime(run.current.items) },
         translated: { ...assessResult(run.translated.items), oldestPriceAt: oldestPriceTime(run.translated.items) },
