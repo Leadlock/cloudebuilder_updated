@@ -62,6 +62,61 @@ describe('AwsPricingProvider — live AWS Price List Query API', () => {
     expect(price!.source).toBe('aws-price-list-api');
   });
 
+  describe('ElastiCache', () => {
+    const product = (usagetype: string, usd: string) => JSON.stringify({
+      product: { productFamily: 'Cache Instance', attributes: { usagetype } },
+      terms: { OnDemand: { t: { priceDimensions: { d: { unit: 'Hrs', pricePerUnit: { USD: usd }, description: '' } } } } },
+    });
+    // Real rows for cache.t3.medium Redis in us-east-1 (2026-10-07): the ordinary node meter and two extended-support meters for old engine versions.
+    const T3_MEDIUM = [
+      product('USE1-ExtendedSupportYr3-NodeUsage:cache.t3.medium', '0.1090000000'),
+      product('NodeUsage:cache.t3.medium', '0.0680000000'),
+      product('USE1-ExtendedSupportYr1_Yr2-NodeUsage:cache.t3.medium', '0.0540000000'),
+    ];
+    const withKey = () => {
+      process.env['AWS_PRICING_ACCESS_KEY_ID'] = 'AKIATEST';
+      process.env['AWS_PRICING_SECRET_ACCESS_KEY'] = 'secret';
+    };
+    const ask = async (config: Record<string, unknown>) => {
+      const { AwsPricingProvider } = await import('@/lib/cloud/pricing/AwsPricingProvider');
+      return new AwsPricingProvider().getPrice({ provider: 'aws', resourceType: 'aws_elasticache', region: 'us-east-1', configuration: config });
+    };
+
+    test('prices the ordinary node meter times the node count, never an extended-support meter (hand-checked $99.28 for 2 nodes)', async () => {
+      withKey();
+      mockSend.mockResolvedValue({ PriceList: T3_MEDIUM });
+      const p = await ask({ nodeType: 'cache.t3.medium', numNodes: 2 });
+      expect(p!.source).toBe('aws-price-list-api');
+      expect(p!.monthlyPrice).toBeCloseTo(0.068 * 2 * 730, 2);
+    });
+
+    test('asks for the node type, engine, location and Cache Instance family', async () => {
+      withKey();
+      mockSend.mockResolvedValue({ PriceList: T3_MEDIUM });
+      await ask({ nodeType: 'cache.r6g.large', numNodes: 1 });
+      const cmd = mockSend.mock.calls[0]![0] as { ServiceCode: string; Filters: { Field: string; Value: string }[] };
+      expect(cmd.ServiceCode).toBe('AmazonElastiCache');
+      expect(cmd.Filters).toEqual(expect.arrayContaining([
+        { Type: 'TERM_MATCH', Field: 'instanceType', Value: 'cache.r6g.large' },
+        { Type: 'TERM_MATCH', Field: 'cacheEngine', Value: 'Redis' },
+        { Type: 'TERM_MATCH', Field: 'productFamily', Value: 'Cache Instance' },
+      ]));
+    });
+
+    test('only extended-support rows, or no rows, give null so the built-in estimator prices it', async () => {
+      withKey();
+      mockSend.mockResolvedValue({ PriceList: [T3_MEDIUM[0]] });
+      expect(await ask({ nodeType: 'cache.t3.medium' })).toBeNull();
+      mockSend.mockResolvedValue({ PriceList: [] });
+      expect(await ask({ nodeType: 'cache.t3.medium' })).toBeNull();
+    });
+
+    test('without AWS price list access it returns null and never calls the SDK', async () => {
+      expect(await ask({ nodeType: 'cache.t3.medium' })).toBeNull();
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+  });
+
   test('NAT Gateway prices are looked up under the Amazon EC2 service, where AWS lists them', async () => {
     process.env['AWS_PRICING_ACCESS_KEY_ID'] = 'AKIATEST';
     process.env['AWS_PRICING_SECRET_ACCESS_KEY'] = 'secret';

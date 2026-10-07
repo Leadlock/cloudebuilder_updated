@@ -258,7 +258,7 @@ interface AwsPriceListItem {
 async function queryOnDemandPrices(
   serviceCode: string,
   filters: Array<{ field: string; value: string }>,
-): Promise<Array<{ price: number; unit: string }>> {
+): Promise<Array<{ price: number; unit: string; usagetype?: string }>> {
   const client = getPricingClient();
   if (!client) {
     if (!warnedNoClient) { warnedNoClient = true; console.warn('[AwsPricingProvider] No AWS price list access (no server key and no connected role session): AWS prices use the built-in table.'); }
@@ -277,7 +277,7 @@ async function queryOnDemandPrices(
     deniedAt = null; // the price list answered, so any earlier refusal no longer applies
     clearTimeout(timeoutId);
 
-    const results: Array<{ price: number; unit: string }> = [];
+    const results: Array<{ price: number; unit: string; usagetype?: string }> = [];
     for (const raw of res.PriceList ?? []) {
       // The SDK hands each product back as a JSON string wrapper object (not a primitive string), so test for an already-parsed product
       // instead of for a string; treating the wrapper as an object made every lookup find no prices.
@@ -291,7 +291,7 @@ async function queryOnDemandPrices(
           if (!usd) continue;
           const price = parseFloat(usd);
           if (!Number.isFinite(price) || price < 0) continue;
-          results.push({ price, unit: dim.unit });
+          results.push({ price, unit: dim.unit, usagetype: item.product?.attributes?.['usagetype'] });
         }
       }
     }
@@ -348,6 +348,8 @@ export class AwsPricingProvider implements ICloudPricingProvider {
         return this._getDynamoDbPrice(configuration, cleanRegion, factor);
       case 'aws_eks':
         return this._getEksPrice(configuration, cleanRegion, factor);
+      case 'aws_elasticache':
+        return this._getElastiCachePrice(configuration, cleanRegion);
       case 'aws_vpc':
       case 'aws_subnet':
       case 'aws_igw':
@@ -713,6 +715,48 @@ export class AwsPricingProvider implements ICloudPricingProvider {
       assumptions: [
         'Includes 25GB storage free tier',
         'On-demand read/write request units metered per operation',
+        `Region: ${region}`,
+      ],
+    };
+  }
+
+  /**
+   * ElastiCache nodes: the on-demand hourly price of the node type for the engine, times the number of nodes. AWS lists extended-support
+   * meters for older engine versions under the same node type; only the ordinary "NodeUsage" meter is the price of a node. Returns null when
+   * the official list does not answer (no access, or no matching product), so the built-in estimator prices it and the line is labelled an estimate.
+   */
+  private async _getElastiCachePrice(config: Record<string, unknown>, region: string): Promise<NormalizedPrice | null> {
+    const nodeType = (config['nodeType'] as string) || 'cache.t3.medium';
+    const numNodes = Math.max(1, Number(config['numNodes'] ?? 2));
+    const engineName = /memcached/i.test(String(config['engine'] ?? '')) ? 'Memcached' : /valkey/i.test(String(config['engine'] ?? '')) ? 'Valkey' : 'Redis';
+    const results = await queryOnDemandPrices('AmazonElastiCache', [
+      { field: 'instanceType', value: nodeType },
+      { field: 'location', value: getRegionLocation(region) },
+      { field: 'cacheEngine', value: engineName },
+      { field: 'productFamily', value: 'Cache Instance' },
+    ]);
+    const node = results.find((r) => r.unit === 'Hrs' && /(^|-)NodeUsage:/.test(r.usagetype ?? '') && !/ExtendedSupport/i.test(r.usagetype ?? ''));
+    if (!node) return null;
+    const hourly = node.price * numNodes;
+    return {
+      provider: 'aws',
+      service: 'AmazonElastiCache',
+      resourceType: 'aws_elasticache',
+      region,
+      sku: nodeType,
+      pricingModel: 'on-demand',
+      unit: '1 Hour',
+      unitPrice: hourly,
+      monthlyPrice: hourly * 730,
+      currency: 'USD',
+      description: `ElastiCache ${engineName} ${nodeType} x${numNodes} node(s)`,
+      source: 'aws-price-list-api',
+      retrievedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      assumptions: [
+        `Node type: ${nodeType}, ${numNodes} node(s), ${engineName}`,
+        `${node.price} per node-hour x ${numNodes} x 730 hours = ${(hourly * 730).toFixed(2)}/mo`,
+        'Backup/snapshot storage not included',
         `Region: ${region}`,
       ],
     };
