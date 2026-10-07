@@ -207,13 +207,24 @@ function getRegionLocation(region: string): string {
 // of which region a price is being looked up for.
 let pricingClient: PricingClient | null | undefined; // undefined = not yet resolved
 
+// Temporary credentials of a connected account's role (lib/cloud/pricing/awsPricingAccess.ts), used when no server key is configured.
+let roleClient: { client: PricingClient; expiresAt: number } | null = null;
+
+export function provideAwsPricingCredentials(creds: { accessKeyId: string; secretAccessKey: string; sessionToken?: string }, expiresAt: number): void {
+  roleClient = { client: new PricingClient({ region: 'us-east-1', credentials: creds }), expiresAt };
+}
+
+/** Whether a live price lookup can be made right now (a server key, or an unexpired role session). */
+export function hasAwsPricingAccess(): boolean {
+  return !!(process.env['AWS_PRICING_ACCESS_KEY_ID'] && process.env['AWS_PRICING_SECRET_ACCESS_KEY']) || (roleClient !== null && roleClient.expiresAt > Date.now());
+}
+
 function getPricingClient(): PricingClient | null {
-  if (pricingClient !== undefined) return pricingClient;
+  if (pricingClient) return pricingClient;
   const accessKeyId = process.env['AWS_PRICING_ACCESS_KEY_ID'];
   const secretAccessKey = process.env['AWS_PRICING_SECRET_ACCESS_KEY'];
   if (!accessKeyId || !secretAccessKey) {
-    pricingClient = null;
-    return null;
+    return roleClient && roleClient.expiresAt > Date.now() ? roleClient.client : null;
   }
   pricingClient = new PricingClient({ region: 'us-east-1', credentials: { accessKeyId, secretAccessKey } });
   return pricingClient;

@@ -47,6 +47,16 @@ export interface CostComparisonResult {
   aiMatches?: { resourceId: string; from: string; to: string; reason: string }[];
   /** Lines with an implausibly high price (computed in code). */
   anomalies?: { current: CostAnomalyView[]; translated: CostAnomalyView[] };
+  /** How far each line and each side can be trusted (computed in code on the server). */
+  quality?: { current: SideQuality; translated: SideQuality };
+}
+
+export interface SideQuality {
+  /** Keyed by the line's resource id (the same id as CostItem.nodeId). */
+  lines: Record<string, { status: 'verified' | 'estimate' | 'check' | 'unpriced'; notes: string[] }>;
+  summary: { verified: number; estimates: number; check: number; unpriced: number; verifiedUsd: number; estimateUsd: number; checkUsd: number };
+  /** When the oldest price on this side was fetched from the official list. */
+  oldestPriceAt: string | null;
 }
 
 export interface CostAnomalyView { resourceId: string; label: string; resourceType: string; monthlyUsd: number; reason: string }
@@ -74,6 +84,7 @@ interface ApiCostComparisonResponse {
   targetCurrency: string;
   aiMatches?: CostComparisonResult['aiMatches'];
   anomalies?: CostComparisonResult['anomalies'];
+  quality?: CostComparisonResult['quality'];
 }
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
@@ -287,7 +298,7 @@ class ApiCostServiceImpl implements ICostService {
     return (data.items ?? []).map(mapItem);
   }
 
-  async compareCosts(nodes: CanvasNode[], currency?: string): Promise<CostComparisonResult> {
+  async compareCosts(nodes: CanvasNode[], currency?: string, opts?: { refresh?: boolean }): Promise<CostComparisonResult> {
     const projectId = _activeProjectId;
     if (!projectId) {
       throw new Error('No active project context');
@@ -302,6 +313,7 @@ class ApiCostServiceImpl implements ICostService {
     if (nodes.length > 0) {
       bodyPayload.resources = nodesToResourcePayload(nodes);
     }
+    if (opts?.refresh) bodyPayload.refresh = true;
 
     const data = await apiFetch<ApiCostComparisonResponse>(
       `/api/projects/${projectId}/cost-comparison${query}`,
@@ -340,6 +352,7 @@ class ApiCostServiceImpl implements ICostService {
       targetCurrency: data.targetCurrency,
       aiMatches: data.aiMatches ?? [],
       anomalies: data.anomalies ?? { current: [], translated: [] },
+      ...(data.quality ? { quality: data.quality } : {}),
     };
   }
 

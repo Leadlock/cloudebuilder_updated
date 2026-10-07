@@ -1,10 +1,10 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
-import { apiCostService, CostComparisonResult } from '@/lib/services/ApiCostService';
+import { apiCostService, CostComparisonResult, type SideQuality } from '@/lib/services/ApiCostService';
 import { costService } from '@/lib/services/CostService';
 import { formatCurrency } from '@/lib/currency/formatter';
-import { DollarSign, ArrowRightLeft, AlertTriangle, Cloud, Scale } from 'lucide-react';
+import { DollarSign, ArrowRightLeft, AlertTriangle, Cloud, Scale, RefreshCw } from 'lucide-react';
 import clsx from 'clsx';
 import { getResourceDefinition } from '@/lib/resources';
 import CostInsightsCard from './CostInsightsCard';
@@ -23,6 +23,35 @@ function priceDifferenceNotes(resourceTypes: string[]): string[] {
   return PRICE_DIFFERENCE_NOTES.filter(([re]) => re.test(text)).map(([, note]) => note);
 }
 
+const QUALITY_LABEL = { verified: 'Official price', estimate: 'Built-in estimate', check: 'Check this price', unpriced: 'Not priced' } as const;
+const QUALITY_TONE = {
+  verified: 'bg-emerald-500/15 text-emerald-600 border-emerald-300',
+  estimate: 'bg-amber-500/15 text-amber-600 border-amber-300',
+  check: 'bg-rose-500/15 text-rose-600 border-rose-300',
+  unpriced: 'bg-slate-500/15 text-slate-500 border-slate-300',
+} as const;
+
+/** How far one line can be trusted. Official prices get a small chip; anything else says why in plain words under the line. */
+function QualityNote({ quality, id }: { quality?: SideQuality; id: string }) {
+  const q = quality?.lines[id];
+  if (!q) return null;
+  return (
+    <>
+      <span title={q.notes.join(' ')} data-quality={q.status} className={clsx('ml-2 align-middle px-1.5 py-0.5 rounded text-[10px] font-semibold border', QUALITY_TONE[q.status])}>{QUALITY_LABEL[q.status]}</span>
+      {q.status !== 'verified' && q.notes.length > 0 && <span className="block text-[11px] text-amber-600 mt-0.5 font-normal">{q.notes[0]}</span>}
+    </>
+  );
+}
+
+function ageText(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const mins = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+  if (!Number.isFinite(mins)) return null;
+  if (mins < 2) return 'just now';
+  if (mins < 120) return `${mins} minutes ago`;
+  return `${Math.round(mins / 60)} hours ago`;
+}
+
 export default function CostComparisonPanel() {
   const { state } = useApp();
   const activeProject = useActiveProject();
@@ -33,6 +62,9 @@ export default function CostComparisonPanel() {
   const [error, setError] = useState<string | null>(null);
   const [usingFallback, setUsingFallback] = useState(false);
   const [data, setData] = useState<CostComparisonResult | null>(null);
+  // Refresh prices: ask the server to discard its saved prices and fetch every one from the official list again.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refreshNext = useRef(false);
 
   const nodeCount = activeProject?.nodes.length ?? 0;
   const activeProjectId = activeProject?.id ?? null;
@@ -48,7 +80,9 @@ export default function CostComparisonPanel() {
     let cancelled = false;
 
     setLoading(true);
-    apiCostService.compareCosts!(activeProject.nodes, displayCurrency)
+    const refresh = refreshNext.current;
+    refreshNext.current = false;
+    apiCostService.compareCosts!(activeProject.nodes, displayCurrency, { refresh })
       .then(res => {
         if (!cancelled) {
           setData(res);
@@ -80,7 +114,7 @@ export default function CostComparisonPanel() {
       });
 
     return () => { cancelled = true; };
-  }, [activeProjectId, nodeCount, architectureVersion, updatedAt, displayCurrency]);
+  }, [activeProjectId, nodeCount, architectureVersion, updatedAt, displayCurrency, refreshKey]);
 
   if (!activeProject) return null;
 
@@ -152,6 +186,14 @@ export default function CostComparisonPanel() {
         <div className="flex items-center gap-3 mb-6">
           <Scale className={clsx('w-6 h-6', isLight ? 'text-blue-600' : 'text-blue-400')} />
           <h2 className={clsx('text-2xl font-bold', isLight ? 'text-slate-900' : 'text-white')}>Multi-Cloud Cost Comparison</h2>
+          <button
+            type="button"
+            onClick={() => { refreshNext.current = true; setRefreshKey((k) => k + 1); }}
+            className={clsx('ml-auto inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium', isLight ? 'border-slate-300 text-slate-700 hover:bg-slate-100' : 'border-slate-700 text-slate-300 hover:bg-slate-800')}
+            title="Fetch every price from the official AWS and Azure price lists again"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh prices
+          </button>
         </div>
 
         {usingFallback && (
@@ -231,6 +273,33 @@ export default function CostComparisonPanel() {
           </div>
         </div>
 
+        {data.quality && (() => {
+          const sides = [
+            { name: data.currentProvider, q: data.quality.current },
+            { name: data.targetProvider, q: data.quality.translated },
+          ];
+          const age = ageText([data.quality.current.oldestPriceAt, data.quality.translated.oldestPriceAt].filter((t): t is string => !!t).sort()[0]);
+          return (
+            <div data-testid="price-quality" className={clsx('mb-8 rounded-2xl border p-4 text-sm', isLight ? 'bg-white border-slate-200 text-slate-700' : 'bg-slate-900 border-slate-800 text-slate-300')}>
+              <p className="font-semibold mb-2">How far these totals can be trusted</p>
+              <ul className="space-y-1">
+                {sides.map(({ name, q }) => (
+                  <li key={name}>
+                    <strong className="uppercase">{name}</strong>: {q.summary.verified} from the official price list
+                    {q.summary.estimates > 0 && <>, <span className="text-amber-600">{q.summary.estimates} built-in estimate{q.summary.estimates === 1 ? '' : 's'} ({formatCurrency(q.summary.estimateUsd, 'USD')}/mo)</span></>}
+                    {q.summary.check > 0 && <>, <span className="text-rose-600">{q.summary.check} to check ({formatCurrency(q.summary.checkUsd, 'USD')}/mo)</span></>}
+                    {q.summary.unpriced > 0 && <>, {q.summary.unpriced} not priced (left out of the total)</>}
+                  </li>
+                ))}
+              </ul>
+              <p className={clsx('text-xs mt-2', isLight ? 'text-slate-500' : 'text-slate-500')}>
+                Lines marked as estimates or to check are included in the totals above, so read the totals with that in mind.
+                {age && <> Oldest price fetched {age}.</>}
+              </p>
+            </div>
+          );
+        })()}
+
         {activeProject && <CostInsightsCard nodes={activeProject.nodes} />}
 
         {/* Detailed Breakdown */}
@@ -255,6 +324,7 @@ export default function CostComparisonPanel() {
                         {aiMatchById.has(item.nodeId) && (
                           <span title={`Matched by AI: ${aiMatchById.get(item.nodeId)!.from.replace(/^(aws|azure)_/, '')} → ${aiMatchById.get(item.nodeId)!.to.replace(/^(aws|azure)_/, '')}. ${aiMatchById.get(item.nodeId)!.reason} Priced at default size, so check it.`} className="ml-2 align-middle px-1.5 py-0.5 rounded text-[10px] font-semibold bg-fuchsia-500/15 text-fuchsia-600 border border-fuchsia-300">AI match</span>
                         )}
+                        <QualityNote quality={data.quality?.current} id={item.nodeId} />
                       </p>
                       <p className={clsx("text-xs", isLight ? 'text-slate-500' : 'text-slate-500')}>{def?.label || item.resourceType}{item.region ? ` · ${item.region}` : ''}</p>
                     </div>
@@ -290,6 +360,7 @@ export default function CostComparisonPanel() {
                         {aiMatchById.has(item.nodeId) && (
                           <span title={`Matched by AI: ${aiMatchById.get(item.nodeId)!.from.replace(/^(aws|azure)_/, '')} → ${aiMatchById.get(item.nodeId)!.to.replace(/^(aws|azure)_/, '')}. ${aiMatchById.get(item.nodeId)!.reason} Priced at default size, so check it.`} className="ml-2 align-middle px-1.5 py-0.5 rounded text-[10px] font-semibold bg-fuchsia-500/15 text-fuchsia-600 border border-fuchsia-300">AI match</span>
                         )}
+                        <QualityNote quality={data.quality?.translated} id={item.nodeId} />
                       </p>
                       <p className={clsx("text-xs", isLight ? 'text-slate-500' : 'text-slate-500')}>{def?.label || item.resourceType}{item.region ? ` · ${item.region}` : ''}</p>
                     </div>

@@ -65,6 +65,8 @@ export interface CostLineItem {
   pricingTier?: PricingTier;
   /** True when a cached live price is past its expiry. */
   pricingIsStale?: boolean;
+  /** When the price was fetched from the official price list (ISO time). */
+  pricingRetrievedAt?: string;
   /** estimate | approximation | unsupported */
   confidence: string;
 

@@ -14,6 +14,14 @@ import { classifyPricingSource } from './tiers';
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+/**
+ * Raise this number whenever a pricing fix changes what a saved price should be. Keys carry it, so every price saved by older code is
+ * ignored and dropped on the next load instead of being shown for up to 24 hours after the fix (an Azure Redis cache was shown at
+ * double its price this way). Version 2 is the first with this prefix.
+ */
+export const PRICING_CACHE_VERSION = 2;
+const KEY_PREFIX = `v${PRICING_CACHE_VERSION}:`;
+
 /** An AI-matched price that lists the same meter line twice was added up twice (the old duplicate-meter bug), so it is wrong. */
 function hasDoubleCountedMeter(v: NormalizedPrice): boolean {
   if (v.source !== 'azure-retail-api-ai-matched') return false;
@@ -45,6 +53,7 @@ export class PricingCache {
         const raw = fs.readFileSync(this._storagePath, 'utf8');
         const data = JSON.parse(raw) as Record<string, NormalizedPrice>;
         for (const [k, v] of Object.entries(data)) {
+          if (!k.startsWith(KEY_PREFIX)) continue;     // saved by older pricing code
           if (hasDoubleCountedMeter(v)) continue; // saved before duplicate meters were counted once: price it again
           this._memoryCache.set(k, v);
         }
@@ -72,7 +81,7 @@ export class PricingCache {
       configuration['storageGb'] ? `st:${configuration['storageGb']}` : '',
     ].filter(Boolean).join('-');
 
-    return `${provider.toLowerCase()}:${resourceType.toLowerCase()}:${region.toLowerCase()}:${sku.toLowerCase()}${extra ? `:${extra}` : ''}`;
+    return `${KEY_PREFIX}${provider.toLowerCase()}:${resourceType.toLowerCase()}:${region.toLowerCase()}:${sku.toLowerCase()}${extra ? `:${extra}` : ''}`;
   }
 
   get(key: string, allowStale = true): NormalizedPrice | null {

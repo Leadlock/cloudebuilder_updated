@@ -8,6 +8,9 @@ import { aiCostAvailable } from '@/lib/cost/ai/askModel';
 import { db } from '@/src/prisma/db';
 import { randomUUID } from 'crypto';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
+import { assessResult, oldestPriceTime } from '@/lib/cost/quality/priceQuality';
+import { ensureAwsPricingAccess } from '@/lib/cloud/pricing/awsPricingAccess';
+import { pricingCache } from '@/lib/cloud/pricing/PricingCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +31,8 @@ const RequestSchema = z.object({
   // use the live canvas snapshot when the client has one instead of racing
   // the debounced autosave.
   resources: z.array(LiveResourceSchema).optional(),
+  // Discard every saved price first, so each one is fetched from the official list again.
+  refresh:   z.boolean().optional(),
 });
 
 export async function POST(
@@ -84,6 +89,9 @@ export async function POST(
         }))
       : arch.resources;
 
+    if (body.refresh) pricingCache.clear();
+    await ensureAwsPricingAccess(orgId);
+
     const run = await runCostComparison({
       architectureId: arch.id,
       projectId,
@@ -102,6 +110,10 @@ export async function POST(
       targetCurrency,
       aiMatches: run.aiMatches,
       anomalies: run.anomalies,
+      quality: {
+        current: { ...assessResult(run.current.items), oldestPriceAt: oldestPriceTime(run.current.items) },
+        translated: { ...assessResult(run.translated.items), oldestPriceAt: oldestPriceTime(run.translated.items) },
+      },
     });
 
   } catch (err) {

@@ -139,6 +139,7 @@ export class CostEstimator {
             pricingSource: normalized.source,
             pricingTier: normalized.tier ?? 'FALLBACK_ESTIMATE',
             pricingIsStale: normalized.isStale ?? false,
+            pricingRetrievedAt: normalized.retrievedAt,
             confidence: 'estimate',
           });
         } else {
