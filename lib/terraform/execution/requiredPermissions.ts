@@ -37,11 +37,17 @@ export function selfCheckStatement(roleArn: string | null | undefined): object {
   return { Sid: 'CloudCraftCheckOwnAccess', Effect: 'Allow', Action: ['iam:SimulatePrincipalPolicy'], Resource: roleArn || '*' };
 }
 
+/**
+ * Lets CloudCraft read AWS's official price list through this role (lib/cloud/pricing/awsPricingAccess.ts), so cost figures do not fall back to
+ * the built-in table. Read-only: list prices are public and the call touches no resource in the account.
+ */
+export const PRICE_LIST_STATEMENT = { Sid: 'CloudCraftReadPrices', Effect: 'Allow', Action: ['pricing:GetProducts'], Resource: '*' };
+
 export function requiredPermissionsFor(files: { filename: string; content: string }[], roleArn?: string | null): RequiredPermissions {
   const terraformTypes = terraformTypesIn(files);
   const policy = buildDeployPolicy([...terraformTypes, ...STATE_TYPES]);
   const doc = JSON.parse(policy.json) as { Version: string; Statement: object[] };
-  doc.Statement.push(selfCheckStatement(roleArn));
+  doc.Statement.push(selfCheckStatement(roleArn), PRICE_LIST_STATEMENT);
   return { ...policy, json: JSON.stringify(doc, null, 2), terraformTypes };
 }
 

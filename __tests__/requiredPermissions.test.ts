@@ -37,7 +37,7 @@ describe('requiredPermissionsFor', () => {
     const small = requiredPermissionsFor([{ filename: 'main.tf', content: 'resource "aws_sqs_queue" "q" {}' }]);
     expect(small.services).toEqual(['dynamodb', 's3', 'sqs']);
     expect(small.includesIam).toBe(false);
-    expect(JSON.parse(small.json).Statement).toHaveLength(2);        // the services, and the read-only self-check
+    expect(JSON.parse(small.json).Statement).toHaveLength(3);        // the services, the read-only self-check, and the read-only price list
     expect(JSON.parse(small.json).Statement[0].Sid).toBe('CloudCraftDeployServices');
   });
 
@@ -49,6 +49,8 @@ describe('requiredPermissionsFor', () => {
     expect(check.Resource).toBe(arn);
     const without = JSON.parse(requiredPermissionsFor(files).json) as { Statement: { Sid: string; Resource: string }[] };
     expect(without.Statement.find((x) => x.Sid === 'CloudCraftCheckOwnAccess')!.Resource).toBe('*');
+    // The same policy lets the role read AWS's official price list, so cost figures come from it.
+    expect(without.Statement.find((x) => x.Sid === 'CloudCraftReadPrices')).toMatchObject({ Action: ['pricing:GetProducts'], Effect: 'Allow' });
     // The deploy statement itself never grants the check action or anything beyond the design's services.
     expect(withArn.Statement[0]!.Action.some((a) => a.startsWith('iam:'))).toBe(false);
   });
