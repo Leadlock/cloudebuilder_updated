@@ -8,6 +8,7 @@ import type { CostComparisonResult } from './ApiCostService';
 export interface ICostService {
   calculateCosts(nodes: CanvasNode[], currency?: string): Promise<CostItem[]>;
   compareCosts?(nodes: CanvasNode[], currency?: string, opts?: { refresh?: boolean }): Promise<CostComparisonResult>;
+  reportPrice?(report: { resourceId: string; resourceType: string; provider: string; region: string; monthlyUsd: number; pricingTier?: string | null; assumptions?: string[]; note: string }): Promise<void>;
   /** AI explanation and savings ideas (server-side; only the API-backed service implements it). */
   getInsights?(nodes: CanvasNode[]): Promise<import('@/lib/cost/ai/insights').CostInsights>;
   generateOptimizations(nodes: CanvasNode[]): CostOptimization[];

@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
 import { apiCostService, CostComparisonResult, type SideQuality } from '@/lib/services/ApiCostService';
+import type { CostItem } from '@/types';
 import { costService } from '@/lib/services/CostService';
 import { formatCurrency } from '@/lib/currency/formatter';
 import { DollarSign, ArrowRightLeft, AlertTriangle, Cloud, Scale, RefreshCw } from 'lucide-react';
@@ -32,13 +33,34 @@ const QUALITY_TONE = {
 } as const;
 
 /** How far one line can be trusted. Official prices get a small chip; anything else says why in plain words under the line. */
-function QualityNote({ quality, id }: { quality?: SideQuality; id: string }) {
-  const q = quality?.lines[id];
+function QualityNote({ quality, item }: { quality?: SideQuality; item: CostItem }) {
+  const q = quality?.lines[item.nodeId];
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState('');
+  const [sent, setSent] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
   if (!q) return null;
+  const send = () => {
+    setSent('sending');
+    apiCostService.reportPrice!({
+      resourceId: item.nodeId, resourceType: item.resourceType, provider: item.provider, region: item.region ?? '', monthlyUsd: item.providerCostUsd ?? item.monthlyCost,
+      pricingTier: item.pricingTier ?? null, assumptions: [...q.notes, ...q.excludes.map((e) => `Not included: ${e}`)], note,
+    }).then(() => setSent('sent')).catch(() => setSent('failed'));
+  };
   return (
     <>
       <span title={q.notes.join(' ')} data-quality={q.status} className={clsx('ml-2 align-middle px-1.5 py-0.5 rounded text-[10px] font-semibold border', QUALITY_TONE[q.status])}>{QUALITY_LABEL[q.status]}</span>
       {q.status !== 'verified' && q.notes.length > 0 && <span className="block text-[11px] text-amber-600 mt-0.5 font-normal">{q.notes[0]}</span>}
+      {q.excludes.length > 0 && <span className="block text-[11px] text-slate-500 mt-0.5 font-normal" data-testid="price-excludes">Plus usage not counted: {q.excludes.join('; ')}</span>}
+      {q.status !== 'unpriced' && sent !== 'sent' && !open && <button type="button" onClick={() => setOpen(true)} className="block text-[11px] text-slate-500 underline mt-0.5 font-normal">This price looks wrong</button>}
+      {open && sent !== 'sent' && (
+        <span className="block mt-1 font-normal">
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} rows={2} placeholder="What looks wrong? (optional)" className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-[11px]" />
+          <button type="button" disabled={sent === 'sending'} onClick={send} className="mr-2 rounded bg-slate-700 px-2 py-0.5 text-[11px] text-white">{sent === 'sending' ? 'Sending…' : 'Send'}</button>
+          <button type="button" onClick={() => setOpen(false)} className="text-[11px] text-slate-500 underline">Cancel</button>
+          {sent === 'failed' && <span className="ml-2 text-[11px] text-rose-600">Could not send. Try again.</span>}
+        </span>
+      )}
+      {sent === 'sent' && <span className="block text-[11px] text-emerald-600 mt-0.5 font-normal">Thanks, this price was reported.</span>}
     </>
   );
 }
@@ -325,7 +347,7 @@ export default function CostComparisonPanel() {
                         {aiMatchById.has(item.nodeId) && (
                           <span title={`Matched by AI: ${aiMatchById.get(item.nodeId)!.from.replace(/^(aws|azure)_/, '')} → ${aiMatchById.get(item.nodeId)!.to.replace(/^(aws|azure)_/, '')}. ${aiMatchById.get(item.nodeId)!.reason} Priced at default size, so check it.`} className="ml-2 align-middle px-1.5 py-0.5 rounded text-[10px] font-semibold bg-fuchsia-500/15 text-fuchsia-600 border border-fuchsia-300">AI match</span>
                         )}
-                        <QualityNote quality={data.quality?.current} id={item.nodeId} />
+                        <QualityNote quality={data.quality?.current} item={item} />
                       </p>
                       <p className={clsx("text-xs", isLight ? 'text-slate-500' : 'text-slate-500')}>{def?.label || item.resourceType.replace(/^(aws|azure)_/, '').replace(/_/g, ' ')}{item.region ? ` · ${item.region}` : ''}</p>
                     </div>
@@ -361,7 +383,7 @@ export default function CostComparisonPanel() {
                         {aiMatchById.has(item.nodeId) && (
                           <span title={`Matched by AI: ${aiMatchById.get(item.nodeId)!.from.replace(/^(aws|azure)_/, '')} → ${aiMatchById.get(item.nodeId)!.to.replace(/^(aws|azure)_/, '')}. ${aiMatchById.get(item.nodeId)!.reason} Priced at default size, so check it.`} className="ml-2 align-middle px-1.5 py-0.5 rounded text-[10px] font-semibold bg-fuchsia-500/15 text-fuchsia-600 border border-fuchsia-300">AI match</span>
                         )}
-                        <QualityNote quality={data.quality?.translated} id={item.nodeId} />
+                        <QualityNote quality={data.quality?.translated} item={item} />
                       </p>
                       <p className={clsx("text-xs", isLight ? 'text-slate-500' : 'text-slate-500')}>{def?.label || item.resourceType.replace(/^(aws|azure)_/, '').replace(/_/g, ' ')}{item.region ? ` · ${item.region}` : ''}</p>
                     </div>

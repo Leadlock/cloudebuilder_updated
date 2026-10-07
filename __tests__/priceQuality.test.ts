@@ -17,7 +17,7 @@ const line = (o: Partial<CostLineItem>): CostLineItem => ({
 
 describe('assessLine', () => {
   test('a price from the official list that passes every check is verified', () => {
-    expect(assessLine(line({}))).toEqual({ status: 'verified', notes: [] });
+    expect(assessLine(line({}))).toEqual({ status: 'verified', notes: [], excludes: [] });
     expect(assessLine(line({ pricingTier: 'CACHED_LIVE' })).status).toBe('verified');
   });
 
@@ -54,6 +54,19 @@ describe('assessLine', () => {
     const q = assessLine(line({ pricingTier: 'CACHED_LIVE', pricingIsStale: true }));
     expect(q.status).toBe('verified');
     expect(q.notes.join(' ')).toMatch(/Refresh prices/);
+  });
+});
+
+describe('usage charges a price leaves out', () => {
+  test('are listed from the price\'s own assumptions, without the dollar rate', () => {
+    const q = assessLine(line({ assumptions: ['Request-processing charges not included — $0.60 per million requests', 'Data transfer and request-volume charges not included', 'Region: us-east-1'] }));
+    expect(q.excludes).toEqual(['Request-processing charges', 'Data transfer and request-volume charges']);
+  });
+  test('lose the trailing comma left by "..., not included here"', () => {
+    expect(assessLine(line({ assumptions: ['Request-processing charges billed through the associated gateway, not included here'] })).excludes).toEqual(['Request-processing charges billed through the associated gateway']);
+  });
+  test('are empty when the price says nothing is left out', () => {
+    expect(assessLine(line({ assumptions: ['Region: us-east-1'] })).excludes).toEqual([]);
   });
 });
 

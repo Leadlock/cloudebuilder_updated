@@ -16,6 +16,8 @@ export type LineQualityStatus = 'verified' | 'estimate' | 'check' | 'unpriced';
 export interface LineQuality {
   status: LineQualityStatus;
   notes: string[];
+  /** Usage-based charges the price does not include (data transfer, requests, ...), taken from the price's own assumptions. */
+  excludes: string[];
 }
 
 export interface QualitySummary {
@@ -38,9 +40,17 @@ function repeatedMeterLines(assumptions: string[]): string[] {
   return [...new Set(meters.filter((l, i) => meters.indexOf(l) !== i))];
 }
 
+/** The usage-based charges a line says it does not count, shortened to what is missing ("Data transfer and request-volume charges not included" becomes "Data transfer and request-volume charges"). */
+export function excludedCharges(assumptions: string[]): string[] {
+  return assumptions
+    .filter((a) => /not included/i.test(a))
+    .map((a) => a.replace(/\s*[—-]\s*\$.*$/, '').replace(/\s*not included\.?$/i, '').replace(/\s+not included\b.*$/i, '').replace(/[\s,;.]+$/, '').trim())
+    .filter((a) => a.length > 0);
+}
+
 export function assessLine(item: CostLineItem): LineQuality {
   if (item.confidence === 'unsupported' || item.pricingTier === 'UNAVAILABLE') {
-    return { status: 'unpriced', notes: ['No usable price was found for this service, so it is left out of the total.'] };
+    return { status: 'unpriced', notes: ['No usable price was found for this service, so it is left out of the total.'], excludes: [] };
   }
   const notes: string[] = [];
   let status: LineQualityStatus = item.pricingTier === 'FALLBACK_ESTIMATE' ? 'estimate' : 'verified';
@@ -61,7 +71,7 @@ export function assessLine(item: CostLineItem): LineQuality {
     notes.push(anomaly.reason);
   }
   if (item.pricingIsStale) notes.push('Saved copy of the official price, past its refresh time. Use Refresh prices to update it.');
-  return { status, notes };
+  return { status, notes, excludes: excludedCharges(item.assumptions ?? []) };
 }
 
 export function assessResult(items: CostLineItem[]): { lines: Record<string, LineQuality>; summary: QualitySummary } {

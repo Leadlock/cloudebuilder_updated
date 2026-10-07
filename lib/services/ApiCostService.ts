@@ -55,7 +55,7 @@ export interface CostComparisonResult {
 
 export interface SideQuality {
   /** Keyed by the line's resource id (the same id as CostItem.nodeId). */
-  lines: Record<string, { status: 'verified' | 'estimate' | 'check' | 'unpriced'; notes: string[] }>;
+  lines: Record<string, { status: 'verified' | 'estimate' | 'check' | 'unpriced'; notes: string[]; excludes: string[] }>;
   summary: { verified: number; estimates: number; check: number; unpriced: number; verifiedUsd: number; estimateUsd: number; checkUsd: number };
   /** When the oldest price on this side was fetched from the official list. */
   oldestPriceAt: string | null;
@@ -358,6 +358,13 @@ class ApiCostServiceImpl implements ICostService {
       ...(data.quality ? { quality: data.quality } : {}),
       ...(data.notices && data.notices.length > 0 ? { notices: data.notices } : {}),
     };
+  }
+
+  /** "This price looks wrong": sends one line and a note to the team. Changes nothing on screen. */
+  async reportPrice(report: { resourceId: string; resourceType: string; provider: string; region: string; monthlyUsd: number; pricingTier?: string | null; assumptions?: string[]; note: string }): Promise<void> {
+    const projectId = _activeProjectId;
+    if (!projectId) throw new Error('No active project context');
+    await apiFetch(`/api/projects/${projectId}/cost-comparison/report`, { method: 'POST', body: JSON.stringify(report) });
   }
 
   /** AI explanation and savings ideas (a paid model call, so only on request). All numbers in it were calculated by the server. */
