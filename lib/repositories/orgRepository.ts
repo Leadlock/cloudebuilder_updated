@@ -163,6 +163,16 @@ export const orgRepository = {
     return { ...row, name: row.name ?? null, avatarUrl: row.avatarUrl ?? null };
   },
 
+  async updatePassword(email: string, passwordHash: string): Promise<boolean> {
+    const ts = now();
+    const existing = await this.findUserByEmail(email);
+    if (!existing) return false;
+    await db.orm.public.User
+      .where({ id: existing.id })
+      .update({ passwordHash, updatedAt: ts });
+    return true;
+  },
+
   async syncCognitoUser(input: { id?: string; email: string; name?: string; orgName?: string }): Promise<DbUser> {
     const email = input.email.trim().toLowerCase();
     let user = await this.findUserByEmail(email);
