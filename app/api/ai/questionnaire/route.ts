@@ -4,6 +4,9 @@ import { AuthService } from '@/lib/api/authService';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
 import { AI_INPUT_LIMITS, checkText, normalizeProvider } from '@/lib/ai/inputGuard';
 
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   try {
     const cookieToken = req.cookies.get('cloudcraft_session')?.value;

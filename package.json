@@ -31,7 +31,8 @@
     "ai:knowledge-base": "tsx --tsconfig tsconfig.json scripts/ai-dataset/build-knowledge-base.ts",
     "ai:evaluate": "tsx --tsconfig tsconfig.json scripts/ai-dataset/evaluate-model.ts",
     "ai:finetune": "tsx --env-file=.env --tsconfig tsconfig.json scripts/ai-dataset/finetune-foundry.ts",
-    "ai:kb-embed": "tsx --env-file=.env --tsconfig tsconfig.json scripts/ai-dataset/build-kb-embeddings.ts"
+    "ai:kb-embed": "tsx --env-file=.env --tsconfig tsconfig.json scripts/ai-dataset/build-kb-embeddings.ts",
+    "ai:test": "tsx --env-file=.env --tsconfig tsconfig.json scripts/test-foundry-connection.ts"
   },
   "dependencies": {
     "@aws-sdk/client-auto-scaling": "^3.1138.0",

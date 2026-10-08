@@ -10,6 +10,9 @@ import { resolveOrgId } from '@/lib/api/phase2d';
 import { getOrgRole } from '@/lib/api/auth';
 import { resolveEnvironmentInOrg } from '@/lib/api/tenantScope';
 
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   try {
     const cookieToken = req.cookies.get('cloudcraft_session')?.value;
