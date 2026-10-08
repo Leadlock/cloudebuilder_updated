@@ -113,7 +113,7 @@ export default function Dashboard() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className={clsx("text-xl sm:text-2xl font-bold", isLight ? "text-slate-900" : "text-white")}>Dashboard</h1>
-          <p className={clsx("text-xs sm:text-sm mt-0.5 font-medium", isLight ? "text-slate-500" : "text-gray-400")}>Design, scale, and manage cloud infrastructure</p>
+          <p className={clsx("text-xs sm:text-sm mt-0.5 font-medium", isLight ? "text-slate-500" : "text-gray-400")}>Design, scale, deploy, and manage cloud infrastructure</p>
         </div>
         <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 sm:gap-3">
           <button
