@@ -5,6 +5,7 @@
  * Falls back gracefully when API fails — never throws to the UI.
  */
 import type { WaAssessment, WaFinding } from '@/lib/engines/wellArchitected/types';
+import type { ReviewHistory } from '@/lib/engines/wellArchitected/history';
 import { WellArchitectedFrameworkService } from '@/lib/engines/wellArchitected/WellArchitectedFrameworkService';
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
 import type { CanvasNode, CanvasEdge } from '@/types';
@@ -89,6 +90,22 @@ class ApiWellArchitectedServiceImpl {
       return data.assessment;
     } catch (err) {
       console.warn('[WA Service] getAssessment failed:', err instanceof Error ? err.message : err);
+      return null;
+    }
+  }
+
+  /**
+   * Past reviews of the active project and what changed since the previous one. Null when there is no saved project (a live draft has
+   * no history) or the request fails.
+   */
+  async getHistory(): Promise<ReviewHistory | null> {
+    const projectId = _activeProjectId;
+    if (!projectId || projectId === 'draft-project') return null;
+    try {
+      const data = await apiFetch<{ history: ReviewHistory }>(`/api/projects/${projectId}/well-architected/history?env=${_activeEnvironment}`);
+      return data.history;
+    } catch (err) {
+      console.warn('[WA Service] getHistory failed:', err instanceof Error ? err.message : err);
       return null;
     }
   }

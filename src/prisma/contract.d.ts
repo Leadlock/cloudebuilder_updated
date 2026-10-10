@@ -33,7 +33,7 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'4e52db63200a9cef1691eaad77e0cbda346bc475db35c372e4f1e551ef7a5984'>;
+  StorageHashBase<'81440819645ba36dfa5a0446ae8f8e2e9bd27b1ec43c4eae9856d942174b5e9a'>;
 export type ExecutionHash =
   ExecutionHashBase<'e601969d76456cec43d4ac30a97cd9949576e2dd63fc3f3c4753142e71bd8448'>;
 export type ProfileHash =
@@ -574,6 +574,7 @@ export type FieldOutputTypes = {
       readonly sourceLabel: CodecTypes['pg/text@1']['output'];
       readonly confidence: CodecTypes['pg/text@1']['output'];
       readonly isStale: CodecTypes['pg/bool@1']['output'];
+      readonly rulesetVersion: CodecTypes['pg/text@1']['output'];
       readonly createdAt: CodecTypes['pg/text@1']['output'];
       readonly completedAt: CodecTypes['pg/text@1']['output'] | null;
     };
@@ -935,6 +936,7 @@ export type FieldInputTypes = {
       readonly sourceLabel: CodecTypes['pg/text@1']['input'];
       readonly confidence: CodecTypes['pg/text@1']['input'];
       readonly isStale: CodecTypes['pg/bool@1']['input'];
+      readonly rulesetVersion: CodecTypes['pg/text@1']['input'];
       readonly createdAt: CodecTypes['pg/text@1']['input'];
       readonly completedAt: CodecTypes['pg/text@1']['input'] | null;
     };
@@ -1296,6 +1298,7 @@ export type StorageColumnTypes = {
       readonly pillarScoresJson: CodecTypes['pg/text@1']['output'];
       readonly projectId: CodecTypes['pg/text@1']['output'];
       readonly provider: CodecTypes['pg/text@1']['output'];
+      readonly rulesetVersion: CodecTypes['pg/text@1']['output'];
       readonly source: CodecTypes['pg/text@1']['output'];
       readonly sourceLabel: CodecTypes['pg/text@1']['output'];
     };
@@ -1657,6 +1660,7 @@ export type StorageColumnInputTypes = {
       readonly pillarScoresJson: CodecTypes['pg/text@1']['input'];
       readonly projectId: CodecTypes['pg/text@1']['input'];
       readonly provider: CodecTypes['pg/text@1']['input'];
+      readonly rulesetVersion: CodecTypes['pg/text@1']['input'];
       readonly source: CodecTypes['pg/text@1']['input'];
       readonly sourceLabel: CodecTypes['pg/text@1']['input'];
     };
@@ -4232,6 +4236,15 @@ type ContractBase = Omit<
                   readonly default: {
                     readonly kind: 'literal';
                     readonly value: DefaultLiteralValue<'pg/bool@1', false>;
+                  };
+                };
+                readonly rulesetVersion: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', ''>;
                   };
                 };
                 readonly createdAt: {
@@ -7017,6 +7030,10 @@ type ContractBase = Omit<
                 readonly nullable: false;
                 readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/bool@1' };
               };
+              readonly rulesetVersion: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
               readonly createdAt: {
                 readonly nullable: false;
                 readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
@@ -7078,6 +7095,7 @@ type ContractBase = Omit<
                 readonly sourceLabel: { readonly column: 'sourceLabel' };
                 readonly confidence: { readonly column: 'confidence' };
                 readonly isStale: { readonly column: 'isStale' };
+                readonly rulesetVersion: { readonly column: 'rulesetVersion' };
                 readonly createdAt: { readonly column: 'createdAt' };
                 readonly completedAt: { readonly column: 'completedAt' };
               };

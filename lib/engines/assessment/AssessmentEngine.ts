@@ -18,7 +18,7 @@ import { getResourceDefinition } from '@/lib/resources';
 import { computeGraphHash, toCanonicalGraph } from '@/lib/domain/canonicalArchitecture';
 import { ALL_RULES, RULES_BY_ID } from './rules';
 import { resolveReferences } from './references';
-import { scoreOf } from './scoring';
+import { scoreOf, SCORE_WEIGHTS, THIN_PILLAR_RULES } from './scoring';
 import { buildSoc1 } from './soc1';
 import { pillarsFor, frameworkName } from './pillars';
 import type {
@@ -281,11 +281,15 @@ export function runAssessment(input: AssessInput): AssessmentResult {
         : failing.some((e) => e.status === 'FAIL' && e.severity === 'CRITICAL') ? 'Critical issues'
           : failing.some((e) => e.severity !== 'INFORMATIONAL') ? 'Issues found'
             : failing.length > 0 ? 'Observations only' : 'No issues observed';
+      const evaluatedRules = new Set(
+        evals.filter((e) => (e.status === 'PASS' || e.status === 'FAIL' || e.status === 'WARNING') && SCORE_WEIGHTS[e.severity] > 0).map((e) => e.ruleId),
+      ).size;
       const strengths = Array.from(new Set(evals.filter((e) => e.status === 'PASS' && e.resourceLabels.length > 0)
         .map((e) => `${e.resourceLabels[0]}: ${e.observation}`))).slice(0, 6);
       pillarResults.push({
         provider, framework: frameworkName(provider), pillar: p.id, label: p.label, referenceUrl: p.referenceUrl,
         score, status, strengths, findingIds: failing.map((e) => e.findingId),
+        evaluatedRules, limitedEvidence: evaluatedRules < THIN_PILLAR_RULES,
       });
     }
   }

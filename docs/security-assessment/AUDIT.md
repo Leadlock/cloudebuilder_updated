@@ -1,7 +1,32 @@
-# Security & Well-Architected Engine Audit (ruleset 2026.09.2)
+# Security & Well-Architected Engine Audit (ruleset 2026.10.1)
 
 This records what was wrong with the assessment engines before this change, and what replaced them. The full per-rule matrix is in
 [RULE_MATRIX.md](./RULE_MATRIX.md).
+
+## 0. Changes in ruleset 2026.10.1
+
+Found by running the engine on an AI-generated design and comparing every verdict with the real configuration, and by running it on a
+deliberately insecure design to confirm each check fires. The checks and the arithmetic were correct; these were the weaknesses.
+
+| Weakness | Change |
+|---|---|
+| A rule was weighed once **per resource**, so a design with more resources carried more weight per rule: many passing checks hid medium and low failures and larger designs drifted toward "Strong". | A rule now counts **once**, however many resources it is checked on; its weight is shared between them and a failure is proportional (scoring.ts). CRITICAL/HIGH caps are unchanged. |
+| Performance Efficiency, Sustainability and Cost had 1-2 checks each (Azure Performance 1, informational only), so a pillar score rested on almost nothing. | 15 new rules (10 AWS, 5 Azure): CloudFront compression and HTTP version, Auto Scaling scaling policy, RDS Performance Insights, Graviton (EC2, Auto Scaling, RDS), SQS long polling, log retention, App Service HTTP/2 and Always on, Front Door caching, scale set and Application Gateway autoscale. Pillar cards now show **how many different checks** a pillar rests on and flag fewer than 5 as *Limited evidence*. Sustainability (AWS) and Azure Cost and Operational Excellence are **still thin**; the card says so. |
+| `AWS-VPC-003` (VPC DNS) was filed under Operational Excellence, where as a MEDIUM check it carried most of that pillar's weight. | Moved to Reliability (plan the network topology). |
+| No check for load balancer, CDN or web ACL visibility. | `AWS-ELB-005` (ALB access logs), `AWS-CF-003` (CloudFront standard logging), `AWS-WAF-002` (WAF metrics and sampling). The ALB and CloudFront logging settings were added to the resource forms and reach the generated Terraform (the bucket name is validated). Full WAF request logging is still not modelled. |
+| A placeholder certificate ARN (`REPLACE-WITH-YOUR-CERTIFICATE-ID`) read as "a certificate is attached". | Still a PASS, because the AI generator and templates deliberately use it and the deploy gate rejects insufficient data, but the observation now says it is a placeholder. |
+| Live providers for the AWS Well-Architected Tool and Azure Advisor were never called, and the AWS one gave every pillar the same workload-wide score. | Removed, together with the two SDK dependencies only they used. The tab is design-time only. |
+
+All new rules are LOW and manual-only, so none blocks a deployment or changes a design by itself.
+
+### Follow-ups in the same ruleset
+
+| Weakness | Change |
+|---|---|
+| A pillar score that rests on two checks (for example two low-severity findings) read as a "25", as if it were a verdict. | Pillar results now carry `evaluatedRules` (different scored rules, informational ones excluded) and `limitedEvidence` (fewer than 5). The pillar cards show a **Limited** tag and an "indicative score"; the HTML and PDF reports print "(limited)" with a one-line footnote, and the per-pillar text says "indicative: limited evidence, N checks". |
+| A saved review was shown as current even after the rules changed, because the database did not record which ruleset produced it (only canvas edits marked a review stale). | New column `wellArchitectedAssessment.rulesetVersion` (additive migration `add_wa_ruleset_version`). A review from another ruleset, or from before it was recorded, is stale with `staleReason: ruleset`; the review tab re-runs a stale review automatically and says why. |
+| Every "Run Review" was saved but nothing read the history. | `GET /api/projects/:id/well-architected/history` and a **Since the last review** card: score and pillar movement, findings that appeared, findings that were fixed, and a note when the ruleset changed in between. Identical consecutive re-runs collapse into one entry. |
+| The claim that rules read the same settings as the resource forms and the Terraform generator was not enforced. | `__tests__/ruleSchemaConsistency.test.ts` checks, for every rule, that each setting it reads exists in the resource definition, that a default resource never gives "insufficient data", that Auto-Fix patches write real settings, and that each setting changes the generated Terraform. It found Azure Front Door `cachingEnabled` read by a rule but never emitted (fixed). Two known gaps remain, listed in the test with reasons: `aws_ebs.snapshotSchedule` (no Backup/DLM resources) and `aws_s3.loggingEnabled` (needs a target bucket). The list is itself checked, so it cannot hide a new gap or outlive a fixed one. |
 
 ## 1. Root causes found in the previous implementation
 

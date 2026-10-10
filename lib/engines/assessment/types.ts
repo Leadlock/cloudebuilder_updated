@@ -11,7 +11,7 @@
  * This module is isomorphic (browser + server): no Node-only imports.
  */
 
-export const RULESET_VERSION = '2026.09.2';
+export const RULESET_VERSION = '2026.10.1';
 export const ENGINE_NAME = 'CloudCraft Assessment Engine';
 
 export type AssessmentProvider = 'aws' | 'azure';
@@ -358,6 +358,10 @@ export interface PillarResult {
   status: 'No issues observed' | 'Observations only' | 'Issues found' | 'Critical issues' | 'Insufficient evidence';
   strengths: string[];
   findingIds: string[];
+  /** How many DIFFERENT scored rules were evaluated (a rule checked on six subnets is one check; informational rules carry no weight). */
+  evaluatedRules: number;
+  /** True when fewer than THIN_PILLAR_RULES different rules were evaluated: show the score as indicative, never as a verdict. */
+  limitedEvidence: boolean;
 }
 
 export type Soc1EvidenceType =

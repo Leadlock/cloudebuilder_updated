@@ -4,6 +4,7 @@
  * Generated directly from report data with pdfkit — vector text, tables and a
  * vector architecture diagram — never a screenshot of the UI.
  */
+import { LIMITED_EVIDENCE_NOTE, pillarScoreText } from '@/lib/engines/assessment/report/waReportView';
 import { COMMENTARY_DISCLAIMER } from '@/lib/ai/reportCommentary';
 import type { AssessmentReport, RecommendationGroup } from '@/lib/engines/assessment/report/buildReport';
 import type { Finding, Severity } from '@/lib/engines/assessment/types';
@@ -376,8 +377,9 @@ export async function renderReportPdf(report: AssessmentReport): Promise<Buffer>
   w.h3('Well-Architected summary');
   for (const p of ex.wellArchitected) {
     w.p(`${p.framework}`, { bold: true, size: 9 });
-    w.table([{ header: 'Pillar', width: 40 }, { header: 'Status', width: 30, render: (r) => ({ color: statusColor(r[1]) }) }, { header: 'Score', width: 18 }, { header: 'Coverage', width: 18 }],
-      p.pillars.map((x) => [x.label, x.status, scoreText(x.score), x.coverage === null ? '—' : `${x.coverage}%`]), { size: 8.5 });
+    w.table([{ header: 'Pillar', width: 40 }, { header: 'Status', width: 30, render: (r) => ({ color: statusColor(r[1]) }) }, { header: 'Score', width: 22 }, { header: 'Coverage', width: 14 }],
+      p.pillars.map((x) => [x.label, x.status, pillarScoreText(x.score, x.limited, x.checks, true), x.coverage === null ? '—' : `${x.coverage}%`]), { size: 8.5 });
+    if (p.pillars.some((x) => x.limited)) w.p(LIMITED_EVIDENCE_NOTE, { size: 8, color: C.muted });
   }
   w.h3('SOC 1 readiness summary');
   w.p(`${ex.soc1.observed} control area(s) with technical evidence observed, ${ex.soc1.gaps} with technical gaps, ${ex.soc1.partial} partially evaluated and ${ex.soc1.notEvaluated} not evaluated. All areas also require organizational evidence and independent auditor assessment.`, { size: 9 });
@@ -420,7 +422,7 @@ export async function renderReportPdf(report: AssessmentReport): Promise<Buffer>
     w.h2(prov.framework, true);
     for (const p of prov.pillars) {
       w.h3(`${p.label} — ${p.status}`, statusColor(p.status));
-      w.p(`Score: ${scoreText(p.score.score)}   Coverage: ${p.score.coverage.coveragePct ?? '—'}${p.score.coverage.coveragePct === null ? '' : '%'} (${p.score.coverage.evaluated} evaluated, ${p.score.coverage.notEvaluated + p.score.coverage.insufficientData} not evaluated)${p.score.capApplied ? `   ${p.score.capApplied}` : ''}`, { size: 8.5, color: C.muted });
+      w.p(`Score: ${pillarScoreText(p.score.score, p.limitedEvidence, p.evaluatedRules)}   Coverage: ${p.score.coverage.coveragePct ?? '—'}${p.score.coverage.coveragePct === null ? '' : '%'} (${p.score.coverage.evaluated} evaluated, ${p.score.coverage.notEvaluated + p.score.coverage.insufficientData} not evaluated)${p.score.capApplied ? `   ${p.score.capApplied}` : ''}`, { size: 8.5, color: C.muted });
       if (p.strengths.length) { w.p('Strengths:', { size: 8.5, bold: true }); w.bullets(p.strengths.slice(0, 4), { size: 8.5 }); }
       if (p.findings.length) {
         w.table([{ header: 'Finding ID', width: 26 }, { header: 'Severity', width: 14, render: sevColor }, { header: 'Finding', width: 50 }, { header: 'Resources', width: 30 }],

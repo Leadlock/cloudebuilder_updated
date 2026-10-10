@@ -4219,6 +4219,13 @@
                   "kind": "scalar"
                 }
               },
+              "rulesetVersion": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
               "source": {
                 "nullable": false,
                 "type": {
@@ -4321,6 +4328,9 @@
                 },
                 "provider": {
                   "column": "provider"
+                },
+                "rulesetVersion": {
+                  "column": "rulesetVersion"
                 },
                 "source": {
                   "column": "source"
@@ -7521,6 +7531,15 @@
                   "nativeType": "text",
                   "nullable": false
                 },
+                "rulesetVersion": {
+                  "codecId": "pg/text@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": ""
+                  },
+                  "nativeType": "text",
+                  "nullable": false
+                },
                 "source": {
                   "codecId": "pg/text@1",
                   "nativeType": "text",
@@ -7745,7 +7764,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "4e52db63200a9cef1691eaad77e0cbda346bc475db35c372e4f1e551ef7a5984"
+    "storageHash": "81440819645ba36dfa5a0446ae8f8e2e9bd27b1ec43c4eae9856d942174b5e9a"
   },
   "execution": {
     "executionHash": "e601969d76456cec43d4ac30a97cd9949576e2dd63fc3f3c4753142e71bd8448",

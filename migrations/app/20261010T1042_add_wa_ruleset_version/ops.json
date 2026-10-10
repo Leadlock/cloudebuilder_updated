@@ -1,0 +1,44 @@
+[
+  {
+    "id": "column.public.wellArchitectedAssessment.rulesetVersion",
+    "label": "Add column \"rulesetVersion\" to \"wellArchitectedAssessment\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "rulesetVersion",
+        "table": "wellArchitectedAssessment"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"rulesetVersion\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "wellArchitectedAssessment",
+          "rulesetVersion"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"rulesetVersion\"",
+        "sql": "ALTER TABLE \"public\".\"wellArchitectedAssessment\" ADD COLUMN \"rulesetVersion\" text DEFAULT '' NOT NULL"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"rulesetVersion\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "wellArchitectedAssessment",
+          "rulesetVersion"
+        ]
+      }
+    ]
+  }
+]

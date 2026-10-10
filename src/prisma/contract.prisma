@@ -404,6 +404,8 @@ model WellArchitectedAssessment {
   sourceLabel      String  @default("Design-time assessment")
   confidence       String  @default("design-time")
   isStale          Boolean @default(false)
+  // Ruleset (RULESET_VERSION) that produced this review; '' for reviews saved before it was recorded. A review from another ruleset is stale.
+  rulesetVersion   String  @default("")
   createdAt        String
   completedAt      String?
 

@@ -2049,6 +2049,11 @@ ${tagLines.join('\n')}
     } else {
       lines.push(`  subnets            = [] # WARNING: no subnets connected to this ALB on the canvas`);
     }
+    if (cfg['accessLogsEnabled'] === true) {
+      const logBucket = validLogBucket(cfg['accessLogsBucket']);
+      if (logBucket) lines.push(`  access_logs {`, `    bucket  = "${logBucket}"`, `    prefix  = "${sanitizedName}"`, `    enabled = true`, `  }`);
+      else lines.push(`  # WARNING: access logs are enabled but no valid S3 bucket name is set, so none are configured.`);
+    }
     lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
 
     const targetProtocol = (cfg['targetProtocol'] as string) || 'HTTP';
@@ -2357,7 +2362,13 @@ ${tagLines.join('\n')}
       }
       lines.push(`    cloudfront_default_certificate = true`);
     }
-    lines.push(`  }`, ``, `  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  }`);
+    if (cfg['loggingEnabled'] === true) {
+      const logBucket = validLogBucket(cfg['loggingBucket']);
+      if (logBucket) lines.push(``, `  logging_config {`, `    bucket          = "${logBucket}.s3.amazonaws.com"`, `    include_cookies = false`, `    prefix          = "${name}/"`, `  }`);
+      else lines.push(``, `  # WARNING: logging is enabled but no valid S3 bucket name is set, so none is configured.`);
+    }
+    lines.push(``, `  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
 
     return lines.join('\n');
   }
@@ -3508,10 +3519,10 @@ ${tagLines.join('\n')}
   cdn_frontdoor_origin_ids      = [azurerm_cdn_frontdoor_origin.${name}_origin.id]
   patterns_to_match             = ${JSON.stringify(cfg['patternsToMatch'] ?? ["/*"])}
   supported_protocols           = ["Http", "Https"]
-  https_redirect_enabled        = ${cfg['httpsOnly'] !== false}
+  https_redirect_enabled        = ${cfg['httpsOnly'] !== false}${cfg['cachingEnabled'] === false ? '' : `
   cache {
     query_string_caching_behavior = "${cfg['queryStringCachingBehavior'] ?? 'IgnoreQueryString'}"
-  }
+  }`}
 }`,
     ].join('\n\n');
   }
@@ -3873,6 +3884,12 @@ ${tagLines.join('\n')}
 }
 
 // ─── TerraformGenerator ───────────────────────────────────────────────────────
+
+/** An existing S3 bucket name for log delivery, or null. Strict S3 naming (3-63 of a-z 0-9 . -) so user text can never break out of the HCL string. */
+function validLogBucket(value: unknown): string | null {
+  const v = typeof value === 'string' ? value.trim() : '';
+  return /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(v) ? v : null;
+}
 
 export class TerraformGenerator {
   private readonly awsGen = new AwsTerraformGenerator();

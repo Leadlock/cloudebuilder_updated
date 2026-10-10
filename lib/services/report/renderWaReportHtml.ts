@@ -2,6 +2,7 @@
  * Self-contained HTML rendering of the dedicated Well-Architected report: pillar by pillar, with scores, strengths,
  * findings, an improvement roadmap and (optionally) validated AI commentary. All values are HTML-escaped.
  */
+import { LIMITED_EVIDENCE_NOTE, pillarScoreText } from '@/lib/engines/assessment/report/waReportView';
 import { COMMENTARY_DISCLAIMER, waUnscoredNotice } from '@/lib/ai/reportCommentary';
 import type { AssessmentReport, RecommendationGroup } from '@/lib/engines/assessment/report/buildReport';
 import { waPillarViews, strongestAndWeakest, WA_REPORT_DISCLAIMER, type WaPillarView } from '@/lib/engines/assessment/report/waReportView';
@@ -26,7 +27,7 @@ function pillarFinding(f: Finding): string {
 function pillarSection(p: WaPillarView, ai: AssessmentReport['aiWaCommentary']): string {
   const aiPillar = ai?.pillars.find((x) => x.key === p.key);
   return `<h3 class="${statusClass(p.status)}">${esc(p.label)} <span class="muted">— ${esc(p.status)}</span></h3>
-  <p class="muted">${p.evaluable ? `${esc(p.framework)} · Score ${score(p.score)} (${esc(p.rating)}) · Coverage ${pct(p.coveragePct)} — ${p.evaluated} of ${p.applicable} applicable checks evaluated · ${p.failed} failed · ${p.warnings} warnings · ${p.passed} passed` : `${esc(p.framework)} · Not scored — ${p.evaluated} of ${p.applicable} applicable checks could be evaluated`}</p>
+  <p class="muted">${p.evaluable ? `${esc(p.framework)} · Score ${esc(pillarScoreText(p.score, p.limitedEvidence, p.evaluatedRules))} (${esc(p.rating)}) · Coverage ${pct(p.coveragePct)} — ${p.evaluated} of ${p.applicable} applicable checks evaluated · ${p.failed} failed · ${p.warnings} warnings · ${p.passed} passed` : `${esc(p.framework)} · Not scored — ${p.evaluated} of ${p.applicable} applicable checks could be evaluated`}</p>
   ${p.evaluable ? '' : `<div class="callout ${p.insufficient ? 'warn' : ''}"><b>${esc(waUnscoredNotice(p.insufficient).title)}.</b> ${esc(waUnscoredNotice(p.insufficient).text)}</div>`}
   ${p.strengths.length ? `<p><b>What the design does well</b></p>${list(p.strengths)}` : ''}
   ${p.evaluable && aiPillar && aiPillar.assessment ? `<div class="callout"><b>AI commentary:</b> ${esc(aiPillar.assessment)}${aiPillar.topFixes.length ? `<ul>${aiPillar.topFixes.map((f) => `<li>${esc(f.title)} (${esc(f.severity)}) — ${esc(f.fix)}</li>`).join('')}</ul>` : ''}</div>` : ''}
@@ -62,7 +63,8 @@ export function renderWaReportHtml(r: AssessmentReport): string {
 
   sections.push(`<section><h2>1. Executive Summary</h2>
   <p>Overall Well-Architected score <b>${score(r.executive.overall.score)}</b> (${esc(r.executive.overall.rating)}), assessment coverage ${pct(r.executive.overall.coverage.coveragePct)}.${strongest && weakest ? ` The strongest evaluated pillar is <b>${esc(strongest.label)}</b> (${score(strongest.score)}); the weakest is <b>${esc(weakest.label)}</b> (${score(weakest.score)}).` : ''}</p>
-  ${table(['Pillar', 'Framework', 'Status', 'Score', 'Coverage', 'Open findings'], views.map((v) => [esc(v.label), esc(v.framework), `<span class="${statusClass(v.status)}">${esc(v.status)}</span>`, score(v.score), pct(v.coveragePct), String(v.findings.length)]))}
+  ${table(['Pillar', 'Framework', 'Status', 'Score', 'Coverage', 'Open findings'], views.map((v) => [esc(v.label), esc(v.framework), `<span class="${statusClass(v.status)}">${esc(v.status)}</span>`, esc(pillarScoreText(v.score, v.limitedEvidence, v.evaluatedRules, true)), pct(v.coveragePct), String(v.findings.length)]))}
+  ${views.some((v) => v.limitedEvidence) ? `<p class="muted">${esc(LIMITED_EVIDENCE_NOTE)}</p>` : ''}
   <h3>Open findings by severity</h3><div class="counts">${SEVERITIES.map((s) => `<div><b style="color:${SEV[s]}">${counts[s]}</b><span>${s}</span></div>`).join('')}</div>
   ${r.executive.counts.CRITICAL > 0 || r.executive.counts.HIGH > 0 ? '<div class="callout bad"><b>Critical or high-severity findings are open.</b> See the improvement roadmap.</div>' : ''}
   ${views.some((v) => v.insufficient) ? `<div class="callout warn"><b>Pillars without enough evidence:</b> ${esc(views.filter((v) => v.insufficient).map((v) => v.label).join(', '))}. They are shown as "Insufficient evidence", never as passing.</div>` : ''}</section>`);

@@ -135,6 +135,8 @@ export class WellArchitectedRuleEngine {
         coveragePct: pr?.score.coverage.coveragePct ?? null,
         evaluatedChecks: pr?.score.coverage.evaluated ?? 0,
         notEvaluatedChecks: pr ? pr.score.coverage.notEvaluated + pr.score.coverage.insufficientData : 0,
+        evaluatedRules: pr?.evaluatedRules ?? 0,
+        limitedEvidence: pr?.limitedEvidence ?? true,
         status: pr?.status ?? 'Insufficient evidence',
         findingCount: pf.length,
         criticalCount: pf.filter((f) => f.severity === 'critical').length,

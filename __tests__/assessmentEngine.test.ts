@@ -279,7 +279,11 @@ describe('Multi-cloud assessment', () => {
     expect(wa.pillarScores.filter((p) => p.provider === 'azure')).toHaveLength(5);
     const unscored = wa.pillarScores.filter((p) => p.scored === false);
     for (const p of unscored) expect(['Insufficient evidence', 'Observations only', 'No issues observed']).toContain(p.status);
-    expect(wa.pillarScores.find((p) => p.provider === 'aws' && p.pillar === 'performance_efficiency')?.status).toBe('Observations only');
+    // Performance Efficiency used to have one informational check, so it read "Observations only". It has real checks now, so a design that
+    // breaks them is scored and reported as having issues.
+    const perf = wa.pillarScores.find((p) => p.provider === 'aws' && p.pillar === 'performance_efficiency');
+    expect(perf?.scored).toBe(true);
+    expect(perf?.status).toBe('Issues found');
   });
 });
 

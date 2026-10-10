@@ -6,6 +6,7 @@
 import { db } from '@/src/prisma/db';
 import { randomUUID as uuidv4 } from 'crypto';
 import type { WaAssessment, WaFinding, WaPillarScore, WaProvider, WaPillar, WaSeverity, AnalysisSource, ResourceState } from '@/lib/engines/wellArchitected/types';
+import { RULESET_VERSION } from '@/lib/engines/assessment/types';
 
 // ─── DB Types ─────────────────────────────────────────────────────────────────
 
@@ -23,12 +24,15 @@ interface DbWaAssessment {
   sourceLabel: string;
   confidence: string;
   isStale: boolean;
+  /** '' for reviews saved before the ruleset was recorded. */
+  rulesetVersion?: string;
   createdAt: string;
   completedAt: string | null;
 }
 
 // In-memory fallback cache for when DB table is not yet migrated or offline
 const waMemoryStore = new Map<string, WaAssessment>();
+const waMemoryHistory = new Map<string, WaAssessment[]>();
 const waFindingsMemoryStore = new Map<string, WaFinding[]>();
 
 class WellArchitectedRepository {
@@ -43,6 +47,7 @@ class WellArchitectedRepository {
 
     // Always cache in memory
     waMemoryStore.set(assessment.architectureId, assessmentWithId);
+    waMemoryHistory.set(assessment.architectureId, [assessmentWithId, ...(waMemoryHistory.get(assessment.architectureId) ?? [])].slice(0, 50));
     waFindingsMemoryStore.set(id, assessment.findings);
 
     try {
@@ -60,6 +65,7 @@ class WellArchitectedRepository {
         sourceLabel: assessment.sourceLabel,
         confidence: assessment.confidence,
         isStale: assessment.isStale ?? false,
+        rulesetVersion: assessment.rulesetVersion ?? RULESET_VERSION,
         createdAt: now,
         completedAt: now,
       });
@@ -107,7 +113,7 @@ class WellArchitectedRepository {
         .all();
 
       if (!rows || rows.length === 0) {
-        return waMemoryStore.get(architectureId) ?? null;
+        return this._withStaleness(waMemoryStore.get(architectureId) ?? null);
       }
 
       // Sort by createdAt descending
@@ -116,11 +122,40 @@ class WellArchitectedRepository {
       );
       const row = sorted[0] as DbWaAssessment;
 
-      return this._rowToAssessment(row, architectureId);
+      return this._withStaleness(this._rowToAssessment(row, architectureId));
     } catch (err) {
       console.warn('[WellArchitectedRepository] DB findLatestByArchitecture fallback to in-memory:', err instanceof Error ? err.message : err);
-      return waMemoryStore.get(architectureId) ?? null;
+      return this._withStaleness(waMemoryStore.get(architectureId) ?? null);
     }
+  }
+
+  /**
+   * The most recent reviews of an architecture, newest first. Used for the review history and the "what changed" comparison.
+   */
+  async listByArchitecture(architectureId: string, limit = 30): Promise<WaAssessment[]> {
+    try {
+      const rows = await db.orm.public.WellArchitectedAssessment
+        .where({ architectureId })
+        .all();
+      if (!rows || rows.length === 0) return waMemoryHistory.get(architectureId) ?? [];
+      return [...rows]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, limit)
+        .map((r) => this._rowToAssessment(r as DbWaAssessment, architectureId));
+    } catch (err) {
+      console.warn('[WellArchitectedRepository] DB listByArchitecture fallback to in-memory:', err instanceof Error ? err.message : err);
+      return waMemoryHistory.get(architectureId) ?? [];
+    }
+  }
+
+  /**
+   * A review is stale when the canvas changed after it was made (markStale), or when it was made with a different ruleset: the rules
+   * have changed since, so the stored findings and scores no longer describe what the engine would say today.
+   */
+  private _withStaleness(a: WaAssessment | null): WaAssessment | null {
+    if (!a) return null;
+    const rulesetStale = (a.rulesetVersion ?? '') !== RULESET_VERSION;
+    return { ...a, isStale: a.isStale || rulesetStale, staleReason: a.isStale ? 'architecture' : rulesetStale ? 'ruleset' : undefined };
   }
 
   /**
@@ -209,8 +244,9 @@ class WellArchitectedRepository {
       evaluatedAt: row.createdAt,
       source: row.source as AnalysisSource,
       sourceLabel: row.sourceLabel,
-      confidence: row.confidence as 'design-time' | 'live-cloud',
+      confidence: 'design-time',
       isStale: row.isStale,
+      rulesetVersion: row.rulesetVersion ?? '',
     };
   }
 
