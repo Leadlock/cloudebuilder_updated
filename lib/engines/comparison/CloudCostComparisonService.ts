@@ -21,6 +21,7 @@ type Provider = 'aws' | 'azure';
  */
 const AWS_TO_AZURE_TYPE: Record<string, string> = {
   aws_ec2: 'azure_vm',
+  aws_auto_scaling: 'azure_vmss',
   aws_vpc: 'azure_vnet',
   aws_subnet: 'azure_subnet',
   aws_rds: 'azure_sql',
@@ -158,6 +159,31 @@ const translateEc2Vm: ConfigTranslator = (config, target) => {
   return next;
 };
 
+/**
+ * An Auto Scaling group and a VM scale set are the same thing in each cloud: a pool of identical VMs. The size is translated like a single
+ * VM (nearest vCPU, then RAM) and the capacity carries over. With no mapping the scale set came from the AI matcher with default settings
+ * (a 2-instance Standard_B2s group), so a group of 2 x t3.large was compared against a smaller, cheaper Azure pool.
+ */
+const translateAsgVmss: ConfigTranslator = (config, target) => {
+  const next = { ...config };
+  if (target === 'azure') {
+    const src = specOf(AWS_EC2_SPECS, String(config['instanceType'] ?? 't3.medium'));
+    delete next['instanceType'];
+    next['sku'] = nearestCompute(AZURE_VM_SPECS, src.vcpu, src.ramGb).key;
+    const capacity = [config['desiredCapacity'], config['minSize']].map(Number).find((n) => Number.isFinite(n) && n >= 0);
+    next['capacity'] = capacity ?? 2;
+    next['osType'] = 'Linux';
+  } else {
+    const src = specOf(AZURE_VM_SPECS, String(config['sku'] ?? 'Standard_B2s'));
+    delete next['sku'];
+    next['instanceType'] = nearestCompute(AWS_EC2_SPECS, src.vcpu, src.ramGb).key;
+    const capacity = Number(config['capacity']);
+    if (Number.isFinite(capacity) && capacity >= 0) next['desiredCapacity'] = capacity;
+    delete next['capacity'];
+  }
+  return next;
+};
+
 const translateRdsSql: ConfigTranslator = (config, target) => {
   const next = { ...config };
   const multiAz = config['multiAz'] === true || config['zoneRedundant'] === true;
@@ -272,6 +298,8 @@ const translateCache: ConfigTranslator = (config, target) => {
 const CONFIG_TRANSLATORS: Partial<Record<string, ConfigTranslator>> = {
   aws_ec2: translateEc2Vm,
   azure_vm: translateEc2Vm,
+  aws_auto_scaling: translateAsgVmss,
+  azure_vmss: translateAsgVmss,
   aws_rds: translateRdsSql,
   azure_sql: translateRdsSql,
   aws_s3: translateStorage,

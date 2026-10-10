@@ -27,6 +27,8 @@
 
 import type { PricingProvider, CostLineItem } from './types';
 import type { DbArchitectureResource } from '@/lib/repositories/architectureRepository';
+import { autoScalingAsInstances } from './autoScaling';
+import { estimateCloudFront } from './cloudfrontEstimate';
 
 // ─── Static price tables (USD/hour, on-demand, Linux, us-east-1 base) ────────
 
@@ -86,16 +88,18 @@ const EC2_HOURLY_USD: Record<string, number> = {
  * db.r6g.xlarge $0.450/hr, db.r6g.2xlarge $0.899/hr, db.r6g.4xlarge $1.798/hr.
  */
 const RDS_HOURLY_USD: Record<string, number> = {
-  'db.t3.micro':    0.017,
-  'db.t3.small':    0.034,
-  'db.t3.medium':   0.068,
-  'db.t3.large':    0.136,
+  // PostgreSQL Single-AZ, us-east-1. Checked against the AWS price list: db.t3.medium $0.072, db.m5.large $0.178, db.r5.large $0.25.
+  // The other sizes in a family follow by doubling per size step. MySQL/MariaDB run roughly 4-6% lower; Oracle and SQL Server add licence cost.
+  'db.t3.micro':    0.018,
+  'db.t3.small':    0.036,
+  'db.t3.medium':   0.072,
+  'db.t3.large':    0.145,
   'db.t4g.micro':   0.016,
   'db.t4g.medium':  0.065,
-  'db.m5.large':    0.240,
-  'db.m5.xlarge':   0.480,
-  'db.r5.large':    0.300,
-  'db.r5.xlarge':   0.600,
+  'db.m5.large':    0.178,
+  'db.m5.xlarge':   0.356,
+  'db.r5.large':    0.250,
+  'db.r5.xlarge':   0.500,
   'db.r6g.xlarge':  0.450,
   'db.r6g.2xlarge': 0.899,
   'db.r6g.4xlarge': 1.798,
@@ -144,6 +148,7 @@ export class AwsPricingProvider implements PricingProvider {
 
     switch (resource.resourceType) {
       case 'aws_ec2':        return this._ec2(resource, config, region, mult);
+      case 'aws_auto_scaling': return this._autoScaling(resource, config, region, mult);
       case 'aws_rds':        return this._rds(resource, config, region, mult);
       case 'aws_s3':         return this._s3(resource, config, region, mult);
       case 'aws_alb':        return this._alb(resource, config, region, mult);
@@ -167,7 +172,6 @@ export class AwsPricingProvider implements PricingProvider {
       case 'aws_nacl':
       case 'aws_route_table':
       case 'aws_iam':
-      case 'aws_auto_scaling': // The ASG orchestration itself is free — its launched EC2 instances are costed separately as aws_ec2 resources.
       case 'aws_internet':
         return null; // No direct charges
       default:
@@ -223,6 +227,26 @@ export class AwsPricingProvider implements PricingProvider {
       ],
       pricingSource: 'aws-ec2-ondemand-list-price',
       confidence: 'estimate',
+    };
+  }
+
+  /** An Auto Scaling group costs what its instances cost: price one instance as EC2, then multiply by the group's capacity. */
+  private _autoScaling(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const asg = autoScalingAsInstances(config);
+    const one = this._ec2(resource, asg.instanceConfig, region, mult);
+    const q = asg.quantity;
+    return {
+      ...one,
+      hourlyUsd: one.hourlyUsd * q,
+      monthlyUsd: one.monthlyUsd * q,
+      breakdown: one.breakdown.map((b) => ({ ...b, label: `${q} × ${b.label}`, monthlyUsd: b.monthlyUsd * q })),
+      assumptions: [...asg.assumptions, ...one.assumptions],
+      pricingSource: 'aws-ec2-ondemand-list-price',
     };
   }
 
@@ -344,8 +368,10 @@ export class AwsPricingProvider implements PricingProvider {
     mult: number,
   ): CostLineItem {
     const lbType = (config['lbType'] as string) ?? 'application';
-    const hourly = 0.008 * mult; // ALB base hourly
-    const lcuMonthly = 5 * mult;  // Estimated 5 LCU/month minimum
+    // us-east-1 list price: $0.0225 per load-balancer hour, plus $0.008 per LCU-hour (ALB) or $0.006 per NLCU-hour (NLB). One LCU is assumed.
+    const hourly = 0.0225 * mult;
+    const capacityUnitHourly = (lbType === 'network' ? 0.006 : 0.008) * mult;
+    const lcuMonthly = toMonthly(capacityUnitHourly);
     const monthly = toMonthly(hourly) + lcuMonthly;
 
     return {
@@ -358,11 +384,11 @@ export class AwsPricingProvider implements PricingProvider {
       monthlyUsd: monthly,
       breakdown: [
         { label: `${lbType === 'network' ? 'NLB' : 'ALB'} base hourly`, monthlyUsd: toMonthly(hourly) },
-        { label: 'LCU/NLCU charges (estimated min)', monthlyUsd: lcuMonthly },
+        { label: `${lbType === 'network' ? 'NLCU' : 'LCU'} charges (1 unit assumed)`, monthlyUsd: lcuMonthly },
       ],
       assumptions: [
         `${lbType} load balancer type`,
-        'Minimum LCU estimated; actual depends on connection count and throughput',
+        'One LCU assumed; actual cost depends on new connections, active connections, processed bytes and rule evaluations',
         `Region: ${region}`,
       ],
       pricingSource: 'aws-elb-list-price',
@@ -462,32 +488,17 @@ export class AwsPricingProvider implements PricingProvider {
     region: string,
     _mult: number,
   ): CostLineItem {
-    // Baseline assumption (1TB egress) priced at the blended rate for each price class's edge locations.
-    const priceClass = (config['priceClass'] as string) || 'PriceClass_100';
-    const monthlyByClass: Record<string, number> = { PriceClass_100: 12.0, PriceClass_200: 16.0, PriceClass_All: 22.0 };
-    const monthly = monthlyByClass[priceClass] ?? monthlyByClass['PriceClass_100']!;
-    let webAclMonthly = 0;
-    if (config['webAclId']) {
-      webAclMonthly = 1.0; // Incremental WAF request-processing charge estimate; the Web ACL itself is priced separately.
-    }
-    const total = monthly + webAclMonthly;
-
+    const e = estimateCloudFront(config);
     return {
       resourceId: resource.id,
       resourceLabel: resource.label,
       resourceType: resource.resourceType,
       provider: 'aws',
       region,
-      hourlyUsd: total / 730,
-      monthlyUsd: total,
-      breakdown: [
-        { label: `CloudFront CDN data transfer & requests (${priceClass})`, monthlyUsd: monthly },
-        ...(webAclMonthly > 0 ? [{ label: 'Associated WAF request processing (estimate)', monthlyUsd: webAclMonthly }] : []),
-      ],
-      assumptions: [
-        'Includes 1TB data egress and 10M requests free tier allowance',
-        `Region: ${region}`,
-      ],
+      hourlyUsd: e.monthlyUsd / 730,
+      monthlyUsd: e.monthlyUsd,
+      breakdown: e.breakdown,
+      assumptions: [...e.assumptions, `Region: ${region}`],
       pricingSource: 'aws-cloudfront-list-price',
       confidence: 'estimate',
     };

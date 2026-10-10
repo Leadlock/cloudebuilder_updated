@@ -1,3 +1,5 @@
+import { awsPricingProvider } from '@/lib/engines/cost/awsPricing';
+import { azurePricingProvider } from '@/lib/engines/cost/azurePricing';
 import { assertSafeHcl, sanitizeCanvasForHcl } from '@/lib/engines/terraform/hclSafety';
 import { CanvasNode, CanvasEdge, SecurityIssue, CostItem } from '@/types';
 import { getResourceDefinition } from './resources';
@@ -49,47 +51,28 @@ export function calculateSecurityScore(issues: SecurityIssue[]): number {
 }
 
 export function calculateCosts(nodes: CanvasNode[]): CostItem[] {
+  // The same built-in price tables the Cost Estimate screen falls back to, so a project card, a template total and an autofix saving all
+  // agree with it. This used to be a separate, cruder calculator (every RDS instance a flat $48.60, an Auto Scaling group free).
   const costs: CostItem[] = [];
-  const instanceCostMap: Record<string, number> = {
-    't3.micro': 8.76, 't3.small': 17.52, 't3.medium': 35.04, 't3.large': 70.08,
-    'm5.large': 87.6, 'm5.xlarge': 175.2, 'c5.large': 76.65, 'r5.large': 109.5,
-    'Standard_B1s': 8.76, 'Standard_B2s': 36.5, 'Standard_B4ms': 73.0,
-    'Standard_D2s_v3': 87.6, 'Standard_D4s_v3': 175.2, 'Standard_E2s_v3': 91.98,
-  };
   for (const node of nodes) {
-    const def = getResourceDefinition(node.resourceType);
-    if (!def) continue;
-    let monthlyCost = def.monthlyBaseCost;
-    const breakdown: { label: string; cost: number }[] = [];
-    if (node.resourceType === 'aws_ec2') {
-      const instanceType = node.config.instanceType as string;
-      const cost = instanceCostMap[instanceType] ?? 33.84;
-      monthlyCost = cost;
-      breakdown.push({ label: `Instance (${instanceType})`, cost });
-    } else if (node.resourceType === 'azure_vm') {
-      const size = node.config.size as string;
-      const cost = instanceCostMap[size] ?? 36.5;
-      monthlyCost = cost;
-      breakdown.push({ label: `VM Size (${size})`, cost });
-    } else if (node.resourceType === 'aws_rds') {
-      const multiAzMultiplier = node.config.multiAz ? 2 : 1;
-      const instanceCost = 48.6 * multiAzMultiplier;
-      const storageCost = 23;
-      monthlyCost = instanceCost + storageCost;
-      breakdown.push({ label: `Instance${node.config.multiAz ? ' (Multi-AZ)' : ''}`, cost: instanceCost });
-      breakdown.push({ label: 'Storage (100GB)', cost: storageCost });
-    } else if (node.resourceType === 'aws_s3') {
-      const storageCost = 0.023 * 50;
-      const transferCost = 9;
-      monthlyCost = storageCost + transferCost;
-      breakdown.push({ label: 'Storage (50GB)', cost: storageCost });
-      breakdown.push({ label: 'Data Transfer', cost: transferCost });
-    } else if (monthlyCost > 0) {
-      breakdown.push({ label: def.label, cost: monthlyCost });
-    }
-    if (monthlyCost > 0) {
-      costs.push({ nodeId: node.id, nodeLabel: node.label, resourceType: node.resourceType, provider: node.provider, monthlyCost, breakdown });
-    }
+    if (!getResourceDefinition(node.resourceType)) continue;
+    const table = node.provider === 'azure' ? azurePricingProvider : awsPricingProvider;
+    const region = node.region ?? (node.provider === 'azure' ? 'eastus' : 'us-east-1');
+    const line = table.estimateResource(
+      {
+        id: node.id, resourceType: node.resourceType, provider: node.provider, label: node.label,
+        positionX: node.position?.x ?? 0, positionY: node.position?.y ?? 0, configJson: '{}',
+        region, groupId: null, locked: false, architectureId: '',
+      },
+      node.config ?? {},
+      region,
+    );
+    if (!line || !(line.monthlyUsd > 0)) continue;
+    costs.push({
+      nodeId: node.id, nodeLabel: node.label, resourceType: node.resourceType, provider: node.provider,
+      monthlyCost: line.monthlyUsd,
+      breakdown: line.breakdown.map((b) => ({ label: b.label, cost: b.monthlyUsd })),
+    });
   }
   return costs;
 }

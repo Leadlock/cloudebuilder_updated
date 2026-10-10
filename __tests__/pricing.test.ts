@@ -435,20 +435,26 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
     expect(withPc.items[0].breakdown.some((b) => b.label.includes('Provisioned concurrency'))).toBe(true);
   });
 
-  test('CloudFront cost scales with priceClass (previously a flat $12 regardless of config)', () => {
-    const p100 = makeResource({ resourceType: 'aws_cloudfront', provider: 'aws', configJson: JSON.stringify({ priceClass: 'PriceClass_100' }) });
-    const pAll = makeResource({ resourceType: 'aws_cloudfront', provider: 'aws', configJson: JSON.stringify({ priceClass: 'PriceClass_All' }) });
-    const p100Result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [p100] }, 'TEST');
-    const pAllResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [pAll] }, 'TEST');
-    expect(pAllResult.items[0].monthlyUsd).toBeGreaterThan(p100Result.items[0].monthlyUsd);
+  test('CloudFront cost follows the traffic and the price class (it used to be a flat $12/$16/$22)', () => {
+    const cfg = (extra: Record<string, unknown>) => makeResource({ resourceType: 'aws_cloudfront', provider: 'aws', configJson: JSON.stringify(extra) });
+    const price = (r: ReturnType<typeof makeResource>) => estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [r] }, 'TEST').items[0].monthlyUsd;
+    // Default traffic: 1,000 GB out at $0.085 plus 10M HTTPS requests at $0.01 per 10,000. The always-free tier is per account, so it is not applied.
+    expect(price(cfg({}))).toBeCloseTo(1000 * 0.085 + 10_000_000 * 0.000001, 2);
+    // Doubling the traffic doubles the bill, a wider price class costs more, and the request count is read from either field name.
+    expect(price(cfg({ estimatedDataTransferGb: 2000 }))).toBeCloseTo(2000 * 0.085 + 10, 2);
+    expect(price(cfg({ priceClass: 'PriceClass_All' }))).toBeGreaterThan(price(cfg({ priceClass: 'PriceClass_100' })));
+    expect(price(cfg({ estimatedRequests: 110_000_000 }))).toBeCloseTo(85 + 110, 2);
+    expect(price(cfg({ estimatedRequestsPerMonth: 110_000_000 }))).toBeCloseTo(85 + 110, 2);
   });
 
-  test('CloudFront cost adds an estimated WAF line item when webAclId is set', () => {
+  test('CloudFront cost adds a WAF request-processing line when webAclId is set', () => {
     const noWaf = makeResource({ resourceType: 'aws_cloudfront', provider: 'aws', configJson: '{}' });
     const withWaf = makeResource({ resourceType: 'aws_cloudfront', provider: 'aws', configJson: JSON.stringify({ webAclId: 'arn:aws:wafv2:us-east-1:123456789012:global/webacl/my-acl/abc' }) });
     const noWafResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [noWaf] }, 'TEST');
     const withWafResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [withWaf] }, 'TEST');
     expect(withWafResult.items[0].monthlyUsd).toBeGreaterThan(noWafResult.items[0].monthlyUsd);
+    // 10M requests inspected at $0.60 per million
+    expect(withWafResult.items[0].monthlyUsd - noWafResult.items[0].monthlyUsd).toBeCloseTo(6, 2);
     expect(withWafResult.items[0].breakdown.some((b) => b.label.includes('WAF'))).toBe(true);
   });
 
@@ -588,11 +594,64 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
     expect(result.items[0].monthlyUsd).toBeGreaterThan(0);
   });
 
-  test('Network ACLs and Auto Scaling groups have no direct charge (correctly $0, not "unsupported")', () => {
+  test('Network ACLs have no direct charge (correctly $0, not "unsupported")', () => {
     const nacl = makeResource({ resourceType: 'aws_nacl', provider: 'aws', configJson: '{}' });
-    const asg = makeResource({ resourceType: 'aws_auto_scaling', provider: 'aws', configJson: '{}' });
-    const result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [nacl, asg] }, 'TEST');
-    expect(result.items.length).toBe(0); // both resolve to null (no direct charge), not a line item
+    const result = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [nacl] }, 'TEST');
+    expect(result.items.length).toBe(0); // resolves to null (no direct charge), not a line item
+  });
+
+  describe('Auto Scaling groups are priced as the EC2 instances they run', () => {
+    const run = (r: ReturnType<typeof makeResource>[]) => estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: r }, 'TEST');
+    const asg = (config: Record<string, unknown>) => makeResource({ resourceType: 'aws_auto_scaling', provider: 'aws', configJson: JSON.stringify(config) });
+    const ec2 = (config: Record<string, unknown>) => makeResource({ resourceType: 'aws_ec2', provider: 'aws', configJson: JSON.stringify(config) });
+
+    test('a group costs its desired capacity times one instance of the same type', () => {
+      const one = run([ec2({ instanceType: 'm5.large' })]).items[0].monthlyUsd;
+      const group = run([asg({ instanceType: 'm5.large', desiredCapacity: 3, minSize: 2, maxSize: 10 })]);
+      expect(group.items).toHaveLength(1);
+      expect(group.items[0].monthlyUsd).toBeCloseTo(one * 3, 2);
+      expect(group.items[0].breakdown[0].label).toMatch(/^3 × /);
+      expect(group.items[0].assumptions.join(' ')).toMatch(/scale out to 10 instances/);
+    });
+
+    test('a bigger instance type or more capacity costs more', () => {
+      const small = run([asg({ instanceType: 't3.medium', desiredCapacity: 2 })]).items[0].monthlyUsd;
+      expect(run([asg({ instanceType: 'm5.xlarge', desiredCapacity: 2 })]).items[0].monthlyUsd).toBeGreaterThan(small);
+      expect(run([asg({ instanceType: 't3.medium', desiredCapacity: 6 })]).items[0].monthlyUsd).toBeCloseTo(small * 3, 2);
+    });
+
+    test('with no capacity set it uses the minimum size, and with nothing set the resource default of 2 t3.medium', () => {
+      const t3 = run([ec2({ instanceType: 't3.medium' })]).items[0].monthlyUsd;
+      expect(run([asg({ instanceType: 't3.medium', minSize: 4 })]).items[0].monthlyUsd).toBeCloseTo(t3 * 4, 2);
+      expect(run([asg({})]).items[0].monthlyUsd).toBeCloseTo(t3 * 2, 2);
+    });
+
+    test('a group scaled to zero costs nothing and says why', () => {
+      const r = run([asg({ instanceType: 't3.medium', desiredCapacity: 0, minSize: 0 })]);
+      expect(r.items[0].monthlyUsd).toBe(0);
+      expect(r.items[0].assumptions.join(' ')).toMatch(/no instances run/);
+    });
+
+    test('a design with only Auto Scaling groups and no EC2 resources no longer has a zero compute cost', () => {
+      const r = run([asg({ instanceType: 't3.medium', desiredCapacity: 2 }), asg({ instanceType: 't3.medium', desiredCapacity: 2 })]);
+      expect(r.totalMonthlyUsd).toBeGreaterThan(100);
+    });
+  });
+
+  test('the ALB rate is the AWS list price: $0.0225 per hour plus one $0.008 LCU-hour', () => {
+    const alb = makeResource({ resourceType: 'aws_alb', provider: 'aws', configJson: '{}' });
+    const r = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [alb] }, 'TEST');
+    expect(r.items[0].monthlyUsd).toBeCloseTo(0.0225 * 730 + 0.008 * 730, 2); // $22.27
+  });
+
+  test('RDS compute uses the PostgreSQL list rates, not the old inflated ones (db.m5.large was $0.240/hr, it is $0.178)', () => {
+    const rds = (extra: Record<string, unknown>) => makeResource({ resourceType: 'aws_rds', provider: 'aws', configJson: JSON.stringify({ engine: 'postgres', storageType: 'gp2', allocatedStorage: 200, ...extra }) });
+    const run = (r: ReturnType<typeof makeResource>) => estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [r] }, 'TEST').items[0].monthlyUsd;
+    const storage = 200 * 0.115;
+    expect(run(rds({ instanceClass: 'db.m5.large' }))).toBeCloseTo(0.178 * 730 + storage, 2);
+    expect(run(rds({ instanceClass: 'db.m5.large', multiAz: true }))).toBeCloseTo(0.356 * 730 + storage * 2, 2); // Multi-AZ doubles both
+    expect(run(rds({ instanceClass: 'db.r5.large' }))).toBeCloseTo(0.25 * 730 + storage, 2);
+    expect(run(rds({ instanceClass: 'db.t3.medium' }))).toBeCloseTo(0.072 * 730 + storage, 2);
   });
 
   test('EBS io2 volumes cost more than gp3 for the same size (previously always priced as gp3)', () => {
