@@ -35,7 +35,6 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
-      ...(process.env.NODE_ENV === 'development' ? { 'x-user-id': 'dev-user-id' } : {}),
     },
     ...init,
   });
@@ -159,7 +158,7 @@ class ApiSecurityServiceImpl implements ISecurityService {
     if (!projectId || projectId === 'draft-project') throw new Error('Save the project before exporting a report.');
     const res = await fetch(`${getBaseUrl()}/api/projects/${projectId}/assessment-report`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(process.env.NODE_ENV === 'development' ? { 'x-user-id': 'dev-user-id' } : {}) },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ env: _activeEnvironment, format, ...(scanId ? { scanId } : {}), ...(aiCommentary ? { aiCommentary } : {}) }),
     });
     if (!res.ok) {

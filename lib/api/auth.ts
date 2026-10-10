@@ -127,9 +127,6 @@ export async function getOrgRole(
   userId: string,
   orgId: string,
 ): Promise<string | null> {
-  if (process.env.NODE_ENV === 'development' && userId === 'dev-user-id') {
-    return 'owner';
-  }
   const key = `${userId}|${orgId}`;
   if (AUTH_CACHE_MS > 0) {
     const cached = roleCache.get(key);
@@ -144,7 +141,7 @@ export async function getOrgRole(
     if (AUTH_CACHE_MS > 0) { roleCache.set(key, role); roleKeys.add(key); }
     return role;
   } catch {
-    if (process.env.NODE_ENV === 'development') return 'owner';
+    // Fail closed: a database error must never grant access.
     return null;
   }
 }
