@@ -23,12 +23,25 @@ export const awsResources: ResourceDefinition[] = [
     allowedChildren: ['aws_subnet', 'aws_igw', 'aws_nat', 'aws_sg', 'aws_route_table', 'aws_nacl'],
     defaultWidth: 780,
     defaultHeight: 520,
-    defaultConfig: { cidrBlock: '10.0.0.0/16', enableDnsSupport: true, enableDnsHostnames: true, name: 'my-vpc' },
+    defaultConfig: { cidrBlock: '10.0.0.0/16', enableDnsSupport: true, enableDnsHostnames: true, flowLogsEnabled: false, flowLogsBucket: '', flowLogsTrafficType: 'ALL', name: 'my-vpc' },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-vpc', required: true },
       { key: 'cidrBlock', label: 'CIDR Block', type: 'cidr', defaultValue: '10.0.0.0/16', required: true },
       { key: 'enableDnsSupport', label: 'Enable DNS Support', type: 'boolean', defaultValue: true },
       { key: 'enableDnsHostnames', label: 'Enable DNS Hostnames', type: 'boolean', defaultValue: true },
+      {
+        key: 'flowLogsEnabled', label: 'VPC Flow Logs', type: 'boolean', defaultValue: false, section: 'Monitoring',
+        description: 'Records the network traffic in the VPC to an S3 bucket, so it can be investigated after an incident. The bucket must already exist.',
+      },
+      { key: 'flowLogsBucket', label: 'Flow Logs Bucket', type: 'text', defaultValue: '', section: 'Monitoring', placeholder: 'existing S3 bucket name', visibleWhen: (c) => c['flowLogsEnabled'] === true },
+      {
+        key: 'flowLogsTrafficType', label: 'Traffic to Log', type: 'select', defaultValue: 'ALL', section: 'Monitoring', visibleWhen: (c) => c['flowLogsEnabled'] === true,
+        options: [
+          { label: 'All traffic', value: 'ALL' },
+          { label: 'Rejected traffic only', value: 'REJECT' },
+          { label: 'Accepted traffic only', value: 'ACCEPT' },
+        ],
+      },
     ],
   },
   {

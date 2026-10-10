@@ -86,6 +86,8 @@ model Project {
   optimizations        ArchOptimization[]
   terraformGens        TerraformGeneration[]
   wellArchitectedAssessments WellArchitectedAssessment[]
+  wellArchitectedAnswers WellArchitectedAnswer[]
+  accountControlEvidence AccountControlEvidence[]
   aiGenerationHistory  AIGenerationHistory[]
   complianceAssessments ComplianceAssessment[]
   exportJobs           ExportJob[]
@@ -441,6 +443,51 @@ model WellArchitectedFinding {
   assessment WellArchitectedAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
 
   @@index([assessmentId])
+}
+
+// ─── Well-Architected questionnaire ───────────────────────────────────────────
+// Answers to the practice questions a diagram cannot answer (backups restored, on-call, budget owner…). They describe how the
+// WORKLOAD is run, so they belong to the project, not to one environment. One row per project and question.
+model WellArchitectedAnswer {
+  id         String @id @default(uuid())
+  projectId  String
+  // Stable id from lib/engines/assessment/questionnaire/questions.ts, e.g. "REL-01"
+  questionId String
+  // 'yes' | 'partial' | 'no' | 'na' | 'unknown'
+  answer     String
+  note       String @default("")
+  answeredBy String @default("")
+  createdAt  String
+  updatedAt  String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, questionId])
+  @@index([projectId])
+}
+
+// ─── Account-level control evidence ───────────────────────────────────────────
+// Dated readings of account settings a diagram cannot show (CloudTrail, GuardDuty, root MFA, AWS Config), taken read-only through a
+// connected AWS account. One row per project and control; a new check replaces the old reading. The assessment uses a reading for seven
+// days. Only plain sentences are stored: never raw API output, credentials or account identifiers.
+model AccountControlEvidence {
+  id             String @id @default(uuid())
+  projectId      String
+  // The connected account that was read (a CloudAccount id; kept without a relation so the reading survives for the audit trail)
+  cloudAccountId String
+  accountLabel   String @default("")
+  // The assessment rule id, e.g. "AWS-ACCT-001"
+  controlId      String
+  // 'PASS' | 'WARNING' | 'FAIL' | 'UNAVAILABLE'
+  status         String
+  observation    String
+  observedAt     String
+  checkedBy      String @default("")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, controlId])
+  @@index([projectId])
 }
 
 // ─── AI Generation History ────────────────────────────────────────────────────

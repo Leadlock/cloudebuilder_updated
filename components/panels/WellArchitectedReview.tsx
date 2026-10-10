@@ -5,6 +5,8 @@ import { useApp, useActiveProject } from '@/context/AppContext';
 import AiReviewCard from './AiReviewCard';
 import type { AiWellArchitectedReview } from '@/lib/services/AiReviewService';
 import type { ReviewHistory } from '@/lib/engines/wellArchitected/history';
+import WaQuestionnaire from './WaQuestionnaire';
+import WaAccountChecks from './WaAccountChecks';
 import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedService';
 import type { WaAssessment, WaFinding, WaPillar, WaSeverity, ResourceState } from '@/lib/engines/wellArchitected/types';
 import {
@@ -132,7 +134,11 @@ export default function WellArchitectedReview() {
             setAssessment(fresh);
             setRefreshNote(data.staleReason === 'ruleset'
               ? 'This review was re-run automatically because the Well-Architected rules were updated since it was last made.'
-              : 'This review was re-run automatically because the architecture changed since it was last made.');
+              : data.staleReason === 'answers'
+                ? 'This review was re-run automatically because the questionnaire answers changed since it was last made.'
+                : data.staleReason === 'account'
+                  ? 'This review was re-run automatically because the AWS account was checked after it was last made.'
+                : 'This review was re-run automatically because the architecture changed since it was last made.');
           } else setAssessment(data);
         } else {
           setRefreshNote(null);
@@ -279,7 +285,7 @@ export default function WellArchitectedReview() {
             {assessment?.isStale && (
               <span className={clsx('px-2.5 py-0.5 rounded-full text-xs font-bold border flex items-center gap-1.5 animate-pulse', isLight ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-amber-500/10 text-amber-300 border-amber-500/30')}>
                 <AlertTriangle className="w-3 h-3" />
-                {assessment.staleReason === 'ruleset' ? 'Stale — Rules Updated' : 'Stale — Architecture Changed'}
+                {assessment.staleReason === 'ruleset' ? 'Stale — Rules Updated' : assessment.staleReason === 'answers' ? 'Stale — Answers Changed' : assessment.staleReason === 'account' ? 'Stale — Account Checked' : 'Stale — Architecture Changed'}
               </span>
             )}
           </div>
@@ -535,6 +541,23 @@ export default function WellArchitectedReview() {
             </div>
           )}
         </div>
+      )}
+
+      <WaQuestionnaire
+        providers={Array.from(new Set(activeProject.nodes.map((n) => n.provider).filter((p): p is 'aws' | 'azure' => p === 'aws' || p === 'azure'))).length > 0
+          ? Array.from(new Set(activeProject.nodes.map((n) => n.provider).filter((p): p is 'aws' | 'azure' => p === 'aws' || p === 'azure')))
+          : activeProject.provider === 'azure' ? ['azure'] : activeProject.provider === 'multi' ? ['aws', 'azure'] : ['aws']}
+        isLight={isLight}
+        onAnswered={() => { void handleRunAnalysis(); }}
+        disabledReason={activeProject.id === 'draft-project' ? 'Save the project to answer the questionnaire: answers belong to a saved project.' : undefined}
+      />
+
+      {activeProject.nodes.some((n) => n.provider === 'aws') && (
+        <WaAccountChecks
+          isLight={isLight}
+          onChecked={() => { void handleRunAnalysis(); }}
+          disabledReason={activeProject.id === 'draft-project' ? 'Save the project to check the AWS account.' : undefined}
+        />
       )}
 
       {/* Pillar Scores Section */}

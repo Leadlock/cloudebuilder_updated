@@ -65,7 +65,7 @@ export type RemediationPriority = 'REQUIRED_REMEDIATION' | 'RECOMMENDED_IMPROVEM
 export type CostImpact = 'NONE' | 'POSSIBLE_INCREASE' | 'POSSIBLE_DECREASE';
 
 /** How a piece of evidence was obtained. */
-export type EvidenceBasis = 'CONFIGURATION' | 'RELATIONSHIP' | 'TOPOLOGY' | 'NOT_MODELLED';
+export type EvidenceBasis = 'CONFIGURATION' | 'RELATIONSHIP' | 'TOPOLOGY' | 'NOT_MODELLED' | 'QUESTIONNAIRE' | 'ACCOUNT_API';
 
 /**
  * Provenance of the configuration an evaluation relied on (weakest field wins):
@@ -176,6 +176,12 @@ export interface AssessContext {
   /** Resources directly connected to `id` by an edge (either direction) or containment. */
   neighbors(id: string): AssessResource[];
   providers: AssessmentProvider[];
+  /** Answers to the Well-Architected questionnaire, by question id. Only present when a questionnaire is supplied (see questionnaire/). */
+  answers?: Record<string, { answer: string; note?: string }>;
+  /** Dated readings of account-level controls (CloudTrail, GuardDuty, root MFA, Config), by rule id. See accountEvidence.ts. */
+  accountEvidence?: Record<string, { status: 'PASS' | 'WARNING' | 'FAIL' | 'UNAVAILABLE'; observation: string; observedAt: string; accountLabel?: string }>;
+  /** The time of this assessment, so a rule can tell how old a reading is. */
+  now?: string;
 }
 
 export interface RuleOutcome {
@@ -186,6 +192,8 @@ export interface RuleOutcome {
   severity?: Severity;
   /** For architecture/account-scoped rules. */
   resourceIds?: string[];
+  /** Set when the evidence is not configuration (for example a reading taken from the cloud account); otherwise derived from the evidence. */
+  provenance?: EvidenceProvenance;
   /** What CloudCraft would need to evaluate the control (NOT_EVALUATED / INSUFFICIENT_DATA). */
   requiredData?: string;
 }

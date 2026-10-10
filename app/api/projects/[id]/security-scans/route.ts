@@ -13,6 +13,7 @@ import { resolveOrgId, resolveArchitecture } from '@/lib/api/phase2d';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
 import { buildSnapshot, persistSnapshot, loadActiveReviews, listSnapshots } from '@/lib/services/AssessmentSnapshotService';
 import { findingToIssue } from '@/lib/analysis';
+import { loadAccountEvidence } from '@/lib/api/accountEvidence';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +60,7 @@ export async function POST(
       arch: ctx.arch,
       createdBy: identity.userId,
       reviews,
+      accountEvidence: await loadAccountEvidence(projectId),
     });
     const persisted = await persistSnapshot(snapshot);
     const a = snapshot.assessment;

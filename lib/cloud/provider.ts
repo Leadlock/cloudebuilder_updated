@@ -51,6 +51,12 @@ export interface InfrastructureDiscoveryProvider extends CloudProviderAdapter {
    */
   discoverAll(regions?: string[]): Promise<DiscoveryResult>;
 
+  /**
+   * Read the account-level controls (CloudTrail, GuardDuty, root MFA, AWS Config), read-only. AWS only.
+   * Never throws; a control that cannot be read comes back UNAVAILABLE with the reason.
+   */
+  readAccountControls?(regions: string[]): Promise<import('./accountControls/readAwsAccountControls').AccountControlResult[]>;
+
   /** Discover accessible regions for this account/subscription */
   discoverRegions?(): Promise<string[]>;
 

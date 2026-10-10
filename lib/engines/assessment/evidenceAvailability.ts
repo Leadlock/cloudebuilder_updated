@@ -28,8 +28,8 @@ export interface EvidenceAvailability {
 
 export const EVIDENCE_AVAILABILITY: Record<string, EvidenceAvailability> = {
   'AWS-VPC-002': {
-    classes: ['DISCOVERY_SUPPORTED'],
-    explanation: 'Flow logs are a separate resource with a delivery destination (CloudWatch Logs or S3) and an IAM role; CloudCraft does not model them or generate them in Terraform, and discovery does not yet call DescribeFlowLogs.',
+    classes: ['DESIGN_TIME_SUPPORTED', 'DISCOVERY_SUPPORTED'],
+    explanation: 'Flow logs are modelled as VPC settings (enabled, S3 bucket, traffic type) and emitted in Terraform. An imported VPC stays not evaluated until the setting is known, because discovery does not yet call DescribeFlowLogs.',
     evidenceSource: 'ec2:DescribeFlowLogs (ResourceId = VPC ID).',
   },
   'AWS-SG-003': {

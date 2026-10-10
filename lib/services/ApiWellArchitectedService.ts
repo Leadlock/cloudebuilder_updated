@@ -6,6 +6,7 @@
  */
 import type { WaAssessment, WaFinding } from '@/lib/engines/wellArchitected/types';
 import type { ReviewHistory } from '@/lib/engines/wellArchitected/history';
+import type { QuestionAnswer } from '@/lib/engines/assessment/questionnaire/questions';
 import { WellArchitectedFrameworkService } from '@/lib/engines/wellArchitected/WellArchitectedFrameworkService';
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
 import type { CanvasNode, CanvasEdge } from '@/types';
@@ -71,6 +72,33 @@ interface ResourceFindingsResponse {
   findingCount: number;
 }
 
+export interface QuestionnaireQuestion {
+  id: string;
+  pillar: string;
+  pillarLabel: string;
+  providers: Array<'aws' | 'azure'>;
+  severity: 'HIGH' | 'MEDIUM' | 'LOW';
+  question: string;
+  why: string;
+  gap: string;
+  recommendation: string;
+  steps: string[];
+  practice: string;
+}
+export interface QuestionnaireData {
+  questions: QuestionnaireQuestion[];
+  answers: Record<string, { answer: QuestionAnswer; note: string; updatedAt: string }>;
+}
+
+export interface AccountControlReading {
+  controlId: string;
+  status: 'PASS' | 'WARNING' | 'FAIL' | 'UNAVAILABLE';
+  observation: string;
+  observedAt: string;
+  accountLabel: string;
+}
+export interface AccountControlsData { controls: AccountControlReading[]; permissions: Record<string, string[]> }
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 class ApiWellArchitectedServiceImpl {
@@ -92,6 +120,44 @@ class ApiWellArchitectedServiceImpl {
       console.warn('[WA Service] getAssessment failed:', err instanceof Error ? err.message : err);
       return null;
     }
+  }
+
+  /** The questionnaire and the active project's answers. Null for a live draft (nothing saved to attach answers to) or on failure. */
+  async getQuestionnaire(): Promise<QuestionnaireData | null> {
+    const projectId = _activeProjectId;
+    if (!projectId || projectId === 'draft-project') return null;
+    try {
+      return await apiFetch<QuestionnaireData>(`/api/projects/${projectId}/well-architected/questions`);
+    } catch (err) {
+      console.warn('[WA Service] getQuestionnaire failed:', err instanceof Error ? err.message : err);
+      return null;
+    }
+  }
+
+  /** Save answers (answer null clears one). Throws on failure so the form can say the answer was not saved. */
+  async saveAnswers(changes: Array<{ questionId: string; answer: QuestionAnswer | null; note?: string }>): Promise<QuestionnaireData> {
+    const projectId = _activeProjectId;
+    if (!projectId || projectId === 'draft-project') throw new Error('Save the project first');
+    return apiFetch<QuestionnaireData>(`/api/projects/${projectId}/well-architected/questions`, { method: 'PUT', body: JSON.stringify({ answers: changes }) });
+  }
+
+  /** The latest readings of the account's own controls. Null for a live draft or on failure. */
+  async getAccountControls(): Promise<AccountControlsData | null> {
+    const projectId = _activeProjectId;
+    if (!projectId || projectId === 'draft-project') return null;
+    try {
+      return await apiFetch<AccountControlsData>(`/api/projects/${projectId}/well-architected/account-controls`);
+    } catch (err) {
+      console.warn('[WA Service] getAccountControls failed:', err instanceof Error ? err.message : err);
+      return null;
+    }
+  }
+
+  /** Read the controls now from a connected AWS account. Throws so the card can say why the check failed. */
+  async checkAccountControls(cloudAccountId: string): Promise<AccountControlsData> {
+    const projectId = _activeProjectId;
+    if (!projectId || projectId === 'draft-project') throw new Error('Save the project first');
+    return apiFetch<AccountControlsData>(`/api/projects/${projectId}/well-architected/account-controls`, { method: 'POST', body: JSON.stringify({ cloudAccountId }) });
   }
 
   /**

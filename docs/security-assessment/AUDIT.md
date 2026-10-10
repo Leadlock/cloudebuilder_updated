@@ -28,6 +28,26 @@ All new rules are LOW and manual-only, so none blocks a deployment or changes a 
 | Every "Run Review" was saved but nothing read the history. | `GET /api/projects/:id/well-architected/history` and a **Since the last review** card: score and pillar movement, findings that appeared, findings that were fixed, and a note when the ruleset changed in between. Identical consecutive re-runs collapse into one entry. |
 | The claim that rules read the same settings as the resource forms and the Terraform generator was not enforced. | `__tests__/ruleSchemaConsistency.test.ts` checks, for every rule, that each setting it reads exists in the resource definition, that a default resource never gives "insufficient data", that Auto-Fix patches write real settings, and that each setting changes the generated Terraform. It found Azure Front Door `cachingEnabled` read by a rule but never emitted (fixed). Two known gaps remain, listed in the test with reasons: `aws_ebs.snapshotSchedule` (no Backup/DLM resources) and `aws_s3.loggingEnabled` (needs a target bucket). The list is itself checked, so it cannot hide a new gap or outlive a fixed one. |
 
+### Well-Architected questionnaire
+
+Four of the six pillars rested on one to five automated checks, because a diagram cannot show how a workload is run. The review now has
+a questionnaire of practice questions (`lib/engines/assessment/questionnaire/questions.ts`, 35 questions across all pillars):
+deployment and rollback, on-call, restored backups, tested DR, SSO and MFA, secrets, budget ownership, and so on.
+
+- **An answer is a check.** Each question becomes a rule per framework it belongs to (`WAQ-AWS-REL-01`, `WAQ-AZ-REL-01`), so pillar,
+  severity weight, findings, coverage and reports work unchanged. Yes passes, Partly counts as half a failure, No fails, Not applicable
+  is excluded. A "No" on a HIGH question caps the pillar at 70 like any failing HIGH check.
+- **Unknown is never a pass.** An unanswered question is `NOT_EVALUATED` and "Don't know" is `INSUFFICIENT_DATA`; both only lower coverage.
+- **Opt-in.** Question rules are not in `ALL_RULES`; they join an assessment only when answers are supplied. A project that has not
+  answered anything is assessed exactly as before, and the Security tab, the AI generator's deploy gate and stored scans never see them.
+  After the first answer, unanswered questions count as not evaluated.
+- **Answers belong to the project** (table `wellArchitectedAnswer`, one row per project and question, shared by its environments).
+  `GET/PUT /api/projects/:id/well-architected/questions`; writing needs the owner, admin or member role; the body is validated
+  (known question id, known answer, note up to 500 characters, up to 100 answers per request).
+- **Consistency.** The review, the saved-review staleness check (a review made before the answers last changed is stale, reason
+  `answers`) and the Well-Architected report (HTML, PDF, JSON) all include the answers, so an export says what the tab says.
+- Answering enough questions is what clears a pillar's "Limited evidence" flag.
+
 ## 1. Root causes found in the previous implementation
 
 ### Well-Architected review (`lib/engines/wellArchitected/rules/{awsWaRules,azureWaRules}.ts`, now removed)
@@ -164,3 +184,20 @@ observations to control areas as input for control owners and auditors.
   500 resources).
 - **Platform.** Template instances get unique IDs. The migration MARKER_MISMATCH was fixed
   without resetting data (see `docs/database/MIGRATION_MARKER_MISMATCH.md`).
+
+### Closing the last coverage gaps
+
+- **VPC flow logs are modelled.** `aws_vpc` has `flowLogsEnabled`, `flowLogsBucket` and `flowLogsTrafficType`; `AWS-VPC-002` (LOW, so it
+  never blocks the AI generator) evaluates them, and the Terraform generator writes an `aws_flow_log` to S3 only for a valid bucket name.
+  ALB access logs and CloudFront logging follow the same pattern.
+- **Account-level controls can be read live.** CloudTrail, GuardDuty, root MFA and AWS Config (`AWS-ACCT-001..004`) are settings of the
+  account, not of the diagram. With a connected AWS account, **Account checks** in the review makes read-only calls
+  (`lib/cloud/accountControls/readAwsAccountControls.ts`) through the discovery role and stores one dated reading per control
+  (`accountControlEvidence`).
+  - A reading counts for 7 days and is marked `LIVE_VERIFIED`; after that, or when no check was made, the control is NOT EVALUATED.
+  - A refused or failed read is `UNAVAILABLE` with the permission to add. It is never a pass and never a fail.
+  - A clear negative in one Region stays a FAIL even if another Region could not be read.
+  - A review made before the account was last checked is stale (reason `account`). Scans and both reports use the same readings.
+  - `GET/POST /api/projects/:id/well-architected/account-controls`; running a check needs the owner, admin or member role. The seven
+    extra read actions are listed in `lib/cloud/discoveryPolicy.ts` and are optional: discovery works without them.
+- **Still not covered:** Azure account-level controls (`AZ-ACCT-*`) stay NOT EVALUATED, and the 30 unanswered questions count until answered.

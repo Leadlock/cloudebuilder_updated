@@ -9,6 +9,7 @@
  * exists and is adjusted only with a documented reason in `rationale`.
  */
 import type { AssessResource, RuleDefinition } from '../types';
+import { dayOf, isFresh } from '../accountEvidence';
 import {
   REVIEWED, configEvaluator, ev, notModelled, rule, PUBLIC_CIDRS, directlyInternetLinked, fmt,
 } from '../ruleHelpers';
@@ -620,16 +621,33 @@ export const awsRules: RuleDefinition[] = [
   rule({
     ...common,
     id: 'AWS-VPC-002', service: 'Amazon VPC', scope: 'resource', resourceTypes: ['aws_vpc'],
-    domain: 'SECURITY', category: 'Logging & audit', severity: 'MEDIUM', priority: 'RECOMMENDED_IMPROVEMENT',
-    title: 'VPC flow logging not modelled',
-    description: 'Security Hub EC2.6 requires VPC Flow Logs. CloudCraft does not model flow logs.',
-    rationale: 'Reported NOT EVALUATED — flow logging is never assumed.',
-    risk: 'Network traffic cannot be investigated.', impact: 'Reduced incident investigation capability.',
+    domain: 'SECURITY', category: 'Logging & audit', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'VPC Flow Logs are not enabled',
+    description: 'Network traffic in the VPC is not being recorded.',
+    rationale: 'Security Hub EC2.6 rates this medium. It is LOW here because flow logs need an existing S3 bucket as their destination, which a design-time canvas does not create. An imported VPC whose flow-log setting is not known stays NOT EVALUATED: nothing is assumed.',
+    risk: 'Network traffic cannot be investigated after an incident.', impact: 'Reduced incident investigation capability.',
     wellArchitected: WA.sec('SEC 4 — Detect and investigate security events'),
-    references: ['AWS-FSBP-EC2.6', 'AWS-WA-security'],
+    references: ['AWS-FSBP-EC2.6', 'AWS-WA-security', TF],
     soc1: ['SOC1-OP-01'],
-    remediation: { recommendation: 'Enable VPC Flow Logs (at least REJECT traffic) to CloudWatch Logs or S3.', manualSteps: ['Create aws_flow_log for the VPC.'], terraform: 'aws_flow_log (vpc_id, traffic_type, log_destination)' },
-    evaluate: (r) => notModelled('VPC Flow Logs', 'Live discovery of flow logs for this VPC, or a CloudCraft flow-log resource.', [r.id]),
+    remediation: {
+      recommendation: 'Enable VPC Flow Logs (all traffic, or at least rejected traffic) to a dedicated S3 bucket with a retention policy.',
+      manualSteps: ['Create an S3 bucket for flow logs (or choose an existing one).', 'Turn on VPC Flow Logs for the VPC and enter the bucket name.', 'Set a lifecycle rule on the bucket to expire old logs.'],
+      terraform: 'aws_flow_log (vpc_id, traffic_type, log_destination_type = "s3", log_destination)',
+    },
+    evaluate: (r) => {
+      const c = r.config;
+      const evidence = [ev(r, 'flowLogsEnabled', 'Enabled / Yes'), ev(r, 'flowLogsBucket'), ev(r, 'flowLogsTrafficType', 'ALL or REJECT')];
+      // An imported VPC carries only what discovery read, and discovery does not read flow logs yet: not knowing is not "disabled".
+      if (c.flowLogsEnabled === undefined && (r.importState === 'imported' || Boolean(r.discovery))) {
+        return { status: 'INSUFFICIENT_DATA', observation: 'Discovery did not return the flow-log setting for this imported VPC, so this control cannot be evaluated.', evidence, requiredData: 'Set the VPC Flow Logs setting on this VPC, or grant discovery ec2:DescribeFlowLogs.' };
+      }
+      if (c.flowLogsEnabled !== true) return { status: 'FAIL', observation: 'VPC Flow Logs are not enabled.', evidence };
+      if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(String(c.flowLogsBucket ?? '').trim())) {
+        return { status: 'WARNING', observation: 'Flow logs are enabled but no valid S3 bucket name is set, so no logs are delivered.', evidence };
+      }
+      if (c.flowLogsTrafficType === 'ACCEPT') return { status: 'WARNING', observation: 'Only accepted traffic is logged; rejected traffic, which shows probing and blocked attacks, is not.', evidence };
+      return { status: 'PASS', observation: 'VPC Flow Logs are delivered to an S3 bucket.', evidence };
+    },
   }),
   rule({
     ...common,
@@ -1664,14 +1682,26 @@ export const awsRules: RuleDefinition[] = [
     id, service, scope: 'account', domain: 'SECURITY', category, severity, priority: 'REQUIRED_REMEDIATION',
     title: `${what} — account-level control`,
     description: `${what} is an AWS account/Region setting that is not part of an architecture diagram.`,
-    rationale: 'Reported NOT EVALUATED at design time. CloudCraft never assumes account-level controls are enabled.',
+    rationale: 'Account-level controls are not part of an architecture diagram and CloudCraft never assumes them: a control is NOT EVALUATED until the account has been checked (read-only API calls through a connected AWS account). A reading is dated, only used for seven days, and a control the account would not let CloudCraft read stays NOT EVALUATED with the reason.',
     risk, impact: 'Reduced detection, audit or account protection.',
     wellArchitected: WA.sec(practice),
     references: [ref, 'AWS-WA-security'],
     soc1: [...soc1],
     remediation: { recommendation: rec, manualSteps: [rec] },
-    evaluateArchitecture: (ctx) => ctx.providers.includes('aws')
-      ? [notModelled(what, 'Evidence from the AWS account (e.g. Security Hub findings or a connected AWS account discovery that reads this setting).')]
-      : [{ status: 'NOT_APPLICABLE', observation: 'No AWS resources.', evidence: [] }],
+    evaluateArchitecture: (ctx) => {
+      if (!ctx.providers.includes('aws')) return [{ status: 'NOT_APPLICABLE', observation: 'No AWS resources.', evidence: [] }];
+      const reading = ctx.accountEvidence?.[id];
+      if (!reading) return [notModelled(what, 'Check the AWS account: connect an account and use "Check account" in the review (read-only), or supply this evidence another way.')];
+      const when = dayOf(reading.observedAt);
+      const from = reading.accountLabel ? ` "${reading.accountLabel}"` : '';
+      const evidence = [{ label: what, observed: reading.observation, basis: 'ACCOUNT_API' as const, observedAt: reading.observedAt }];
+      if (reading.status === 'UNAVAILABLE') {
+        return [{ status: 'NOT_EVALUATED', observation: `The AWS account${from} was checked on ${when}, but this control could not be read: ${reading.observation}`, evidence, requiredData: reading.observation }];
+      }
+      if (!ctx.now || !isFresh(reading, ctx.now)) {
+        return [{ status: 'NOT_EVALUATED', observation: `The last reading of this control (${when}) is more than 7 days old, so it is not relied on.`, evidence, requiredData: 'Check the AWS account controls again.' }];
+      }
+      return [{ status: reading.status, observation: `${reading.observation} (read from the AWS account${from} on ${when}).`, evidence, provenance: 'LIVE_VERIFIED' as const }];
+    },
   })),
 ];

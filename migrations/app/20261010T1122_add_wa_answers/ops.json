@@ -1,0 +1,164 @@
+[
+  {
+    "id": "table.wellArchitectedAnswer",
+    "label": "Create table \"wellArchitectedAnswer\"",
+    "summary": "Creates table \"wellArchitectedAnswer\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "wellArchitectedAnswer"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"wellArchitectedAnswer\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"wellArchitectedAnswer\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"wellArchitectedAnswer\"",
+        "sql": "CREATE TABLE \"public\".\"wellArchitectedAnswer\" (\n  \"answer\" text NOT NULL,\n  \"answeredBy\" text DEFAULT '' NOT NULL,\n  \"createdAt\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"note\" text DEFAULT '' NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"questionId\" text NOT NULL,\n  \"updatedAt\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"wellArchitectedAnswer\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"wellArchitectedAnswer\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.wellArchitectedAnswer.wellArchitectedAnswer_projectId_questionId_key",
+    "label": "Add unique constraint on \"wellArchitectedAnswer\" (projectId, questionId)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "wellArchitectedAnswer_projectId_questionId_key",
+        "table": "wellArchitectedAnswer"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"wellArchitectedAnswer_projectId_questionId_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "wellArchitectedAnswer_projectId_questionId_key",
+          "public",
+          "\"public\".\"wellArchitectedAnswer\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"wellArchitectedAnswer_projectId_questionId_key\"",
+        "sql": "ALTER TABLE \"public\".\"wellArchitectedAnswer\" ADD CONSTRAINT \"wellArchitectedAnswer_projectId_questionId_key\" UNIQUE (\"projectId\", \"questionId\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"wellArchitectedAnswer_projectId_questionId_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "wellArchitectedAnswer_projectId_questionId_key",
+          "public",
+          "\"public\".\"wellArchitectedAnswer\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.wellArchitectedAnswer.wellArchitectedAnswer_projectId_idx_a96e4d92",
+    "label": "Create index \"wellArchitectedAnswer_projectId_idx_a96e4d92\" on \"wellArchitectedAnswer\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "wellArchitectedAnswer_projectId_idx_a96e4d92",
+        "table": "wellArchitectedAnswer"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"wellArchitectedAnswer_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"wellArchitectedAnswer_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"wellArchitectedAnswer_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"wellArchitectedAnswer_projectId_idx_a96e4d92\" ON \"public\".\"wellArchitectedAnswer\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"wellArchitectedAnswer_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"wellArchitectedAnswer_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.wellArchitectedAnswer.wellArchitectedAnswer_projectId_fkey",
+    "label": "Add foreign key \"wellArchitectedAnswer_projectId_fkey\" on \"wellArchitectedAnswer\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "wellArchitectedAnswer_projectId_fkey",
+        "table": "wellArchitectedAnswer"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"wellArchitectedAnswer_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "wellArchitectedAnswer_projectId_fkey",
+          "public",
+          "\"public\".\"wellArchitectedAnswer\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"wellArchitectedAnswer_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"wellArchitectedAnswer\"\nADD CONSTRAINT \"wellArchitectedAnswer_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"wellArchitectedAnswer_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "wellArchitectedAnswer_projectId_fkey",
+          "public",
+          "\"public\".\"wellArchitectedAnswer\""
+        ]
+      }
+    ]
+  }
+]

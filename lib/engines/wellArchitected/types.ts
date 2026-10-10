@@ -139,7 +139,7 @@ export interface WaAssessment {
   sourceLabel: string;           // e.g. 'Design-time assessment'
   confidence: 'design-time';
   isStale: boolean;              // True when the canvas changed after this analysis, or it was made with an older ruleset
-  staleReason?: 'architecture' | 'ruleset';
+  staleReason?: 'architecture' | 'ruleset' | 'answers' | 'account';
   awsAssessment?: WaAssessment;  // For multi-cloud, the AWS-specific assessment
   azureAssessment?: WaAssessment; // For multi-cloud, the Azure-specific assessment
   /** False when nothing could be evaluated — `overallScore` must not be displayed as a score. */
@@ -160,6 +160,10 @@ export interface WaAnalysisInput {
   versionId?: string;
   resources: DbArchitectureResource[];
   connections: DbArchitectureConnection[];
+  /** Answers to the Well-Architected questionnaire. Left out, questions play no part in the review. */
+  questionnaire?: { answers: Record<string, { answer: string; note?: string }> };
+  /** Dated readings of account-level controls. Left out, those controls stay NOT EVALUATED. */
+  accountEvidence?: import('@/lib/engines/assessment/accountEvidence').AccountEvidenceMap;
 }
 
 // ─── Rule Interface ───────────────────────────────────────────────────────────

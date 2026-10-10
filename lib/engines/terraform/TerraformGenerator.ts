@@ -887,13 +887,30 @@ locals {
   }
 
   private _vpc(name: string, cfg: Record<string, unknown>): string {
-    return `resource "aws_vpc" "${name}" {
+    const vpc = `resource "aws_vpc" "${name}" {
   cidr_block           = "${cfg['cidrBlock'] ?? '10.0.0.0/16'}"
   enable_dns_support   = ${cfg['enableDnsSupport'] !== false}
   enable_dns_hostnames = ${cfg['enableDnsHostnames'] !== false}
   tags = {
     Name        = "${name}"
     ManagedBy   = "CloudCraft"
+  }
+}`;
+    if (cfg['flowLogsEnabled'] !== true) return vpc;
+    const bucket = validLogBucket(cfg['flowLogsBucket']);
+    if (!bucket) return `${vpc}\n\n# WARNING: VPC Flow Logs are enabled but no valid S3 bucket name is set, so none are configured.`;
+    const traffic = ['ALL', 'REJECT', 'ACCEPT'].includes(String(cfg['flowLogsTrafficType'])) ? String(cfg['flowLogsTrafficType']) : 'ALL';
+    // An S3 destination needs no IAM role: AWS adds the delivery permissions to the bucket policy itself.
+    return `${vpc}
+
+resource "aws_flow_log" "${name}_flow_log" {
+  vpc_id               = aws_vpc.${name}.id
+  traffic_type         = "${traffic}"
+  log_destination_type = "s3"
+  log_destination      = "arn:aws:s3:::${bucket}"
+  tags = {
+    Name      = "${name}-flow-log"
+    ManagedBy = "CloudCraft"
   }
 }`;
   }

@@ -11,6 +11,8 @@ import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId, resolveArchitecture } from '@/lib/api/phase2d';
 import { wellArchitectedFrameworkService } from '@/lib/engines/wellArchitected/WellArchitectedFrameworkService';
 import { wellArchitectedRepository } from '@/lib/repositories/wellArchitectedRepository';
+import { loadQuestionnaire } from '@/lib/api/waQuestionnaire';
+import { loadAccountEvidence } from '@/lib/api/accountEvidence';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
 
 export const dynamic = 'force-dynamic';
@@ -59,6 +61,8 @@ export async function POST(
       projectId,
       resources: arch.resources,
       connections: arch.connections,
+      questionnaire: await loadQuestionnaire(projectId),
+      accountEvidence: await loadAccountEvidence(projectId),
     });
 
     const assessmentId = await wellArchitectedRepository.createAssessment(assessment);
