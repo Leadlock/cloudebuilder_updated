@@ -532,7 +532,6 @@ export interface AIGeneratorResult {
   edges: CanvasEdge[];
   summary: string;
   suggestedResources: string[];
-  estimatedCost: number;
   /** null means "not scored" (no evaluable security checks yet) — never substitute another metric for this. */
   securityScore: number | null;
 }

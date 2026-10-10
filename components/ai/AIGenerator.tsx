@@ -1,7 +1,6 @@
 'use client';
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { calculateCosts } from '@/lib/analysis';
 import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
 import { rekeyGraph } from '@/lib/domain/instantiateTemplate';
 import {
@@ -16,7 +15,6 @@ import {
 import {
   Sparkles,
   Server,
-  DollarSign,
   ShieldCheck,
   ChevronRight,
   Loader2,
@@ -45,8 +43,6 @@ const EXAMPLE_PROMPTS = [
 ];
 
 function summarizeGraph(nodes: CanvasNode[], edges: CanvasEdge[], prompt: string): AIGeneratorResult {
-  const costs = calculateCosts(nodes);
-  const estimatedCost = Math.round(costs.reduce((acc, c) => acc + c.monthlyCost, 0));
   const security = runAssessment({ nodes, edges }).securityScore;
   const suggestedResources = Array.from(new Set(nodes.map((n) => n.label || n.resourceType)));
   return {
@@ -57,7 +53,6 @@ function summarizeGraph(nodes: CanvasNode[], edges: CanvasEdge[], prompt: string
         ? `Generated ${nodes.length} resource${nodes.length === 1 ? '' : 's'} tailored to your exact specifications.`
         : 'The AI did not return any resources for this prompt — try adjusting your requirements.',
     suggestedResources,
-    estimatedCost,
     securityScore: security.score,
   };
 }
@@ -815,7 +810,7 @@ export default function AIGenerator() {
             </div>
 
             {/* Metrics */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div
                 className={clsx(
                   'border rounded-2xl p-4 text-center transition-colors',
@@ -827,16 +822,6 @@ export default function AIGenerator() {
                   {result.nodes.length}
                 </p>
                 <p className={clsx('text-xs', isLight ? 'text-slate-500' : 'text-slate-400')}>Resources</p>
-              </div>
-              <div
-                className={clsx(
-                  'border rounded-2xl p-4 text-center transition-colors',
-                  isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
-                )}
-              >
-                <DollarSign className="w-4 h-4 text-amber-500 dark:text-amber-400 mx-auto mb-1.5" />
-                <p className="text-amber-500 dark:text-amber-400 font-bold text-xl">${result.estimatedCost}</p>
-                <p className={clsx('text-xs', isLight ? 'text-slate-500' : 'text-slate-400')}>Est. Monthly Cost</p>
               </div>
               <div
                 className={clsx(
