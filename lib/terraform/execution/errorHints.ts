@@ -39,6 +39,21 @@ export function explainTerraformError(raw: string | null | undefined): Terraform
     };
   }
 
+  const missingVar = /No value for required variable[^]*?variable "([a-z_]+)"/i.exec(message) ?? /variable "([a-z_]+)"[^]*?No value for required variable/i.exec(message);
+  if (missingVar) {
+    const name = missingVar[1]!;
+    const ssh = name === 'admin_ssh_public_key';
+    return {
+      kind: 'invalid-configuration', title: ssh ? 'This design needs an SSH public key' : `This design needs a value for "${name}"`,
+      summary: ssh
+        ? 'A Linux virtual machine in the design is created with an SSH key for its admin user. CloudCraft never uses a built-in key, and it cannot generate one for you, because you must be the one who holds the private half.'
+        : `Terraform has no value for "${name}", and CloudCraft never uses a built-in default for secrets.`,
+      steps: ssh
+        ? ['Create a key pair on your machine (ssh-keygen -t ed25519) and keep the private key.', 'Set TF_VAR_admin_ssh_public_key in the server environment to the contents of the .pub file, then try again.']
+        : [`Set TF_VAR_${name} in the server environment, then try again.`],
+    };
+  }
+
   if (isStateLockError(message) || /remote state is locked/i.test(message)) {
     const info = parseLockInfo(message);
     const holder = info?.who ? ` by ${info.who}` : '';

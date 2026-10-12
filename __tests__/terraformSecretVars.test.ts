@@ -7,10 +7,23 @@ beforeEach(() => { for (const k of [...NAMES, 'NODE_ENV']) saved[k] = env[k]; NA
 afterEach(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete env[k]; else env[k] = v; } });
 
 describe('terraformSecretVars', () => {
-  it('uses development placeholders outside production', () => {
+  it('in development generates the passwords (never a fixed value) and leaves the SSH key unset', () => {
     env.NODE_ENV = 'development';
     const v = terraformSecretVars();
-    expect(Object.keys(v).sort()).toEqual([...NAMES].sort());
+    expect(Object.keys(v).sort()).toEqual(['TF_VAR_db_password', 'TF_VAR_sql_admin_password', 'TF_VAR_windows_admin_password']);
+    for (const p of Object.values(v)) {
+      expect(p.length).toBeGreaterThanOrEqual(30);
+      expect(p).toMatch(/[A-Z]/); expect(p).toMatch(/[a-z]/); expect(p).toMatch(/\d/); expect(p).toMatch(/-/);
+      expect(p).not.toMatch(/Pass123/);
+    }
+    expect(new Set(Object.values(v)).size).toBe(3);                 // each name gets its own
+    expect(terraformSecretVars()).toEqual(v);                       // stable for the life of the process, so plan and apply agree
+  });
+
+  it('an operator value always wins in development too', () => {
+    env.NODE_ENV = 'development';
+    env.TF_VAR_admin_ssh_public_key = 'ssh-ed25519 AAAA mine';
+    expect(terraformSecretVars()['TF_VAR_admin_ssh_public_key']).toBe('ssh-ed25519 AAAA mine');
   });
 
   it('refuses to fall back to the built-in passwords in production', () => {
@@ -24,5 +37,15 @@ describe('terraformSecretVars', () => {
     const v = terraformSecretVars();
     expect(v['TF_VAR_db_password']).toBe('operator-value-0');
     expect(Object.values(v).every((x) => x.startsWith('operator-value-'))).toBe(true);
+  });
+
+  it('no built-in password or key exists anywhere in the source tree', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { spawnSync } = require('child_process') as typeof import('child_process');
+    // grep exits 1 when it finds nothing, which is the passing case.
+    const r = spawnSync('grep', ['-rIlE', 'Pass123!|cloudcraft@admin', 'lib', 'app', 'components', 'workers', 'scripts'], { encoding: 'utf8' });
+    expect(r.status === 0 || r.status === 1).toBe(true);
+    const hits = r.stdout.split('\n').filter(Boolean);
+    expect(hits).toEqual([]);
   });
 });

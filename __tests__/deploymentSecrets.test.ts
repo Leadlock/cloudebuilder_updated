@@ -32,8 +32,8 @@ describe('terraformSecretVarsFor', () => {
     const again = await terraformSecretVarsFor('org', 'acc1', store);
     expect(again).toEqual(first);
     expect(first['TF_VAR_db_password']).toHaveLength(32);
-    expect(first['TF_VAR_db_password']).not.toBe('CloudCraft_SecureDbPass123!');
-    expect(first['TF_VAR_admin_ssh_public_key']).toBeTruthy();
+    expect(first['TF_VAR_db_password']).not.toMatch(/Pass123/);
+    expect(first).not.toHaveProperty('TF_VAR_admin_ssh_public_key');     // never invented: it must come from the operator
   });
 
   it('gives each account its own passwords', async () => {

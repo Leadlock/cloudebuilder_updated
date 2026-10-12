@@ -4423,7 +4423,6 @@ variable "db_password" {
   description = "Database admin password — set via TF_VAR_db_password environment variable"
   type        = string
   sensitive   = true
-  default     = "CloudCraft_SecureDbPass123!"
 }`);
     }
 
@@ -4438,15 +4437,13 @@ variable "sql_admin_password" {
   description = "Azure SQL / PostgreSQL / MySQL server admin password — set via TF_VAR_sql_admin_password environment variable"
   type        = string
   sensitive   = true
-  default     = "CloudCraft_SqlPass123!"
 }`);
     }
 
     if (hasVm && hasLinuxVm) {
       vars.push(`variable "admin_ssh_public_key" {
-  description = "SSH public key for Azure VM admin access"
+  description = "SSH public key for Azure VM admin access — set via TF_VAR_admin_ssh_public_key (the public half of a key pair you hold)"
   type        = string
-  default     = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC/0ui7B45zZkM18ZUX8JLFf0MxHaIjnG/UL3bWtrXRo778I5+DkLGgucleDg75VxkqWBdGv2DZuRzdzRHFTPwOc9e1gRs2mCPXcGLIgRhZ4gquPPiU5j6glr4UrSebWfYINXXfrR/KRSJAAwqK+gNJOdUghUPScSK7CS2EEMWdwPnLEbgvynFeKmEfJilRSSRzpivg59WpBh5p1lU7cGu+7m85SCBcrGRCE65ggzTUP8eZuQeLCmNsV8QtuPj9dyO1Aixau15JRaHq2OWL8vgUqHok3bocw2difFfLbT42A2dXFbYgz50+6fltIvdflqeuJlM4AvFrIRFhb1rBqXAB cloudcraft@admin"
 }`);
     }
 
@@ -4455,7 +4452,6 @@ variable "sql_admin_password" {
   description = "Windows VM admin password — set via TF_VAR_windows_admin_password environment variable"
   type        = string
   sensitive   = true
-  default     = "CloudCraft_WinPass123!"
 }`);
     }
 
@@ -4525,7 +4521,8 @@ output "${name}_bucket_name" {
     if (providers.includes('aws'))   lines.push(`aws_region   = "us-east-1"`);
     if (providers.includes('azure')) lines.push(`azure_location = "eastus"`);
     lines.push('');
-    lines.push('# Sensitive values — set via environment variables:');
+    lines.push('# Sensitive values have no default on purpose: Terraform asks for them, or reads them from environment variables.');
+    lines.push('# Never write them in this file.');
     lines.push('# TF_VAR_db_password          = "..."');
     lines.push('# TF_VAR_sql_admin_password   = "..."');
     lines.push('# TF_VAR_admin_ssh_public_key = "..."');
