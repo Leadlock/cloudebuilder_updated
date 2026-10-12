@@ -6,5 +6,9 @@
   "azure_vm Standard_D2s_v3": 82.88,
   "azure_front_door Standard base fee": 35,
   "azure_cosmos_db serverless 100M RUs 10GB": 27.5,
-  "azure_cosmos_db autoscale 4000 RU/s 10GB": 352.9
+  "azure_cosmos_db autoscale 4000 RU/s 10GB": 352.9,
+  "aws_ec2 t3.medium": 31.97,
+  "aws_rds db.m5.large postgres multi-AZ 200GB": 305.88,
+  "aws_alb": 22.27,
+  "aws_nat": 37.35
 }

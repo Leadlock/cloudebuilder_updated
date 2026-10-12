@@ -68,6 +68,9 @@ export default function TopBar() {
 
   const handleLogout = async () => {
     try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('cloudcraft_demo_user');
+      }
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
       dispatch({ type: 'SET_USER', user: null });
       setUserMenuOpen(false);

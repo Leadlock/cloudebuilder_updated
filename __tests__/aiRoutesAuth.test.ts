@@ -1,0 +1,45 @@
+/**
+ * The AI routes accept only a real session. A request header (x-user-id) or an environment flag must never stand in for a login:
+ * both routes spend LLM budget, and a header-based identity would also let a caller dodge the per-user rate limit by rotating it.
+ */
+jest.mock('@/src/prisma/db', () => ({ db: {}, rawTransaction: jest.fn(), rawExec: jest.fn() }));
+
+import { NextRequest } from 'next/server';
+import { POST as generate } from '@/app/api/ai/generate/route';
+import { POST as questionnaire } from '@/app/api/ai/questionnaire/route';
+
+type Route = (req: NextRequest) => Promise<Response>;
+
+const call = (route: Route, headers: Record<string, string> = {}) =>
+  route(new NextRequest('http://localhost:3000/api/ai/x', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify({ prompt: 'a small web app on AWS' }),
+  }));
+
+describe.each([['generate', generate], ['questionnaire', questionnaire]])('POST /api/ai/%s', (_name, route) => {
+  const original = process.env['CLOUDCRAFT_ALLOW_LOCAL_SIGNUP'];
+  afterEach(() => {
+    if (original === undefined) delete process.env['CLOUDCRAFT_ALLOW_LOCAL_SIGNUP'];
+    else process.env['CLOUDCRAFT_ALLOW_LOCAL_SIGNUP'] = original;
+  });
+
+  it('refuses a request with no session', async () => {
+    expect((await call(route)).status).toBe(401);
+  });
+
+  it('refuses an x-user-id header with no session (it is not an identity)', async () => {
+    expect((await call(route, { 'x-user-id': 'anyone' })).status).toBe(401);
+    expect((await call(route, { 'x-user-id': 'anyone', 'x-user-role': 'admin' })).status).toBe(401);
+  });
+
+  it('refuses a made-up bearer token', async () => {
+    expect((await call(route, { Authorization: 'Bearer not-a-real-session' })).status).toBe(401);
+  });
+
+  it('is not unlocked by CLOUDCRAFT_ALLOW_LOCAL_SIGNUP', async () => {
+    process.env['CLOUDCRAFT_ALLOW_LOCAL_SIGNUP'] = '1';
+    expect((await call(route)).status).toBe(401);
+    expect((await call(route, { 'x-user-id': 'anyone' })).status).toBe(401);
+  });
+});

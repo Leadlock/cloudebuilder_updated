@@ -13,9 +13,15 @@ export async function POST(req: NextRequest) {
     const authHeader = req.headers.get('authorization');
     const bearerToken = authHeader?.toLowerCase().startsWith('bearer ') ? authHeader.substring(7).trim() : null;
     const token = cookieToken || bearerToken;
-    const session = token ? AuthService.getSession(token) : null;
-
-    if (!session?.user?.id) {
+    const found = token ? AuthService.getSession(token) : null;
+    // Fail closed: only a real session is accepted. The one exception is `next dev` on a developer's machine (NODE_ENV is never
+    // 'development' in a production build). A request header or an env flag must never stand in for a login.
+    const session = found?.user?.id
+      ? found
+      : process.env.NODE_ENV === 'development'
+        ? { user: { id: 'dev-user-id', email: 'dev@cloudcraft.local', role: 'admin' as const } }
+        : null;
+    if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

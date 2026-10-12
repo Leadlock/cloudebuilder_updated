@@ -1,4 +1,5 @@
 import { Project, Environment, Region, EnvironmentState, ArchitectureVersion, CanvasNode, CanvasEdge } from '@/types';
+import { calculateCosts } from '@/lib/analysis';
 
 function emptyEnv(id: Environment, label: string, region: Region): EnvironmentState {
   return { id, label, nodes: [], edges: [], region };
@@ -313,7 +314,7 @@ export const mockProjects: Project[] = [
     resourceCount: prodNodes1.length,
     securityScore: 92,
     architectureScore: 95,
-    estimatedMonthlyCost: 385.50,
+    estimatedMonthlyCost: Math.round(calculateCosts(prodNodes1).reduce((s, c) => s + c.monthlyCost, 0) * 100) / 100,
     environment: 'production',
     region: 'us-east-1',
     tags: ['production', 'web', 'multi-az', '1000-users'],
@@ -336,7 +337,7 @@ export const mockProjects: Project[] = [
     resourceCount: azureNodes.length,
     securityScore: 90,
     architectureScore: 92,
-    estimatedMonthlyCost: 410.25,
+    estimatedMonthlyCost: Math.round(calculateCosts(azureNodes).reduce((s, c) => s + c.monthlyCost, 0) * 100) / 100,
     environment: 'production',
     region: 'eastus',
     tags: ['azure', 'microservices', '1000-users', 'zone-redundant'],

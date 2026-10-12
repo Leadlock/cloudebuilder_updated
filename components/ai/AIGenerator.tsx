@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
+import { calculateCosts } from '@/lib/analysis';
 import { rekeyGraph } from '@/lib/domain/instantiateTemplate';
 import {
   CloudProvider,
@@ -31,6 +32,7 @@ import {
   Activity,
   Zap,
   Check,
+  DollarSign,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -44,6 +46,8 @@ const EXAMPLE_PROMPTS = [
 
 function summarizeGraph(nodes: CanvasNode[], edges: CanvasEdge[], prompt: string): AIGeneratorResult {
   const security = runAssessment({ nodes, edges }).securityScore;
+  const costs = calculateCosts(nodes);
+  const estimatedCost = Math.round(costs.reduce((acc, c) => acc + c.monthlyCost, 0));
   const suggestedResources = Array.from(new Set(nodes.map((n) => n.label || n.resourceType)));
   return {
     nodes,
@@ -53,6 +57,7 @@ function summarizeGraph(nodes: CanvasNode[], edges: CanvasEdge[], prompt: string
         ? `Generated ${nodes.length} resource${nodes.length === 1 ? '' : 's'} tailored to your exact specifications.`
         : 'The AI did not return any resources for this prompt — try adjusting your requirements.',
     suggestedResources,
+    estimatedCost,
     securityScore: security.score,
   };
 }
@@ -170,12 +175,39 @@ export default function AIGenerator() {
       if (!res.ok) throw new Error([data.error || 'Failed to generate architecture', ...(data.issues ?? []).slice(0, 3)].join(' • '));
 
       const { nodes, edges } = rekeyGraph(data.graph.nodes, data.graph.edges);
-      setResult(summarizeGraph(nodes, edges, prompt));
+      const summary = summarizeGraph(nodes, edges, prompt);
+      setResult(summary);
       if (!projectName) {
         setProjectName(prompt.slice(0, 35).trim());
       }
       if (data.warning) setWarning(data.warning);
       setStep('result');
+
+      // Asynchronously fetch live real-time pricing from AWS / Azure price providers
+      fetch(`/api/projects/draft-project/cost-estimates?currency=${state.displayCurrency || 'USD'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          env: 'production',
+          currency: state.displayCurrency || 'USD',
+          resources: nodes.map((n) => ({
+            id: n.id,
+            resourceType: n.resourceType,
+            provider: n.provider,
+            label: n.label,
+            region: n.region ?? (n.provider === 'azure' ? 'eastus' : 'us-east-1'),
+            config: n.config ?? {},
+          })),
+        }),
+      })
+        .then((r) => r.json())
+        .then((est) => {
+          if (est?.ok && est?.data?.totalMonthlyUsd !== undefined) {
+            const liveCost = Math.round(est.data.totalMonthlyUsd);
+            setResult((prev) => (prev ? { ...prev, estimatedCost: liveCost } : prev));
+          }
+        })
+        .catch(() => {});
     } catch (err: any) {
       setError(err.message || 'Failed to generate architecture');
       setStep(questionnaire ? 'questionnaire' : 'prompt');
@@ -204,7 +236,14 @@ export default function AIGenerator() {
   function handleApply() {
     if (!result) return;
     const name = projectName || prompt.slice(0, 40);
-    dispatch({ type: 'CREATE_PROJECT', provider, name, nodes: result.nodes, edges: result.edges });
+    dispatch({
+      type: 'CREATE_PROJECT',
+      provider,
+      name,
+      nodes: result.nodes,
+      edges: result.edges,
+      estimatedMonthlyCost: result.estimatedCost,
+    });
   }
 
   return (
@@ -677,13 +716,11 @@ export default function AIGenerator() {
               />
             </div>
 
-            {/* Bottom actions sticky elevated bar */}
+            {/* Bottom actions bar placed cleanly at the bottom */}
             <div
               className={clsx(
-                'sticky bottom-6 z-20 backdrop-blur-xl border p-3.5 sm:p-4 rounded-2xl shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3 transition-all',
-                isLight
-                  ? 'bg-white/95 border-slate-200 shadow-slate-200/80'
-                  : 'bg-slate-900/90 border-slate-700/80 glow-emerald'
+                'pt-6 pb-12 border-t flex flex-col sm:flex-row items-center justify-between gap-3 transition-all',
+                isLight ? 'border-slate-200' : 'border-slate-800'
               )}
             >
               <button
@@ -810,7 +847,7 @@ export default function AIGenerator() {
             </div>
 
             {/* Metrics */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div
                 className={clsx(
                   'border rounded-2xl p-4 text-center transition-colors',
@@ -822,6 +859,16 @@ export default function AIGenerator() {
                   {result.nodes.length}
                 </p>
                 <p className={clsx('text-xs', isLight ? 'text-slate-500' : 'text-slate-400')}>Resources</p>
+              </div>
+              <div
+                className={clsx(
+                  'border rounded-2xl p-4 text-center transition-colors',
+                  isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
+                )}
+              >
+                <DollarSign className="w-4 h-4 text-amber-500 dark:text-amber-400 mx-auto mb-1.5" />
+                <p className="text-amber-500 dark:text-amber-400 font-bold text-xl">${result.estimatedCost}/mo</p>
+                <p className={clsx('text-xs', isLight ? 'text-slate-500' : 'text-slate-400')}>Est. Monthly Cost</p>
               </div>
               <div
                 className={clsx(

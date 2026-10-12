@@ -767,6 +767,8 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
             </button>
           </form>
 
+
+
           {onClose && (
             <button
               type="button"

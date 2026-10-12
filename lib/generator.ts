@@ -66,7 +66,7 @@ export function generateFromPrompt(prompt: string): AIGeneratorResult {
   const templateId = detectTemplateFromPrompt(prompt);
   const template = getTemplate(templateId);
   if (!template) {
-    return { nodes: [], edges: [], summary: 'Could not generate architecture.', suggestedResources: [], securityScore: 0 };
+    return { nodes: [], edges: [], summary: 'Could not generate architecture.', suggestedResources: [], estimatedCost: 0, securityScore: 0 };
   }
   const { nodes, edges } = instantiateTemplate(template, { highAvailability: prompt.toLowerCase().includes('highly available') });
   const validation = architectureValidator.validate(nodes, edges);
@@ -75,6 +75,7 @@ export function generateFromPrompt(prompt: string): AIGeneratorResult {
     edges,
     summary: buildSummary(prompt, templateId),
     suggestedResources: extractResources(prompt),
+    estimatedCost: template.estimatedCost,
     securityScore: validation.score.security,
   };
 }

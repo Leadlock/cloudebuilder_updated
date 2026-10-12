@@ -41,6 +41,37 @@ export function sanitizeSpecInput(input: unknown): { value: unknown; report: San
   const renamed = new Map<string, SanitizeReport['renamed'][number]>();
   const dropped = new Map<string, SanitizeReport['dropped'][number]>();
 
+const COMMON_ALIASES: Record<string, Record<string, string>> = {
+  azure_sql: {
+    sku: 'tier',
+    skuname: 'tier',
+    instancetype: 'tier',
+  },
+  azure_redis: {
+    tier: 'sku',
+    cachetier: 'sku',
+    version: 'redisVersion',
+  },
+  aws_rds: {
+    sku: 'instanceClass',
+    instancetype: 'instanceClass',
+    size: 'instanceClass',
+    storagesize: 'allocatedStorage',
+  },
+  aws_ec2: {
+    sku: 'instanceType',
+    size: 'instanceType',
+  },
+  azure_vm: {
+    tier: 'size',
+    instancetype: 'size',
+    sku: 'size',
+  },
+  azure_app_gateway: {
+    tier: 'sku',
+  },
+};
+
   for (const r of value.resources) {
     if (!r || typeof r.type !== 'string' || !CATALOG.has(r.type)) continue;
     if (!r.config || typeof r.config !== 'object' || Array.isArray(r.config)) continue;
@@ -51,7 +82,13 @@ export function sanitizeSpecInput(input: unknown): { value: unknown; report: San
 
     for (const key of Object.keys(config)) {
       if (keys.includes(key)) continue;
-      const target = byCanonical.get(canonical(key));
+      let target = byCanonical.get(canonical(key));
+      if (!target) {
+        const alias = COMMON_ALIASES[r.type]?.[canonical(key)];
+        if (alias && keys.includes(alias)) {
+          target = alias;
+        }
+      }
       if (target && !(target in config)) {
         config[target] = config[key];
         const k = `${r.type}|${key}`; const e = renamed.get(k) ?? { type: r.type, from: key, to: target, resources: [] };

@@ -49,30 +49,88 @@ export function calculateSecurityScore(issues: SecurityIssue[]): number {
   const totalDeduction = issues.reduce((acc, i) => acc + weights[i.severity], 0);
   return Math.max(0, 100 - totalDeduction);
 }
-
+ 
 export function calculateCosts(nodes: CanvasNode[]): CostItem[] {
   // The same built-in price tables the Cost Estimate screen falls back to, so a project card, a template total and an autofix saving all
   // agree with it. This used to be a separate, cruder calculator (every RDS instance a flat $48.60, an Auto Scaling group free).
   const costs: CostItem[] = [];
   for (const node of nodes) {
-    if (!getResourceDefinition(node.resourceType)) continue;
-    const table = node.provider === 'azure' ? azurePricingProvider : awsPricingProvider;
-    const region = node.region ?? (node.provider === 'azure' ? 'eastus' : 'us-east-1');
-    const line = table.estimateResource(
-      {
-        id: node.id, resourceType: node.resourceType, provider: node.provider, label: node.label,
-        positionX: node.position?.x ?? 0, positionY: node.position?.y ?? 0, configJson: '{}',
-        region, groupId: null, locked: false, architectureId: '',
-      },
-      node.config ?? {},
+    if (!node.resourceType) continue;
+    // Layout boundaries / containers are non-billable
+    if (
+      node.resourceType === 'aws_vpc' ||
+      node.resourceType === 'aws_subnet' ||
+      node.resourceType === 'aws_igw' ||
+      node.resourceType === 'aws_sg' ||
+      node.resourceType === 'aws_route_table' ||
+      node.resourceType === 'azure_resource_group' ||
+      node.resourceType === 'azure_vnet' ||
+      node.resourceType === 'azure_subnet' ||
+      node.resourceType === 'azure_nsg' ||
+      node.resourceType.endsWith('_cloud_boundary')
+    ) {
+      continue;
+    }
+
+    const providerKey = (node.provider || 'aws').toLowerCase();
+    const region = node.region || (providerKey === 'azure' ? 'eastus' : 'us-east-1');
+    const config = (node.config ?? {}) as Record<string, unknown>;
+
+    const dbResource = {
+      id: node.id,
+      resourceType: node.resourceType,
+      provider: node.provider,
+      label: node.label,
+      positionX: 0,
+      positionY: 0,
+      configJson: JSON.stringify(config),
       region,
-    );
-    if (!line || !(line.monthlyUsd > 0)) continue;
-    costs.push({
-      nodeId: node.id, nodeLabel: node.label, resourceType: node.resourceType, provider: node.provider,
-      monthlyCost: line.monthlyUsd,
-      breakdown: line.breakdown.map((b) => ({ label: b.label, cost: b.monthlyUsd })),
-    });
+      groupId: null,
+      locked: false,
+      architectureId: 'local',
+    };
+
+    const provider = providerKey === 'azure' ? azurePricingProvider : awsPricingProvider;
+    const lineItem = provider.estimateResource(dbResource, config, region);
+
+    if (lineItem) {
+      costs.push({
+        nodeId: node.id,
+        nodeLabel: node.label,
+        resourceType: node.resourceType,
+        provider: node.provider,
+        region,
+        monthlyCost: lineItem.monthlyUsd,
+        hourlyCost: lineItem.hourlyUsd,
+        currency: 'USD',
+        providerCostUsd: lineItem.monthlyUsd,
+        providerHourlyUsd: lineItem.hourlyUsd,
+        pricingTier: 'FALLBACK_ESTIMATE',
+        breakdown: lineItem.breakdown.map((b) => ({
+          label: b.label,
+          cost: b.monthlyUsd,
+          originalCostUsd: b.monthlyUsd,
+        })),
+      });
+    } else {
+      const def = getResourceDefinition(node.resourceType);
+      if (def && def.monthlyBaseCost > 0) {
+        costs.push({
+          nodeId: node.id,
+          nodeLabel: node.label,
+          resourceType: node.resourceType,
+          provider: node.provider,
+          region,
+          monthlyCost: def.monthlyBaseCost,
+          hourlyCost: def.monthlyBaseCost / 730,
+          currency: 'USD',
+          providerCostUsd: def.monthlyBaseCost,
+          providerHourlyUsd: def.monthlyBaseCost / 730,
+          pricingTier: 'FALLBACK_ESTIMATE',
+          breakdown: [{ label: def.label, cost: def.monthlyBaseCost, originalCostUsd: def.monthlyBaseCost }],
+        });
+      }
+    }
   }
   return costs;
 }

@@ -228,17 +228,29 @@ export function provideAwsPricingCredentials(creds: { accessKeyId: string; secre
 
 /** Whether a live price lookup can be made right now (a server key, or an unexpired role session). */
 export function hasAwsPricingAccess(): boolean {
-  return !!(process.env['AWS_PRICING_ACCESS_KEY_ID'] && process.env['AWS_PRICING_SECRET_ACCESS_KEY']) || (roleClient !== null && roleClient.expiresAt > Date.now());
+  return !!(
+    (process.env['AWS_PRICING_ACCESS_KEY_ID'] && process.env['AWS_PRICING_SECRET_ACCESS_KEY']) ||
+    (process.env['AWS_ACCESS_KEY_ID'] && process.env['AWS_SECRET_ACCESS_KEY']) ||
+    (roleClient !== null && roleClient.expiresAt > Date.now())
+  );
 }
 
 function getPricingClient(): PricingClient | null {
   if (pricingClient) return pricingClient;
-  const accessKeyId = process.env['AWS_PRICING_ACCESS_KEY_ID'];
-  const secretAccessKey = process.env['AWS_PRICING_SECRET_ACCESS_KEY'];
+  const accessKeyId = process.env['AWS_PRICING_ACCESS_KEY_ID'] || process.env['AWS_ACCESS_KEY_ID'];
+  const secretAccessKey = process.env['AWS_PRICING_SECRET_ACCESS_KEY'] || process.env['AWS_SECRET_ACCESS_KEY'];
+  const sessionToken = process.env['AWS_SESSION_TOKEN'];
   if (!accessKeyId || !secretAccessKey) {
     return roleClient && roleClient.expiresAt > Date.now() ? roleClient.client : null;
   }
-  pricingClient = new PricingClient({ region: 'us-east-1', credentials: { accessKeyId, secretAccessKey } });
+  pricingClient = new PricingClient({
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+      ...(sessionToken ? { sessionToken } : {}),
+    },
+  });
   return pricingClient;
 }
 
