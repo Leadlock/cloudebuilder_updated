@@ -1,7 +1,24 @@
-# Security & Well-Architected Engine Audit (ruleset 2026.10.1)
+# Security & Well-Architected Engine Audit (ruleset 2026.10.2)
 
 This records what was wrong with the assessment engines before this change, and what replaced them. The full per-rule matrix is in
 [RULE_MATRIX.md](./RULE_MATRIX.md).
+
+## 00. Changes in ruleset 2026.10.2: Azure designs that could not work
+
+Found by running the AI generator on five Azure requests and reading what came back. Every design passed every gate, and most could not work
+when deployed, or were not what was asked for.
+
+| Weakness | Change |
+|---|---|
+| Storage, Key Vault, SQL, Redis and Cosmos DB were generated with their public endpoint off, but CloudCraft had no Private Endpoint and the Terraform generator never wrote one, so the application could not reach its own data. The repo's own verified patterns had the same flaw. | New resource `azure_private_endpoint`; Terraform writes the endpoint, one private DNS zone per kind of service and one link per network. Rule `AZ-PE-001` (HIGH) fails a service that is called but has no private path; `AZ-PE-002` checks the endpoint itself. `lib/engines/assessment/privateAccess.ts` is the one table the rule, the Terraform and the AI repair read. A service nothing calls is not flagged. |
+| A request for PostgreSQL or MySQL came back as Azure SQL, and a request for a queue came back with none, both with no notice. The dataset taught this: every Azure relational request was written as "managed SQL". | New resources `azure_postgres`, `azure_mysql` (flexible servers placed in a delegated subnet), `azure_service_bus`, `azure_acr`, `azure_monitor` (Log Analytics + Application Insights), each with Terraform, cost, relationship rules and assessment rules (`AZ-PG-*`, `AZ-MY-*`, `AZ-SB-*`, `AZ-ACR-*`, `AZ-MON-001`). The service-notice check now knows PostgreSQL, MySQL and plain "message queue", and an Application Gateway or Front Door with its WAF switched on counts as the WAF that was asked for. The dataset, knowledge base and patterns were rebuilt so each engine is drawn as asked. |
+| The AI repair now adds a Private Endpoint for each private service, gives a private flexible server a subnet of its own, connects an endpoint the model drew but left floating, and turns a monitor or registry arrow around. | `lib/ai/specRepair.ts` (steps `privateEndpoints`, `flexSubnets`, `reversed`). |
+| A "three-tier" request produced one scale set. Compute had no availability zones. | The Azure three-tier pattern has separate web and API scale sets. VM Scale Sets and Application Gateway have an Availability Zones setting (Terraform `zones`); `AZ-VMSS-011` and `AZ-AGW-011` (LOW) report a tier with none. |
+| Service Bus and Container Registry need the Premium tier for private access (about $677 and $50 a month). | Their private-access rules (`AZ-SB-001`, `AZ-ACR-002`) are LOW recommendations, the generator keeps public access on a lower tier and says so, and cost is estimated from the Retail Prices API list prices read on 2026-10-12. |
+
+Known gaps: a static website behind Front Door Standard with a firewalled storage account still cannot be reached by Front Door (that needs
+Front Door Premium with a Private Link origin and a manual approval); Azure discovery and the AWS↔Azure cost comparison do not know the new
+types yet; Container Apps, API Management, Event Hubs, Event Grid and Azure Firewall are still missing.
 
 ## 0. Changes in ruleset 2026.10.1
 

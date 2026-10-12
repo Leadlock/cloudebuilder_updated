@@ -1,6 +1,7 @@
 import { ResourceDefinition } from '@/types';
+import { azureServiceResources } from './azureServices';
 
-export const azureResources: ResourceDefinition[] = [
+const coreAzureResources: ResourceDefinition[] = [
   {
     type: 'azure_resource_group',
     label: 'Resource Group',
@@ -13,7 +14,7 @@ export const azureResources: ResourceDefinition[] = [
     borderColor: '#7C3AED',
     monthlyBaseCost: 0,
     isContainer: true,
-    allowedChildren: ['azure_vnet', 'azure_storage', 'azure_sql', 'azure_key_vault'],
+    allowedChildren: ['azure_vnet', 'azure_storage', 'azure_sql', 'azure_key_vault', 'azure_postgres', 'azure_mysql', 'azure_service_bus', 'azure_acr', 'azure_monitor'],
     defaultWidth: 840,
     defaultHeight: 540,
     defaultConfig: { location: 'eastus', name: 'my-rg' },
@@ -66,7 +67,7 @@ export const azureResources: ResourceDefinition[] = [
     borderColor: '#047857',
     monthlyBaseCost: 0,
     isContainer: true,
-    allowedChildren: ['azure_vm', 'azure_vmss', 'azure_lb', 'azure_app_gateway', 'azure_sql', 'azure_redis', 'azure_functions', 'azure_aks', 'azure_nic'],
+    allowedChildren: ['azure_vm', 'azure_vmss', 'azure_lb', 'azure_app_gateway', 'azure_sql', 'azure_redis', 'azure_functions', 'azure_aks', 'azure_nic', 'azure_postgres', 'azure_mysql', 'azure_private_endpoint'],
     defaultWidth: 340,
     defaultHeight: 240,
     defaultConfig: { addressPrefix: '10.0.1.0/24', name: 'my-subnet' },
@@ -404,7 +405,7 @@ export const azureResources: ResourceDefinition[] = [
     defaultConfig: {
       sku: 'Standard_v2', capacity: 2, name: 'my-app-gateway', backendPort: 80,
       autoscaleEnabled: true, minCapacity: 2, maxCapacity: 10,
-      wafEnabled: false, wafMode: 'Prevention', tags: {},
+      wafEnabled: false, wafMode: 'Prevention', zones: '', tags: {},
     },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-app-gateway', required: true },
@@ -416,6 +417,15 @@ export const azureResources: ResourceDefinition[] = [
         ],
       },
       { key: 'backendPort', label: 'Backend Port', type: 'number', defaultValue: 80, min: 1, max: 65535, section: 'Networking' },
+      {
+        key: 'zones', label: 'Availability Zones', type: 'select', defaultValue: '', section: 'Availability & Scaling',
+        description: 'Spread across zones so one zone failing does not take the whole service down. The region must offer availability zones.',
+        options: [
+          { label: 'None (no zone spread)', value: '' },
+          { label: 'Zones 1 and 2', value: '1,2' },
+          { label: 'Zones 1, 2 and 3', value: '1,2,3' },
+        ],
+      },
       { key: 'autoscaleEnabled', label: 'Autoscale', type: 'boolean', defaultValue: true, section: 'Availability & Scaling' },
       {
         key: 'minCapacity', label: 'Autoscale Min Instances', type: 'number', defaultValue: 2, min: 0, max: 125,
@@ -1093,7 +1103,7 @@ export const azureResources: ResourceDefinition[] = [
     defaultConfig: {
       name: 'my-vmss', sku: 'Standard_B2s', capacity: 2, osType: 'Linux', osDiskEncryption: true,
       adminUsername: 'azureuser', autoscaleEnabled: true, minCapacity: 2, maxCapacity: 10,
-      overprovision: true, upgradeMode: 'Manual', tags: {},
+      overprovision: true, upgradeMode: 'Manual', zones: '', tags: {},
     },
     configSchema: [
       { key: 'name', label: 'Scale Set Name', type: 'text', defaultValue: 'my-vmss', required: true },
@@ -1138,6 +1148,15 @@ export const azureResources: ResourceDefinition[] = [
       },
       { key: 'overprovision', label: 'Overprovision', type: 'boolean', defaultValue: true, section: 'Advanced', advanced: true },
       { key: 'osDiskEncryption', label: 'OS Disk Encryption', type: 'boolean', defaultValue: true, section: 'Security' },
+      {
+        key: 'zones', label: 'Availability Zones', type: 'select', defaultValue: '', section: 'Availability & Scaling',
+        description: 'Spread across zones so one zone failing does not take the whole service down. The region must offer availability zones.',
+        options: [
+          { label: 'None (no zone spread)', value: '' },
+          { label: 'Zones 1 and 2', value: '1,2' },
+          { label: 'Zones 1, 2 and 3', value: '1,2,3' },
+        ],
+      },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
   },
@@ -1153,7 +1172,7 @@ export const azureResources: ResourceDefinition[] = [
     borderColor: '#0284C7',
     monthlyBaseCost: 0,
     isContainer: true,
-    allowedChildren: ['azure_resource_group', 'azure_vnet', 'azure_storage', 'azure_sql', 'azure_key_vault', 'azure_front_door', 'azure_waf'],
+    allowedChildren: ['azure_resource_group', 'azure_vnet', 'azure_storage', 'azure_sql', 'azure_key_vault', 'azure_front_door', 'azure_waf', 'azure_postgres', 'azure_mysql', 'azure_service_bus', 'azure_acr', 'azure_monitor'],
     defaultWidth: 880,
     defaultHeight: 560,
     defaultConfig: { name: 'Microsoft Azure', region: 'eastus' },
@@ -1163,3 +1182,6 @@ export const azureResources: ResourceDefinition[] = [
     ],
   },
 ];
+
+/** The core Azure catalog plus the managed services in azureServices.ts. */
+export const azureResources: ResourceDefinition[] = [...coreAzureResources, ...azureServiceResources];

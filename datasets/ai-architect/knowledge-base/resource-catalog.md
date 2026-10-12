@@ -6,12 +6,15 @@ Every resource type the CloudCraft canvas, validator and Terraform generator und
 Provider: aws; category: networking.
 Container. May contain: aws_subnet, aws_igw, aws_nat, aws_sg, aws_route_table, aws_nacl.
 Allowed parent(s): aws_cloud_boundary.
-Assessment rules that check this type: AWS-VPC-002 (medium), AWS-VPC-003 (medium). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AWS-VPC-002 (low), AWS-VPC-003 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-vpc"
 - cidrBlock (cidr); default "10.0.0.0/16"
 - enableDnsSupport (boolean); default true
 - enableDnsHostnames (boolean); default true
+- flowLogsEnabled (boolean); default false
+- flowLogsBucket (text); default ""
+- flowLogsTrafficType (select one of [ALL, REJECT, ACCEPT]); default "ALL"
 
 ## aws_subnet — Subnet
 Provider: aws; category: networking.
@@ -27,7 +30,7 @@ Settings:
 ## aws_ec2 — EC2 Instance
 Provider: aws; category: compute.
 Allowed parent(s): aws_subnet.
-Assessment rules that check this type: AWS-EC2-001 (medium), AWS-EC2-002 (medium), AWS-EC2-003 (high), AWS-EC2-010 (low), AWS-COST-001 (low). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AWS-EC2-001 (medium), AWS-EC2-002 (medium), AWS-EC2-003 (high), AWS-EC2-010 (low), AWS-COST-001 (low), AWS-SUS-002 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-ec2"
 - os (select one of [Ubuntu 24.04 LTS, Amazon Linux 2023, Debian 12 Bookworm, Red Hat Enterprise Linux 9, Windows Server 2022 Base]); default "Ubuntu 24.04 LTS"
@@ -79,7 +82,7 @@ Settings:
 ## aws_rds — RDS Instance
 Provider: aws; category: database.
 Allowed parent(s): aws_subnet.
-Assessment rules that check this type: AWS-RDS-001 (critical), AWS-RDS-002 (high), AWS-RDS-003 (low), AWS-RDS-004 (low), AWS-RDS-005 (medium), AWS-RDS-006 (medium), AWS-RDS-007 (high), AWS-RDS-008 (low), AWS-RDS-009 (low), AWS-COST-001 (low). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AWS-RDS-001 (critical), AWS-RDS-002 (high), AWS-RDS-003 (low), AWS-RDS-004 (low), AWS-RDS-005 (medium), AWS-RDS-006 (medium), AWS-RDS-007 (high), AWS-RDS-008 (low), AWS-RDS-009 (low), AWS-COST-001 (low), AWS-PERF-004 (low), AWS-SUS-002 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-rds"
 - engine (select one of [postgres, mysql, aurora-postgresql, aurora-mysql, mariadb]); default "postgres"
@@ -120,10 +123,12 @@ Settings:
 ## aws_cloudfront — CloudFront
 Provider: aws; category: networking.
 Allowed parent(s): aws_cloud_boundary.
-Assessment rules that check this type: AWS-CF-001 (medium), AWS-CF-002 (medium). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AWS-CF-001 (medium), AWS-CF-002 (medium), AWS-CF-003 (low), AWS-PERF-001 (low), AWS-PERF-002 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-cdn"
 - priceClass (select one of [PriceClass_100, PriceClass_200, PriceClass_All]); default "PriceClass_100"
+- estimatedDataTransferGb (number range 0–…); default 1000
+- estimatedRequests (number range 0–…); default 10000000
 - defaultRootObject (text); default "index.html"
 - enabled (boolean); default true
 - viewerProtocolPolicy (select one of [redirect-to-https, https-only, allow-all]); default "redirect-to-https"
@@ -131,6 +136,8 @@ Settings:
 - customCertificateArn (text); default ""
 - minimumProtocolVersion (select one of [TLSv1.2_2021, TLSv1.2_2019, TLSv1_2016]); default "TLSv1.2_2021"
 - webAclId (text); default ""
+- loggingEnabled (boolean); default false
+- loggingBucket (text); default ""
 - minTtl (number range 0–…); default 0
 - defaultTtl (number range 0–…); default 3600
 - maxTtl (number range 0–…); default 86400
@@ -144,7 +151,7 @@ Settings:
 ## aws_alb — Load Balancer
 Provider: aws; category: loadbalancing.
 Allowed parent(s): aws_subnet.
-Assessment rules that check this type: AWS-ELB-001 (medium), AWS-ELB-002 (medium), AWS-ELB-003 (medium), AWS-ELB-004 (low). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AWS-ELB-001 (medium), AWS-ELB-002 (medium), AWS-ELB-003 (medium), AWS-ELB-004 (low), AWS-ELB-005 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-alb"
 - lbType (select one of [application, network, gateway]); default "application"
@@ -159,12 +166,14 @@ Settings:
 - healthCheckIntervalSeconds (number range 5–300); default 30
 - idleTimeoutSeconds (number range 1–4000); default 60
 - deletionProtection (boolean); default false
+- accessLogsEnabled (boolean); default false
+- accessLogsBucket (text); default ""
 - tags (keyvalue); default {}
 
 ## aws_auto_scaling — Auto Scaling
 Provider: aws; category: compute.
 Allowed parent(s): aws_subnet.
-Assessment rules that check this type: AWS-ASG-001 (low). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AWS-ASG-001 (low), AWS-PERF-003 (low), AWS-SUS-002 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-asg"
 - instanceType (text); default "t3.medium"
@@ -202,7 +211,7 @@ Settings:
 ## aws_ecs — ECS Service
 Provider: aws; category: compute.
 Allowed parent(s): aws_subnet.
-Assessment rules that check this type: AWS-ECS-001 (high). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AWS-ECS-001 (high), AWS-COST-003 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-ecs"
 - containerImage (text); default "nginx:latest"
@@ -323,6 +332,7 @@ Settings:
 ## aws_cloudwatch — CloudWatch
 Provider: aws; category: monitoring.
 No container: omit "parent".
+Assessment rules that check this type: AWS-COST-003 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-alarm"
 - metricName (text); default "CPUUtilization"
@@ -396,7 +406,7 @@ Settings:
 ## aws_waf — AWS WAF
 Provider: aws; category: security.
 Allowed parent(s): aws_cloud_boundary.
-Assessment rules that check this type: AWS-WAF-001 (medium). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AWS-WAF-001 (medium), AWS-WAF-002 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-waf-acl"
 - scope (select one of [REGIONAL, CLOUDFRONT]); default "REGIONAL"
@@ -429,7 +439,7 @@ Settings:
 ## aws_sqs — SQS Queue
 Provider: aws; category: messaging.
 Allowed parent(s): aws_cloud_boundary.
-Assessment rules that check this type: AWS-SQS-001 (medium), AWS-SQS-002 (low). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AWS-SQS-001 (medium), AWS-SQS-002 (low), AWS-COST-002 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-app-queue"
 - fifoQueue (boolean); default false
@@ -455,7 +465,7 @@ Settings:
 
 ## azure_resource_group — Resource Group
 Provider: azure; category: networking.
-Container. May contain: azure_vnet, azure_storage, azure_sql, azure_key_vault.
+Container. May contain: azure_vnet, azure_storage, azure_sql, azure_key_vault, azure_postgres, azure_mysql, azure_service_bus, azure_acr, azure_monitor.
 Allowed parent(s): azure_cloud_boundary.
 Settings:
 - name (text); default "my-rg"
@@ -471,7 +481,7 @@ Settings:
 
 ## azure_subnet — Subnet
 Provider: azure; category: networking.
-Container. May contain: azure_vm, azure_vmss, azure_lb, azure_app_gateway, azure_sql, azure_redis, azure_functions, azure_aks, azure_nic.
+Container. May contain: azure_vm, azure_vmss, azure_lb, azure_app_gateway, azure_sql, azure_redis, azure_functions, azure_aks, azure_nic, azure_postgres, azure_mysql, azure_private_endpoint.
 Allowed parent(s): azure_vnet.
 Settings:
 - name (text); default "my-subnet"
@@ -500,7 +510,7 @@ Settings:
 ## azure_storage — Storage Account
 Provider: azure; category: storage.
 Allowed parent(s): azure_resource_group, azure_cloud_boundary.
-Assessment rules that check this type: AZ-STG-001 (high), AZ-STG-002 (high), AZ-STG-003 (medium), AZ-STG-004 (medium), AZ-STG-005 (low), AZ-STG-006 (low). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AZ-STG-001 (high), AZ-STG-002 (high), AZ-STG-003 (medium), AZ-STG-004 (medium), AZ-STG-005 (low), AZ-STG-006 (low), AZ-PE-001 (high). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "mystorageacct"
 - sku (select one of [Standard_LRS, Standard_ZRS, Standard_GRS, Premium_LRS]); default "Standard_LRS"
@@ -516,7 +526,7 @@ Settings:
 ## azure_sql — Azure SQL
 Provider: azure; category: database.
 Allowed parent(s): azure_resource_group, azure_subnet, azure_cloud_boundary.
-Assessment rules that check this type: AZ-SQL-001 (high), AZ-SQL-002 (high), AZ-SQL-003 (medium), AZ-SQL-004 (medium), AZ-SQL-005 (medium), AZ-SQL-006 (medium), AZ-SQL-010 (medium), AZ-SQL-011 (low). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AZ-SQL-001 (high), AZ-SQL-002 (high), AZ-SQL-003 (medium), AZ-SQL-004 (medium), AZ-SQL-005 (medium), AZ-SQL-006 (medium), AZ-SQL-010 (medium), AZ-SQL-011 (low), AZ-PE-001 (high). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-sql"
 - tier (select one of [Basic, Standard, Premium, GeneralPurpose, BusinessCritical, GP_Gen5_2, GP_Gen5_8, BC_Gen5_16]); default "Standard"
@@ -535,7 +545,7 @@ Settings:
 ## azure_cosmos_db — Cosmos DB
 Provider: azure; category: database.
 No container: omit "parent".
-Assessment rules that check this type: AZ-COS-001 (high), AZ-COS-010 (low). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AZ-COS-001 (high), AZ-COS-010 (low), AZ-PE-001 (high). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-cosmos"
 - kind (select one of [GlobalDocumentDB, MongoDB]); default "GlobalDocumentDB"
@@ -562,11 +572,12 @@ Settings:
 ## azure_app_gateway — App Gateway
 Provider: azure; category: loadbalancing.
 Allowed parent(s): azure_subnet.
-Assessment rules that check this type: AZ-AGW-001 (medium). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AZ-AGW-010 (low), AZ-AGW-001 (medium), AZ-AGW-011 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-app-gateway"
 - sku (select one of [Standard_v2, WAF_v2]); default "Standard_v2"
 - backendPort (number range 1–65535); default 80
+- zones (select one of [, 1,2, 1,2,3]); default ""
 - autoscaleEnabled (boolean); default true
 - minCapacity (number range 0–125); default 2
 - maxCapacity (number range 2–125); default 10
@@ -630,7 +641,7 @@ Settings:
 ## azure_key_vault — Key Vault
 Provider: azure; category: security.
 Allowed parent(s): azure_resource_group, azure_cloud_boundary.
-Assessment rules that check this type: AZ-KV-001 (medium), AZ-KV-002 (medium), AZ-KV-003 (medium). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AZ-KV-001 (medium), AZ-KV-002 (medium), AZ-KV-003 (medium), AZ-PE-001 (high). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-vault"
 - sku (select one of [standard, premium]); default "standard"
@@ -665,7 +676,7 @@ Settings:
 ## azure_app_service — App Service
 Provider: azure; category: compute.
 No container: omit "parent".
-Assessment rules that check this type: AZ-APP-001 (medium), AZ-APP-002 (medium), AZ-APP-003 (medium), AZ-APP-010 (low). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AZ-APP-001 (medium), AZ-APP-002 (medium), AZ-APP-003 (medium), AZ-APP-010 (low), AZ-APP-020 (low), AZ-APP-021 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-webapp"
 - osType (select one of [Linux, Windows]); default "Linux"
@@ -727,7 +738,7 @@ Settings:
 ## azure_front_door — Front Door
 Provider: azure; category: networking.
 Allowed parent(s): azure_cloud_boundary.
-Assessment rules that check this type: AZ-AFD-001 (medium), AZ-AFD-002 (medium). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AZ-AFD-010 (low), AZ-AFD-001 (medium), AZ-AFD-002 (medium). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-frontdoor"
 - sku (select one of [Standard_AzureFrontDoor, Premium_AzureFrontDoor]); default "Standard_AzureFrontDoor"
@@ -753,7 +764,7 @@ Settings:
 ## azure_redis — Azure Redis
 Provider: azure; category: database.
 Allowed parent(s): azure_subnet.
-Assessment rules that check this type: AZ-RED-001 (medium), AZ-RED-002 (medium), AZ-RED-003 (medium). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AZ-RED-001 (medium), AZ-RED-002 (medium), AZ-RED-003 (medium), AZ-PE-001 (high). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-redis"
 - sku (select one of [Basic, Standard, Premium]); default "Standard"
@@ -768,7 +779,7 @@ Settings:
 ## azure_vmss — VM Scale Set
 Provider: azure; category: compute.
 Allowed parent(s): azure_subnet.
-Assessment rules that check this type: AZ-VMSS-001 (low). Satisfy them in the design instead of leaving them to fail.
+Assessment rules that check this type: AZ-VMSS-001 (low), AZ-VMSS-010 (low), AZ-VMSS-011 (low). Satisfy them in the design instead of leaving them to fail.
 Settings:
 - name (text); default "my-vmss"
 - osType (select one of [Linux, Windows]); default "Linux"
@@ -781,12 +792,104 @@ Settings:
 - upgradeMode (select one of [Manual, Automatic, Rolling]); default "Manual"
 - overprovision (boolean); default true
 - osDiskEncryption (boolean); default true
+- zones (select one of [, 1,2, 1,2,3]); default ""
 - tags (keyvalue); default {}
 
 ## azure_cloud_boundary — Azure Cloud Boundary
 Provider: azure; category: networking.
-Container. May contain: azure_resource_group, azure_vnet, azure_storage, azure_sql, azure_key_vault, azure_front_door, azure_waf.
+Container. May contain: azure_resource_group, azure_vnet, azure_storage, azure_sql, azure_key_vault, azure_front_door, azure_waf, azure_postgres, azure_mysql, azure_service_bus, azure_acr, azure_monitor.
 Top-level container.
 Settings:
 - name (text); default "Microsoft Azure"
 - region (text); default "eastus"
+
+## azure_postgres — Azure PostgreSQL
+Provider: azure; category: database.
+Allowed parent(s): azure_resource_group, azure_subnet, azure_cloud_boundary.
+Assessment rules that check this type: AZ-PG-001 (high), AZ-PG-002 (high), AZ-PG-010 (medium), AZ-PG-011 (low), AZ-PG-012 (medium). Satisfy them in the design instead of leaving them to fail.
+Settings:
+- name (text); default "my-postgres"
+- databaseName (text); default "appdb"
+- version (select one of [16, 15, 14, 13]); default "16"
+- skuName (select one of [B_Standard_B1ms, B_Standard_B2s, GP_Standard_D2ds_v5, GP_Standard_D4ds_v5, MO_Standard_E2ds_v5, MO_Standard_E4ds_v5]); default "B_Standard_B1ms"
+- storageGb (number range 32–16384); default 32
+- highAvailability (select one of [Disabled, ZoneRedundant]); default "Disabled"
+- backupRetentionDays (number range 7–35); default 7
+- geoRedundantBackup (boolean); default false
+- publicNetworkAccess (boolean); default false
+- allowAzureServices (boolean); default false
+- requireSecureTransport (boolean); default true
+- minimumTlsVersion (select one of [TLSv1.2, TLSv1.3]); default "TLSv1.2"
+- tags (keyvalue); default {}
+
+## azure_mysql — Azure MySQL
+Provider: azure; category: database.
+Allowed parent(s): azure_resource_group, azure_subnet, azure_cloud_boundary.
+Assessment rules that check this type: AZ-MY-001 (high), AZ-MY-002 (high), AZ-MY-010 (medium), AZ-MY-011 (low), AZ-MY-012 (medium). Satisfy them in the design instead of leaving them to fail.
+Settings:
+- name (text); default "my-mysql"
+- databaseName (text); default "appdb"
+- version (select one of [8.0.21, 5.7]); default "8.0.21"
+- skuName (select one of [B_Standard_B1ms, B_Standard_B2s, GP_Standard_D2ds_v4, GP_Standard_D4ds_v4, MO_Standard_E2ds_v4]); default "B_Standard_B1ms"
+- storageGb (number range 20–16384); default 20
+- highAvailability (select one of [Disabled, ZoneRedundant]); default "Disabled"
+- backupRetentionDays (number range 1–35); default 7
+- geoRedundantBackup (boolean); default false
+- publicNetworkAccess (boolean); default false
+- allowAzureServices (boolean); default false
+- requireSecureTransport (boolean); default true
+- minimumTlsVersion (select one of [TLSv1.2, TLSv1.3]); default "TLSv1.2"
+- tags (keyvalue); default {}
+
+## azure_service_bus — Service Bus
+Provider: azure; category: messaging.
+Allowed parent(s): azure_resource_group, azure_cloud_boundary.
+Assessment rules that check this type: AZ-PE-001 (high), AZ-SB-001 (low), AZ-SB-002 (low), AZ-SB-003 (medium), AZ-SB-010 (low). Satisfy them in the design instead of leaving them to fail.
+Settings:
+- name (text); default "my-servicebus"
+- sku (select one of [Basic, Standard, Premium]); default "Standard"
+- capacity (select one of [1, 2, 4, 8, 16]); default 1
+- queueNames (text); default "jobs"
+- maxDeliveryCount (number range 1–100); default 10
+- zoneRedundant (boolean); default false
+- publicNetworkAccess (boolean); default true
+- localAuthEnabled (boolean); default true
+- minimumTlsVersion (select one of [1.0, 1.1, 1.2]); default "1.2"
+- tags (keyvalue); default {}
+
+## azure_acr — Container Registry
+Provider: azure; category: storage.
+Allowed parent(s): azure_resource_group, azure_cloud_boundary.
+Assessment rules that check this type: AZ-PE-001 (high), AZ-ACR-001 (medium), AZ-ACR-002 (low), AZ-ACR-010 (low). Satisfy them in the design instead of leaving them to fail.
+Settings:
+- name (text); default "myregistry"
+- sku (select one of [Basic, Standard, Premium]); default "Standard"
+- zoneRedundant (boolean); default false
+- adminEnabled (boolean); default false
+- publicNetworkAccess (boolean); default true
+- estimatedStorageGb (number range 0–10000); default 20
+- tags (keyvalue); default {}
+
+## azure_monitor — Azure Monitor
+Provider: azure; category: monitoring.
+Allowed parent(s): azure_resource_group, azure_cloud_boundary.
+Settings:
+- name (text); default "my-monitor"
+- applicationInsightsEnabled (boolean); default true
+- retentionDays (number range 30–730); default 30
+- dailyQuotaGb (number range -1–10000); default -1
+- internetIngestionEnabled (boolean); default true
+- internetQueryEnabled (boolean); default true
+- estimatedIngestionGbPerMonth (number range 0–100000); default 10
+- tags (keyvalue); default {}
+
+## azure_private_endpoint — Private Endpoint
+Provider: azure; category: networking.
+Allowed parent(s): azure_subnet.
+Assessment rules that check this type: AZ-PE-002 (medium). Satisfy them in the design instead of leaving them to fail.
+Settings:
+- name (text); default "my-private-endpoint"
+- subresource (select one of [auto, blob, file, queue, table, dfs]); default "auto"
+- privateDns (boolean); default true
+- estimatedDataGbPerMonth (number range 0–1000000); default 100
+- tags (keyvalue); default {}

@@ -31,4 +31,9 @@ export const ALLOWED_TERRAFORM_RESOURCE_TYPES: ReadonlySet<string> = new Set([
   'azurerm_route_table', 'azurerm_service_plan', 'azurerm_storage_account', 'azurerm_subnet',
   'azurerm_subnet_nat_gateway_association', 'azurerm_virtual_network', 'azurerm_web_application_firewall_policy',
   'azurerm_windows_function_app', 'azurerm_windows_virtual_machine', 'azurerm_windows_virtual_machine_scale_set',
-  'azurerm_windows_web_app',]);
+  'azurerm_windows_web_app',
+  'azurerm_application_insights', 'azurerm_container_registry', 'azurerm_log_analytics_workspace', 'azurerm_mysql_flexible_database',
+  'azurerm_mysql_flexible_server', 'azurerm_mysql_flexible_server_configuration', 'azurerm_mysql_flexible_server_firewall_rule',
+  'azurerm_postgresql_flexible_server', 'azurerm_postgresql_flexible_server_configuration', 'azurerm_postgresql_flexible_server_database',
+  'azurerm_postgresql_flexible_server_firewall_rule', 'azurerm_private_dns_zone', 'azurerm_private_dns_zone_virtual_network_link',
+  'azurerm_private_endpoint', 'azurerm_servicebus_namespace', 'azurerm_servicebus_queue',]);

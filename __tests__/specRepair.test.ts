@@ -6,7 +6,8 @@ import { sanitizeSpecInput } from '@/lib/ai/specSanitizer';
 type Spec = { resources: { id: string; type: string; parent?: string; config?: Record<string, unknown> }[]; connections: { from: string; to: string }[] };
 const good = JSON.parse(readFileSync('datasets/ai-architect/validation.jsonl', 'utf8').split('\n').filter(Boolean)
   .map((l) => (JSON.parse(l) as { messages: { content: string }[] }).messages[2]!.content)
-  .find((c) => c.trim().startsWith('{') && c.includes('"id":"waf-alb"'))!) as Spec;
+  // An EC2 Auto Scaling three-tier design (the tests below take its parts apart); the dataset's order changes whenever it is regenerated.
+  .find((c) => c.trim().startsWith('{') && c.includes('"id":"waf-alb"') && c.includes('"id":"asg-a"') && !c.includes('"id":"queue"'))!) as Spec;
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
 /** The kind of design the AI hands back: no certificate, no WAF, the load balancer not connected to the servers, no zones set. */
@@ -166,7 +167,7 @@ describe('specRepair', () => {
 
   it('leaves a design that is already fine untouched', () => {
     const { value, report } = repairSpecInput(good);
-    expect(report).toEqual({ certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0, placed: 0, containerEdges: 0, groups: 0, choices: 0 });
+    expect(report).toEqual({ reversed: 0, privateEndpoints: 0, flexSubnets: 0, certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0, placed: 0, containerEdges: 0, groups: 0, choices: 0 });
     expect(value).toEqual(good);
   });
 
@@ -179,8 +180,8 @@ describe('specRepair', () => {
   });
 
   it('describes what it did', () => {
-    expect(describeSpecRepair({ certificates: 1, waf: 1, connections: 2, addressing: 3, gateway: 1, secured: 2, nsgs: 3, placed: 1, containerEdges: 1, groups: 1, choices: 1 })).toHaveLength(11);
-    expect(describeSpecRepair({ certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0, placed: 0, containerEdges: 0, groups: 0, choices: 0 })).toEqual([]);
+    expect(describeSpecRepair({ reversed: 1, privateEndpoints: 1, flexSubnets: 1, certificates: 1, waf: 1, connections: 2, addressing: 3, gateway: 1, secured: 2, nsgs: 3, placed: 1, containerEdges: 1, groups: 1, choices: 1 })).toHaveLength(14);
+    expect(describeSpecRepair({ reversed: 0, privateEndpoints: 0, flexSubnets: 0, certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0, placed: 0, containerEdges: 0, groups: 0, choices: 0 })).toEqual([]);
   });
 
   it('never makes input that is not a design worse', () => {

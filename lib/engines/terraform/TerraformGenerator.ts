@@ -11,6 +11,11 @@
 import { placeholderProblems } from './placeholderChecks';
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
 import { assertSafeHcl, escapeHclString, hclSafeId, sanitizeResourcesForHcl } from './hclSafety';
+import { PRIVATE_LINK_TARGETS } from '@/lib/engines/assessment/privateAccess';
+import {
+  acrBlocks, delegationBlock, DELEGATION_FOR_TYPE, monitorBlocks, mysqlBlocks, postgresBlocks, PrivateDnsRegistry,
+  privateEndpointBlocks, serviceBusBlocks,
+} from './azureServices';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,6 +82,11 @@ function indent(text: string, spaces = 2): string {
  * Given a connection source→target, returns the Terraform reference string
  * for the source resource appropriate for use inside the target resource block.
  */
+/** The availability zones a setting asks for, as an HCL list. Only the values the form offers are written; anything else means no zones. */
+function zonesHcl(v: unknown): string | null {
+  return v === '1,2' ? '["1", "2"]' : v === '1,2,3' ? '["1", "2", "3"]' : null;
+}
+
 class ReferenceResolver {
   private readonly nameMap: Map<string, string>; // resourceId → tfName
 
@@ -2502,6 +2512,7 @@ class AzureTerraformGenerator {
     const warnings: string[] = [];
     const resourceMap: Record<string, string> = {};
     let clientConfigEmitted = false;
+    const deferredEndpoints: DbArchitectureResource[] = [];
 
     const azureResources = resources.filter((r) => r.resourceType.startsWith('azure_'));
     if (azureResources.length === 0) return { blocks, warnings, resourceMap };
@@ -2563,7 +2574,13 @@ locals {
             blocks.push(this._dataSubnet(name, cfg, rgName, vnetName));
             resourceMap[r.id] = `data.azurerm_subnet.${name}`;
           } else {
-            blocks.push(this._subnet(name, cfg, rgName, vnetName));
+            // A flexible server placed in a subnet needs the subnet delegated to its service (and the subnet can serve only that service).
+            const delegated = resources.filter((x) => x.groupId === r.id && DELEGATION_FOR_TYPE[x.resourceType] && this._cfg(x)['publicNetworkAccess'] !== true);
+            const services = new Set(delegated.map((x) => x.resourceType));
+            if (services.size > 1) warnings.push(`Subnet "${r.label}" holds both a PostgreSQL and a MySQL flexible server. A subnet can be delegated to one service only: put each in its own subnet.`);
+            const mixed = delegated.length > 0 && resources.some((x) => x.groupId === r.id && !DELEGATION_FOR_TYPE[x.resourceType] && x.resourceType !== 'azure_nsg');
+            if (mixed) warnings.push(`Subnet "${r.label}" holds a flexible server together with other resources. A delegated subnet can hold nothing else: give the database its own subnet.`);
+            blocks.push(this._subnet(name, cfg, rgName, vnetName, delegated[0] ? delegationBlock(delegated[0].resourceType) : ''));
             resourceMap[r.id] = `azurerm_subnet.${name}`;
           }
           break;
@@ -2648,6 +2665,45 @@ locals {
         case 'azure_redis': {
           blocks.push(this._redis(name, cfg, rgName, rgLoc));
           resourceMap[r.id] = `azurerm_redis_cache.${name}`;
+          break;
+        }
+        case 'azure_postgres':
+        case 'azure_mysql': {
+          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources);
+          const vnet = subnet ? (resolver.resolveParent(subnet.id, 'azure_vnet', connections, resources) ?? explicitVnet) : undefined;
+          const gen = r.resourceType === 'azure_postgres' ? postgresBlocks : mysqlBlocks;
+          const out = gen({
+            name, cfg, rgName, rgLoc, label: r.label,
+            subnetRef: subnet ? this._subnetRef(subnet, resolver) : null,
+            vnetIdRef: vnet ? this._vnetIdRef(vnet, resolver) : null,
+          });
+          blocks.push(out.block);
+          warnings.push(...out.warnings);
+          resourceMap[r.id] = `${r.resourceType === 'azure_postgres' ? 'azurerm_postgresql_flexible_server' : 'azurerm_mysql_flexible_server'}.${name}`;
+          break;
+        }
+        case 'azure_service_bus': {
+          const out = serviceBusBlocks(name, cfg, rgName, rgLoc);
+          blocks.push(out.block); warnings.push(...out.warnings);
+          resourceMap[r.id] = `azurerm_servicebus_namespace.${name}`;
+          break;
+        }
+        case 'azure_acr': {
+          const out = acrBlocks(name, cfg, rgName, rgLoc);
+          blocks.push(out.block); warnings.push(...out.warnings);
+          resourceMap[r.id] = `azurerm_container_registry.${name}`;
+          break;
+        }
+        case 'azure_monitor': {
+          const out = monitorBlocks(name, cfg, rgName, rgLoc);
+          blocks.push(out.block); warnings.push(...out.warnings);
+          resourceMap[r.id] = `azurerm_log_analytics_workspace.${name}`;
+          break;
+        }
+        case 'azure_private_endpoint': {
+          // Needs the address of the service it reaches, which may be generated after this resource: handled once the loop is done.
+          deferredEndpoints.push(r);
+          resourceMap[r.id] = `azurerm_private_endpoint.${name}`;
           break;
         }
         case 'azure_public_ip': {
@@ -2741,7 +2797,46 @@ locals {
       }
     }
 
+    // Private endpoints: each reaches the one service it is connected to, in the subnet it is placed in, with one DNS zone per service kind.
+    if (deferredEndpoints.length > 0) {
+      const dns = new PrivateDnsRegistry();
+      const endpointBlocks: string[] = [];
+      for (const r of deferredEndpoints) {
+        const cfg = this._cfg(r);
+        const name = resolver.tfNameOf(r.id) ?? tfName(r.label);
+        const { rgName, rgLoc } = this._resolveRg(r.id, resolver, connections, resources, explicitRg);
+        const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources);
+        const vnet = subnet ? (resolver.resolveParent(subnet.id, 'azure_vnet', connections, resources) ?? explicitVnet) : undefined;
+        const linked = connections
+          .filter((c) => c.sourceId === r.id || c.targetId === r.id)
+          .map((c) => resources.find((x) => x.id === (c.sourceId === r.id ? c.targetId : c.sourceId)))
+          .filter((x): x is DbArchitectureResource => !!x && x.resourceType in PRIVATE_LINK_TARGETS);
+        if (linked.length > 1) warnings.push(`Private Endpoint "${r.label}" is connected to ${linked.length} services. It reaches only "${linked[0]!.label}": use one endpoint per service.`);
+        const t = linked[0];
+        const out = privateEndpointBlocks({
+          name, cfg, label: r.label, rgName, rgLoc,
+          subnetRef: subnet ? this._subnetRef(subnet, resolver) : null,
+          vnetTf: vnet ? (resolver.tfNameOf(vnet.id) ?? 'main') : null,
+          vnetIdRef: vnet ? this._vnetIdRef(vnet, resolver) : null,
+          target: t && resourceMap[t.id] ? { type: t.resourceType, cfg: this._cfg(t), address: resourceMap[t.id]! } : null,
+        }, dns);
+        endpointBlocks.push(out.block);
+        warnings.push(...out.warnings);
+      }
+      blocks.push(...dns.blocks, ...endpointBlocks);
+    }
+
     return { blocks, warnings, resourceMap };
+  }
+
+  private _subnetRef(subnet: DbArchitectureResource, resolver: ReferenceResolver): string {
+    const imported = Boolean(this._cfg(subnet).imported || this._cfg(subnet).importState === 'imported');
+    return `${imported ? 'data.' : ''}azurerm_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id`;
+  }
+
+  private _vnetIdRef(vnet: DbArchitectureResource, resolver: ReferenceResolver): string {
+    const imported = Boolean(this._cfg(vnet).imported || this._cfg(vnet).importState === 'imported');
+    return `${imported ? 'data.' : ''}azurerm_virtual_network.${resolver.tfNameOf(vnet.id) ?? 'main'}.id`;
   }
 
   private _cfg(r: DbArchitectureResource): Record<string, unknown> {
@@ -2824,12 +2919,12 @@ data "azurerm_network_security_group" "${name}" {
 }`;
   }
 
-  private _subnet(name: string, cfg: Record<string, unknown>, rgName: string, vnetName: string): string {
+  private _subnet(name: string, cfg: Record<string, unknown>, rgName: string, vnetName: string, extra = ''): string {
     return `resource "azurerm_subnet" "${name}" {
   name                 = "${name}"
   resource_group_name  = ${rgName}
   virtual_network_name = ${vnetName}
-  address_prefixes     = ["${cfg['addressPrefix'] ?? '10.0.1.0/24'}"]
+  address_prefixes     = ["${cfg['addressPrefix'] ?? '10.0.1.0/24'}"]${extra}
 }`;
   }
 
@@ -3599,6 +3694,8 @@ ${tagLines.join('\n')}
       `  upgrade_mode         = "${cfg['upgradeMode'] ?? 'Manual'}"`,
       `  encryption_at_host_enabled = ${cfg['osDiskEncryption'] === true}`,
     ];
+    const vmssZones = zonesHcl(cfg['zones']);
+    if (vmssZones) lines.push(`  zones                = ${vmssZones}`);
     if (!isWindows) {
       lines.push(`  admin_ssh_key {`, `    username   = "${cfg['adminUsername'] ?? 'azureuser'}"`, `    public_key = var.admin_ssh_public_key`, `  }`);
     } else {
@@ -3683,6 +3780,7 @@ ${tagLines.join('\n')}
       `  name                = "${name}"`,
       `  resource_group_name = ${rgName}`,
       `  location            = ${rgLoc}`,
+      ...(zonesHcl(cfg['zones']) ? [`  zones               = ${zonesHcl(cfg['zones'])}`] : []),
       `  sku {`,
       `    name = "${cfg['sku'] ?? 'Standard_v2'}"`,
       `    tier = "${cfg['sku'] ?? 'Standard_v2'}"`,
@@ -4060,7 +4158,7 @@ ${required.join('\n')}
     const hasAws   = providers.includes('aws');
     const hasAzure = providers.includes('azure');
     const hasRds   = input.resources.some((r) => r.resourceType === 'aws_rds');
-    const hasSql   = input.resources.some((r) => r.resourceType === 'azure_sql');
+    const hasSql   = input.resources.some((r) => r.resourceType === 'azure_sql' || r.resourceType === 'azure_postgres' || r.resourceType === 'azure_mysql');
     const isVmLike = (r: DbArchitectureResource) => r.resourceType === 'azure_vm' || r.resourceType === 'azure_vmss';
     const hasVm    = input.resources.some(isVmLike);
     const parseCfg = (r: DbArchitectureResource): Record<string, unknown> => {
@@ -4121,13 +4219,13 @@ variable "db_password" {
 
     if (hasSql) {
       vars.push(`variable "sql_admin_login" {
-  description = "Azure SQL Server admin login"
+  description = "Azure SQL / PostgreSQL / MySQL server admin login"
   type        = string
   default     = "sqladmin"
 }
 
 variable "sql_admin_password" {
-  description = "Azure SQL Server admin password — set via TF_VAR_sql_admin_password environment variable"
+  description = "Azure SQL / PostgreSQL / MySQL server admin password — set via TF_VAR_sql_admin_password environment variable"
   type        = string
   sensitive   = true
   default     = "CloudCraft_SqlPass123!"

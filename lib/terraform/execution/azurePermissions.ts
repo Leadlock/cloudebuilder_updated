@@ -21,6 +21,7 @@ const PROVIDER_BY_PREFIX: [string, string][] = [
   ['azurerm_linux_virtual_machine_scale_set', 'Microsoft.Compute'], ['azurerm_windows_virtual_machine_scale_set', 'Microsoft.Compute'], ['azurerm_orchestrated_virtual_machine_scale_set', 'Microsoft.Compute'],
   ['azurerm_managed_disk', 'Microsoft.Compute'], ['azurerm_availability_set', 'Microsoft.Compute'],
   ['azurerm_mssql', 'Microsoft.Sql'], ['azurerm_sql', 'Microsoft.Sql'],
+  ['azurerm_postgresql', 'Microsoft.DBforPostgreSQL'], ['azurerm_mysql', 'Microsoft.DBforMySQL'],
   ['azurerm_storage', 'Microsoft.Storage'],
   ['azurerm_key_vault', 'Microsoft.KeyVault'],
   ['azurerm_cosmosdb', 'Microsoft.DocumentDB'],

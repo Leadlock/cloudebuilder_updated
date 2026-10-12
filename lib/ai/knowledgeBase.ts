@@ -119,7 +119,8 @@ function idf(): Map<string, number> {
 }
 
 export function lexicalSearch(query: string, pool: KbChunk[], k: number): KbChunk[] {
-  const weights = idf(); const q = new Set(tokens(query));
+  // "daily active users" describes the load, not the pattern, but "active" is exactly what the active-active pattern is named after.
+  const weights = idf(); const q = new Set(tokens(query.replace(/\b(?:daily |monthly |weekly |concurrent )?active users?\b/gi, ' ')));
   return pool
     .map((c) => {
       const body = new Set(tokens(c.text)); const title = new Set(tokens(c.title));
