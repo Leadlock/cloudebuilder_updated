@@ -30,12 +30,18 @@ describe('Terraform execution gate', () => {
     expect(mockGetOrgRole).not.toHaveBeenCalled();
   });
 
-  it(`opens the caller's own org only when NODE_ENV is "development" and no list is set — and still needs owner/admin`, async () => {
+  it(`opens the caller's own org only when NODE_ENV is "development", CLOUDCRAFT_DEV_SHORTCUTS=1 and no list is set — and still needs owner/admin`, async () => {
     const env = process.env as Record<string, string | undefined>;
     const savedEnv = env.NODE_ENV;
+    const savedFlag = env.CLOUDCRAFT_DEV_SHORTCUTS;
     try {
       delete env.CLOUDCRAFT_TERRAFORM_ORG_IDS;
       env.NODE_ENV = 'development';
+      // `npm run dev` alone is not enough: without the flag the gate is closed like in production
+      delete env.CLOUDCRAFT_DEV_SHORTCUTS;
+      mockGetOrgRole.mockResolvedValue('owner');
+      expect(await terraformExecutionDenied('u', 'any-org')).toMatch(/not enabled/i);
+      env.CLOUDCRAFT_DEV_SHORTCUTS = '1';
       mockGetOrgRole.mockResolvedValueOnce('owner');
       expect(await terraformExecutionDenied('u', 'any-org')).toBeNull();
       mockGetOrgRole.mockResolvedValueOnce('member');
@@ -46,7 +52,7 @@ describe('Terraform execution gate', () => {
       mockGetOrgRole.mockResolvedValue('owner');
       expect(await terraformExecutionDenied('u', 'other-org')).toMatch(/not enabled/i);
 
-      // never in production or test builds
+      // never in production or test builds, even with the flag
       delete env.CLOUDCRAFT_TERRAFORM_ORG_IDS;
       for (const mode of ['production', 'test']) {
         env.NODE_ENV = mode;
@@ -54,6 +60,7 @@ describe('Terraform execution gate', () => {
       }
     } finally {
       env.NODE_ENV = savedEnv;
+      if (savedFlag === undefined) delete env.CLOUDCRAFT_DEV_SHORTCUTS; else env.CLOUDCRAFT_DEV_SHORTCUTS = savedFlag;
     }
   });
 

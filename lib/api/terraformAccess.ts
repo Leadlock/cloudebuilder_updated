@@ -12,6 +12,7 @@
  * the caller's own organisation is allowed (rule 2 still applies). Setting the variable turns this off, so the gate can
  * still be exercised locally. It never applies in production or test builds.
  */
+import { devShortcutsEnabled } from '@/lib/dev/shortcuts';
 import { getOrgRole } from '@/lib/api/auth';
 import { terraformExecutionDisabled } from '@/lib/terraform/execution/killSwitch';
 
@@ -25,7 +26,7 @@ export function allowedTerraformOrgIds(): Set<string> {
 export async function terraformExecutionDenied(userId: string, orgId: string): Promise<string | null> {
   if (terraformExecutionDisabled()) return 'Terraform execution is switched off by the server operator (CLOUDCRAFT_TERRAFORM_DISABLED).';
   const listed = allowedTerraformOrgIds();
-  const localDevOpen = process.env.NODE_ENV === 'development' && listed.size === 0;
+  const localDevOpen = devShortcutsEnabled() && listed.size === 0;
   if (!localDevOpen && !listed.has(orgId)) {
     return 'Terraform execution is not enabled for this organization. A server administrator must add the organization to CLOUDCRAFT_TERRAFORM_ORG_IDS.';
   }

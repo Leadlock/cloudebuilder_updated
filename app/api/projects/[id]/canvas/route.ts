@@ -2,6 +2,7 @@
  * GET /api/projects/[id]/canvas          — load nodes + edges for the active environment
  * PUT /api/projects/[id]/canvas          — save nodes + edges for the active environment
  */
+import { devShortcutsEnabled } from '@/lib/dev/shortcuts';
 import { NextRequest } from 'next/server';
 import { ok, notFound, forbidden, unauthorized, internalError, badRequest, parseBody } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
@@ -77,7 +78,7 @@ export async function PUT(
     try {
       const project = await projectRepository.findById(projectId, orgId);
       if (!project) {
-        if (process.env.NODE_ENV === 'development') {
+        if (devShortcutsEnabled()) {
           return ok({ nodes: body.nodes, edges: body.edges });
         }
         return notFound('Project');
@@ -86,7 +87,7 @@ export async function PUT(
       const envKey = body.env as Environment;
       const env = await environmentRepository.findByKey(projectId, envKey);
       if (!env) {
-        if (process.env.NODE_ENV === 'development') {
+        if (devShortcutsEnabled()) {
           return ok({ nodes: body.nodes, edges: body.edges });
         }
         return notFound('Environment');
@@ -147,7 +148,7 @@ export async function PUT(
         body.nodes as CanvasNode[],
         body.edges as CanvasEdge[]
       );
-      if (process.env.NODE_ENV === 'development') {
+      if (devShortcutsEnabled()) {
         const revKey = `${projectId}:${body.env}`;
         const serverRev = _devFallbackRevisions.get(revKey) ?? 1;
         if (body.revision !== undefined && body.revision < serverRev) {

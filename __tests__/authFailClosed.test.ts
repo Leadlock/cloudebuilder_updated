@@ -126,14 +126,23 @@ describe('fallback rules', () => {
     expect(localLoginFallbackAllowed('InternalErrorException')).toBe(false);
     expect(localLoginFallbackAllowed(undefined)).toBe(false);
   });
-  it('localSignupAllowed / unverifiedTokenFallbackAllowed are development-only', () => {
-    env.NODE_ENV = 'production'; env.CLOUDCRAFT_ALLOW_LOCAL_SIGNUP = '1';
-    expect(localSignupAllowed()).toBe(false);
-    expect(unverifiedTokenFallbackAllowed()).toBe(false);
-    env.NODE_ENV = 'test';
-    expect(unverifiedTokenFallbackAllowed()).toBe(false);
-    env.NODE_ENV = 'development';
-    expect(unverifiedTokenFallbackAllowed()).toBe(true);
+  it('localSignupAllowed / unverifiedTokenFallbackAllowed are development-only, and the second needs the dev-shortcuts flag', () => {
+    const flag = env.CLOUDCRAFT_DEV_SHORTCUTS;
+    try {
+      env.CLOUDCRAFT_DEV_SHORTCUTS = '1';
+      env.NODE_ENV = 'production'; env.CLOUDCRAFT_ALLOW_LOCAL_SIGNUP = '1';
+      expect(localSignupAllowed()).toBe(false);
+      expect(unverifiedTokenFallbackAllowed()).toBe(false);
+      env.NODE_ENV = 'test';
+      expect(unverifiedTokenFallbackAllowed()).toBe(false);
+      env.NODE_ENV = 'development';
+      expect(unverifiedTokenFallbackAllowed()).toBe(true);
+      // `npm run dev` alone no longer accepts a token whose signature could not be checked
+      delete env.CLOUDCRAFT_DEV_SHORTCUTS;
+      expect(unverifiedTokenFallbackAllowed()).toBe(false);
+    } finally {
+      if (flag === undefined) delete env.CLOUDCRAFT_DEV_SHORTCUTS; else env.CLOUDCRAFT_DEV_SHORTCUTS = flag;
+    }
   });
 });
 

@@ -8,8 +8,11 @@
  *    CLOUDCRAFT_ALLOW_LOCAL_SIGNUP=1.
  *  - Local LOGIN is only tried when Cognito says it does not know this user or the password is wrong, i.e. for accounts
  *    created before Cognito. A Cognito outage or throttling error never triggers it.
- *  - Reading an ID token without verifying its signature (used when the key server is unreachable) is development-only.
+ *  - Reading an ID token without verifying its signature (used when the key server is unreachable) is a development shortcut: it needs
+ *    CLOUDCRAFT_DEV_SHORTCUTS=1 as well as NODE_ENV=development (see lib/dev/shortcuts.ts).
  */
+import { devShortcutsEnabled } from '@/lib/dev/shortcuts';
+
 export function localSignupAllowed(): boolean {
   return process.env.NODE_ENV === 'development' && process.env.CLOUDCRAFT_ALLOW_LOCAL_SIGNUP === '1';
 }
@@ -21,5 +24,5 @@ export function localLoginFallbackAllowed(cognitoErrorName: string | undefined):
 }
 
 export function unverifiedTokenFallbackAllowed(): boolean {
-  return process.env.NODE_ENV === 'development';
+  return devShortcutsEnabled();
 }

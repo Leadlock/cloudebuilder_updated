@@ -2,6 +2,7 @@
  * GET  /api/projects         — list projects for the authenticated org
  * POST /api/projects         — create a new project
  */
+import { devShortcutsEnabled } from '@/lib/dev/shortcuts';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ok, created, badRequest, forbidden, unauthorized, internalError, parseBody } from '@/lib/api/response';
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
       const memberOrgIds = await resolveOrgIds(identity.userId);
       orgId = memberOrgIds[0] ?? '';
     }
-    if (!orgId && process.env.NODE_ENV === 'development') {
+    if (!orgId && devShortcutsEnabled()) {
       try {
         const ctx = await orgRepository.ensureDevContext();
         orgId = ctx.orgId;
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest) {
       return ok(projects);
     } catch (dbErr) {
       console.error('[GET /api/projects] projectRepository.list failed:', dbErr instanceof Error ? dbErr.stack ?? dbErr.message : dbErr);
-      if (process.env.NODE_ENV === 'development') {
+      if (devShortcutsEnabled()) {
         return ok(mockProjects);
       }
       throw dbErr;
@@ -79,7 +80,7 @@ export async function POST(req: NextRequest) {
       const memberOrgIds = await resolveOrgIds(identity.userId);
       orgId = memberOrgIds[0] ?? '';
     }
-    if (!orgId && process.env.NODE_ENV === 'development') {
+    if (!orgId && devShortcutsEnabled()) {
       try {
         const ctx = await orgRepository.ensureDevContext();
         orgId = ctx.orgId;
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
       return created(project);
     } catch (dbErr) {
       console.error('[POST /api/projects] projectRepository.create failed:', dbErr instanceof Error ? dbErr.stack ?? dbErr.message : dbErr);
-      if (process.env.NODE_ENV === 'development') {
+      if (devShortcutsEnabled()) {
         const fallbackProject = {
           id: `proj-${Date.now()}`,
           name: body.name,

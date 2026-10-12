@@ -2,6 +2,7 @@
  * GET  /api/cloud-accounts        — list org's cloud accounts (no credentials)
  * POST /api/cloud-accounts        — connect a new cloud account
  */
+import { devShortcutsEnabled } from '@/lib/dev/shortcuts';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import {
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
       const memberOrgIds = await resolveOrgIds(identity.userId);
       orgId = memberOrgIds[0] ?? '';
     }
-    if (!orgId && process.env.NODE_ENV === 'development') {
+    if (!orgId && devShortcutsEnabled()) {
       try {
         const ctx = await orgRepository.ensureDevContext();
         orgId = ctx.orgId;
@@ -82,7 +83,7 @@ export async function POST(req: NextRequest) {
       const memberOrgIds = await resolveOrgIds(identity.userId);
       orgId = memberOrgIds[0] ?? '';
     }
-    if (!orgId && process.env.NODE_ENV === 'development') {
+    if (!orgId && devShortcutsEnabled()) {
       try {
         const ctx = await orgRepository.ensureDevContext();
         orgId = ctx.orgId;

@@ -2,6 +2,7 @@
  * Shared helper for Phase 2D API routes.
  * Resolves architecture from a project given orgId + optional environmentKey.
  */
+import { devShortcutsEnabled } from '@/lib/dev/shortcuts';
 import { NextRequest } from 'next/server';
 import { orgRepository } from '@/lib/repositories/orgRepository';
 import { resolveOrgIds } from '@/lib/api/auth';
@@ -23,7 +24,7 @@ export async function resolveOrgId(req: NextRequest, userId?: string): Promise<s
     const memberOrgIds = await resolveOrgIds(userId);
     if (memberOrgIds[0]) return memberOrgIds[0];
   }
-  if (process.env.NODE_ENV === 'development') {
+  if (devShortcutsEnabled()) {
     try {
       const ctx = await orgRepository.ensureDevContext();
       return ctx.orgId;
@@ -66,7 +67,7 @@ export async function resolveArchitecture(
 
   // Demo data stands in for the database ONLY on a developer machine. In production (or tests) a database error must
   // surface as an error, never as someone else's demo architecture.
-  if (process.env.NODE_ENV === 'development') {
+  if (devShortcutsEnabled()) {
     const mock = mockProjects.find((p) => p.id === projectId);
     if (mock) {
       const mockOrgId = (mock as { orgId?: string }).orgId;

@@ -2,6 +2,7 @@
  * POST /api/projects/[id]/versions/[versionId]/restore
  *   — restore canvas from a version snapshot
  */
+import { devShortcutsEnabled } from '@/lib/dev/shortcuts';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ok, notFound, forbidden, unauthorized, internalError, badRequest, parseBody } from '@/lib/api/response';
@@ -31,7 +32,7 @@ export async function POST(
     const body = parsed.data;
 
     let orgId = req.nextUrl.searchParams.get('orgId') ?? '';
-    if (!orgId && process.env.NODE_ENV === 'development') {
+    if (!orgId && devShortcutsEnabled()) {
       const ctx = await orgRepository.ensureDevContext();
       orgId = ctx.orgId;
     }

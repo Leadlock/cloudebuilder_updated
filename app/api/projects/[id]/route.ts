@@ -3,6 +3,7 @@
  * PUT    /api/projects/[id]   — update project metadata
  * DELETE /api/projects/[id]   — delete a project
  */
+import { devShortcutsEnabled } from '@/lib/dev/shortcuts';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ok, notFound, forbidden, unauthorized, internalError, parseBody } from '@/lib/api/response';
@@ -48,7 +49,7 @@ async function resolveOrgId(req: NextRequest, userId: string, projectId?: string
     } catch {}
   }
 
-  if (process.env.NODE_ENV === 'development') {
+  if (devShortcutsEnabled()) {
     try {
       const ctx = await orgRepository.ensureDevContext();
       return ctx.orgId;
@@ -76,7 +77,7 @@ export async function GET(
 
     const project = await projectRepository.findById(id, orgId);
     if (!project) {
-      if (process.env.NODE_ENV === 'development') {
+      if (devShortcutsEnabled()) {
         const mock = mockProjects.find((p) => p.id === id);
         if (mock) return ok(mock);
       }
@@ -115,7 +116,7 @@ export async function PUT(
       ...(body.region !== undefined && { region: body.region as Region }),
     });
     if (!updated) {
-      if (process.env.NODE_ENV === 'development') {
+      if (devShortcutsEnabled()) {
         const mockIdx = mockProjects.findIndex((p) => p.id === id);
         if (mockIdx >= 0) {
           mockProjects[mockIdx] = {

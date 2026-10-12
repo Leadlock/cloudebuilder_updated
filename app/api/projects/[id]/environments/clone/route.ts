@@ -2,6 +2,7 @@
  * POST /api/projects/[id]/environments/clone
  *   — copy nodes+edges from one environment into another
  */
+import { devShortcutsEnabled } from '@/lib/dev/shortcuts';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ok, notFound, forbidden, unauthorized, internalError, badRequest, parseBody } from '@/lib/api/response';
@@ -34,7 +35,7 @@ export async function POST(
     if (from === to) return badRequest('Source and target environments must be different');
 
     let orgId = req.nextUrl.searchParams.get('orgId') ?? '';
-    if (!orgId && process.env.NODE_ENV === 'development') {
+    if (!orgId && devShortcutsEnabled()) {
       const ctx = await orgRepository.ensureDevContext();
       orgId = ctx.orgId;
     }
