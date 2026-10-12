@@ -20,6 +20,7 @@ const VIEW_LABELS: Partial<Record<AppView, string>> = {
   'ai-generator': 'AI Generator',
   advisor: 'Architecture Advisor',
   'disaster-recovery': 'DR Designer',
+  'container-templates': 'Container Templates',
   import: 'Import Infrastructure',
   accounts: 'Cloud Accounts',
   history: 'Version History',
@@ -211,7 +212,7 @@ export default function TopBar() {
         )}
 
         {/* Deploy button */}
-        {activeProject && !['dashboard', 'wizard', 'templates', 'ai-generator', 'import', 'disaster-recovery'].includes(activeView) && (
+        {activeProject && !['dashboard', 'wizard', 'templates', 'ai-generator', 'import', 'container-templates', 'disaster-recovery'].includes(activeView) && (
           <button
             onClick={() => dispatch({ type: 'SET_VIEW', view: 'deploy' })}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors shrink-0 shadow-sm active:scale-[0.98]"
