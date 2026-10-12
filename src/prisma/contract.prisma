@@ -707,3 +707,17 @@ model UserTotp {
   recoveryJson String  @default("[]")
   createdAt    String
 }
+
+// A container configuration (Container Templates form) an organization saved to use again. configJson is the form's ContainerConfig; it
+// holds no secret values (a variable marked secret never has its value stored), and is re-validated whenever it is read.
+model ContainerTemplate {
+  id         String @id @default(uuid())
+  orgId      String
+  name       String
+  configJson String
+  createdBy  String
+  createdAt  String
+  updatedAt  String
+
+  @@index([orgId])
+}

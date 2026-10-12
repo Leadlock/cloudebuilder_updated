@@ -44,6 +44,10 @@
       "model": "ComplianceFinding",
       "namespace": "public"
     },
+    "containerTemplate": {
+      "model": "ContainerTemplate",
+      "namespace": "public"
+    },
     "costEstimate": {
       "model": "CostEstimate",
       "namespace": "public"
@@ -1606,6 +1610,87 @@
               },
               "namespaceId": "public",
               "table": "complianceFinding"
+            }
+          },
+          "ContainerTemplate": {
+            "fields": {
+              "configJson": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdBy": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "name": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "orgId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "updatedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "fields": {
+                "configJson": {
+                  "column": "configJson"
+                },
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "createdBy": {
+                  "column": "createdBy"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "name": {
+                  "column": "name"
+                },
+                "orgId": {
+                  "column": "orgId"
+                },
+                "updatedAt": {
+                  "column": "updatedAt"
+                }
+              },
+              "namespaceId": "public",
+              "table": "containerTemplate"
             }
           },
           "CostEstimate": {
@@ -5966,6 +6051,62 @@
               },
               "uniques": []
             },
+            "containerTemplate": {
+              "columns": {
+                "configJson": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "createdAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "createdBy": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "name": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "orgId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "updatedAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [],
+              "indexes": [
+                {
+                  "columns": [
+                    "orgId"
+                  ],
+                  "name": "containerTemplate_orgId_idx_c5e5aabe",
+                  "prefix": "containerTemplate_orgId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
             "costEstimate": {
               "columns": {
                 "architectureId": {
@@ -8346,10 +8487,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "41d6dd89b711ca9453fcaf4c65d30fed941c2f1ca1b9d63af3850088ba333b78"
+    "storageHash": "5bfc0e6cb4dfb9a61d46c15ac5c67599c20ce0fe4d876b35682e0becec40ef84"
   },
   "execution": {
-    "executionHash": "669adfe6418b48bad92fa7b8a4a0c8647bcaded79316139bf0aac3c5e1618445",
+    "executionHash": "0ba7a56e397b4c234f59cde950dcc8884f8ebda6c818d547470e07df945bb4af",
     "mutations": {
       "defaults": [
         {
@@ -8460,6 +8601,17 @@
             "column": "id",
             "namespace": "public",
             "table": "complianceFinding"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "containerTemplate"
           }
         },
         {

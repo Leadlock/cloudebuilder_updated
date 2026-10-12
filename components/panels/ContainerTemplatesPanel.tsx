@@ -4,9 +4,9 @@
  * .dockerignore, README, nginx.conf) and download them as one zip or copy a single file. Nothing is sent to a server: the files are
  * produced in the browser by lib/engines/containers/dockerTemplates.ts, so what you see is what you download.
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { Copy, Download, Package, Plus, Trash2, AlertTriangle, Check, ShieldCheck } from 'lucide-react';
+import { Copy, Download, Package, Plus, Trash2, AlertTriangle, Check, ShieldCheck, Save } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import {
   defaultConfig, generateContainerFiles, STACK_LABEL, STARTER_TEMPLATES, VERSIONS,
@@ -16,12 +16,51 @@ import { buildZip } from '@/lib/engines/containers/zip';
 
 const STACKS = Object.keys(STACK_LABEL) as ContainerStack[];
 
+interface Saved { id: string; name: string; config: ContainerConfig; updatedAt: string }
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, { credentials: 'include', ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error?.message ?? 'Could not reach the server');
+  return body.data as T;
+}
+
 export default function ContainerTemplatesPanel() {
   const { state } = useApp();
   const isLight = state.theme === 'light';
   const [cfg, setCfg] = useState<ContainerConfig>(() => defaultConfig('node'));
   const [selected, setSelected] = useState('Dockerfile');
   const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState<Saved[] | null>(null);
+  const [savedError, setSavedError] = useState<string | null>(null);
+  const [loadedId, setLoadedId] = useState<string | null>(null);
+  const [saveName, setSaveName] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const refreshSaved = useCallback(async () => {
+    try { setSaved((await api<{ templates: Saved[] }>('/api/container-templates')).templates); setSavedError(null); }
+    catch (e) { setSaved([]); setSavedError(e instanceof Error ? e.message : 'Could not load saved templates'); }
+  }, []);
+  useEffect(() => { void refreshSaved(); }, [refreshSaved]);
+
+  async function saveCurrent(asNew: boolean) {
+    setBusy(true);
+    try {
+      const name = saveName.trim() || saved?.find((t) => t.id === loadedId)?.name || cfg.appName;
+      const body = JSON.stringify({ name, config: cfg });
+      const r = !asNew && loadedId
+        ? await api<{ template: Saved }>(`/api/container-templates/${loadedId}`, { method: 'PUT', body })
+        : await api<{ template: Saved }>('/api/container-templates', { method: 'POST', body });
+      setLoadedId(r.template.id); setSaveName(''); setSavedError(null);
+      await refreshSaved();
+    } catch (e) { setSavedError(e instanceof Error ? e.message : 'Could not save'); }
+    finally { setBusy(false); }
+  }
+  async function removeSaved(id: string) {
+    setBusy(true);
+    try { await api(`/api/container-templates/${id}`, { method: 'DELETE' }); if (loadedId === id) setLoadedId(null); await refreshSaved(); }
+    catch (e) { setSavedError(e instanceof Error ? e.message : 'Could not delete'); }
+    finally { setBusy(false); }
+  }
 
   const result = useMemo(() => generateContainerFiles(cfg), [cfg]);
   const set = <K extends keyof ContainerConfig>(k: K, v: ContainerConfig[K]) => setCfg((c) => ({ ...c, [k]: v }));
@@ -66,12 +105,38 @@ export default function ContainerTemplatesPanel() {
           <p className={clsx('text-xs mb-3', muted)}>Each one includes a small working app and the EC2 deployment, so <code>bash deploy.sh</code> runs it end to end. You can change everything below afterwards.</p>
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {STARTER_TEMPLATES.map((t) => (
-              <button key={t.id} type="button" onClick={() => { setCfg(t.config()); setSelected('README.md'); }}
+              <button key={t.id} type="button" onClick={() => { setCfg(t.config()); setLoadedId(null); setSelected('README.md'); }}
                 className={clsx('rounded-xl border p-3 text-left', isLight ? 'bg-white border-slate-300 hover:bg-slate-50' : 'bg-slate-900 border-slate-700 hover:bg-slate-800')}>
                 <span className={clsx('block text-sm font-semibold', isLight ? 'text-slate-900' : 'text-white')}>{t.title}</span>
                 <span className={clsx('block text-[11px] mt-0.5', muted)}>{t.blurb}</span>
               </button>
             ))}
+          </div>
+        </div>
+
+        <div className={card} data-testid="saved-templates">
+          <p className={clsx('text-sm font-semibold mb-1', isLight ? 'text-slate-900' : 'text-white')}>Your saved templates</p>
+          <p className={clsx('text-xs mb-3', muted)}>Shared with your organization. Secret values are never saved: you enter them again when you use a template.</p>
+          {savedError && <p role="alert" className="text-xs text-rose-500 mb-2">{savedError}</p>}
+          {saved && saved.length === 0 && !savedError && <p className={clsx('text-xs mb-3', muted)}>Nothing saved yet.</p>}
+          {saved && saved.length > 0 && (
+            <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 mb-3">
+              {saved.map((t) => (
+                <li key={t.id} className={clsx('rounded-xl border p-3', loadedId === t.id ? 'border-cyan-500' : isLight ? 'border-slate-300 bg-white' : 'border-slate-700 bg-slate-900')}>
+                  <span className={clsx('block text-sm font-semibold truncate', isLight ? 'text-slate-900' : 'text-white')}>{t.name}</span>
+                  <span className={clsx('block text-[11px]', muted)}>{STACK_LABEL[t.config.stack]} · {t.config.appName}</span>
+                  <div className="flex gap-3 mt-2 text-xs">
+                    <button type="button" className="text-cyan-600 font-medium" onClick={() => { setCfg(t.config); setLoadedId(t.id); setSaveName(''); setSelected('README.md'); }}>Open</button>
+                    <button type="button" disabled={busy} className="text-rose-500" onClick={() => void removeSaved(t.id)}>Delete</button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <input aria-label="Template name" placeholder={loadedId ? 'Keep the name or type a new one' : 'Name this configuration'} className={clsx(input, 'max-w-xs')} maxLength={80} value={saveName} onChange={(e) => setSaveName(e.target.value)} />
+            {loadedId && <button type="button" disabled={busy} onClick={() => void saveCurrent(false)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-cyan-600 text-white disabled:opacity-50"><Save className="w-3.5 h-3.5" />Update this template</button>}
+            <button type="button" disabled={busy || !result.ok} onClick={() => void saveCurrent(true)} className={clsx('flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium disabled:opacity-50', isLight ? 'border-slate-300 text-slate-700' : 'border-slate-600 text-slate-200')}><Save className="w-3.5 h-3.5" />Save as new</button>
           </div>
         </div>
 
