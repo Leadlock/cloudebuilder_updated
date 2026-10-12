@@ -118,17 +118,41 @@ function idf(): Map<string, number> {
   return idfCache;
 }
 
-export function lexicalSearch(query: string, pool: KbChunk[], k: number): KbChunk[] {
+/** Keyword score of every chunk in the pool (0 for no shared word). Rarer words count for more, and a word in the title counts double. */
+export function lexicalScores(query: string, pool: KbChunk[]): Map<string, number> {
   // "daily active users" describes the load, not the pattern, but "active" is exactly what the active-active pattern is named after.
   const weights = idf(); const q = new Set(tokens(query.replace(/\b(?:daily |monthly |weekly |concurrent )?active users?\b/gi, ' ')));
-  return pool
-    .map((c) => {
-      const body = new Set(tokens(c.text)); const title = new Set(tokens(c.title));
-      let score = 0;
-      for (const t of q) { const w = weights.get(t) ?? 0; if (body.has(t)) score += w; if (title.has(t)) score += 2 * w; }
-      return { c, score };
-    })
-    .filter((x) => x.score > 0).sort((a, b) => b.score - a.score).slice(0, k).map((x) => x.c);
+  const out = new Map<string, number>();
+  for (const c of pool) {
+    const body = new Set(tokens(c.text)); const title = new Set(tokens(c.title));
+    let score = 0;
+    for (const t of q) { const w = weights.get(t) ?? 0; if (body.has(t)) score += w; if (title.has(t)) score += 2 * w; }
+    out.set(c.id, score);
+  }
+  return out;
+}
+
+export function lexicalSearch(query: string, pool: KbChunk[], k: number): KbChunk[] {
+  const scores = lexicalScores(query, pool);
+  return pool.map((c) => ({ c, score: scores.get(c.id) ?? 0 })).filter((x) => x.score > 0).sort((a, b) => b.score - a.score).slice(0, k).map((x) => x.c);
+}
+
+/** How much of the final score comes from meaning (embeddings) and how much from the words themselves. */
+export const SEMANTIC_WEIGHT = 0.5;
+
+/**
+ * Combines the two rankings. Embeddings know that "PaaS web app" and "App Service" mean the same thing but blur patterns that differ in one
+ * word ("Functions inside the VNet" against "serverless Functions"); keywords are exact but miss paraphrases. Each score is scaled to 0..1 across the
+ * pool and the two are added with SEMANTIC_WEIGHT, so a chunk both agree on wins and neither alone can outvote the other on a close call.
+ */
+export function fuseScores(semantic: Map<string, number>, lexical: Map<string, number>, ids: string[], semanticWeight = SEMANTIC_WEIGHT): Map<string, number> {
+  const scale = (m: Map<string, number>) => {
+    const vals = ids.map((id) => m.get(id) ?? 0);
+    const lo = Math.min(...vals); const hi = Math.max(...vals);
+    return (id: string) => (hi > lo ? ((m.get(id) ?? 0) - lo) / (hi - lo) : 0);
+  };
+  const sem = scale(semantic); const lex = scale(lexical);
+  return new Map(ids.map((id) => [id, semanticWeight * sem(id) + (1 - semanticWeight) * lex(id)]));
 }
 
 export async function searchKnowledgeBase(query: string, opts: SearchOptions = {}): Promise<KbChunk[]> {
@@ -138,9 +162,9 @@ export async function searchKnowledgeBase(query: string, opts: SearchOptions = {
     try {
       const [q] = await embedTexts([query]);
       if (q) {
-        return pool
-          .map((c) => { const v = vectors.get(c.id)!; let dot = 0; for (let i = 0; i < v.length; i++) dot += v[i]! * q[i]!; return { c, score: dot }; })
-          .sort((a, b) => b.score - a.score).slice(0, k).map((x) => x.c);
+        const semantic = new Map(pool.map((c) => { const v = vectors.get(c.id)!; let dot = 0; for (let i = 0; i < v.length; i++) dot += v[i]! * q[i]!; return [c.id, dot] as const; }));
+        const fused = fuseScores(semantic, lexicalScores(query, pool), pool.map((c) => c.id));
+        return pool.slice().sort((a, b) => (fused.get(b.id) ?? 0) - (fused.get(a.id) ?? 0)).slice(0, k);
       }
     } catch (err) {
       console.warn('[knowledgeBase] embedding search failed, falling back to keywords:', (err as Error).message);

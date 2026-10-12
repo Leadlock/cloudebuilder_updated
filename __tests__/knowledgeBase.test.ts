@@ -11,7 +11,7 @@ jest.mock('@/lib/ai/foundryClient', () => ({
 import { readFileSync } from 'fs';
 import {
   _resetKnowledgeBaseCacheForTests, buildGenerationContext, buildReviewContext, chunkById, decodeVector,
-  embeddingHash, encodeVector, lexicalSearch, loadChunks, searchKnowledgeBase, type EmbeddingsFile,
+  embeddingHash, encodeVector, fuseScores, lexicalScores, lexicalSearch, loadChunks, searchKnowledgeBase, SEMANTIC_WEIGHT, type EmbeddingsFile,
 } from '@/lib/ai/knowledgeBase';
 
 const stored = JSON.parse(readFileSync('datasets/ai-architect/knowledge-base/embeddings.json', 'utf8')) as EmbeddingsFile;
@@ -123,5 +123,64 @@ describe('buildReviewContext', () => {
     mockEmbeddingsCreate.mockRejectedValue(new Error('x'));
     jest.spyOn(console, 'warn').mockImplementation(() => {});
     await expect(buildReviewContext({ ruleIds: ['NOT-A-RULE'], resourceTypes: [] })).resolves.toEqual(expect.any(String));
+  });
+});
+
+describe('hybrid search (meaning plus words)', () => {
+  const ids = ['a', 'b', 'c'];
+  const m = (o: Record<string, number>) => new Map(Object.entries(o));
+
+  it('scales each score to 0..1 over the pool, so neither kind can outvote the other by its units', () => {
+    const f = fuseScores(m({ a: 0.31, b: 0.30, c: 0.10 }), m({ a: 0, b: 12, c: 50 }), ids, 0.5);
+    expect(Math.max(...f.values())).toBeLessThanOrEqual(1);
+    expect(Math.min(...f.values())).toBeGreaterThanOrEqual(0);
+  });
+  it('a chunk both rankings like beats one that only one of them likes', () => {
+    const f = fuseScores(m({ a: 0.9, b: 0.88, c: 0.2 }), m({ a: 3, b: 40, c: 45 }), ids, 0.5);
+    const order = ids.slice().sort((x, y) => f.get(y)! - f.get(x)!);
+    expect(order[0]).toBe('b');                     // second on meaning, near the top on words
+  });
+  it('weight 1 is meaning only and weight 0 is words only', () => {
+    const sem = m({ a: 0.9, b: 0.5, c: 0.1 }); const lex = m({ a: 0, b: 1, c: 9 });
+    const top = (w: number) => { const f = fuseScores(sem, lex, ids, w); return ids.slice().sort((x, y) => f.get(y)! - f.get(x)!)[0]; };
+    expect(top(1)).toBe('a');
+    expect(top(0)).toBe('c');
+  });
+  it('a flat or empty score contributes nothing (no divide by zero)', () => {
+    const f = fuseScores(m({ a: 0.5, b: 0.5, c: 0.5 }), m({}), ids, 0.5);
+    for (const id of ids) expect(f.get(id)).toBe(0);
+    expect(fuseScores(m({}), m({}), [], 0.5).size).toBe(0);
+  });
+  it('the weight is an even split', () => {
+    expect(SEMANTIC_WEIGHT).toBe(0.5);
+  });
+
+  it('lexicalScores gives the same ranking lexicalSearch returns, and 0 to a chunk that shares no word', () => {
+    const pool = loadChunks().filter((c) => c.metadata.kind === 'pattern');
+    const scores = lexicalScores('private EKS Kubernetes cluster', pool);
+    const top = lexicalSearch('private EKS Kubernetes cluster', pool, 3).map((c) => c.id);
+    expect(top).toEqual(pool.slice().sort((a, b) => scores.get(b.id)! - scores.get(a.id)!).slice(0, 3).map((c) => c.id));
+    expect([...scores.values()].some((v) => v === 0)).toBe(true);
+  });
+  it('"daily active users" does not pull the active-active pattern', () => {
+    const pool = loadChunks().filter((c) => c.metadata.kind === 'pattern');
+    const s = lexicalScores('production on AWS with an Azure standby for resilience, around 50,000 daily active users', pool);
+    expect(s.get('pattern-multi-aws-azure-dr')!).toBeGreaterThan(s.get('pattern-multi-active-active')!);
+  });
+
+  it('searchKnowledgeBase uses both: when the query vector and the words point at the same chunk, it is first', async () => {
+    const target = 'pattern-azure-functions-private-api';
+    mockEmbeddingsCreate.mockResolvedValue({ data: [{ embedding: Array.from(decodeVector(stored.chunks[target]!.vector)) }] });
+    const [top] = await searchKnowledgeBase('private serverless API on Azure: Azure Functions inside the VNet with Azure SQL', { kinds: ['pattern'], providers: ['azure'], k: 1 });
+    expect(top!.id).toBe(target);
+  });
+  it('and when the vector narrowly prefers the wrong chunk, the words correct it', async () => {
+    // Meaning is close between the plain serverless pattern and the private Functions pattern (it leans to the first by a hair);
+    // the words say "inside the VNet … Application Gateway … private … Azure SQL", which only the second has.
+    const a = Array.from(decodeVector(stored.chunks['pattern-azure-serverless']!.vector));
+    const b = Array.from(decodeVector(stored.chunks['pattern-azure-functions-private-api']!.vector));
+    mockEmbeddingsCreate.mockResolvedValue({ data: [{ embedding: a.map((x, i) => 0.52 * x + 0.48 * b[i]!) }] });
+    const [top] = await searchKnowledgeBase('Functions API inside the VNet behind an Application Gateway WAF with private data services and an Azure SQL database', { kinds: ['pattern'], providers: ['azure'], k: 1 });
+    expect(top!.id).toBe('pattern-azure-functions-private-api');
   });
 });
