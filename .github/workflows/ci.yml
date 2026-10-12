@@ -1,0 +1,73 @@
+# Runs on every push and pull request. A red run means something that worked before no longer does.
+#
+#   checks             type check, lint (errors fail it, warnings do not), and the whole test suite (no database or cloud needed)
+#   build              the production build, which catches what the type check cannot (route files, client/server mix-ups)
+#   terraform-validate generates Terraform for every verified Azure pattern and runs `terraform validate` on it
+#
+# To make a red run block merging: GitHub repository Settings, Branches, add a rule for main that requires these three checks.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+# A newer push to the same branch makes the older, still-running one pointless.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Type check
+        run: npx tsc --noEmit
+      - name: Lint
+        run: npx eslint . --quiet
+      - name: Tests
+        run: npm test
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Production build
+        run: npm run build
+
+  terraform-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+      - run: npm ci
+      - name: Validate the generated Azure Terraform
+        env:
+          TERRAFORM_BIN: terraform
+        run: npx tsx --tsconfig tsconfig.json scripts/tf-validate-azure.ts "$RUNNER_TEMP/tf-validate"
