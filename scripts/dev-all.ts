@@ -10,7 +10,7 @@ import { spawn, spawnSync, type ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
-import { LinePrefixer, RestartPolicy, selectDevProcesses, tsxArgs, type DevProcessSpec } from '../lib/dev/devProcesses';
+import { LinePrefixer, RestartPolicy, devHostArgs, selectDevProcesses, tsxArgs, type DevProcessSpec } from '../lib/dev/devProcesses';
 
 // npm runs scripts with the app folder as the working directory.
 const appDir = process.cwd();
@@ -25,7 +25,7 @@ function resolveBin(pkg: string, relative: string): string {
 }
 
 function commandFor(spec: DevProcessSpec): { cmd: string; args: string[] } {
-  if (spec.script === null) return { cmd: process.execPath, args: [resolveBin('next', 'dist/bin/next'), 'dev'] };
+  if (spec.script === null) return { cmd: process.execPath, args: [resolveBin('next', 'dist/bin/next'), 'dev', ...devHostArgs()] };
   return { cmd: process.execPath, args: [resolveBin('tsx', 'dist/cli.mjs'), ...tsxArgs(spec.script, hasEnvFile)] };
 }
 

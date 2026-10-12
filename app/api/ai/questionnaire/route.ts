@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AiGeneratorService } from '@/lib/services/AiGeneratorService';
-import { AuthService } from '@/lib/api/authService';
+import { realSession } from '@/lib/api/realSession';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
 import { AI_INPUT_LIMITS, checkText, normalizeProvider } from '@/lib/ai/inputGuard';
 
@@ -9,18 +9,8 @@ export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
-    const cookieToken = req.cookies.get('cloudcraft_session')?.value;
-    const authHeader = req.headers.get('authorization');
-    const bearerToken = authHeader?.toLowerCase().startsWith('bearer ') ? authHeader.substring(7).trim() : null;
-    const token = cookieToken || bearerToken;
-    const found = token ? AuthService.getSession(token) : null;
-    // Fail closed: only a real session is accepted. The one exception is `next dev` on a developer's machine (NODE_ENV is never
-    // 'development' in a production build). A request header or an env flag must never stand in for a login.
-    const session = found?.user?.id
-      ? found
-      : process.env.NODE_ENV === 'development'
-        ? { user: { id: 'dev-user-id', email: 'dev@cloudcraft.local', role: 'admin' as const } }
-        : null;
+    // Only a real login is accepted, in every environment (see lib/api/realSession.ts).
+    const session = realSession(req);
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

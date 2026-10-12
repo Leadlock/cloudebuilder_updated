@@ -22,6 +22,16 @@ export function selectDevProcesses(env: Record<string, string | undefined> = pro
   return env['CLOUDCRAFT_DEV_WORKERS'] === 'off' ? DEV_PROCESSES.filter((p) => p.essential) : [...DEV_PROCESSES];
 }
 
+/**
+ * Where the dev web server listens. By default only this machine (127.0.0.1): `next dev` otherwise listens on every network interface and
+ * prints a "Network" address, so anyone on the same Wi-Fi could reach a server that runs with development shortcuts. Set
+ * CLOUDCRAFT_DEV_HOST=0.0.0.0 (or an address) on purpose to open it, for example to test from a phone.
+ */
+export function devHostArgs(env: Record<string, string | undefined> = process.env): string[] {
+  const host = (env['CLOUDCRAFT_DEV_HOST'] ?? '').trim();
+  return ['-H', /^[A-Za-z0-9][A-Za-z0-9.:-]*$/.test(host) ? host : '127.0.0.1'];
+}
+
 /** Splits a stream of text into whole lines, each labelled, keeping a partial last line for the next chunk. */
 export class LinePrefixer {
   private partial = '';

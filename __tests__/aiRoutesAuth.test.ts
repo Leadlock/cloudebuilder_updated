@@ -37,6 +37,20 @@ describe.each([['generate', generate], ['questionnaire', questionnaire]])('POST 
     expect((await call(route, { Authorization: 'Bearer not-a-real-session' })).status).toBe(401);
   });
 
+  it('is not unlocked by running under next dev: no login, no stand-in admin', async () => {
+    const env = process.env as Record<string, string | undefined>;
+    const before = env['NODE_ENV'];
+    env['NODE_ENV'] = 'development';
+    try {
+      expect((await call(route)).status).toBe(401);
+      expect((await call(route, { 'x-user-id': 'dev-user-id' })).status).toBe(401);
+      process.env['CLOUDCRAFT_ALLOW_LOCAL_SIGNUP'] = '1';
+      expect((await call(route)).status).toBe(401);
+    } finally {
+      if (before === undefined) delete env['NODE_ENV']; else env['NODE_ENV'] = before;
+    }
+  });
+
   it('is not unlocked by CLOUDCRAFT_ALLOW_LOCAL_SIGNUP', async () => {
     process.env['CLOUDCRAFT_ALLOW_LOCAL_SIGNUP'] = '1';
     expect((await call(route)).status).toBe(401);

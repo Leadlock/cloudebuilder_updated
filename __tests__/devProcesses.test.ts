@@ -1,4 +1,4 @@
-import { DEV_PROCESSES, LinePrefixer, RestartPolicy, selectDevProcesses, tsxArgs } from '@/lib/dev/devProcesses';
+import { DEV_PROCESSES, LinePrefixer, RestartPolicy, devHostArgs, selectDevProcesses, tsxArgs } from '@/lib/dev/devProcesses';
 
 describe('which processes npm run dev starts', () => {
   test('the web server and every worker', () => {
@@ -14,10 +14,10 @@ describe('which processes npm run dev starts', () => {
     const path = await import('path');
     for (const p of DEV_PROCESSES.filter((x) => x.script)) expect(fs.existsSync(path.join(process.cwd(), p.script!))).toBe(true);
   });
-  test('package.json: dev starts everything, dev:web is the plain Next.js server', async () => {
+  test('package.json: dev starts everything, dev:web is the plain Next.js server, on this machine only', async () => {
     const pkg = JSON.parse((await import('fs')).readFileSync('package.json', 'utf8')) as { scripts: Record<string, string> };
     expect(pkg.scripts['dev']).toBe('tsx scripts/dev-all.ts');
-    expect(pkg.scripts['dev:web']).toBe('next dev');
+    expect(pkg.scripts['dev:web']).toBe('next dev -H 127.0.0.1');
   });
 });
 
@@ -69,5 +69,21 @@ describe('tsxArgs', () => {
   test('loads .env when there is one (workers need DATABASE_URL and the encryption key)', () => {
     expect(tsxArgs('workers/x.ts', true)).toEqual(['--env-file=.env', '--tsconfig', 'tsconfig.json', 'workers/x.ts']);
     expect(tsxArgs('workers/x.ts', false)).toEqual(['--tsconfig', 'tsconfig.json', 'workers/x.ts']);
+  });
+});
+
+describe('devHostArgs', () => {
+  it('listens only on this machine unless told otherwise', () => {
+    expect(devHostArgs({})).toEqual(['-H', '127.0.0.1']);
+    expect(devHostArgs({ CLOUDCRAFT_DEV_HOST: '' })).toEqual(['-H', '127.0.0.1']);
+  });
+  it('opens the server only on purpose, with a plain address or name', () => {
+    expect(devHostArgs({ CLOUDCRAFT_DEV_HOST: '0.0.0.0' })).toEqual(['-H', '0.0.0.0']);
+    expect(devHostArgs({ CLOUDCRAFT_DEV_HOST: 'my-laptop.local' })).toEqual(['-H', 'my-laptop.local']);
+  });
+  it('ignores a value that is not an address (nothing is passed to the command line from it)', () => {
+    expect(devHostArgs({ CLOUDCRAFT_DEV_HOST: '0.0.0.0; rm -rf /' })).toEqual(['-H', '127.0.0.1']);
+    expect(devHostArgs({ CLOUDCRAFT_DEV_HOST: '--inspect' })).toEqual(['-H', '127.0.0.1']);   // never a flag
+    expect(devHostArgs({ CLOUDCRAFT_DEV_HOST: '-x' })).toEqual(['-H', '127.0.0.1']);
   });
 });
