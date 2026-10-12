@@ -15,6 +15,7 @@ export type PolicyProvider = 'aws' | 'azure';
 export const INSTANCE_SIZE_FIELD: Record<string, { key: string; label: string }> = {
   aws_ec2: { key: 'instanceType', label: 'instance type' },
   aws_auto_scaling: { key: 'instanceType', label: 'instance type' },
+  aws_container_service: { key: 'instanceType', label: 'instance type' },
   aws_rds: { key: 'instanceClass', label: 'instance class' },
   aws_elasticache: { key: 'nodeType', label: 'node type' },
   azure_vm: { key: 'size', label: 'VM size' },

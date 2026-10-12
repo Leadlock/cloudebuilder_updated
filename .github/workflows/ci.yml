@@ -71,3 +71,7 @@ jobs:
         env:
           TERRAFORM_BIN: terraform
         run: npx tsx --tsconfig tsconfig.json scripts/tf-validate-azure.ts "$RUNNER_TEMP/tf-validate"
+      - name: Validate the generated AWS Terraform (Container service node)
+        env:
+          TERRAFORM_BIN: terraform
+        run: npx tsx --tsconfig tsconfig.json scripts/tf-validate-aws.ts "$RUNNER_TEMP/tf-validate-aws"

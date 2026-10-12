@@ -7,7 +7,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { Copy, Download, Package, Plus, Trash2, AlertTriangle, Check, ShieldCheck, Save } from 'lucide-react';
-import { useApp } from '@/context/AppContext';
+import { useApp, useActiveProject } from '@/context/AppContext';
+import { takeContainerHandoff } from './containerHandoff';
+import { nodeConfigFromContainer, CONTAINER_SERVICE_TYPE } from '@/lib/engines/containers/nodeConfig';
+import type { CanvasNode } from '@/types';
 import {
   defaultConfig, generateContainerFiles, STACK_LABEL, STARTER_TEMPLATES, VERSIONS,
   type ContainerConfig, type ContainerStack, type EnvVar,
@@ -25,7 +28,8 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export default function ContainerTemplatesPanel() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
+  const project = useActiveProject();
   const isLight = state.theme === 'light';
   const [cfg, setCfg] = useState<ContainerConfig>(() => defaultConfig('node'));
   const [selected, setSelected] = useState('Dockerfile');
@@ -35,6 +39,33 @@ export default function ContainerTemplatesPanel() {
   const [loadedId, setLoadedId] = useState<string | null>(null);
   const [saveName, setSaveName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [linkedNode, setLinkedNode] = useState<string | null>(null);
+  const [canvasNote, setCanvasNote] = useState<string | null>(null);
+
+  // A configuration sent here from a Container service node on the canvas.
+  useEffect(() => {
+    const h = takeContainerHandoff();
+    if (h) { setCfg(h.config); setLinkedNode(h.nodeId ?? null); setSelected('README.md'); }
+  }, []);
+  const linked = linkedNode ? project?.nodes.find((n) => n.id === linkedNode) : undefined;
+
+  function addToArchitecture() {
+    if (!project) { setCanvasNote('Open or create a project first, then come back.'); return; }
+    const res = generateContainerFiles(cfg);
+    if (!res.ok) { setCanvasNote('Fix the errors above first.'); return; }
+    const config = nodeConfigFromContainer({ ...cfg, ec2: { ...cfg.ec2, enabled: true } });
+    if (linked) {
+      dispatch({ type: 'UPDATE_NODE_CONFIG', nodeId: linked.id, config: { ...linked.config, ...config }, label: cfg.appName });
+      setCanvasNote(`Updated "${cfg.appName}" on the canvas.`);
+      return;
+    }
+    const id = `node-${Date.now()}`;
+    const maxY = project.nodes.reduce((m, n) => Math.max(m, n.position.y + (n.height ?? 100)), 0);
+    const node: CanvasNode = { id, type: 'cloudNode', resourceType: CONTAINER_SERVICE_TYPE, provider: 'aws', label: cfg.appName, position: { x: 80, y: maxY + 60 }, config, width: 180, height: 100 };
+    dispatch({ type: 'UPDATE_CANVAS', nodes: [...project.nodes, node], edges: project.edges, bumpCanvasKey: true });
+    setLinkedNode(id);
+    setCanvasNote(`Added "${cfg.appName}" to the architecture. Drag it into a subnet to place it in your network.`);
+  }
 
   const refreshSaved = useCallback(async () => {
     try { setSaved((await api<{ templates: Saved[] }>('/api/container-templates')).templates); setSavedError(null); }
@@ -288,6 +319,12 @@ export default function ContainerTemplatesPanel() {
                       ))}
                     </ul>
                   )}
+                </div>
+                <div className="mb-3 flex flex-wrap items-center gap-3 text-xs">
+                  <button type="button" onClick={addToArchitecture} className={clsx('px-3 py-1.5 rounded-lg border font-medium', isLight ? 'border-cyan-600 text-cyan-700 hover:bg-cyan-50' : 'border-cyan-400 text-cyan-200 hover:bg-cyan-500/10')}>
+                    {linked ? 'Update the canvas node' : 'Add to architecture'}
+                  </button>
+                  {canvasNote && <span role="status" className={muted}>{canvasNote}</span>}
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                   <div className="flex flex-wrap gap-1.5" role="tablist">

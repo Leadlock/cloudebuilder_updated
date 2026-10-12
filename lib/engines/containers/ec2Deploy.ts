@@ -395,7 +395,7 @@ output "github_role_arn" {
 
 // ─── start-up script ─────────────────────────────────────────────────────────
 
-function userDataSh(c: ContainerConfig): string {
+export function userDataSh(c: ContainerConfig): string {
   const app = c.appName;
   const plain = c.env.filter((v) => !v.secret);
   const secrets = secretNames(c);

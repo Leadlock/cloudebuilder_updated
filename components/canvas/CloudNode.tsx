@@ -43,6 +43,10 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
     if (config.instanceType) specs.push(String(config.instanceType));
     if (config.os) specs.push(String(config.os).replace(' LTS', '').replace(' Server', ''));
     if (config.storageGb) specs.push(`${config.storageGb} GB`);
+  } else if (data.resourceType === 'aws_container_service') {
+    if (config.stack) specs.push(String(config.stack));
+    if (config.port) specs.push(`:${config.port}`);
+    if (config.instanceType) specs.push(String(config.instanceType));
   } else if (data.resourceType === 'azure_vm') {
     if (config.size) specs.push(String(config.size));
     if (config.osType) specs.push(String(config.osType));

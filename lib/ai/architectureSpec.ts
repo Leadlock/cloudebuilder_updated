@@ -60,7 +60,12 @@ export interface ArchitectureSpec {
 // ─── Catalog vocabulary ───────────────────────────────────────────────────────
 
 const NOT_USABLE = /_(unsupported|unknown)$/;
-export const CATALOG_TYPES: string[] = allResources.map((r) => r.type).filter((t) => !NOT_USABLE.test(t));
+/**
+ * Palette resources the AI architect is not offered. The container service is configured from Container Templates (it carries a stack, a
+ * start-up script and an image), and the fine-tuned model has never seen it, so letting the model place it would produce unreviewed designs.
+ */
+export const CANVAS_ONLY_TYPES: ReadonlySet<string> = new Set(['aws_container_service']);
+export const CATALOG_TYPES: string[] = allResources.map((r) => r.type).filter((t) => !NOT_USABLE.test(t) && !CANVAS_ONLY_TYPES.has(t));
 const CATALOG_SET = new Set(CATALOG_TYPES);
 
 const isContainerType = (type: string) => getResourceDefinition(type)?.isContainer === true;
@@ -78,8 +83,9 @@ export function containmentRules(): string {
   const lines: string[] = [];
   for (const r of allResources) {
     if (!r.isContainer || !r.allowedChildren?.length) continue;
-    r.allowedChildren.forEach((c) => contained.add(c));
-    lines.push(`${r.type} may contain: ${r.allowedChildren.join(', ')}`);
+    const children = r.allowedChildren.filter((c) => !CANVAS_ONLY_TYPES.has(c));
+    children.forEach((c) => contained.add(c));
+    lines.push(`${r.type} may contain: ${children.join(', ')}`);
   }
   const top = CATALOG_TYPES.filter((t) => !contained.has(t) && !isContainerType(t));
   lines.push(`No container, so omit "parent": ${top.join(', ')}`);

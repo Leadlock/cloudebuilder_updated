@@ -7,6 +7,8 @@ function subnetAzOptions(): { label: string; value: string }[] {
   return out.map((v) => ({ label: v, value: v }));
 }
 
+import { defaultNodeConfig as defaultContainerNodeConfig } from '@/lib/engines/containers/nodeConfig';
+
 export const awsResources: ResourceDefinition[] = [
   {
     type: 'aws_vpc',
@@ -56,7 +58,7 @@ export const awsResources: ResourceDefinition[] = [
     borderColor: '#047857',
     monthlyBaseCost: 0,
     isContainer: true,
-    allowedChildren: ['aws_ec2', 'aws_rds', 'aws_alb', 'aws_nat', 'aws_lambda', 'aws_ecs', 'aws_auto_scaling', 'aws_elasticache', 'aws_nacl'],
+    allowedChildren: ['aws_ec2', 'aws_container_service', 'aws_rds', 'aws_alb', 'aws_nat', 'aws_lambda', 'aws_ecs', 'aws_auto_scaling', 'aws_elasticache', 'aws_nacl'],
     defaultWidth: 340,
     defaultHeight: 240,
     defaultConfig: { cidrBlock: '10.0.1.0/24', availabilityZone: 'us-east-1a', mapPublicIpOnLaunch: false, name: 'my-subnet' },
@@ -201,6 +203,52 @@ export const awsResources: ResourceDefinition[] = [
         description: 'Shell script or cloud-init directive run once at first boot.',
       },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
+    ],
+  },
+  {
+    type: 'aws_container_service',
+    label: 'Container service',
+    service: 'Docker on EC2',
+    description: 'A Docker container run on one EC2 instance, built and deployed with the files from Container Templates.',
+    provider: 'aws',
+    category: 'compute',
+    icon: 'ECS',
+    color: '#ED7100',
+    bgColor: '#FEF3C7',
+    borderColor: '#D97706',
+    monthlyBaseCost: 16.78,
+    defaultConfig: defaultContainerNodeConfig(),
+    configSchema: [
+      { key: 'name', label: 'App name', type: 'text', defaultValue: 'my-container-service', required: true, description: 'Lower-case letters, digits and hyphens. Also names the image repository.' },
+      {
+        key: 'stack', label: 'Stack', type: 'select', defaultValue: 'node', section: 'Container',
+        options: [{ label: 'Node.js', value: 'node' }, { label: 'Python', value: 'python' }, { label: 'Java (Spring Boot)', value: 'java' }, { label: 'Static site (nginx)', value: 'static' }],
+      },
+      { key: 'port', label: 'Port', type: 'number', defaultValue: 3000, min: 1, max: 65535, section: 'Container' },
+      { key: 'healthPath', label: 'Health check path', type: 'text', defaultValue: '/', section: 'Container', placeholder: '/health' },
+      { key: 'imageTag', label: 'Image tag', type: 'text', defaultValue: 'v1', section: 'Container', description: 'A version tag (for example the commit id) makes it clear what is running. "latest" works but hides it.' },
+      { key: 'memoryLimit', label: 'Memory limit', type: 'text', defaultValue: '512m', section: 'Container', advanced: true, placeholder: '512m' },
+      { key: 'cpuLimit', label: 'CPU limit', type: 'text', defaultValue: '1.0', section: 'Container', advanced: true, placeholder: '1.0' },
+      {
+        key: 'restart', label: 'Restart policy', type: 'select', defaultValue: 'unless-stopped', section: 'Container', advanced: true,
+        options: [{ label: 'Unless stopped', value: 'unless-stopped' }, { label: 'Always', value: 'always' }, { label: 'On failure', value: 'on-failure' }, { label: 'Never', value: 'no' }],
+      },
+      { key: 'runAsNonRoot', label: 'Run as non-root user', type: 'boolean', defaultValue: true, section: 'Security' },
+      { key: 'scanImage', label: 'Scan the image for vulnerabilities (Trivy)', type: 'boolean', defaultValue: true, section: 'Security' },
+      { key: 'allowedCidr', label: 'Who can connect to the port', type: 'cidr', defaultValue: '10.0.0.0/16', section: 'Security', description: '0.0.0.0/0 means the whole internet.' },
+      {
+        key: 'instanceType', label: 'Instance type', type: 'select', defaultValue: 't3.small', section: 'Compute / Capacity',
+        options: [
+          { label: 't3.micro (2 vCPU, 1GB)', value: 't3.micro' },
+          { label: 't3.small (2 vCPU, 2GB)', value: 't3.small' },
+          { label: 't3.medium (2 vCPU, 4GB)', value: 't3.medium' },
+          { label: 't3.large (2 vCPU, 8GB)', value: 't3.large' },
+          { label: 'm5.large (2 vCPU, 8GB)', value: 'm5.large' },
+          { label: 'c5.large (2 vCPU, 4GB)', value: 'c5.large' },
+        ],
+      },
+      { key: 'storageGb', label: 'Disk (GB)', type: 'number', defaultValue: 20, min: 8, max: 1000, section: 'Storage' },
+      { key: 'elasticIp', label: 'Fixed public IP', type: 'boolean', defaultValue: false, section: 'Networking' },
     ],
   },
   {

@@ -151,6 +151,7 @@ export class AwsPricingProvider implements PricingProvider {
 
     switch (resource.resourceType) {
       case 'aws_ec2':        return this._ec2(resource, config, region, mult);
+      case 'aws_container_service': return this._containerService(resource, config, region, mult);
       case 'aws_auto_scaling': return this._autoScaling(resource, config, region, mult);
       case 'aws_rds':        return this._rds(resource, config, region, mult);
       case 'aws_s3':         return this._s3(resource, config, region, mult);
@@ -226,6 +227,43 @@ export class AwsPricingProvider implements PricingProvider {
         'On-demand pricing, Linux OS',
         `${storageGb}GB EBS ${storageType} root volume assumed`,
         'No data transfer charges included',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'aws-ec2-ondemand-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  /** A container service is one EC2 instance with its disk (and a fixed public IP when asked for): priced as that instance. */
+  private _containerService(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const instanceType = (config['instanceType'] as string) ?? 't3.small';
+    const hourly = (EC2_HOURLY_USD[instanceType] ?? EC2_HOURLY_USD['t3.small']!) * mult;
+    const monthly = toMonthly(hourly);
+    const storageGb = Number(config['storageGb'] ?? 20);
+    const disk = storageGb * 0.08;
+    const breakdown: { label: string; monthlyUsd: number }[] = [
+      { label: `EC2 ${instanceType} (on-demand, Linux)`, monthlyUsd: monthly },
+      { label: `EBS gp3 storage (${storageGb}GB)`, monthlyUsd: disk },
+    ];
+    let ip = 0;
+    if (config['elasticIp'] === true) { ip = toMonthly(0.005 * mult); breakdown.push({ label: 'Public IPv4 address', monthlyUsd: ip }); }
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'aws',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: monthly + disk + ip,
+      breakdown,
+      assumptions: [
+        'On-demand pricing, Linux OS, one container instance',
+        'No data transfer or image storage (ECR) charges included',
         `Region: ${region}`,
       ],
       pricingSource: 'aws-ec2-ondemand-list-price',

@@ -35,7 +35,7 @@ const SERVICE_BY_PREFIX: [string, string[]][] = [
   ['aws_lb', ['elasticloadbalancing']], ['aws_alb', ['elasticloadbalancing']], ['aws_autoscaling', ['autoscaling', 'ec2']],
   ['aws_appautoscaling', ['application-autoscaling']], ['aws_cloudfront', ['cloudfront']], ['aws_wafv2', ['wafv2']],
   ['aws_route53', ['route53']], ['aws_kms', ['kms']], ['aws_secretsmanager', ['secretsmanager']], ['aws_ssm', ['ssm']], ['aws_acm', ['acm']],
-  ['aws_iam', ['iam']], ['data.aws_vpc', ['ec2']], ['data.aws_subnet', ['ec2']], ['data.aws_availability_zones', ['ec2']],
+  ['aws_iam', ['iam']], ['data.aws_vpc', ['ec2']], ['data.aws_ssm', ['ssm']], ['data.aws_subnet', ['ec2']], ['data.aws_availability_zones', ['ec2']],
 ];
 
 const IAM_ACTIONS = [

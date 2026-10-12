@@ -9,6 +9,7 @@ import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedServ
 import { useApp, useActiveProject } from '@/context/AppContext';
 import type { WaFinding } from '@/lib/engines/wellArchitected/types';
 import PolicyWarnings from '@/components/policy/PolicyWarnings';
+import ContainerServiceCard from '@/components/canvas/ContainerServiceCard';
 import { useOrgPolicy } from '@/components/policy/orgPolicyStore';
 import { isInstanceSizeAllowed } from '@/lib/engines/policy/allowed';
 import type { OrgPolicyRules } from '@/lib/engines/policy/types';
@@ -516,6 +517,7 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
 
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+        {node.resourceType === 'aws_container_service' && <ContainerServiceCard nodeId={node.id} config={node.config} isLight={isLight} />}
         {isImported && (
           <div className={clsx(
             'p-3 rounded-xl border space-y-2.5 shadow-sm',

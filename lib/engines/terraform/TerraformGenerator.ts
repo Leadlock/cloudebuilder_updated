@@ -9,6 +9,7 @@
  * Generated Terraform uses variables for all sensitive values.
  */
 import { placeholderProblems } from './placeholderChecks';
+import { containerServiceBlocks } from './containerService';
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
 import { assertSafeHcl, escapeHclString, hclSafeId, sanitizeResourcesForHcl } from './hclSafety';
 import { PRIVATE_LINK_TARGETS } from '@/lib/engines/assessment/privateAccess';
@@ -298,6 +299,21 @@ locals {
             blocks.push(this._ec2(name, cfg, subnetRef, sgRef));
             resourceMap[r.id] = `aws_instance.${name}`;
           }
+          break;
+        }
+        case 'aws_container_service': {
+          const subnet = resolver.resolveParent(r.id, 'aws_subnet', connections, resources);
+          const isSubnetImported = subnet && Boolean(this._cfg(subnet).imported || this._cfg(subnet).importState === 'imported');
+          const subnetRef = subnet
+            ? `${isSubnetImported ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id`
+            : null;
+          const sg = resolver.resolveParent(r.id, 'aws_sg', connections, resources);
+          const isSgImported = sg && Boolean(this._cfg(sg).imported || this._cfg(sg).importState === 'imported');
+          const sgRef = sg
+            ? `[${isSgImported ? 'data.' : ''}aws_security_group.${resolver.tfNameOf(sg.id) ?? 'main'}.id]`
+            : null;
+          blocks.push(...containerServiceBlocks(name, cfg, subnetRef, sgRef));
+          resourceMap[r.id] = `aws_instance.${name}`;
           break;
         }
         case 'aws_rds': {

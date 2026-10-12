@@ -22,6 +22,8 @@ import { PRIVATE_LINK_TARGETS } from '@/lib/engines/assessment/privateAccess';
  * (lib/domain/canonicalArchitecture.ts) call this exact function so they can
  * never disagree about whether the same edge is valid.
  */
+const isEc2Like = (t: string) => t === 'aws_ec2' || t === 'aws_container_service';
+
 export function isCrossCloudConnectionSupported(sourceType: string, targetType: string): boolean {
   const sType = sourceType;
   const tType = targetType;
@@ -91,8 +93,8 @@ export class RelationshipEngine {
 
     // Nested compute
     if (
-      (childType === 'aws_ec2' || childType === 'azure_vm') &&
-      (parentType === 'aws_ec2' || parentType === 'azure_vm')
+      (isEc2Like(childType) || childType === 'azure_vm') &&
+      (isEc2Like(parentType) || parentType === 'azure_vm')
     ) {
       return {
         isAllowed: false,
@@ -133,7 +135,7 @@ export class RelationshipEngine {
 
     // Compute directly in VPC/VNet/ResourceGroup
     if (
-      (childType === 'aws_ec2' || childType === 'azure_vm' || childType === 'aws_auto_scaling' || childType === 'azure_vmss') &&
+      (isEc2Like(childType) || childType === 'azure_vm' || childType === 'aws_auto_scaling' || childType === 'azure_vmss') &&
       (parentType === 'aws_vpc' || parentType === 'azure_vnet' || parentType === 'azure_resource_group')
     ) {
       return {
@@ -300,7 +302,7 @@ export class RelationshipEngine {
       }
 
       // Invalid: Storage/Database initiating connection to Compute
-      if ((sType === 'aws_rds' || sType === 'aws_s3' || sType === 'aws_dynamodb' || sType === 'aws_elasticache') && (tType === 'aws_ec2' || tType === 'aws_lambda' || tType === 'aws_ecs' || tType === 'aws_eks' || tType === 'aws_auto_scaling')) {
+      if ((sType === 'aws_rds' || sType === 'aws_s3' || sType === 'aws_dynamodb' || sType === 'aws_elasticache') && (isEc2Like(tType) || tType === 'aws_lambda' || tType === 'aws_ecs' || tType === 'aws_eks' || tType === 'aws_auto_scaling')) {
         return {
           isValid: false,
           relationshipType: 'NETWORK_FLOW',
@@ -333,7 +335,7 @@ export class RelationshipEngine {
       }
 
       // Invalid: Internet directly to private EC2 without ALB or IGW
-      if (sType === 'aws_internet' && (tType === 'aws_ec2' || tType === 'aws_auto_scaling' || tType === 'aws_ecs')) {
+      if (sType === 'aws_internet' && (isEc2Like(tType) || tType === 'aws_auto_scaling' || tType === 'aws_ecs')) {
         const targetSubnet = allNodes.find((n) => n.id === targetNode.groupId);
         const isPublicSubnet = targetSubnet?.config?.mapPublicIpOnLaunch === true || (targetSubnet?.label || '').toLowerCase().includes('public');
         if (!isPublicSubnet) {
@@ -445,7 +447,7 @@ export class RelationshipEngine {
       }
 
       // Valid: ALB -> EC2 / Auto Scaling / ECS
-      if (sType === 'aws_alb' && (tType === 'aws_ec2' || tType === 'aws_auto_scaling' || tType === 'aws_ecs' || tType === 'aws_eks')) {
+      if (sType === 'aws_alb' && (isEc2Like(tType) || tType === 'aws_auto_scaling' || tType === 'aws_ecs' || tType === 'aws_eks')) {
         return {
           isValid: true,
           relationshipType: 'LOAD_BALANCES',
@@ -457,7 +459,7 @@ export class RelationshipEngine {
       }
 
       // Valid: EC2 / ECS -> RDS
-      if ((sType === 'aws_ec2' || sType === 'aws_auto_scaling' || sType === 'aws_ecs' || sType === 'aws_eks' || sType === 'aws_lambda') && tType === 'aws_rds') {
+      if ((isEc2Like(sType) || sType === 'aws_auto_scaling' || sType === 'aws_ecs' || sType === 'aws_eks' || sType === 'aws_lambda') && tType === 'aws_rds') {
         const engine = (targetNode.config?.engine as string) || 'postgres';
         const port = engine.includes('postgres') ? 5432 : 3306;
         return {
@@ -471,7 +473,7 @@ export class RelationshipEngine {
       }
 
       // Valid: EC2 / ECS -> ElastiCache
-      if ((sType === 'aws_ec2' || sType === 'aws_auto_scaling' || sType === 'aws_ecs' || sType === 'aws_lambda') && tType === 'aws_elasticache') {
+      if ((isEc2Like(sType) || sType === 'aws_auto_scaling' || sType === 'aws_ecs' || sType === 'aws_lambda') && tType === 'aws_elasticache') {
         return {
           isValid: true,
           relationshipType: 'CONNECTS_TO',
@@ -483,7 +485,7 @@ export class RelationshipEngine {
       }
 
       // Valid: EC2 / Lambda -> S3
-      if ((sType === 'aws_ec2' || sType === 'aws_auto_scaling' || sType === 'aws_ecs' || sType === 'aws_lambda') && tType === 'aws_s3') {
+      if ((isEc2Like(sType) || sType === 'aws_auto_scaling' || sType === 'aws_ecs' || sType === 'aws_lambda') && tType === 'aws_s3') {
         return {
           isValid: true,
           relationshipType: 'STORES_IN',
@@ -495,7 +497,7 @@ export class RelationshipEngine {
       }
 
       // Valid: EC2 / ECS / EKS / Lambda -> DynamoDB (the DynamoDB API over HTTPS, authorised by IAM)
-      if ((sType === 'aws_ec2' || sType === 'aws_auto_scaling' || sType === 'aws_ecs' || sType === 'aws_eks' || sType === 'aws_lambda') && tType === 'aws_dynamodb') {
+      if ((isEc2Like(sType) || sType === 'aws_auto_scaling' || sType === 'aws_ecs' || sType === 'aws_eks' || sType === 'aws_lambda') && tType === 'aws_dynamodb') {
         return {
           isValid: true,
           relationshipType: 'CONNECTS_TO',
@@ -507,7 +509,7 @@ export class RelationshipEngine {
       }
 
       // Valid: EC2 / Lambda -> SQS
-      if ((sType === 'aws_ec2' || sType === 'aws_ecs' || sType === 'aws_lambda') && tType === 'aws_sqs') {
+      if ((isEc2Like(sType) || sType === 'aws_ecs' || sType === 'aws_lambda') && tType === 'aws_sqs') {
         return {
           isValid: true,
           relationshipType: 'CONNECTS_TO',
@@ -560,7 +562,7 @@ export class RelationshipEngine {
       }
 
       // Valid: NAT Gateway egress routing
-      if ((sType === 'aws_ec2' || sType === 'aws_auto_scaling' || sType === 'aws_ecs') && tType === 'aws_nat') {
+      if ((isEc2Like(sType) || sType === 'aws_auto_scaling' || sType === 'aws_ecs') && tType === 'aws_nat') {
         return {
           isValid: true,
           relationshipType: 'ROUTES_TO',

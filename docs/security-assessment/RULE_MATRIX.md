@@ -1,10 +1,10 @@
 # CloudCraft Assessment Rule Matrix
 
-Generated from the rule registry (`lib/engines/assessment/rules`) for ruleset **2026.10.3** by
+Generated from the rule registry (`lib/engines/assessment/rules`) for ruleset **2026.10.4** by
 `npm run docs:rule-matrix`. The generator also validates every rule (reference keys, resource types, evidence,
 recommendation, and a classification for any rule that cannot be evaluated) and fails on errors.
 
-Totals: 164 rules (72 AWS, 92 Azure). IMPLEMENTED — LIVE/REFERENCE VERIFICATION REQUIRED: 100; NOT EVALUATED: 10; PARTIAL: 8; PRODUCTION IMPLEMENTED: 46.
+Totals: 168 rules (76 AWS, 92 Azure). IMPLEMENTED — LIVE/REFERENCE VERIFICATION REQUIRED: 104; NOT EVALUATED: 10; PARTIAL: 8; PRODUCTION IMPLEMENTED: 46.
 
 **Columns**
 - **RESOURCE**: CloudCraft resource types the rule evaluates, or architecture/account scope.
@@ -197,3 +197,7 @@ No rule has LIVE_VERIFIED evidence in production: the live-evidence input exists
 | AZ-VMSS-011 | AZURE | azure_vmss | Azure WA reliability | Microsoft Azure Well-Architected Framework | VM scale set is not spread across availability zones | zones | LOW | Set Availability Zones to "Zones 1, 2 and 3" (or two zones) on the vm scale set, in a region that offers zones. | None | Rule-specific | WA guidance only (not verified) | IMPLEMENTED — LIVE/REFERENCE VERIFICATION REQUIRED |
 | AZ-AGW-011 | AZURE | azure_app_gateway | Azure WA reliability | Microsoft Azure Well-Architected Framework | Application Gateway is not spread across availability zones | zones | LOW | Set Availability Zones to "Zones 1, 2 and 3" (or two zones) on the application gateway, in a region that offers zones. | None | Rule-specific | WA guidance only (not verified) | IMPLEMENTED — LIVE/REFERENCE VERIFICATION REQUIRED |
 | AZ-MON-001 | AZURE | Architecture | MCSB LT-3; Azure WA operational_excellence | Microsoft Azure Well-Architected Framework; Microsoft cloud security benchmark | Workload has no Azure Monitor workspace | Topology: resources, connections, containment | LOW | Add an Azure Monitor resource (Log Analytics workspace, with Application Insights for application telemetry) and connect the workloads to it. | MANUAL | Rule-specific | Verified (official source) | PARTIAL |
+| AWS-CTR-001 | AWS | aws_container_service | AWS WA security | AWS Well-Architected | The container runs as the root user | runAsNonRoot | MEDIUM | Run the container as a non-root user (the Dockerfile from Container Templates does this when "Run as non-root" is on). | None | Registry only | WA guidance only (not verified) | IMPLEMENTED — LIVE/REFERENCE VERIFICATION REQUIRED |
+| AWS-CTR-002 | AWS | aws_container_service | AWS WA security | AWS Well-Architected | The container port is open to the whole internet | allowedCidr, port | MEDIUM | Limit "Who can connect" to your own network or a load balancer, or put the service behind an Application Load Balancer with a WAF. | MANUAL | Registry only | WA guidance only (not verified) | IMPLEMENTED — LIVE/REFERENCE VERIFICATION REQUIRED |
+| AWS-CTR-003 | AWS | aws_container_service | AWS WA security | AWS Well-Architected | Images are pushed without a vulnerability scan | scanImage | LOW | Turn on the Trivy scan in the generated GitHub Actions workflow. | None | Registry only | WA guidance only (not verified) | IMPLEMENTED — LIVE/REFERENCE VERIFICATION REQUIRED |
+| AWS-CTR-004 | AWS | aws_container_service | AWS WA operational_excellence | AWS Well-Architected | The deployed image tag is "latest" | imageTag | LOW | Deploy a version tag, for example the commit id. | MANUAL | Registry only | WA guidance only (not verified) | IMPLEMENTED — LIVE/REFERENCE VERIFICATION REQUIRED |

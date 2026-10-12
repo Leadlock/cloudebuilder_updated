@@ -7,7 +7,7 @@ Where the work stands and what comes next. Effort: S is under a day, M a few day
 - **Security:** no built-in passwords or SSH key in generated Terraform or in the runner; no stand-in admin under `next dev` and the dev server listens only on this machine; earlier fixes to login checks and unused identity headers.
 - **Cost:** prices fixed across the engine; the AI generator no longer shows an estimate.
 - **Well-Architected review:** audited and fixed, plus a questionnaire, review history and live AWS account checks (CloudTrail, GuardDuty, root MFA, AWS Config).
-- **Container Templates:** Dockerfile, compose and env files for Node, Python, Java and static sites; Deploy to EC2 with `deploy.sh` / `destroy.sh`; GitHub Actions workflow and its AWS role; sample apps and starter templates.
+- **Container Templates:** Dockerfile, compose and env files for Node, Python, Java and static sites; Deploy to EC2 with `deploy.sh` / `destroy.sh`; GitHub Actions workflow and its AWS role; sample apps and starter templates. Security checks (16 kinds), a Trivy image scan in the workflow, an EC2 cost estimate, templates saved for the organization, and a "Container service" canvas node (cost, review, Terraform, policy).
 - **Azure:** private endpoints, PostgreSQL, MySQL, Service Bus, Container Registry, Azure Monitor, Firewall, Event Hubs, Event Grid, API Management, Container Apps; NSGs and route tables attached to subnets; Front Door origin and WAF; static websites; discovery and cost comparison for the new services. `scripts/tf-validate-azure.ts` runs `terraform validate` on the generated code.
 
 ## Phase 1: close the remaining holes (about 1 week)
@@ -34,7 +34,7 @@ Where the work stands and what comes next. Effort: S is under a day, M a few day
 | 8 | One-click "Add Private Endpoint" from the review screen (M). |
 | 9 | Org policy covers the new resources (PostgreSQL, MySQL, Container Apps sizes) and can block a deploy as well as warn (M). |
 | 10 | Live price lookups for the new Azure services; today they use stored prices (M). |
-| 11 | Container Templates: saved templates, and a canvas "Container service" node that feeds cost, review and Terraform (L). |
+| 11 | Container Templates: saved templates, and a canvas "Container service" node that feeds cost, review and Terraform (L). Done: saved templates (`/api/container-templates`), node `aws_container_service` with cost, 4 review rules (`AWS-CTR-001` to `004`), Terraform, relationships and org policy. Not yet applied to a real AWS account; the Terraform is validated in CI. |
 | 12 | Remaining Azure gaps: Front Door Premium with Private Link, Event Grid subscriptions, role assignments for Entra-only access, Logic Apps (M each). |
 
 ## Phase 4: code health (ongoing)

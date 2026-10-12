@@ -16,6 +16,10 @@ when deployed, or were not what was asked for.
 | A "three-tier" request produced one scale set. Compute had no availability zones. | The Azure three-tier pattern has separate web and API scale sets. VM Scale Sets and Application Gateway have an Availability Zones setting (Terraform `zones`); `AZ-VMSS-011` and `AZ-AGW-011` (LOW) report a tier with none. |
 | Service Bus and Container Registry need the Premium tier for private access (about $677 and $50 a month). | Their private-access rules (`AZ-SB-001`, `AZ-ACR-002`) are LOW recommendations, the generator keeps public access on a lower tier and says so, and cost is estimated from the Retail Prices API list prices read on 2026-10-12. |
 
+### Ruleset 2026.10.4: the Container service node
+
+Four rules for the new `aws_container_service` node: `AWS-CTR-001` runs as root, `-002` port open to the internet (HIGH on a database port), `-003` image pushed without a scan, `-004` image tag "latest". `-001` and `-003` have no Auto-Fix because what they check lives in the Dockerfile and the workflow (Container Templates), not in the Terraform the node produces. The node is not offered to the AI architect, so the fine-tuning data and prompt are unchanged.
+
 ### Ruleset 2026.10.3: the gaps left by 2026.10.2, found by running `terraform validate` on the generated code
 
 `scripts/tf-validate-azure.ts` generates Terraform for every verified Azure pattern plus a hand-drawn design that uses every new resource, and runs
