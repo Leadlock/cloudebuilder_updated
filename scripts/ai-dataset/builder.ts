@@ -106,7 +106,7 @@ export interface AzureCoreOptions {
   octet?: number;
 }
 
-export interface AzureCore { boundary: string; rg: string; vnet: string; web: string; app: string; data: string; bastionSubnet: string }
+export interface AzureCore { boundary: string; rg: string; vnet: string; web: string; app: string; data: string; bastionSubnet: string; /** Second octet of the network's address space, for subnets added later. */ octet: number }
 
 export function azureCore(b: SpecBuilder, o: AzureCoreOptions): AzureCore {
   const p = o.prefix ?? '';
@@ -121,7 +121,7 @@ export function azureCore(b: SpecBuilder, o: AzureCoreOptions): AzureCore {
   const app = tiers.app ? b.add(`${p}app-subnet`, 'azure_subnet', 'App Subnet', vnet, { addressPrefix: `10.${oc}.10.0/24` }) : '';
   const data = tiers.data ? b.add(`${p}data-subnet`, 'azure_subnet', 'Data Subnet', vnet, { addressPrefix: `10.${oc}.20.0/24` }) : '';
   const bastionSubnet = tiers.bastion ? b.add(`${p}bastion-subnet`, 'azure_subnet', 'Bastion Subnet', vnet, { addressPrefix: `10.${oc}.30.0/24` }) : '';
-  return { boundary, rg, vnet, web, app, data, bastionSubnet };
+  return { boundary, rg, vnet, web, app, data, bastionSubnet, octet: oc };
 }
 
 /** Deterministic pick helper for option lattices. */

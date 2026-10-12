@@ -14,6 +14,7 @@ import { toCanvas } from '@/lib/domain/canvasMapping';
 import type { DbArchitecture } from '@/lib/repositories/architectureRepository';
 import { findingReviewRepository } from '@/lib/repositories/findingReviewRepository';
 import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
+import type { AccountEvidenceMap } from '@/lib/engines/assessment/accountEvidence';
 import type { AssessmentResult, Finding, FindingReview } from '@/lib/engines/assessment/types';
 import type { CanvasEdge, CanvasNode } from '@/types';
 
@@ -101,10 +102,14 @@ export function buildSnapshot(args: {
   createdBy: string;
   reviews: FindingReview[];
   now?: string;
+  /** Questionnaire answers to include (the Well-Architected report). Left out, questions play no part. */
+  questionnaire?: { answers: Record<string, { answer: string; note?: string }> };
+  /** Dated readings of account-level controls for this project (CloudTrail, GuardDuty, root MFA, AWS Config). */
+  accountEvidence?: AccountEvidenceMap;
 }): AssessmentSnapshot {
   const { nodes, edges } = toCanvas(args.arch.resources, args.arch.connections);
   const createdAt = args.now ?? new Date().toISOString();
-  const assessment = runAssessment({ nodes, edges, reviews: args.reviews, evaluatedAt: createdAt });
+  const assessment = runAssessment({ nodes, edges, reviews: args.reviews, evaluatedAt: createdAt, questionnaire: args.questionnaire, accountEvidence: args.accountEvidence });
   const safeNodes = sanitizeNodes(nodes);
   return {
     schema: SNAPSHOT_SCHEMA,

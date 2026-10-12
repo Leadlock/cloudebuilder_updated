@@ -23,6 +23,7 @@ import { toCanvas } from '@/lib/domain/canvasMapping';
 import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
 import { scoreOf, SCORE_METHODOLOGY } from '@/lib/engines/assessment/scoring';
 import type { AssessmentResult, Finding } from '@/lib/engines/assessment/types';
+import { isQuestionRuleId } from '@/lib/engines/assessment/questionnaire/questionRules';
 
 function toWaSeverity(s: Finding['severity']): WaSeverity {
   return s === 'INFORMATIONAL' ? 'info' : (s.toLowerCase() as WaSeverity);
@@ -48,7 +49,7 @@ function toWaFinding(f: Finding, importStates: Map<string, string | undefined>):
     remediation: f.manualSteps.join(' '),
     frameworkReference: `${frameworkName} — ${labelOf(f.provider, f.pillar)}${f.practice ? ` (${f.practice})` : ''}`,
     source: 'DESIGN_TIME',
-    sourceLabel: f.provenance === 'DISCOVERED_CONFIGURATION' ? 'Design-time assessment (discovered configuration)' : 'Design-time assessment',
+    sourceLabel: isQuestionRuleId(f.ruleId) ? 'Questionnaire answer' : f.provenance === 'DISCOVERED_CONFIGURATION' ? 'Design-time assessment (discovered configuration)' : 'Design-time assessment',
     detectedAt: f.evaluatedAt,
     resourceState: (importStates.get(f.resourceIds[0] ?? '') as WaFinding['resourceState']) ?? 'new',
     status: f.status as 'FAIL' | 'WARNING',
@@ -84,10 +85,12 @@ export class WellArchitectedRuleEngine {
     edges?: CanvasEdge[];
     resources?: DbArchitectureResource[];
     connections?: DbArchitectureConnection[];
+    questionnaire?: WaAnalysisInput['questionnaire'];
+    accountEvidence?: WaAnalysisInput['accountEvidence'];
   }): WaAssessment {
     const { nodes, edges } = nodesFrom(input);
     this._rememberStates(nodes);
-    const assessment = runAssessment({ nodes, edges });
+    const assessment = runAssessment({ nodes, edges, questionnaire: input.questionnaire, accountEvidence: input.accountEvidence });
     const projectId = input.projectId ?? 'proj-default';
     const prov = input.provider
       ?? (assessment.providers.length > 1 ? 'multi' : (assessment.providers[0] ?? 'aws'));
@@ -98,19 +101,19 @@ export class WellArchitectedRuleEngine {
   analyzeAws(input: WaAnalysisInput): WaAssessment {
     const { nodes, edges } = toCanvas(input.resources, input.connections);
     this._rememberStates(nodes);
-    return this._forProvider(runAssessment({ nodes, edges }), 'aws', input.architectureId, input.projectId);
+    return this._forProvider(runAssessment({ nodes, edges, questionnaire: input.questionnaire, accountEvidence: input.accountEvidence }), 'aws', input.architectureId, input.projectId);
   }
 
   analyzeAzure(input: WaAnalysisInput): WaAssessment {
     const { nodes, edges } = toCanvas(input.resources, input.connections);
     this._rememberStates(nodes);
-    return this._forProvider(runAssessment({ nodes, edges }), 'azure', input.architectureId, input.projectId);
+    return this._forProvider(runAssessment({ nodes, edges, questionnaire: input.questionnaire, accountEvidence: input.accountEvidence }), 'azure', input.architectureId, input.projectId);
   }
 
   analyzeMultiCloud(input: WaAnalysisInput): WaAssessment {
     const { nodes, edges } = toCanvas(input.resources, input.connections);
     this._rememberStates(nodes);
-    return this._multi(runAssessment({ nodes, edges }), input.architectureId, input.projectId);
+    return this._multi(runAssessment({ nodes, edges, questionnaire: input.questionnaire, accountEvidence: input.accountEvidence }), input.architectureId, input.projectId);
   }
 
   private _rememberStates(nodes: CanvasNode[]) {
@@ -135,6 +138,8 @@ export class WellArchitectedRuleEngine {
         coveragePct: pr?.score.coverage.coveragePct ?? null,
         evaluatedChecks: pr?.score.coverage.evaluated ?? 0,
         notEvaluatedChecks: pr ? pr.score.coverage.notEvaluated + pr.score.coverage.insufficientData : 0,
+        evaluatedRules: pr?.evaluatedRules ?? 0,
+        limitedEvidence: pr?.limitedEvidence ?? true,
         status: pr?.status ?? 'Insufficient evidence',
         findingCount: pf.length,
         criticalCount: pf.filter((f) => f.severity === 'critical').length,

@@ -39,8 +39,6 @@ export type WaPillar = AwsPillar | AzurePillar;
  */
 export type AnalysisSource =
   | 'DESIGN_TIME'            // Local rule engine — design-time analysis only
-  | 'LIVE_AWS_WAF'           // AWS Well-Architected Tool API
-  | 'LIVE_AZURE_ADVISOR'     // Azure Advisor API
   | 'CLOUDCRAFT_RULE';       // CloudCraft architecture rule (not framework-attributed)
 
 // ─── Resource State ───────────────────────────────────────────────────────────
@@ -117,6 +115,10 @@ export interface WaPillarScore {
   coveragePct?: number | null;
   evaluatedChecks?: number;
   notEvaluatedChecks?: number;
+  /** How many DIFFERENT rules were evaluated for this pillar (a rule checked on six subnets is still one check). */
+  evaluatedRules?: number;
+  /** True when fewer than THIN_PILLAR_RULES different rules were evaluated: the score is an indication, not a verdict. */
+  limitedEvidence?: boolean;
   status?: 'No issues observed' | 'Observations only' | 'Issues found' | 'Critical issues' | 'Insufficient evidence';
 }
 
@@ -135,8 +137,9 @@ export interface WaAssessment {
   evaluatedAt: string;           // ISO timestamp
   source: AnalysisSource;
   sourceLabel: string;           // e.g. 'Design-time assessment'
-  confidence: 'design-time' | 'live-cloud';
-  isStale: boolean;              // True when canvas changed after last analysis
+  confidence: 'design-time';
+  isStale: boolean;              // True when the canvas changed after this analysis, or it was made with an older ruleset
+  staleReason?: 'architecture' | 'ruleset' | 'answers' | 'account';
   awsAssessment?: WaAssessment;  // For multi-cloud, the AWS-specific assessment
   azureAssessment?: WaAssessment; // For multi-cloud, the Azure-specific assessment
   /** False when nothing could be evaluated — `overallScore` must not be displayed as a score. */
@@ -157,6 +160,10 @@ export interface WaAnalysisInput {
   versionId?: string;
   resources: DbArchitectureResource[];
   connections: DbArchitectureConnection[];
+  /** Answers to the Well-Architected questionnaire. Left out, questions play no part in the review. */
+  questionnaire?: { answers: Record<string, { answer: string; note?: string }> };
+  /** Dated readings of account-level controls. Left out, those controls stay NOT EVALUATED. */
+  accountEvidence?: import('@/lib/engines/assessment/accountEvidence').AccountEvidenceMap;
 }
 
 // ─── Rule Interface ───────────────────────────────────────────────────────────

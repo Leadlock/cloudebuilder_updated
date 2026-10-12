@@ -23,12 +23,25 @@ export const awsResources: ResourceDefinition[] = [
     allowedChildren: ['aws_subnet', 'aws_igw', 'aws_nat', 'aws_sg', 'aws_route_table', 'aws_nacl'],
     defaultWidth: 780,
     defaultHeight: 520,
-    defaultConfig: { cidrBlock: '10.0.0.0/16', enableDnsSupport: true, enableDnsHostnames: true, name: 'my-vpc' },
+    defaultConfig: { cidrBlock: '10.0.0.0/16', enableDnsSupport: true, enableDnsHostnames: true, flowLogsEnabled: false, flowLogsBucket: '', flowLogsTrafficType: 'ALL', name: 'my-vpc' },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-vpc', required: true },
       { key: 'cidrBlock', label: 'CIDR Block', type: 'cidr', defaultValue: '10.0.0.0/16', required: true },
       { key: 'enableDnsSupport', label: 'Enable DNS Support', type: 'boolean', defaultValue: true },
       { key: 'enableDnsHostnames', label: 'Enable DNS Hostnames', type: 'boolean', defaultValue: true },
+      {
+        key: 'flowLogsEnabled', label: 'VPC Flow Logs', type: 'boolean', defaultValue: false, section: 'Monitoring',
+        description: 'Records the network traffic in the VPC to an S3 bucket, so it can be investigated after an incident. The bucket must already exist.',
+      },
+      { key: 'flowLogsBucket', label: 'Flow Logs Bucket', type: 'text', defaultValue: '', section: 'Monitoring', placeholder: 'existing S3 bucket name', visibleWhen: (c) => c['flowLogsEnabled'] === true },
+      {
+        key: 'flowLogsTrafficType', label: 'Traffic to Log', type: 'select', defaultValue: 'ALL', section: 'Monitoring', visibleWhen: (c) => c['flowLogsEnabled'] === true,
+        options: [
+          { label: 'All traffic', value: 'ALL' },
+          { label: 'Rejected traffic only', value: 'REJECT' },
+          { label: 'Accepted traffic only', value: 'ACCEPT' },
+        ],
+      },
     ],
   },
   {
@@ -484,7 +497,7 @@ export const awsResources: ResourceDefinition[] = [
       compressionEnabled: true, httpVersion: 'http2', ipv6Enabled: true,
       geoRestrictionType: 'none', geoRestrictionCountries: [],
       useCustomCertificate: false, customCertificateArn: '', minimumProtocolVersion: 'TLSv1.2_2021',
-      webAclId: '', tags: {},
+      webAclId: '', loggingEnabled: false, loggingBucket: '', estimatedDataTransferGb: 1000, estimatedRequests: 10000000, tags: {},
     },
     configSchema: [
       { key: 'name', label: 'Distribution Name', type: 'text', defaultValue: 'my-cdn', required: true },
@@ -495,6 +508,14 @@ export const awsResources: ResourceDefinition[] = [
           { label: 'Price Class 200 (+ Asia, Africa, Oceania)', value: 'PriceClass_200' },
           { label: 'Price Class All (Worldwide)', value: 'PriceClass_All' },
         ],
+      },
+      {
+        key: 'estimatedDataTransferGb', label: 'Estimated Data Out (GB/month)', type: 'number', defaultValue: 1000, min: 0, section: 'Cost Estimation',
+        description: 'Used only to estimate monthly cost; it has no effect on the deployed distribution.',
+      },
+      {
+        key: 'estimatedRequests', label: 'Estimated HTTPS Requests/month', type: 'number', defaultValue: 10000000, min: 0, section: 'Cost Estimation',
+        description: 'Used only to estimate monthly cost; it has no effect on the deployed distribution.',
       },
       { key: 'defaultRootObject', label: 'Default Root Object', type: 'text', defaultValue: 'index.html' },
       { key: 'enabled', label: 'Enabled', type: 'boolean', defaultValue: true },
@@ -523,6 +544,8 @@ export const awsResources: ResourceDefinition[] = [
         ],
       },
       { key: 'webAclId', label: 'AWS WAF Web ACL ARN', type: 'text', defaultValue: '', section: 'Security', advanced: true, placeholder: 'blank = no WAF association' },
+      { key: 'loggingEnabled', label: 'Standard Logging', type: 'boolean', defaultValue: false, section: 'Monitoring', description: 'Delivers access logs to an S3 bucket. The bucket must already exist and have ACLs enabled for log delivery.' },
+      { key: 'loggingBucket', label: 'Logging Bucket', type: 'text', defaultValue: '', section: 'Monitoring', placeholder: 'existing S3 bucket name', visibleWhen: (c) => c['loggingEnabled'] === true },
       { key: 'minTtl', label: 'Minimum TTL (seconds)', type: 'number', defaultValue: 0, min: 0, section: 'Advanced', advanced: true },
       { key: 'defaultTtl', label: 'Default TTL (seconds)', type: 'number', defaultValue: 3600, min: 0, section: 'Advanced', advanced: true },
       { key: 'maxTtl', label: 'Maximum TTL (seconds)', type: 'number', defaultValue: 86400, min: 0, section: 'Advanced', advanced: true },
@@ -567,6 +590,7 @@ export const awsResources: ResourceDefinition[] = [
       lbType: 'application', scheme: 'internet-facing', idleTimeoutSeconds: 60, deletionProtection: false,
       listenerPort: 443, listenerProtocol: 'HTTPS', certificateArn: '', sslPolicy: 'ELBSecurityPolicy-TLS13-1-2-2021-06',
       targetPort: 80, targetProtocol: 'HTTP', healthCheckPath: '/', healthCheckIntervalSeconds: 30,
+      accessLogsEnabled: false, accessLogsBucket: '',
       name: 'my-alb', tags: {},
     },
     configSchema: [
@@ -629,6 +653,8 @@ export const awsResources: ResourceDefinition[] = [
       },
       { key: 'idleTimeoutSeconds', label: 'Idle Timeout (seconds)', type: 'number', defaultValue: 60, min: 1, max: 4000, section: 'Advanced', advanced: true },
       { key: 'deletionProtection', label: 'Deletion Protection', type: 'boolean', defaultValue: false, section: 'Advanced' },
+      { key: 'accessLogsEnabled', label: 'Access Logs', type: 'boolean', defaultValue: false, section: 'Monitoring', description: 'Records every request to an S3 bucket. The bucket must already exist and its policy must allow the regional Elastic Load Balancing account to write to it.' },
+      { key: 'accessLogsBucket', label: 'Access Logs Bucket', type: 'text', defaultValue: '', section: 'Monitoring', placeholder: 'existing S3 bucket name', visibleWhen: (c) => c['accessLogsEnabled'] === true },
       { key: 'tags', label: 'Tags', type: 'keyvalue', defaultValue: {}, section: 'Tags' },
     ],
   },

@@ -16,6 +16,7 @@ import type { PricingProvider } from './types';
 import { cloudProviderPricingService, type CloudProviderPricingService } from '@/lib/cloud/pricing/CloudProviderPricingService';
 import { currencyExchangeRateService, type CurrencyExchangeRateService } from '@/lib/currency/CurrencyExchangeRateService';
 import { classifyRate, weakestTier, type PricingTier } from '@/lib/cloud/pricing/tiers';
+import { autoScalingAsInstances } from './autoScaling';
 
 // ─── Provider registry ────────────────────────────────────────────────────────
 
@@ -107,35 +108,40 @@ export class CostEstimator {
       }
 
       try {
+        // An Auto Scaling group is priced as the EC2 instances it runs (see autoScaling.ts), so it gets the same live or built-in EC2 price.
+        const asg = resource.resourceType === 'aws_auto_scaling' ? autoScalingAsInstances(config) : null;
+        const quantity = asg?.quantity ?? 1;
         const normalized = await this._pricing.getPrice({
           provider: providerKey as 'aws' | 'azure',
-          resourceType: resource.resourceType,
+          resourceType: asg ? 'aws_ec2' : resource.resourceType,
           region,
-          configuration: config,
+          configuration: asg ? asg.instanceConfig : config,
         });
 
         if (normalized && normalized.source !== 'unavailable') {
+          const unitPrice = normalized.unitPrice * quantity;
+          const monthlyPrice = normalized.monthlyPrice * quantity;
           items.push({
             resourceId: resource.id,
             resourceLabel: resource.label,
             resourceType: resource.resourceType,
             provider: providerKey,
             region,
-            hourlyUsd: normalized.unitPrice,
-            monthlyUsd: normalized.monthlyPrice,
+            hourlyUsd: unitPrice,
+            monthlyUsd: monthlyPrice,
             providerPrice: {
-              unitPrice: normalized.unitPrice,
-              monthlyPrice: normalized.monthlyPrice,
+              unitPrice,
+              monthlyPrice,
               currency: 'USD',
               unit: normalized.unit || '1 Hour',
             },
             breakdown: [
               {
-                label: `${resource.label} (${normalized.sku})`,
-                monthlyUsd: normalized.monthlyPrice,
+                label: asg ? `${quantity} × ${asg.instanceType} (${resource.label})` : `${resource.label} (${normalized.sku})`,
+                monthlyUsd: monthlyPrice,
               },
             ],
-            assumptions: normalized.assumptions,
+            assumptions: [...(asg?.assumptions ?? []), ...normalized.assumptions],
             pricingSource: normalized.source,
             pricingTier: normalized.tier ?? 'FALLBACK_ESTIMATE',
             pricingIsStale: normalized.isStale ?? false,

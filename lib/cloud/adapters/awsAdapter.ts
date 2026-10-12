@@ -84,6 +84,10 @@ import {
   DescribeNodegroupCommand,
 } from '@aws-sdk/client-eks';
 import { IAMClient, ListRolesCommand, ListAttachedRolePoliciesCommand } from '@aws-sdk/client-iam';
+import { CloudTrailClient } from '@aws-sdk/client-cloudtrail';
+import { GuardDutyClient } from '@aws-sdk/client-guardduty';
+import { ConfigServiceClient } from '@aws-sdk/client-config-service';
+import { readAwsAccountControls, type AccountControlResult } from '../accountControls/readAwsAccountControls';
 import {
   ElastiCacheClient,
   DescribeCacheClustersCommand,
@@ -349,6 +353,29 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         sessionToken: creds.sessionToken,
       },
     });
+  }
+
+  /**
+   * Read the account-level controls (CloudTrail, GuardDuty, root MFA, AWS Config), read-only, with this adapter's assumed-role session.
+   * Never throws: a control that cannot be read is reported UNAVAILABLE with the reason.
+   */
+  async readAccountControls(regions: string[]): Promise<AccountControlResult[]> {
+    const own = this._credentials.region;
+    const used = regions.length > 0 ? regions : [own];
+    try {
+      const creds = await this._assumeRole();
+      const credentials = { accessKeyId: creds.accessKeyId, secretAccessKey: creds.secretAccessKey, sessionToken: creds.sessionToken };
+      return await readAwsAccountControls({
+        cloudtrail: new CloudTrailClient({ region: used[0]!, credentials }),
+        iam: new IAMClient({ region: 'us-east-1', credentials }),
+        guardduty: (region) => new GuardDutyClient({ region, credentials }),
+        config: (region) => new ConfigServiceClient({ region, credentials }),
+      }, used);
+    } catch (err) {
+      // Could not even sign in: every control is unavailable for the same reason.
+      const reason = `CloudCraft could not sign in to the AWS account (${err instanceof Error ? err.name : 'error'}). Check the connection.`;
+      return (['AWS-ACCT-001', 'AWS-ACCT-002', 'AWS-ACCT-003', 'AWS-ACCT-004'] as const).map((controlId) => ({ controlId, status: 'UNAVAILABLE' as const, observation: reason }));
+    }
   }
 
   // IAM is a global service; requests still need a region to resolve an endpoint.

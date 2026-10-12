@@ -81,7 +81,7 @@ function layoutSingleProvider(
       subnetChildrenMap.get(targetSubnetId)!.push(leaf);
     } else {
       // Heuristic association for auto-layout if not yet placed:
-      if (leaf.resourceType === 'aws_rds' || leaf.resourceType === 'azure_sql' || leaf.resourceType === 'aws_elasticache' || leaf.resourceType === 'azure_redis') {
+      if (leaf.resourceType === 'aws_rds' || leaf.resourceType === 'azure_sql' || leaf.resourceType === 'aws_elasticache' || leaf.resourceType === 'azure_redis' || leaf.resourceType === 'azure_postgres' || leaf.resourceType === 'azure_mysql') {
         const dbSubnet = subnetNodes.find(isDatabaseSubnet) || subnetNodes[subnetNodes.length - 1];
         if (dbSubnet) {
           subnetChildrenMap.get(dbSubnet.id)!.push({ ...leaf, groupId: dbSubnet.id });

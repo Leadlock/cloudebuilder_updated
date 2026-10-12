@@ -63,6 +63,9 @@ export class AzurePricingProvider implements ICloudPricingProvider {
           return await this._getKeyVaultPrice(configuration, cleanRegion);
         case 'azure_front_door':
           return await this._getFrontDoorPrice(configuration, cleanRegion);
+        case 'azure_public_ip':
+          // One exact meter. Left to the AI meter picker this added a Public IP Prefix meter to the address meter ($8.03 instead of $3.65).
+          return await this._getPublicIpPrice(configuration, cleanRegion);
         case 'azure_cosmos_db':
           // The direct lookup first; the AI meter picker stays as a fallback for a price list that is laid out differently.
           return (await this._getCosmosPrice(configuration, cleanRegion)) ?? (await this._getAiMatchedPrice(resourceType, configuration, cleanRegion));
@@ -410,6 +413,41 @@ export class AzurePricingProvider implements ICloudPricingProvider {
         'Additional capacity units above the minimum are metered by traffic',
         `Region: ${region}`,
       ],
+    };
+  }
+
+  private async _getPublicIpPrice(config: Record<string, unknown>, region: string): Promise<NormalizedPrice | null> {
+    const sku = String(config['sku'] || 'Standard');
+    const basic = sku.toLowerCase() === 'basic';
+    const allocation = String(config['allocationMethod'] || 'Static').toLowerCase() === 'dynamic' ? 'Dynamic' : 'Static';
+    const filter = `serviceName eq 'Virtual Network' and armRegionName eq '${region}' and productName eq 'IP Addresses' and priceType eq 'Consumption'`;
+    let items: AzureRetailPriceItem[] = [];
+    try {
+      items = await this._fetchRetailPrices(filter);
+    } catch {
+      return null;
+    }
+    // Standard addresses are always static; a Basic address is billed as static or dynamic.
+    const meterName = basic ? `Basic IPv4 ${allocation} Public IP` : 'Standard IPv4 Static Public IP';
+    const row = items.find((i) => i.meterName === meterName && i.retailPrice > 0);
+    if (!row) return null;
+    const hourly = row.retailPrice;
+    return {
+      provider: 'azure',
+      service: 'Virtual Network',
+      resourceType: 'azure_public_ip',
+      region,
+      sku: basic ? 'Basic' : 'Standard',
+      pricingModel: 'on-demand',
+      unit: '1 Hour',
+      unitPrice: hourly,
+      monthlyPrice: hourly * HOURS_PER_MONTH,
+      currency: 'USD',
+      description: `Azure Public IP address (${meterName})`,
+      source: 'azure-retail-api',
+      retrievedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      assumptions: [`${meterName}: $${hourly.toFixed(4)}/hr`, 'Outbound data transfer is billed separately', `Region: ${region}`],
     };
   }
 

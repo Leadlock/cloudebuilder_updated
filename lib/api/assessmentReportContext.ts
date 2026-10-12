@@ -11,6 +11,8 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rateLimit';
 import { buildSnapshot, persistSnapshot, getSnapshot, previousSnapshot, compareSnapshots, loadActiveReviews } from '@/lib/services/AssessmentSnapshotService';
 import { buildReport, type AssessmentReport, type AutoFixHistoryEntry } from '@/lib/engines/assessment/report/buildReport';
 import { db } from '@/src/prisma/db';
+import { loadQuestionnaire } from '@/lib/api/waQuestionnaire';
+import { loadAccountEvidence } from '@/lib/api/accountEvidence';
 
 async function autoFixHistory(architectureId: string): Promise<AutoFixHistoryEntry[]> {
   try {
@@ -34,6 +36,7 @@ export async function loadAssessmentReport(
   projectId: string,
   body: { env: string; scanId?: string },
   rateLimitKey: string,
+  opts: { includeQuestionnaire?: boolean } = {},
 ): Promise<LoadedReport | { response: NextResponse }> {
   const identity = extractIdentity(req);
   if (!identity) return { response: unauthorized() };
@@ -60,6 +63,10 @@ export async function loadAssessmentReport(
       arch: ctx.arch,
       createdBy: identity.userId,
       reviews: await loadActiveReviews(projectId),
+      // The Well-Architected report must say what the Well-Architected tab says, so it includes the answers.
+      questionnaire: opts.includeQuestionnaire ? await loadQuestionnaire(projectId) : undefined,
+      // Both reports say what the tabs say, so both include the readings of the account's own controls.
+      accountEvidence: await loadAccountEvidence(projectId),
     });
     await persistSnapshot(snapshot);
   }

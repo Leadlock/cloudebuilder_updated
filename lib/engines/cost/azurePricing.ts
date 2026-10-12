@@ -114,6 +114,17 @@ export class AzurePricingProvider implements PricingProvider {
       case 'azure_waf':             return this._azureWaf(resource, config, region, mult);
       case 'azure_vmss':            return this._vmss(resource, config, region, mult);
       case 'azure_cosmos_db':       return this._cosmosDb(resource, config, region, mult);
+      case 'azure_postgres':        return this._flexibleServer('postgres', resource, config, region, mult);
+      case 'azure_mysql':           return this._flexibleServer('mysql', resource, config, region, mult);
+      case 'azure_service_bus':     return this._serviceBus(resource, config, region, mult);
+      case 'azure_acr':             return this._acr(resource, config, region, mult);
+      case 'azure_monitor':         return this._monitor(resource, config, region, mult);
+      case 'azure_private_endpoint': return this._privateEndpoint(resource, config, region, mult);
+      case 'azure_firewall':        return this._firewall(resource, config, region, mult);
+      case 'azure_event_hubs':      return this._eventHubs(resource, config, region, mult);
+      case 'azure_event_grid':      return this._eventGrid(resource, config, region, mult);
+      case 'azure_api_management':  return this._apiManagement(resource, config, region, mult);
+      case 'azure_container_apps':  return this._containerApps(resource, config, region, mult);
       case 'azure_public_ip':       return this._publicIp(resource, config, region, mult);
       case 'azure_resource_group':
       case 'azure_vnet':
@@ -538,6 +549,277 @@ export class AzurePricingProvider implements PricingProvider {
       ],
       pricingSource: 'azure-redis-list-price',
       confidence: 'estimate',
+    };
+  }
+
+  /**
+   * Flexible servers: compute per vCore-hour plus storage per GB-month. Rates are the Azure Retail Prices API list prices for eastus, read on
+   * 2026-10-12 (PostgreSQL: Burstable B1ms 0.017/h, B2s 0.068/h, General Purpose Ddsv5 0.089 per vCore-h, Memory Optimized Edsv5 0.125 per
+   * vCore-h, storage 0.115 per GB-month; MySQL: the same Burstable rates, General Purpose 0.0855 and Memory Optimized 0.1181 per vCore-h).
+   * Zone-redundant high availability runs a second copy of both compute and storage, so it doubles them.
+   */
+  private _flexibleServer(
+    kind: 'postgres' | 'mysql',
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const sku = (config['skuName'] as string) || 'B_Standard_B1ms';
+    const vcores = Number(/(?:D|E)(\d+)/.exec(sku)?.[1] ?? 1);
+    const perVcoreGp = kind === 'postgres' ? 0.089 : 0.0855;
+    const perVcoreMo = kind === 'postgres' ? 0.125 : 0.1181;
+    const hourlyBase = sku === 'B_Standard_B2s' ? 0.068
+      : sku.startsWith('B_') ? 0.017
+        : sku.startsWith('MO_') ? vcores * perVcoreMo
+          : vcores * perVcoreGp;
+    const ha = config['highAvailability'] === 'ZoneRedundant' && !sku.startsWith('B_');
+    const copies = ha ? 2 : 1;
+    const storageGb = Math.max(1, Number(config['storageGb'] ?? (kind === 'postgres' ? 32 : 20)));
+    const hourly = hourlyBase * copies * mult;
+    const computeMonthly = toMonthly(hourly);
+    const storageMonthly = storageGb * 0.115 * copies * mult;
+    const monthly = computeMonthly + storageMonthly;
+    const engine = kind === 'postgres' ? 'PostgreSQL' : 'MySQL';
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'azure',
+      region,
+      hourlyUsd: hourly + storageMonthly / 730,
+      monthlyUsd: monthly,
+      breakdown: [
+        { label: `${engine} flexible server ${sku}${ha ? ' x2 (zone-redundant standby)' : ''}`, monthlyUsd: computeMonthly },
+        { label: `Storage ${storageGb} GB${ha ? ' x2' : ''}`, monthlyUsd: storageMonthly },
+      ],
+      assumptions: [
+        `Size: ${sku}${ha ? ', zone-redundant high availability (a second copy of compute and storage)' : ''}`,
+        `Storage: ${storageGb} GB at $0.115 per GB-month`,
+        'Backup storage beyond the free allowance equal to the provisioned size, geo-redundant backup, and data transfer are not included',
+        `Region: ${region}`,
+      ],
+      pricingSource: `azure-${kind}-flexible-list-price`,
+      confidence: 'estimate',
+    };
+  }
+
+  /** Service Bus: Basic is per operation, Standard is a fixed monthly base (the first 13 million operations are included), Premium is per messaging unit-hour. */
+  private _serviceBus(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const sku = (config['sku'] as string) || 'Standard';
+    const units = Math.max(1, Number(config['capacity'] ?? 1));
+    let monthly: number;
+    let label: string;
+    const assumptions: string[] = [];
+    if (sku === 'Premium') {
+      monthly = toMonthly(0.9275 * units * mult);
+      label = `Premium ${units} messaging unit(s) at $0.9275 per unit-hour`;
+    } else if (sku === 'Basic') {
+      monthly = 10 * 0.05 * mult;
+      label = 'Basic: 10 million operations at $0.05 per million';
+      assumptions.push('Assumed 10 million operations a month');
+    } else {
+      monthly = 10 * mult;
+      label = 'Standard: $10 base, includes the first 13 million operations';
+      assumptions.push('Assumed usage within the 13 million included operations; more is billed per million');
+    }
+    return {
+      resourceId: resource.id, resourceLabel: resource.label, resourceType: resource.resourceType, provider: 'azure', region,
+      hourlyUsd: monthly / 730, monthlyUsd: monthly,
+      breakdown: [{ label: `Service Bus ${label}`, monthlyUsd: monthly }],
+      assumptions: [`Tier: ${sku}`, ...assumptions, 'Brokered connections beyond the included allowance and geo-replication data are not included', `Region: ${region}`],
+      pricingSource: 'azure-service-bus-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  /** Container Registry: a fixed daily price per tier (Retail Prices API, read 2026-10-12: Basic 0.1666, Standard 0.6666, Premium 1.6666 per day) plus storage above the tier's allowance at 0.10 per GB-month. */
+  private _acr(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const sku = (config['sku'] as string) || 'Standard';
+    const perDay = sku === 'Premium' ? 1.6666 : sku === 'Basic' ? 0.1666 : 0.6666;
+    const includedGb = sku === 'Premium' ? 500 : sku === 'Basic' ? 10 : 100;
+    const storageGb = Math.max(0, Number(config['estimatedStorageGb'] ?? 20));
+    const base = perDay * (730 / 24) * mult;
+    const extra = Math.max(0, storageGb - includedGb) * 0.1 * mult;
+    const monthly = base + extra;
+    return {
+      resourceId: resource.id, resourceLabel: resource.label, resourceType: resource.resourceType, provider: 'azure', region,
+      hourlyUsd: monthly / 730, monthlyUsd: monthly,
+      breakdown: [
+        { label: `Container Registry ${sku}`, monthlyUsd: base },
+        ...(extra > 0 ? [{ label: `Storage above the included ${includedGb} GB`, monthlyUsd: extra }] : []),
+      ],
+      assumptions: [`Tier: ${sku} (${includedGb} GB of storage included)`, `Estimated image storage: ${storageGb} GB`, 'Geo-replication, build tasks and data transfer are not included', `Region: ${region}`],
+      pricingSource: 'azure-container-registry-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  /** Log Analytics + Application Insights: pay-as-you-go ingestion at $2.30 per GB after the 5 GB free each month, and retention beyond 31 days at $0.10 per GB-month. */
+  private _monitor(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const ingestGb = Math.max(0, Number(config['estimatedIngestionGbPerMonth'] ?? 10));
+    const cap = Number(config['dailyQuotaGb'] ?? -1);
+    const cappedGb = cap >= 0 ? Math.min(ingestGb, cap * 30) : ingestGb;
+    const retention = Math.max(30, Number(config['retentionDays'] ?? 30));
+    const ingestion = Math.max(0, cappedGb - 5) * 2.3 * mult;
+    const retentionCost = cappedGb * (Math.max(0, retention - 31) / 30) * 0.1 * mult;
+    const monthly = ingestion + retentionCost;
+    return {
+      resourceId: resource.id, resourceLabel: resource.label, resourceType: resource.resourceType, provider: 'azure', region,
+      hourlyUsd: monthly / 730, monthlyUsd: monthly,
+      breakdown: [
+        { label: `Log ingestion ${cappedGb} GB (first 5 GB free)`, monthlyUsd: ingestion },
+        ...(retentionCost > 0 ? [{ label: `Retention ${retention} days`, monthlyUsd: retentionCost }] : []),
+      ],
+      assumptions: [
+        `Estimated ingestion: ${ingestGb} GB a month${cap >= 0 ? `, capped at ${cap} GB a day` : ''}`,
+        'Pay-as-you-go rate $2.30 per GB; commitment tiers, alerts, tests and export are not included',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'azure-monitor-list-price',
+      confidence: 'estimate',
+    };
+  }
+
+  /** Private Endpoint: $0.01 per hour plus $0.01 per GB processed. (Microsoft's published Private Link rate; the Retail Prices API does not list it.) */
+  private _privateEndpoint(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const gb = Math.max(0, Number(config['estimatedDataGbPerMonth'] ?? 100));
+    const hourly = 0.01 * mult;
+    const fixed = toMonthly(hourly);
+    const data = gb * 0.01 * mult;
+    return {
+      resourceId: resource.id, resourceLabel: resource.label, resourceType: resource.resourceType, provider: 'azure', region,
+      hourlyUsd: hourly + data / 730, monthlyUsd: fixed + data,
+      breakdown: [
+        { label: 'Private Endpoint hours', monthlyUsd: fixed },
+        { label: `Data processed ${gb} GB`, monthlyUsd: data },
+      ],
+      assumptions: [`Estimated data processed: ${gb} GB a month at $0.01 per GB`, 'The private DNS zone ($0.50 a month per zone) and DNS queries are not included', `Region: ${region}`],
+      pricingSource: 'azure-private-link-published-rate',
+      confidence: 'estimate',
+    };
+  }
+
+  /** Azure Firewall: a deployment hour rate per tier plus data processed (Retail Prices API, read 2026-10-12: Standard 1.25/h, Premium 1.75/h, 0.016 per GB). The public address is a separate resource. */
+  private _firewall(resource: DbArchitectureResource, config: Record<string, unknown>, region: string, mult: number): CostLineItem {
+    const tier = (config['sku'] as string) === 'Premium' ? 'Premium' : 'Standard';
+    const hourly = (tier === 'Premium' ? 1.75 : 1.25) * mult;
+    const gb = Math.max(0, Number(config['estimatedDataGbPerMonth'] ?? 100));
+    const fixed = toMonthly(hourly);
+    const data = gb * 0.016 * mult;
+    return {
+      resourceId: resource.id, resourceLabel: resource.label, resourceType: resource.resourceType, provider: 'azure', region,
+      hourlyUsd: hourly + data / 730, monthlyUsd: fixed + data,
+      breakdown: [{ label: `Azure Firewall ${tier} deployment`, monthlyUsd: fixed }, { label: `Data processed ${gb} GB`, monthlyUsd: data }],
+      assumptions: [`Tier: ${tier}`, `Estimated data processed: ${gb} GB a month at $0.016 per GB`, 'The firewall\'s public IP address is billed as its own resource', `Region: ${region}`],
+      pricingSource: 'azure-firewall-list-price', confidence: 'estimate',
+    };
+  }
+
+  /** Event Hubs: Basic 0.015/h and Standard 0.03/h per throughput unit, Premium 1.027/h per processing unit, plus 0.028 per million ingress events on Basic and Standard. */
+  private _eventHubs(resource: DbArchitectureResource, config: Record<string, unknown>, region: string, mult: number): CostLineItem {
+    const sku = (config['sku'] as string) || 'Standard';
+    const units = Math.max(1, Number(config['capacity'] ?? 1));
+    const perUnit = sku === 'Premium' ? 1.027 : sku === 'Basic' ? 0.015 : 0.03;
+    const events = Math.max(0, Number(config['estimatedMillionEventsPerMonth'] ?? 10));
+    const fixed = toMonthly(perUnit * units * mult);
+    const ingress = sku === 'Premium' ? 0 : events * 0.028 * mult;
+    return {
+      resourceId: resource.id, resourceLabel: resource.label, resourceType: resource.resourceType, provider: 'azure', region,
+      hourlyUsd: (fixed + ingress) / 730, monthlyUsd: fixed + ingress,
+      breakdown: [{ label: `Event Hubs ${sku} x${units} ${sku === 'Premium' ? 'processing' : 'throughput'} unit(s)`, monthlyUsd: fixed }, ...(ingress > 0 ? [{ label: `Ingress ${events} million events`, monthlyUsd: ingress }] : [])],
+      assumptions: [`Tier: ${sku}`, sku === 'Premium' ? 'Premium includes ingress' : `Estimated ${events} million events a month`, 'Capture, Kafka endpoint and extended retention are not included', `Region: ${region}`],
+      pricingSource: 'azure-event-hubs-list-price', confidence: 'estimate',
+    };
+  }
+
+  /** Event Grid topic: $0.60 per million operations after the first 100,000 a month. */
+  private _eventGrid(resource: DbArchitectureResource, config: Record<string, unknown>, region: string, mult: number): CostLineItem {
+    const ops = Math.max(0, Number(config['estimatedMillionOpsPerMonth'] ?? 1));
+    const monthly = Math.max(0, ops - 0.1) * 0.6 * mult;
+    return {
+      resourceId: resource.id, resourceLabel: resource.label, resourceType: resource.resourceType, provider: 'azure', region,
+      hourlyUsd: monthly / 730, monthlyUsd: monthly,
+      breakdown: [{ label: `Operations ${ops} million (first 100,000 free)`, monthlyUsd: monthly }],
+      assumptions: [`Estimated ${ops} million operations a month`, 'Dead-lettering, advanced filtering and MQTT are not included', `Region: ${region}`],
+      pricingSource: 'azure-event-grid-list-price', confidence: 'estimate',
+    };
+  }
+
+  /** API Management: per-unit hourly rate (Developer 0.0658, Basic 0.2016, Standard 0.9407, Premium 3.829) or, on Consumption, $3.50 per million calls after the first million. */
+  private _apiManagement(resource: DbArchitectureResource, config: Record<string, unknown>, region: string, mult: number): CostLineItem {
+    const sku = (config['sku'] as string) || 'Developer';
+    const assumptions: string[] = [`Tier: ${sku}`];
+    let monthly: number;
+    let label: string;
+    if (sku === 'Consumption') {
+      const calls = Math.max(0, Number(config['estimatedMillionCallsPerMonth'] ?? 1));
+      monthly = Math.max(0, calls - 1) * 3.5 * mult;
+      label = `Consumption: ${calls} million calls (first million free)`;
+      assumptions.push(`Estimated ${calls} million calls a month`);
+    } else {
+      const units = sku === 'Developer' ? 1 : Math.max(1, Number(config['capacity'] ?? 1));
+      const perUnit = sku === 'Premium' ? 3.829 : sku === 'Standard' ? 0.9407 : sku === 'Basic' ? 0.2016 : 0.0658;
+      monthly = toMonthly(perUnit * units * mult);
+      label = `${sku} x${units} unit(s)`;
+      if (sku === 'Developer') assumptions.push('The Developer tier has no SLA and is meant for non-production');
+    }
+    return {
+      resourceId: resource.id, resourceLabel: resource.label, resourceType: resource.resourceType, provider: 'azure', region,
+      hourlyUsd: monthly / 730, monthlyUsd: monthly,
+      breakdown: [{ label: `API Management ${label}`, monthlyUsd: monthly }],
+      assumptions: [...assumptions, 'Self-hosted gateways, workspaces and multi-region units are not included', `Region: ${region}`],
+      pricingSource: 'azure-api-management-list-price', confidence: 'estimate',
+    };
+  }
+
+  /**
+   * Container Apps (Consumption plan): vCPU at 0.000024 per second while handling requests and 0.000003 when idle, memory at 0.000003 per GiB-second,
+   * requests at $0.40 per million after the first 2 million. A replica that is always running is assumed idle outside the stated share of time.
+   * The monthly free grants (180,000 vCPU-seconds, 360,000 GiB-seconds) are shared by the whole subscription and are not deducted here.
+   */
+  private _containerApps(resource: DbArchitectureResource, config: Record<string, unknown>, region: string, mult: number): CostLineItem {
+    const cpu = Number(config['cpu'] ?? 0.5) || 0.5;
+    const memGib = cpu * 2;
+    const replicas = Math.max(0, Number(config['minReplicas'] ?? 1));
+    const active = Math.min(100, Math.max(0, Number(config['estimatedActivePercent'] ?? 25))) / 100;
+    const seconds = 730 * 3600;
+    const vcpu = replicas * cpu * seconds * (active * 0.000024 + (1 - active) * 0.000003) * mult;
+    const mem = replicas * memGib * seconds * 0.000003 * mult;
+    const requests = Math.max(0, Number(config['estimatedMillionRequestsPerMonth'] ?? 1));
+    const reqCost = Math.max(0, requests - 2) * 0.4 * mult;
+    const monthly = vcpu + mem + reqCost;
+    return {
+      resourceId: resource.id, resourceLabel: resource.label, resourceType: resource.resourceType, provider: 'azure', region,
+      hourlyUsd: monthly / 730, monthlyUsd: monthly,
+      breakdown: [{ label: `vCPU ${replicas} x ${cpu}`, monthlyUsd: vcpu }, { label: `Memory ${replicas} x ${memGib} GiB`, monthlyUsd: mem }, ...(reqCost > 0 ? [{ label: `Requests ${requests} million`, monthlyUsd: reqCost }] : [])],
+      assumptions: [
+        `${replicas} replica(s) always running, handling requests ${Math.round(active * 100)}% of the time and idle otherwise`,
+        'Replicas above the minimum are billed only while they run and are not included',
+        'The monthly free grants are shared by the subscription and are not deducted',
+        `Region: ${region}`,
+      ],
+      pricingSource: 'azure-container-apps-list-price', confidence: 'estimate',
     };
   }
 

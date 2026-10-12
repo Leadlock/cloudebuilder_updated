@@ -4,6 +4,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
 import AiReviewCard from './AiReviewCard';
 import type { AiWellArchitectedReview } from '@/lib/services/AiReviewService';
+import type { ReviewHistory } from '@/lib/engines/wellArchitected/history';
+import WaQuestionnaire from './WaQuestionnaire';
+import WaAccountChecks from './WaAccountChecks';
 import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedService';
 import type { WaAssessment, WaFinding, WaPillar, WaSeverity, ResourceState } from '@/lib/engines/wellArchitected/types';
 import {
@@ -101,6 +104,11 @@ export default function WellArchitectedReview() {
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<ReviewHistory | null>(null);
+  /** Set when a stale review was re-run automatically, so the person is told why the numbers moved. */
+  const [refreshNote, setRefreshNote] = useState<string | null>(null);
+
+  const loadHistory = () => { void apiWellArchitectedService.getHistory().then(setHistory); };
 
   // Filters
   const [selectedPillar, setSelectedPillar] = useState<string>('all');
@@ -119,7 +127,24 @@ export default function WellArchitectedReview() {
         // Use the latest persisted assessment; if none exists yet, analyze the
         // saved architecture now rather than showing an empty review.
         const data = await apiWellArchitectedService.getAssessment();
-        setAssessment(data ?? await apiWellArchitectedService.analyze(activeProject.nodes, activeProject.edges));
+        if (data?.isStale) {
+          // The analysis is deterministic and instant, so a stale review is simply re-run rather than shown with a warning.
+          const fresh = await apiWellArchitectedService.analyze(activeProject.nodes, activeProject.edges);
+          if (fresh) {
+            setAssessment(fresh);
+            setRefreshNote(data.staleReason === 'ruleset'
+              ? 'This review was re-run automatically because the Well-Architected rules were updated since it was last made.'
+              : data.staleReason === 'answers'
+                ? 'This review was re-run automatically because the questionnaire answers changed since it was last made.'
+                : data.staleReason === 'account'
+                  ? 'This review was re-run automatically because the AWS account was checked after it was last made.'
+                : 'This review was re-run automatically because the architecture changed since it was last made.');
+          } else setAssessment(data);
+        } else {
+          setRefreshNote(null);
+          setAssessment(data ?? await apiWellArchitectedService.analyze(activeProject.nodes, activeProject.edges));
+        }
+        loadHistory();
       }
     } catch (err) {
       try {
@@ -141,6 +166,8 @@ export default function WellArchitectedReview() {
       const fresh = await apiWellArchitectedService.analyze(activeProject.nodes, activeProject.edges);
       if (fresh) {
         setAssessment(fresh);
+        setRefreshNote(null);
+        loadHistory();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed');
@@ -258,7 +285,7 @@ export default function WellArchitectedReview() {
             {assessment?.isStale && (
               <span className={clsx('px-2.5 py-0.5 rounded-full text-xs font-bold border flex items-center gap-1.5 animate-pulse', isLight ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-amber-500/10 text-amber-300 border-amber-500/30')}>
                 <AlertTriangle className="w-3 h-3" />
-                Stale — Architecture Changed
+                {assessment.staleReason === 'ruleset' ? 'Stale — Rules Updated' : assessment.staleReason === 'answers' ? 'Stale — Answers Changed' : assessment.staleReason === 'account' ? 'Stale — Account Checked' : 'Stale — Architecture Changed'}
               </span>
             )}
           </div>
@@ -373,11 +400,7 @@ export default function WellArchitectedReview() {
           </div>
           <div className="mt-3">
             <span className={clsx('text-sm font-bold block truncate', isLight ? 'text-slate-900' : 'text-white')}>
-              {assessment?.source === 'LIVE_AWS_WAF'
-                ? 'AWS Well-Architected Tool API'
-                : assessment?.source === 'LIVE_AZURE_ADVISOR'
-                ? 'Azure Advisor ARM API'
-                : 'Design-Time Rule Engine'}
+              Design-Time Rule Engine
             </span>
             <span className={clsx('text-xs mt-0.5 block', isLight ? 'text-slate-500' : 'text-slate-400')}>
               Confidence: {assessment?.confidence ?? 'Design-Time'}
@@ -421,9 +444,130 @@ export default function WellArchitectedReview() {
         </div>
       )}
 
+      {refreshNote && (
+        <p className={clsx('text-[11px] -mt-2', isLight ? 'text-slate-500' : 'text-slate-400')}>{refreshNote}</p>
+      )}
+
+      {/* Since the last review */}
+      {history && history.entries.length > 0 && (
+        <div className={clsx('rounded-2xl border p-5', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/60 border-slate-800')}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className={clsx('text-base font-bold', isLight ? 'text-slate-900' : 'text-white')}>Since the last review</h2>
+            {history.changes && (
+              <span className={clsx('text-[11px]', isLight ? 'text-slate-500' : 'text-slate-400')}>
+                compared with {new Date(history.changes.since).toLocaleString()}
+              </span>
+            )}
+          </div>
+
+          {history.changes ? (
+            <div className="mt-3 space-y-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                {history.changes.overallBefore !== null && history.changes.overallAfter !== null && (
+                  <span className={clsx('px-2.5 py-1 rounded-lg border font-mono font-bold', isLight ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-slate-800/60 border-slate-700 text-slate-100')}>
+                    Overall {history.changes.overallBefore} → {history.changes.overallAfter}
+                    {history.changes.overallDelta !== null && history.changes.overallDelta !== 0 && (
+                      <span className={history.changes.overallDelta > 0 ? (isLight ? ' text-emerald-600' : ' text-emerald-400') : (isLight ? ' text-rose-600' : ' text-rose-400')}>
+                        {' '}({history.changes.overallDelta > 0 ? '+' : ''}{history.changes.overallDelta})
+                      </span>
+                    )}
+                  </span>
+                )}
+                <span className={clsx('px-2.5 py-1 rounded-lg border', isLight ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-rose-500/10 border-rose-500/30 text-rose-300')}>
+                  {history.changes.newFindings.length} new finding{history.changes.newFindings.length === 1 ? '' : 's'}
+                </span>
+                <span className={clsx('px-2.5 py-1 rounded-lg border', isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300')}>
+                  {history.changes.resolvedFindings.length} fixed
+                </span>
+                {history.changes.pillars.filter((p) => p.delta !== null && p.delta !== 0).map((p) => (
+                  <span key={`${p.provider}-${p.pillar}`} className={clsx('px-2.5 py-1 rounded-lg border', isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-slate-800/60 border-slate-700 text-slate-300')}>
+                    {p.pillarLabel} {p.before} → {p.after}
+                  </span>
+                ))}
+              </div>
+
+              {(() => {
+                const c = history.changes;
+                const changed = (c.overallDelta ?? 0) !== 0 || c.newFindings.length > 0 || c.resolvedFindings.length > 0 || c.pillars.some((p) => (p.delta ?? 0) !== 0);
+                if (!changed) {
+                  return (
+                    <p className={clsx('text-[11px]', isLight ? 'text-slate-500' : 'text-slate-400')}>
+                      Nothing changed in the score or the findings{c.rulesetChanged ? ' (the rules were updated in between, but that made no difference to this design)' : ''}.
+                    </p>
+                  );
+                }
+                return c.rulesetChanged ? (
+                  <p className={clsx('text-[11px]', isLight ? 'text-amber-700' : 'text-amber-400')}>
+                    The rules were updated between these reviews ({c.previousRulesetVersion || 'an earlier version'} → {c.currentRulesetVersion}), so part of this change comes from the rules, not from your design.
+                  </p>
+                ) : null;
+              })()}
+
+              {([['New', history.changes.newFindings, isLight ? 'text-rose-700' : 'text-rose-300'], ['Fixed', history.changes.resolvedFindings, isLight ? 'text-emerald-700' : 'text-emerald-300']] as const).map(([label, list, toneClass]) => list.length > 0 && (
+                <div key={label}>
+                  <p className={clsx('text-[11px] font-semibold uppercase tracking-wider mb-1', toneClass)}>{label}</p>
+                  <ul className={clsx('text-xs space-y-0.5', isLight ? 'text-slate-700' : 'text-slate-300')}>
+                    {list.slice(0, 5).map((f) => (
+                      <li key={`${label}-${f.ruleId}-${f.resources.join(',')}`}>
+                        <span className="font-mono text-[10px] opacity-70">{f.severity.toUpperCase()}</span> {f.title}
+                        {f.resources.length > 0 && <span className="opacity-60"> — {f.resources.slice(0, 3).join(', ')}</span>}
+                      </li>
+                    ))}
+                    {list.length > 5 && <li className="opacity-60">…and {list.length - 5} more</li>}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className={clsx('text-xs mt-2', isLight ? 'text-slate-500' : 'text-slate-400')}>
+              {history.entries.length > 1 ? 'The reviews so far all gave the same result.' : 'This is the first review of this architecture, so there is nothing to compare with yet.'}
+            </p>
+          )}
+
+          {history.entries.length > 1 && (
+            <div className={clsx('mt-4 pt-3 border-t', isLight ? 'border-slate-100' : 'border-slate-800')}>
+              <p className={clsx('text-[11px] font-semibold uppercase tracking-wider mb-1.5', isLight ? 'text-slate-500' : 'text-slate-400')}>Recent reviews</p>
+              <ul className={clsx('text-xs space-y-1', isLight ? 'text-slate-700' : 'text-slate-300')}>
+                {history.entries.slice(0, 5).map((e) => (
+                  <li key={e.evaluatedAt} className="flex flex-wrap gap-x-3">
+                    <span className="opacity-70">{new Date(e.evaluatedAt).toLocaleString()}</span>
+                    <span className="font-mono font-bold">{e.overallScored ? e.overallScore : '—'}</span>
+                    <span>{e.findingCount} finding{e.findingCount === 1 ? '' : 's'}</span>
+                    {e.repeats > 1 && <span className="opacity-60">re-run {e.repeats}× with no change</span>}
+                    {e.rulesetVersion && <span className="opacity-50">rules {e.rulesetVersion}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      <WaQuestionnaire
+        providers={Array.from(new Set(activeProject.nodes.map((n) => n.provider).filter((p): p is 'aws' | 'azure' => p === 'aws' || p === 'azure'))).length > 0
+          ? Array.from(new Set(activeProject.nodes.map((n) => n.provider).filter((p): p is 'aws' | 'azure' => p === 'aws' || p === 'azure')))
+          : activeProject.provider === 'azure' ? ['azure'] : activeProject.provider === 'multi' ? ['aws', 'azure'] : ['aws']}
+        isLight={isLight}
+        onAnswered={() => { void handleRunAnalysis(); }}
+        disabledReason={activeProject.id === 'draft-project' ? 'Save the project to answer the questionnaire: answers belong to a saved project.' : undefined}
+      />
+
+      {activeProject.nodes.some((n) => n.provider === 'aws') && (
+        <WaAccountChecks
+          isLight={isLight}
+          onChecked={() => { void handleRunAnalysis(); }}
+          disabledReason={activeProject.id === 'draft-project' ? 'Save the project to check the AWS account.' : undefined}
+        />
+      )}
+
       {/* Pillar Scores Section */}
       <div>
-        <h2 className={clsx('text-base font-bold mb-3', isLight ? 'text-slate-900' : 'text-white')}>Pillar Performance</h2>
+        <h2 className={clsx('text-base font-bold mb-1', isLight ? 'text-slate-900' : 'text-white')}>Pillar Performance</h2>
+        {assessment?.pillarScores?.some((ps) => ps.scored !== false && ps.limitedEvidence) && (
+          <p className={clsx('text-[11px] mb-3', isLight ? 'text-amber-700' : 'text-amber-400')}>
+            A pillar marked <b>Limited</b> rests on fewer than 5 different checks, so its score is an indication, not a verdict.
+          </p>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {assessment?.pillarScores?.map((ps) => {
             const config = PILLAR_CONFIG[ps.pillar] || {
@@ -453,13 +597,30 @@ export default function WellArchitectedReview() {
                   <div className={clsx('p-2 rounded-xl border', config.bg, config.border, config.color)}>
                     <Icon className="w-4 h-4" />
                   </div>
-                  <span className={clsx('text-xl font-bold font-mono', !scored ? (isLight ? 'text-slate-400' : 'text-slate-500') : ps.score >= 80 ? (isLight ? 'text-emerald-600' : 'text-emerald-400') : ps.score >= 60 ? (isLight ? 'text-amber-600' : 'text-amber-400') : (isLight ? 'text-rose-600' : 'text-rose-400'))}>
-                    {scored ? ps.score : '—'}
-                  </span>
+                  {scored && ps.limitedEvidence ? (
+                    <span
+                      className={clsx('text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-md border', isLight ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-amber-300 bg-amber-900/30 border-amber-700/50')}
+                      title="Fewer than 5 different checks cover this pillar, so its score is an indication, not a verdict."
+                    >
+                      Limited
+                    </span>
+                  ) : (
+                    <span className={clsx('text-xl font-bold font-mono', !scored ? (isLight ? 'text-slate-400' : 'text-slate-500') : ps.score >= 80 ? (isLight ? 'text-emerald-600' : 'text-emerald-400') : ps.score >= 60 ? (isLight ? 'text-amber-600' : 'text-amber-400') : (isLight ? 'text-rose-600' : 'text-rose-400'))}>
+                      {scored ? ps.score : '—'}
+                    </span>
+                  )}
                 </div>
 
                 <h4 className={clsx('font-bold text-xs mt-3 truncate', isLight ? 'text-slate-900' : 'text-white')}>{ps.provider && assessment?.provider === 'multi' ? `${ps.provider.toUpperCase()} · ` : ''}{config.label}</h4>
-                <p className={clsx('text-[10px] mt-0.5', isLight ? 'text-slate-500' : 'text-slate-500')}>{scored ? `Coverage ${ps.coveragePct ?? 0}% · ${ps.status ?? ''}` : (ps.status === 'Insufficient evidence' || !ps.status ? 'Insufficient evidence' : `${ps.status} (informational checks only)`)}</p>
+                <p className={clsx('text-[10px] mt-0.5', isLight ? 'text-slate-500' : 'text-slate-500')}>{scored ? (ps.limitedEvidence ? `Indicative score ${ps.score} · ${ps.status ?? ''}` : `Coverage ${ps.coveragePct ?? 0}% · ${ps.status ?? ''}`) : (ps.status === 'Insufficient evidence' || !ps.status ? 'Insufficient evidence' : `${ps.status} (informational checks only)`)}</p>
+                {ps.evaluatedRules !== undefined && (
+                  <p
+                    className={clsx('text-[10px] mt-0.5 flex items-center gap-1', ps.limitedEvidence ? (isLight ? 'text-amber-700' : 'text-amber-400') : (isLight ? 'text-slate-500' : 'text-slate-500'))}
+                    title={ps.limitedEvidence ? 'Fewer than 5 different checks cover this pillar, so its score is an indication, not a verdict.' : undefined}
+                  >
+                    Based on {ps.evaluatedRules} check{ps.evaluatedRules === 1 ? '' : 's'}
+                  </p>
+                )}
                 <div className={clsx('flex items-center justify-between text-[11px] mt-1', isLight ? 'text-slate-600' : 'text-slate-400')}>
                   <span>{ps.findingCount} finding{ps.findingCount === 1 ? '' : 's'}</span>
                   {ps.criticalCount > 0 && (
@@ -469,8 +630,8 @@ export default function WellArchitectedReview() {
 
                 <div className={clsx('mt-2.5 w-full rounded-full h-1 overflow-hidden', isLight ? 'bg-slate-100' : 'bg-slate-800')}>
                   <div
-                    className={clsx('h-full', ps.score >= 80 ? 'bg-emerald-500' : ps.score >= 60 ? 'bg-amber-500' : 'bg-rose-500')}
-                    style={{ width: `${scored ? ps.score : 0}%` }}
+                    className={clsx('h-full', ps.limitedEvidence ? (isLight ? 'bg-slate-300' : 'bg-slate-600') : ps.score >= 80 ? 'bg-emerald-500' : ps.score >= 60 ? 'bg-amber-500' : 'bg-rose-500')}
+                    style={{ width: `${scored && !ps.limitedEvidence ? ps.score : 0}%` }}
                   />
                 </div>
               </button>

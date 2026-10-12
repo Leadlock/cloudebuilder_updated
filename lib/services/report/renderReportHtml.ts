@@ -3,6 +3,7 @@
  * content as the PDF). Suitable for sharing, archiving, or printing; all
  * values are HTML-escaped.
  */
+import { LIMITED_EVIDENCE_NOTE, pillarScoreText } from '@/lib/engines/assessment/report/waReportView';
 import { COMMENTARY_DISCLAIMER } from '@/lib/ai/reportCommentary';
 import type { AssessmentReport, RecommendationGroup } from '@/lib/engines/assessment/report/buildReport';
 import type { Finding, Severity } from '@/lib/engines/assessment/types';
@@ -103,7 +104,7 @@ export function renderReportHtml(r: AssessmentReport): string {
   ${ex.security.capApplied ? `<p class="muted">${esc(ex.security.capApplied)}</p>` : ''}
   ${ex.security.lowCoverage ? '<div class="callout warn"><b>Low assessment coverage.</b> Less than 60% of applicable security checks could be evaluated; the score reflects only evaluated checks.</div>' : ''}
   <h3>Open findings by severity</h3>${counts(ex.counts)}
-  <h3>Well-Architected summary</h3>${ex.wellArchitected.map((p) => `<p><b>${esc(p.framework)}</b></p>${table(['Pillar', 'Status', 'Score', 'Coverage'], p.pillars.map((x) => [esc(x.label), `<span class="${statusClass(x.status)}">${esc(x.status)}</span>`, score(x.score), x.coverage === null ? '—' : `${x.coverage}%`]))}`).join('')}
+  <h3>Well-Architected summary</h3>${ex.wellArchitected.map((p) => `<p><b>${esc(p.framework)}</b></p>${table(['Pillar', 'Status', 'Score', 'Coverage'], p.pillars.map((x) => [esc(x.label), `<span class="${statusClass(x.status)}">${esc(x.status)}</span>`, pillarScoreText(x.score, x.limited, x.checks, true), x.coverage === null ? '—' : `${x.coverage}%`]))}${p.pillars.some((x) => x.limited) ? `<p class="muted">${esc(LIMITED_EVIDENCE_NOTE)}</p>` : ''}`).join('')}
   <h3>SOC 1 readiness summary</h3><p>${ex.soc1.observed} area(s) with technical evidence observed, ${ex.soc1.gaps} with gaps, ${ex.soc1.partial} partially evaluated, ${ex.soc1.notEvaluated} not evaluated. All areas require organizational evidence and independent auditor assessment.</p>
   <h3>High-impact checks passed</h3>${list(ex.strengths, 'No critical- or high-severity security checks passed in the evaluated configuration.')}
   <h3>Major risks</h3>${list(ex.majorRisks, 'No critical or high severity failures in the evaluated checks.')}
@@ -119,7 +120,7 @@ export function renderReportHtml(r: AssessmentReport): string {
 
   sections.push(`<section><h2>5. Well-Architected Review</h2>${r.wellArchitected.map((prov) => `<h3>${esc(prov.framework)}</h3>${prov.pillars.map((p) => `
     <h4 class="${statusClass(p.status)}">${esc(p.label)} — ${esc(p.status)}</h4>
-    <p class="muted">Score ${score(p.score.score)} · Coverage ${p.score.coverage.coveragePct ?? '—'}${p.score.coverage.coveragePct === null ? '' : '%'} (${p.score.coverage.evaluated} evaluated, ${p.score.coverage.notEvaluated + p.score.coverage.insufficientData} not evaluated)</p>
+    <p class="muted">Score ${pillarScoreText(p.score.score, p.limitedEvidence, p.evaluatedRules)} · Coverage ${p.score.coverage.coveragePct ?? '—'}${p.score.coverage.coveragePct === null ? '' : '%'} (${p.score.coverage.evaluated} evaluated, ${p.score.coverage.notEvaluated + p.score.coverage.insufficientData} not evaluated)</p>
     ${p.strengths.length ? `<p><b>Strengths</b></p>${list(p.strengths.slice(0, 4))}` : ''}
     ${p.findings.length ? table(['Finding ID', 'Severity', 'Finding', 'Resources'], p.findings.map((f) => [`<code>${esc(f.findingId)}</code>`, sevBadge(f.severity), esc(f.title), esc(f.resourceLabels.join(', ') || 'Architecture-wide')])) : `<p class="muted">${p.status === 'Insufficient evidence' ? 'Insufficient architecture evidence to assess this pillar.' : 'No findings in the evaluated checks.'}</p>`}`).join('')}`).join('')}</section>`);
 

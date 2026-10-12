@@ -9,6 +9,7 @@
  * exists and is adjusted only with a documented reason in `rationale`.
  */
 import type { AssessResource, RuleDefinition } from '../types';
+import { dayOf, isFresh } from '../accountEvidence';
 import {
   REVIEWED, configEvaluator, ev, notModelled, rule, PUBLIC_CIDRS, directlyInternetLinked, fmt,
 } from '../ruleHelpers';
@@ -620,27 +621,44 @@ export const awsRules: RuleDefinition[] = [
   rule({
     ...common,
     id: 'AWS-VPC-002', service: 'Amazon VPC', scope: 'resource', resourceTypes: ['aws_vpc'],
-    domain: 'SECURITY', category: 'Logging & audit', severity: 'MEDIUM', priority: 'RECOMMENDED_IMPROVEMENT',
-    title: 'VPC flow logging not modelled',
-    description: 'Security Hub EC2.6 requires VPC Flow Logs. CloudCraft does not model flow logs.',
-    rationale: 'Reported NOT EVALUATED — flow logging is never assumed.',
-    risk: 'Network traffic cannot be investigated.', impact: 'Reduced incident investigation capability.',
+    domain: 'SECURITY', category: 'Logging & audit', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'VPC Flow Logs are not enabled',
+    description: 'Network traffic in the VPC is not being recorded.',
+    rationale: 'Security Hub EC2.6 rates this medium. It is LOW here because flow logs need an existing S3 bucket as their destination, which a design-time canvas does not create. An imported VPC whose flow-log setting is not known stays NOT EVALUATED: nothing is assumed.',
+    risk: 'Network traffic cannot be investigated after an incident.', impact: 'Reduced incident investigation capability.',
     wellArchitected: WA.sec('SEC 4 — Detect and investigate security events'),
-    references: ['AWS-FSBP-EC2.6', 'AWS-WA-security'],
+    references: ['AWS-FSBP-EC2.6', 'AWS-WA-security', TF],
     soc1: ['SOC1-OP-01'],
-    remediation: { recommendation: 'Enable VPC Flow Logs (at least REJECT traffic) to CloudWatch Logs or S3.', manualSteps: ['Create aws_flow_log for the VPC.'], terraform: 'aws_flow_log (vpc_id, traffic_type, log_destination)' },
-    evaluate: (r) => notModelled('VPC Flow Logs', 'Live discovery of flow logs for this VPC, or a CloudCraft flow-log resource.', [r.id]),
+    remediation: {
+      recommendation: 'Enable VPC Flow Logs (all traffic, or at least rejected traffic) to a dedicated S3 bucket with a retention policy.',
+      manualSteps: ['Create an S3 bucket for flow logs (or choose an existing one).', 'Turn on VPC Flow Logs for the VPC and enter the bucket name.', 'Set a lifecycle rule on the bucket to expire old logs.'],
+      terraform: 'aws_flow_log (vpc_id, traffic_type, log_destination_type = "s3", log_destination)',
+    },
+    evaluate: (r) => {
+      const c = r.config;
+      const evidence = [ev(r, 'flowLogsEnabled', 'Enabled / Yes'), ev(r, 'flowLogsBucket'), ev(r, 'flowLogsTrafficType', 'ALL or REJECT')];
+      // An imported VPC carries only what discovery read, and discovery does not read flow logs yet: not knowing is not "disabled".
+      if (c.flowLogsEnabled === undefined && (r.importState === 'imported' || Boolean(r.discovery))) {
+        return { status: 'INSUFFICIENT_DATA', observation: 'Discovery did not return the flow-log setting for this imported VPC, so this control cannot be evaluated.', evidence, requiredData: 'Set the VPC Flow Logs setting on this VPC, or grant discovery ec2:DescribeFlowLogs.' };
+      }
+      if (c.flowLogsEnabled !== true) return { status: 'FAIL', observation: 'VPC Flow Logs are not enabled.', evidence };
+      if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(String(c.flowLogsBucket ?? '').trim())) {
+        return { status: 'WARNING', observation: 'Flow logs are enabled but no valid S3 bucket name is set, so no logs are delivered.', evidence };
+      }
+      if (c.flowLogsTrafficType === 'ACCEPT') return { status: 'WARNING', observation: 'Only accepted traffic is logged; rejected traffic, which shows probing and blocked attacks, is not.', evidence };
+      return { status: 'PASS', observation: 'VPC Flow Logs are delivered to an S3 bucket.', evidence };
+    },
   }),
   rule({
     ...common,
     id: 'AWS-VPC-003', service: 'Amazon VPC', scope: 'resource', resourceTypes: ['aws_vpc'],
-    domain: 'OPERATIONAL_EXCELLENCE', category: 'Operations', severity: 'MEDIUM', priority: 'REQUIRED_REMEDIATION',
+    domain: 'RELIABILITY', category: 'Resilience', severity: 'MEDIUM', priority: 'REQUIRED_REMEDIATION',
     title: 'VPC DNS resolution is disabled',
     description: 'enableDnsSupport is false, so the Amazon-provided DNS resolver is unavailable in the VPC.',
-    rationale: 'Interface VPC endpoints with private DNS, EKS and many managed services require DNS support. This is an operational defect, not a security control.',
+    rationale: 'Interface VPC endpoints with private DNS, EKS and many managed services require DNS support. Whether services can find each other is a property of the network foundation, so it counts toward Reliability (plan the network topology); it is neither an operations practice nor a security control.',
     risk: 'Service discovery and private endpoints fail to resolve.', impact: 'Application failures after deployment.',
-    wellArchitected: WA.ops('Design for operations'),
-    references: ['AWS-WA-operational_excellence', TF],
+    wellArchitected: WA.rel('REL 2 — Plan your network topology'),
+    references: ['AWS-WA-reliability', TF],
     soc1: [],
     remediation: { recommendation: 'Enable DNS support on the VPC.', manualSteps: ['Enable DNS resolution.'], terraform: 'aws_vpc.enable_dns_support = true' },
     autoFix: {
@@ -778,6 +796,11 @@ export const awsRules: RuleDefinition[] = [
     autoFix: { safety: 'MANUAL_ONLY', safetyReason: 'Requires a real certificate for your domain.', description: 'Manual: attach an ACM certificate.', patch: () => ({}), architectureImpact: 'None.', costImpact: 'NONE' },
     evaluate: configEvaluator(['listenerProtocol'], {}, (c, r) => {
       if (c.listenerProtocol !== 'HTTPS' && c.listenerProtocol !== 'TLS') return { status: 'NOT_APPLICABLE', observation: `Listener protocol is ${fmt(c.listenerProtocol)}.` };
+      // The AI generator and templates fill in a REPLACE-WITH-YOUR-… placeholder and list it as a value to supply before deploying (Terraform
+      // refuses to plan while it is still there). It stays a PASS so those designs are not blocked, but it is not a real certificate.
+      if (/REPLACE-WITH-YOUR-/.test(String(c.certificateArn ?? ''))) {
+        return { status: 'PASS', observation: 'A certificate ARN is set but it is still a placeholder (REPLACE-WITH-YOUR-…). Replace it with a real ACM certificate before deploying.', extraEvidence: [ev(r, 'certificateArn', 'A real ACM certificate ARN')] };
+      }
       return c.certificateArn ? { status: 'PASS', observation: 'A certificate is attached to the listener.', extraEvidence: [ev(r, 'certificateArn')] }
         : { status: 'FAIL', observation: `The ${c.listenerProtocol} listener has no certificate ARN.`, extraEvidence: [ev(r, 'certificateArn', 'ACM certificate ARN')] };
     }),
@@ -1448,6 +1471,205 @@ export const awsRules: RuleDefinition[] = [
   }),
 
   // ════════════════════════════════════════════════════════════════════════
+  // Added coverage: logging for the load balancer / CDN / web ACL, and the pillars that had almost no checks
+  // (Performance Efficiency, Sustainability, Cost). Every rule here is LOW and manual-only on purpose: none of them blocks a deployment
+  // or changes a design by itself. Each reads a setting the resource definition has and the Terraform generator emits.
+  // ════════════════════════════════════════════════════════════════════════
+  rule({
+    ...common,
+    id: 'AWS-ELB-005', service: 'Elastic Load Balancing', scope: 'resource', resourceTypes: ['aws_alb'],
+    domain: 'SECURITY', category: 'Logging & audit', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'Load balancer access logging is disabled',
+    description: 'Access logs record each request the load balancer handles (client address, path, latency, response code, TLS details).',
+    rationale: 'Security Hub ELB.5 rates this medium. It is LOW here because logging needs an S3 bucket whose policy lets the regional Elastic Load Balancing account write to it, which a design-time canvas does not create.',
+    risk: 'Requests cannot be reconstructed during an investigation or an outage.',
+    impact: 'Reduced ability to investigate attacks, errors and latency problems.',
+    wellArchitected: WA.sec('SEC 4 — Detect and investigate security events'),
+    references: ['AWS-WA-security', TF],
+    soc1: ['SOC1-OP-01'],
+    remediation: {
+      recommendation: 'Turn on access logs and deliver them to a dedicated, access-restricted S3 bucket with a retention policy.',
+      manualSteps: ['Create an S3 bucket in the same Region and allow the regional Elastic Load Balancing account to write to it.', 'Enable Access Logs on the load balancer and enter the bucket name.', 'Set a lifecycle rule on the bucket to expire old logs.'],
+      terraform: 'aws_lb.access_logs { bucket, prefix, enabled = true }',
+    },
+    evaluate: configEvaluator([], { accessLogsEnabled: 'Enabled / Yes' }, (c) => {
+      if (c.lbType === 'network') return { status: 'NOT_APPLICABLE', observation: 'Access logs are checked for Application Load Balancers.' };
+      if (c.accessLogsEnabled !== true) return { status: 'FAIL', observation: 'Access logging is not enabled.' };
+      return /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(String(c.accessLogsBucket ?? '').trim())
+        ? { status: 'PASS', observation: 'Access logs are delivered to an S3 bucket.' }
+        : { status: 'WARNING', observation: 'Access logging is enabled but no valid S3 bucket name is set, so no logs are delivered.' };
+    }, ['accessLogsEnabled', 'accessLogsBucket']),
+  }),
+  rule({
+    ...common,
+    id: 'AWS-CF-003', service: 'Amazon CloudFront', scope: 'resource', resourceTypes: ['aws_cloudfront'],
+    domain: 'SECURITY', category: 'Logging & audit', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'CloudFront standard logging is disabled',
+    description: 'Viewer requests to the distribution are not logged.',
+    rationale: 'Security Hub CloudFront.5 rates this medium. It is LOW here because standard logging needs an existing S3 bucket with ACLs enabled for log delivery, which a design-time canvas does not create.',
+    risk: 'Requests at the edge, including blocked and abusive ones, leave no record.',
+    impact: 'Reduced ability to investigate attacks and cache problems.',
+    wellArchitected: WA.sec('SEC 4 — Detect and investigate security events'),
+    references: ['AWS-WA-security', TF],
+    soc1: ['SOC1-OP-01'],
+    remediation: {
+      recommendation: 'Enable standard logging to a dedicated S3 bucket (ACLs enabled for log delivery) with a retention policy.',
+      manualSteps: ['Create an S3 bucket with ACLs enabled for CloudFront log delivery.', 'Turn on Standard Logging and enter the bucket name.', 'Set a lifecycle rule on the bucket to expire old logs.'],
+      terraform: 'aws_cloudfront_distribution.logging_config { bucket, prefix }',
+    },
+    evaluate: configEvaluator([], { loggingEnabled: 'Enabled / Yes' }, (c) => {
+      if (c.loggingEnabled !== true) return { status: 'FAIL', observation: 'Standard logging is not enabled.' };
+      return /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(String(c.loggingBucket ?? '').trim())
+        ? { status: 'PASS', observation: 'Standard logging is delivered to an S3 bucket.' }
+        : { status: 'WARNING', observation: 'Logging is enabled but no valid S3 bucket name is set, so no logs are delivered.' };
+    }, ['loggingEnabled', 'loggingBucket']),
+  }),
+  rule({
+    ...common,
+    id: 'AWS-WAF-002', service: 'AWS WAF', scope: 'resource', resourceTypes: ['aws_waf'],
+    domain: 'SECURITY', category: 'Logging & audit', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'AWS WAF web ACL has CloudWatch metrics or request sampling disabled',
+    description: 'Without CloudWatch metrics and sampled requests there is no view of what the web ACL allows, blocks or counts.',
+    rationale: 'A web ACL that cannot be observed cannot be tuned, and a rule that is blocking real customers goes unnoticed. Full request logging (a logging configuration to Kinesis, S3 or CloudWatch Logs) is not modelled by CloudCraft, so this checks the visibility settings it does model.',
+    risk: 'Blocked legitimate traffic and attack patterns go unseen.', impact: 'Slower tuning and incident response.',
+    wellArchitected: WA.sec('SEC 4 — Detect and investigate security events'),
+    references: ['AWS-WA-security', TF],
+    soc1: ['SOC1-OP-01'],
+    remediation: {
+      recommendation: 'Enable CloudWatch metrics and sampled requests on the web ACL and every rule, and add a WAF logging configuration.',
+      manualSteps: ['Enable CloudWatch metrics and sampled requests.', 'Add a WAF logging configuration to CloudWatch Logs, S3 or Kinesis Data Firehose with a retention policy.'],
+      terraform: 'visibility_config { cloudwatch_metrics_enabled = true, sampled_requests_enabled = true }',
+    },
+    evaluate: configEvaluator(['cloudWatchMetricsEnabled', 'sampledRequestsEnabled'], { cloudWatchMetricsEnabled: 'Enabled / Yes', sampledRequestsEnabled: 'Enabled / Yes' }, (c) => c.cloudWatchMetricsEnabled === true && c.sampledRequestsEnabled === true
+      ? { status: 'PASS', observation: 'CloudWatch metrics and sampled requests are enabled.' }
+      : { status: 'FAIL', observation: 'CloudWatch metrics or sampled requests are disabled.' }),
+  }),
+  rule({
+    ...common,
+    id: 'AWS-PERF-001', service: 'Amazon CloudFront', scope: 'resource', resourceTypes: ['aws_cloudfront'],
+    domain: 'PERFORMANCE_EFFICIENCY', category: 'Performance', severity: 'LOW', priority: 'OPTIONAL_OPTIMIZATION',
+    title: 'CloudFront does not compress objects automatically',
+    description: 'Automatic compression is off, so text content (HTML, CSS, JavaScript, JSON) is sent uncompressed.',
+    rationale: 'Performance Efficiency: reduce the bytes sent over the network. Compression typically cuts text payloads substantially at no extra charge.',
+    risk: 'Slower page loads and higher data-transfer volume.', impact: 'Worse user-perceived latency and a larger CloudFront bill.',
+    wellArchitected: WA.perf('Networking and content delivery'),
+    references: ['AWS-WA-performance_efficiency', TF],
+    soc1: [],
+    remediation: { recommendation: 'Turn on automatic object compression.', manualSteps: ['Enable Compress objects automatically on the cache behavior.'], terraform: 'default_cache_behavior.compress = true' },
+    evaluate: configEvaluator(['compressionEnabled'], { compressionEnabled: 'Enabled / Yes' }, (c) => c.compressionEnabled === false
+      ? { status: 'WARNING', observation: 'Automatic compression is disabled.' }
+      : { status: 'PASS', observation: 'Automatic compression is enabled.' }),
+  }),
+  rule({
+    ...common,
+    id: 'AWS-PERF-002', service: 'Amazon CloudFront', scope: 'resource', resourceTypes: ['aws_cloudfront'],
+    domain: 'PERFORMANCE_EFFICIENCY', category: 'Performance', severity: 'LOW', priority: 'OPTIONAL_OPTIMIZATION',
+    title: 'CloudFront serves viewers over HTTP/1.1 only',
+    description: 'The distribution does not offer HTTP/2 or HTTP/3 to viewers.',
+    rationale: 'Performance Efficiency: HTTP/2 multiplexes requests over one connection and HTTP/3 reduces connection setup time, both of which help page load times.',
+    risk: 'Slower page loads, particularly on high-latency connections.', impact: 'Worse user-perceived latency.',
+    wellArchitected: WA.perf('Networking and content delivery'),
+    references: ['AWS-WA-performance_efficiency', TF],
+    soc1: [],
+    remediation: { recommendation: 'Use HTTP/2 (or HTTP/2 and HTTP/3) for viewer connections.', manualSteps: ['Set the supported HTTP versions to HTTP/2 or HTTP/2 and HTTP/3.'], terraform: 'aws_cloudfront_distribution.http_version = "http2"' },
+    evaluate: configEvaluator(['httpVersion'], { httpVersion: 'http2, http2and3 or http3' }, (c) => c.httpVersion === 'http1.1'
+      ? { status: 'WARNING', observation: 'Viewers are served over HTTP/1.1 only.' }
+      : { status: 'PASS', observation: `Viewers can use ${fmt(c.httpVersion)}.` }),
+  }),
+  rule({
+    ...common,
+    id: 'AWS-PERF-003', service: 'Amazon EC2 Auto Scaling', scope: 'resource', resourceTypes: ['aws_auto_scaling'],
+    domain: 'PERFORMANCE_EFFICIENCY', category: 'Performance', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'Auto Scaling group has no scaling policy',
+    description: 'No target-tracking scaling policy is configured, so the group stays at its desired capacity whatever the load.',
+    rationale: 'Performance Efficiency: adapt capacity to demand. A group without a scaling policy is a fixed-size fleet that either runs out of headroom or pays for idle instances.',
+    risk: 'Overload during traffic peaks, or paying for idle capacity at quiet times.', impact: 'Latency and errors under load, or avoidable cost.',
+    wellArchitected: WA.perf('Compute — adapt capacity to demand'),
+    references: ['AWS-WA-performance_efficiency', TF],
+    soc1: [],
+    remediation: { recommendation: 'Add a target-tracking policy (for example average CPU around 60%).', manualSteps: ['Enable the target tracking scaling policy.', 'Choose a target such as 60% average CPU utilization.'], terraform: 'aws_autoscaling_policy (TargetTrackingScaling)' },
+    evaluate: configEvaluator(['scalingPolicyEnabled'], { scalingPolicyEnabled: 'Enabled / Yes' }, (c) => c.scalingPolicyEnabled === true
+      ? { status: 'PASS', observation: 'A target-tracking scaling policy is enabled.' }
+      : { status: 'WARNING', observation: 'No scaling policy is enabled; capacity is fixed.' }),
+  }),
+  rule({
+    ...common,
+    id: 'AWS-PERF-004', service: 'Amazon RDS', scope: 'resource', resourceTypes: ['aws_rds'],
+    domain: 'PERFORMANCE_EFFICIENCY', category: 'Performance', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'RDS Performance Insights is disabled',
+    description: 'Database load and top queries are not being collected.',
+    rationale: 'Performance Efficiency: monitor performance to find and fix bottlenecks. Performance Insights keeps 7 days of history at no charge.',
+    risk: 'Slow queries and lock contention are hard to find.', impact: 'Longer time to diagnose database performance problems.',
+    wellArchitected: WA.perf('Data management — monitor performance'),
+    references: ['AWS-WA-performance_efficiency', TF],
+    soc1: [],
+    remediation: { recommendation: 'Enable Performance Insights (the 7-day retention is free).', manualSteps: ['Enable Performance Insights on the instance.'], terraform: 'aws_db_instance.performance_insights_enabled = true' },
+    evaluate: configEvaluator(['enablePerformanceInsights'], { enablePerformanceInsights: 'Enabled / Yes' }, (c) => c.enablePerformanceInsights === true
+      ? { status: 'PASS', observation: 'Performance Insights is enabled.' }
+      : { status: 'FAIL', observation: 'Performance Insights is disabled.' }),
+  }),
+  rule({
+    ...common,
+    id: 'AWS-SUS-002', service: 'Amazon EC2, Auto Scaling and RDS', scope: 'resource', resourceTypes: ['aws_ec2', 'aws_auto_scaling', 'aws_rds'],
+    domain: 'SUSTAINABILITY', category: 'Sustainability', severity: 'LOW', priority: 'OPTIONAL_OPTIMIZATION',
+    title: 'Instances use x86 where an AWS Graviton equivalent exists',
+    description: 'The instance family is an x86 one (T3, M5, C5, R5 and similar); Graviton-based families (T4g, M6g, C6g, R6g and similar) do the same work using less energy.',
+    rationale: 'Sustainability pillar: use the most efficient hardware for the workload. Graviton instances deliver better performance per watt, and usually a lower price, if the software supports arm64.',
+    risk: 'Higher energy use, and often cost, for the same work.', impact: 'Optimization opportunity; requires arm64-compatible software.',
+    wellArchitected: WA.sus('Hardware and services — use efficient hardware'),
+    references: ['AWS-WA-sustainability', TF],
+    soc1: [],
+    remediation: { recommendation: 'Move to the matching Graviton family where the workload runs on arm64 (test first).', manualSteps: ['Confirm the application and its dependencies support arm64.', 'Switch the instance type to the Graviton equivalent (for example t3 to t4g, m5 to m6g, db.m5 to db.m6g) and rebuild the image for arm64.'] },
+    evaluate: (r) => {
+      const isRds = r.resourceType === 'aws_rds';
+      const field = isRds ? 'instanceClass' : 'instanceType';
+      const evidence = [ev(r, field, 'A Graviton (arm64) family')];
+      const family = r.config[field];
+      if (typeof family !== 'string' || family.trim() === '') {
+        return { status: 'INSUFFICIENT_DATA', observation: 'The instance type is not specified.', evidence, requiredData: 'Instance type.' };
+      }
+      if (!isRds && /windows/i.test(String(r.config['os'] ?? ''))) return { status: 'NOT_APPLICABLE', observation: 'A Windows image does not run on Graviton.', evidence };
+      const x86 = isRds ? /^db\.(t3|t2|m5|m4|r5|r4)\./ : /^(t3a?|t2|m5a?|m4|c5a?|c4|r5a?|r4)\./;
+      const arm = isRds ? /^db\.(t4g|m6g|m7g|r6g|r7g)\./ : /^(t4g|m6g|m7g|c6g|c7g|r6g|r7g)\./;
+      if (arm.test(family)) return { status: 'PASS', observation: `${family} is a Graviton (arm64) family.`, evidence };
+      if (x86.test(family)) return { status: 'WARNING', observation: `${family} is an x86 family with a Graviton equivalent.`, evidence };
+      return { status: 'NOT_APPLICABLE', observation: `${family} has no direct Graviton equivalent that CloudCraft can name.`, evidence };
+    },
+  }),
+  rule({
+    ...common,
+    id: 'AWS-COST-002', service: 'Amazon SQS', scope: 'resource', resourceTypes: ['aws_sqs'],
+    domain: 'COST_OPTIMIZATION', category: 'Cost', severity: 'LOW', priority: 'OPTIONAL_OPTIMIZATION',
+    title: 'SQS queue uses short polling',
+    description: 'The receive wait time is 0 seconds, so every receive call returns immediately, often with nothing, and is still billed as a request.',
+    rationale: 'Cost Optimization: SQS bills per request. Long polling (a receive wait time of up to 20 seconds) returns as soon as a message arrives and removes most empty receives.',
+    risk: 'Paying for large numbers of empty receive requests.', impact: 'Avoidable request charges and extra consumer load.',
+    wellArchitected: WA.cost('Select the correct resource type'),
+    references: ['AWS-WA-cost_optimization', TF],
+    soc1: [],
+    remediation: { recommendation: 'Set the receive wait time to 20 seconds (long polling).', manualSteps: ['Set Receive Wait Time to 20 seconds on the queue.'], terraform: 'aws_sqs_queue.receive_wait_time_seconds = 20' },
+    evaluate: configEvaluator(['receiveWaitTimeSeconds'], { receiveWaitTimeSeconds: '1 to 20 seconds' }, (c) => Number(c.receiveWaitTimeSeconds) > 0
+      ? { status: 'PASS', observation: `Long polling is enabled (${fmt(c.receiveWaitTimeSeconds)} s).` }
+      : { status: 'WARNING', observation: 'Short polling is used (receive wait time 0 s).' }),
+  }),
+  rule({
+    ...common,
+    id: 'AWS-COST-003', service: 'Amazon CloudWatch Logs', scope: 'resource', resourceTypes: ['aws_cloudwatch', 'aws_ecs'],
+    domain: 'COST_OPTIMIZATION', category: 'Cost', severity: 'LOW', priority: 'OPTIONAL_OPTIMIZATION',
+    title: 'CloudWatch log group never expires',
+    description: 'The log retention is 0 days, which means logs are kept forever and storage cost grows without limit.',
+    rationale: 'Cost Optimization: do not keep data longer than it is needed. Set the retention to the period the organization actually requires.',
+    risk: 'Log storage cost grows indefinitely.', impact: 'Avoidable and growing storage charges.',
+    wellArchitected: WA.cost('Optimize over time'),
+    references: ['AWS-WA-cost_optimization', TF],
+    soc1: [],
+    remediation: { recommendation: 'Set a retention period that matches your policy (for example 30, 90 or 365 days).', manualSteps: ['Set the log retention in days.'], terraform: 'aws_cloudwatch_log_group.retention_in_days' },
+    evaluate: configEvaluator(['logRetentionDays'], { logRetentionDays: 'A number of days above 0' }, (c) => Number(c.logRetentionDays) === 0
+      ? { status: 'WARNING', observation: 'Logs are kept forever (retention 0 days).' }
+      : { status: 'PASS', observation: `Logs are kept for ${fmt(c.logRetentionDays)} days.` }),
+  }),
+
+  // ════════════════════════════════════════════════════════════════════════
   // Account-level controls — never assumed; always NOT_EVALUATED at design time
   // ════════════════════════════════════════════════════════════════════════
   ...([
@@ -1460,14 +1682,26 @@ export const awsRules: RuleDefinition[] = [
     id, service, scope: 'account', domain: 'SECURITY', category, severity, priority: 'REQUIRED_REMEDIATION',
     title: `${what} — account-level control`,
     description: `${what} is an AWS account/Region setting that is not part of an architecture diagram.`,
-    rationale: 'Reported NOT EVALUATED at design time. CloudCraft never assumes account-level controls are enabled.',
+    rationale: 'Account-level controls are not part of an architecture diagram and CloudCraft never assumes them: a control is NOT EVALUATED until the account has been checked (read-only API calls through a connected AWS account). A reading is dated, only used for seven days, and a control the account would not let CloudCraft read stays NOT EVALUATED with the reason.',
     risk, impact: 'Reduced detection, audit or account protection.',
     wellArchitected: WA.sec(practice),
     references: [ref, 'AWS-WA-security'],
     soc1: [...soc1],
     remediation: { recommendation: rec, manualSteps: [rec] },
-    evaluateArchitecture: (ctx) => ctx.providers.includes('aws')
-      ? [notModelled(what, 'Evidence from the AWS account (e.g. Security Hub findings or a connected AWS account discovery that reads this setting).')]
-      : [{ status: 'NOT_APPLICABLE', observation: 'No AWS resources.', evidence: [] }],
+    evaluateArchitecture: (ctx) => {
+      if (!ctx.providers.includes('aws')) return [{ status: 'NOT_APPLICABLE', observation: 'No AWS resources.', evidence: [] }];
+      const reading = ctx.accountEvidence?.[id];
+      if (!reading) return [notModelled(what, 'Check the AWS account: connect an account and use "Check account" in the review (read-only), or supply this evidence another way.')];
+      const when = dayOf(reading.observedAt);
+      const from = reading.accountLabel ? ` "${reading.accountLabel}"` : '';
+      const evidence = [{ label: what, observed: reading.observation, basis: 'ACCOUNT_API' as const, observedAt: reading.observedAt }];
+      if (reading.status === 'UNAVAILABLE') {
+        return [{ status: 'NOT_EVALUATED', observation: `The AWS account${from} was checked on ${when}, but this control could not be read: ${reading.observation}`, evidence, requiredData: reading.observation }];
+      }
+      if (!ctx.now || !isFresh(reading, ctx.now)) {
+        return [{ status: 'NOT_EVALUATED', observation: `The last reading of this control (${when}) is more than 7 days old, so it is not relied on.`, evidence, requiredData: 'Check the AWS account controls again.' }];
+      }
+      return [{ status: reading.status, observation: `${reading.observation} (read from the AWS account${from} on ${when}).`, evidence, provenance: 'LIVE_VERIFIED' as const }];
+    },
   })),
 ];

@@ -1,12 +1,15 @@
 import type { RuleDefinition } from '../types';
 import { awsRules } from './aws';
 import { azureRules } from './azure';
+import { azureServiceRules } from './azureServices';
+import { QUESTION_RULES } from '../questionnaire/questionRules';
 
-export const ALL_RULES: RuleDefinition[] = [...awsRules, ...azureRules];
+export const ALL_RULES: RuleDefinition[] = [...awsRules, ...azureRules, ...azureServiceRules];
 
 export const RULES_BY_ID: Map<string, RuleDefinition> = (() => {
   const m = new Map<string, RuleDefinition>();
-  for (const r of ALL_RULES) {
+  // Questionnaire rules are looked up by id like any other rule, but only run when answers are supplied (not part of ALL_RULES).
+  for (const r of [...ALL_RULES, ...QUESTION_RULES]) {
     if (m.has(r.id)) throw new Error(`Duplicate assessment rule id ${r.id}`);
     m.set(r.id, r);
   }

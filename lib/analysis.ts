@@ -1,10 +1,10 @@
+import { awsPricingProvider } from '@/lib/engines/cost/awsPricing';
+import { azurePricingProvider } from '@/lib/engines/cost/azurePricing';
 import { assertSafeHcl, sanitizeCanvasForHcl } from '@/lib/engines/terraform/hclSafety';
 import { CanvasNode, CanvasEdge, SecurityIssue, CostItem } from '@/types';
 import { getResourceDefinition } from './resources';
 import { runAssessment } from './engines/assessment/AssessmentEngine';
 import type { Finding } from './engines/assessment/types';
-import { awsPricingProvider } from './engines/cost/awsPricing';
-import { azurePricingProvider } from './engines/cost/azurePricing';
 
 /**
  * Security findings for a canvas graph, produced by the unified assessment
@@ -51,6 +51,8 @@ export function calculateSecurityScore(issues: SecurityIssue[]): number {
 }
  
 export function calculateCosts(nodes: CanvasNode[]): CostItem[] {
+  // The same built-in price tables the Cost Estimate screen falls back to, so a project card, a template total and an autofix saving all
+  // agree with it. This used to be a separate, cruder calculator (every RDS instance a flat $48.60, an Auto Scaling group free).
   const costs: CostItem[] = [];
   for (const node of nodes) {
     if (!node.resourceType) continue;

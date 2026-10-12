@@ -32,7 +32,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!parsed.ok) return parsed.response;
     const body = parsed.data;
 
-    const loaded = await loadAssessmentReport(req, projectId, body, 'wa-report');
+    const loaded = await loadAssessmentReport(req, projectId, body, 'wa-report', { includeQuestionnaire: true });
     if ('response' in loaded) return loaded.response;
     const { report, scanId, projectName } = loaded;
 

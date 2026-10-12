@@ -20,7 +20,7 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
  * ignored and dropped on the next load instead of being shown for up to 24 hours after the fix (an Azure Redis cache was shown at
  * double its price this way). Version 2 is the first with this prefix.
  */
-export const PRICING_CACHE_VERSION = 3; // 3: keys cover every setting that can change a price (before, a node type or task size was not in the key)
+export const PRICING_CACHE_VERSION = 4; // 4: drops prices cached before the cost fixes (AI-picked Azure IP/NAT meters, flat CloudFront, old RDS rates). 3: keys cover every setting that can change a price (before, a node type or task size was not in the key)
 const KEY_PREFIX = `v${PRICING_CACHE_VERSION}:`;
 
 /** Settings that name or describe a resource but never change what it costs. */

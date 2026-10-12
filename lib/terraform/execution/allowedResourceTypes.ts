@@ -10,7 +10,7 @@ export const ALLOWED_TERRAFORM_RESOURCE_TYPES: ReadonlySet<string> = new Set([
   'aws_appautoscaling_target', 'aws_autoscaling_group', 'aws_autoscaling_policy', 'aws_cloudfront_distribution',
   'aws_cloudwatch_log_group', 'aws_cloudwatch_metric_alarm', 'aws_db_instance', 'aws_db_subnet_group',
   'aws_dynamodb_table', 'aws_ebs_volume', 'aws_ecs_cluster', 'aws_ecs_service', 'aws_ecs_task_definition', 'aws_eip',
-  'aws_eks_cluster', 'aws_eks_node_group', 'aws_elasticache_replication_group', 'aws_elasticache_subnet_group',
+  'aws_eks_cluster', 'aws_eks_node_group', 'aws_elasticache_replication_group', 'aws_elasticache_subnet_group', 'aws_flow_log',
   'aws_iam_role', 'aws_iam_role_policy_attachment', 'aws_instance', 'aws_internet_gateway', 'aws_kms_alias',
   'aws_kms_key', 'aws_lambda_function', 'aws_lambda_provisioned_concurrency_config', 'aws_launch_template', 'aws_lb',
   'aws_lb_listener', 'aws_lb_listener_rule', 'aws_lb_target_group', 'aws_nat_gateway', 'aws_network_acl', 'aws_route53_record',
@@ -31,4 +31,9 @@ export const ALLOWED_TERRAFORM_RESOURCE_TYPES: ReadonlySet<string> = new Set([
   'azurerm_route_table', 'azurerm_service_plan', 'azurerm_storage_account', 'azurerm_subnet',
   'azurerm_subnet_nat_gateway_association', 'azurerm_virtual_network', 'azurerm_web_application_firewall_policy',
   'azurerm_windows_function_app', 'azurerm_windows_virtual_machine', 'azurerm_windows_virtual_machine_scale_set',
-  'azurerm_windows_web_app',]);
+  'azurerm_windows_web_app',
+  'azurerm_api_management', 'azurerm_application_insights', 'azurerm_container_app', 'azurerm_container_app_environment', 'azurerm_eventgrid_topic', 'azurerm_eventhub', 'azurerm_eventhub_namespace', 'azurerm_firewall', 'azurerm_firewall_policy', 'azurerm_firewall_policy_rule_collection_group', 'azurerm_network_security_rule', 'azurerm_subnet_network_security_group_association', 'azurerm_subnet_route_table_association', 'azurerm_cdn_frontdoor_firewall_policy', 'azurerm_cdn_frontdoor_security_policy', 'azurerm_container_registry', 'azurerm_log_analytics_workspace', 'azurerm_mysql_flexible_database',
+  'azurerm_mysql_flexible_server', 'azurerm_mysql_flexible_server_configuration', 'azurerm_mysql_flexible_server_firewall_rule',
+  'azurerm_postgresql_flexible_server', 'azurerm_postgresql_flexible_server_configuration', 'azurerm_postgresql_flexible_server_database',
+  'azurerm_postgresql_flexible_server_firewall_rule', 'azurerm_private_dns_zone', 'azurerm_private_dns_zone_virtual_network_link',
+  'azurerm_private_endpoint', 'azurerm_servicebus_namespace', 'azurerm_servicebus_queue',]);

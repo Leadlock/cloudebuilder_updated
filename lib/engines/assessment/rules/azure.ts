@@ -111,9 +111,11 @@ export const azureRules: RuleDefinition[] = [
       description: 'Set the storage firewall default action to Deny.', patch: () => ({ networkDefaultAction: 'Deny' }),
       architectureImpact: 'Only explicitly allowed networks can reach the account.', costImpact: 'NONE', terraformExpect: /default_action\s*=\s*"Deny"/,
     },
-    evaluate: configEvaluator(['networkDefaultAction'], { networkDefaultAction: 'Deny' }, (c) => c.networkDefaultAction === 'Allow'
-      ? { status: 'FAIL', observation: 'Network default action is Allow (all networks).' }
-      : { status: 'PASS', observation: 'Network default action is Deny.' }),
+    evaluate: configEvaluator(['networkDefaultAction'], { networkDefaultAction: 'Deny' }, (c) => c.staticWebsite === true && c.networkDefaultAction === 'Allow'
+      ? { status: 'NOT_APPLICABLE', observation: 'The account serves a static website, which is public by design, so it must accept connections from the network that serves it (use Front Door to add caching and a firewall in front).' }
+      : c.networkDefaultAction === 'Allow'
+        ? { status: 'FAIL', observation: 'Network default action is Allow (all networks).' }
+        : { status: 'PASS', observation: 'Network default action is Deny.' }, ['staticWebsite']),
   }),
   rule({
     ...common,
@@ -558,8 +560,10 @@ export const azureRules: RuleDefinition[] = [
     soc1: ['SOC1-LA-01'],
     remediation: { recommendation: 'Associate a least-privilege NSG with every workload subnet.', manualSteps: ['Create NSGs per tier.', 'Associate them with the subnets.'] },
     evaluateArchitecture: (ctx) => {
-      const subnets = ctx.ofType('azure_subnet');
-      if (subnets.length === 0) return [{ status: 'NOT_APPLICABLE', observation: 'No Azure subnets are modelled.', evidence: [] }];
+      // The subnet of an Azure Firewall cannot take a network security group (Azure refuses it), and a Bastion subnet is managed by the platform.
+      const exempt = (s: { id: string }) => ctx.resources.some((r) => r.parentId === s.id && (r.resourceType === 'azure_firewall' || r.resourceType === 'azure_bastion'));
+      const subnets = ctx.ofType('azure_subnet').filter((s) => !exempt(s));
+      if (subnets.length === 0) return [{ status: 'NOT_APPLICABLE', observation: 'No Azure subnets that take a network security group are modelled.', evidence: [] }];
       const nsgs = ctx.ofType('azure_nsg');
       const unprotected = subnets.filter((s) => !nsgs.some((n) => n.parentId === s.id || ctx.neighbors(s.id).some((x) => x.id === n.id)));
       const evidence = [
@@ -799,6 +803,91 @@ export const azureRules: RuleDefinition[] = [
   }),
 
   // ════════════════════════════════════════════════════════════════════════
+  // Added coverage for Performance Efficiency, which had a single informational check. LOW and manual-only on purpose: none of these
+  // blocks a deployment or changes a design by itself. Each reads a setting the resource definition has and the Terraform generator emits.
+  // ════════════════════════════════════════════════════════════════════════
+  rule({
+    ...common,
+    id: 'AZ-APP-020', service: 'Azure App Service', scope: 'resource', resourceTypes: ['azure_app_service'],
+    domain: 'PERFORMANCE_EFFICIENCY', category: 'Performance', severity: 'LOW', priority: 'OPTIONAL_OPTIMIZATION',
+    title: 'App Service does not use HTTP/2',
+    description: 'HTTP/2 is disabled, so clients open several connections instead of multiplexing requests over one.',
+    rationale: 'Azure Well-Architected Performance Efficiency: optimize code and infrastructure. HTTP/2 reduces connection overhead and improves page load time.',
+    risk: 'Slower page loads, especially on high-latency connections.', impact: 'Worse user-perceived latency.',
+    wellArchitected: WA.perf('PE:07 — Optimize code and infrastructure'),
+    references: ['AZ-WA-performance_efficiency', TF],
+    soc1: [],
+    remediation: { recommendation: 'Enable HTTP/2 on the App Service.', manualSteps: ['Turn on HTTP/2 in the app configuration.'] },
+    evaluate: configEvaluator(['http2Enabled'], { http2Enabled: 'Enabled / Yes' }, (c) => c.http2Enabled === false
+      ? { status: 'WARNING', observation: 'HTTP/2 is disabled.' }
+      : { status: 'PASS', observation: 'HTTP/2 is enabled.' }),
+  }),
+  rule({
+    ...common,
+    id: 'AZ-APP-021', service: 'Azure App Service', scope: 'resource', resourceTypes: ['azure_app_service'],
+    domain: 'PERFORMANCE_EFFICIENCY', category: 'Performance', severity: 'LOW', priority: 'OPTIONAL_OPTIMIZATION',
+    title: 'App Service "Always on" is disabled',
+    description: 'The app is unloaded after a period of inactivity, so the next request waits for a cold start.',
+    rationale: 'Azure Well-Architected Performance Efficiency: optimize code and infrastructure. Cold starts add seconds to the first request after idle time. (Always on needs the Basic tier or higher.)',
+    risk: 'Slow first requests after idle periods.', impact: 'Inconsistent response times.',
+    wellArchitected: WA.perf('PE:07 — Optimize code and infrastructure'),
+    references: ['AZ-WA-performance_efficiency', TF],
+    soc1: [],
+    remediation: { recommendation: 'Enable Always on for production apps (Basic tier or higher).', manualSteps: ['Turn on Always on in the app configuration.'] },
+    evaluate: configEvaluator(['alwaysOn'], { alwaysOn: 'Enabled / Yes' }, (c) => c.alwaysOn === false
+      ? { status: 'WARNING', observation: 'Always on is disabled.' }
+      : { status: 'PASS', observation: 'Always on is enabled.' }),
+  }),
+  rule({
+    ...common,
+    id: 'AZ-AFD-010', service: 'Azure Front Door', scope: 'resource', resourceTypes: ['azure_front_door'],
+    domain: 'PERFORMANCE_EFFICIENCY', category: 'Performance', severity: 'LOW', priority: 'OPTIONAL_OPTIMIZATION',
+    title: 'Front Door caching is disabled',
+    description: 'Every request is forwarded to the origin because edge caching is off.',
+    rationale: 'Azure Well-Architected Performance Efficiency: optimize code and infrastructure. Caching static content at the edge cuts latency and origin load.',
+    risk: 'Higher latency and unnecessary origin load.', impact: 'Slower responses and a larger origin to pay for.',
+    wellArchitected: WA.perf('PE:07 — Optimize code and infrastructure'),
+    references: ['AZ-WA-performance_efficiency', TF],
+    soc1: [],
+    remediation: { recommendation: 'Enable caching for cacheable content and set the query-string behaviour.', manualSteps: ['Enable caching on the route.', 'Choose how query strings affect the cache key.'] },
+    evaluate: configEvaluator(['cachingEnabled'], { cachingEnabled: 'Enabled / Yes' }, (c) => c.cachingEnabled === false
+      ? { status: 'WARNING', observation: 'Edge caching is disabled.' }
+      : { status: 'PASS', observation: 'Edge caching is enabled.' }),
+  }),
+  rule({
+    ...common,
+    id: 'AZ-VMSS-010', service: 'Azure Virtual Machine Scale Sets', scope: 'resource', resourceTypes: ['azure_vmss'],
+    domain: 'PERFORMANCE_EFFICIENCY', category: 'Performance', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'Scale set autoscale is disabled',
+    description: 'The scale set stays at a fixed instance count whatever the load.',
+    rationale: 'Azure Well-Architected Performance Efficiency: optimize scaling and partitioning. A fixed-size scale set either runs out of headroom or pays for idle instances.',
+    risk: 'Overload at peaks, or paying for idle capacity.', impact: 'Latency and errors under load, or avoidable cost.',
+    wellArchitected: WA.perf('PE:05 — Optimize scaling and partitioning'),
+    references: ['AZ-WA-performance_efficiency', TF],
+    soc1: [],
+    remediation: { recommendation: 'Enable autoscale with minimum and maximum instance counts and a metric rule.', manualSteps: ['Enable autoscale.', 'Set minimum and maximum capacity and a CPU-based scale rule.'] },
+    evaluate: configEvaluator(['autoscaleEnabled'], { autoscaleEnabled: 'Enabled / Yes' }, (c) => c.autoscaleEnabled === false
+      ? { status: 'WARNING', observation: 'Autoscale is disabled; capacity is fixed.' }
+      : { status: 'PASS', observation: 'Autoscale is enabled.' }),
+  }),
+  rule({
+    ...common,
+    id: 'AZ-AGW-010', service: 'Azure Application Gateway', scope: 'resource', resourceTypes: ['azure_app_gateway'],
+    domain: 'PERFORMANCE_EFFICIENCY', category: 'Performance', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'Application Gateway autoscale is disabled',
+    description: 'The gateway runs at a fixed capacity instead of scaling with traffic.',
+    rationale: 'Azure Well-Architected Performance Efficiency: optimize scaling and partitioning. A fixed-capacity gateway can throttle traffic at peaks or be over-provisioned the rest of the time.',
+    risk: 'Throttled or slow requests at peaks, or paying for idle capacity.', impact: 'Latency and errors under load, or avoidable cost.',
+    wellArchitected: WA.perf('PE:05 — Optimize scaling and partitioning'),
+    references: ['AZ-WA-performance_efficiency', TF],
+    soc1: [],
+    remediation: { recommendation: 'Enable autoscale with a sensible minimum and maximum capacity.', manualSteps: ['Enable autoscale on the gateway.', 'Set minimum and maximum capacity units.'] },
+    evaluate: configEvaluator(['autoscaleEnabled'], { autoscaleEnabled: 'Enabled / Yes' }, (c) => c.autoscaleEnabled === false
+      ? { status: 'WARNING', observation: 'Autoscale is disabled; capacity is fixed.' }
+      : { status: 'PASS', observation: 'Autoscale is enabled.' }),
+  }),
+
+  // ════════════════════════════════════════════════════════════════════════
   // AKS
   // ════════════════════════════════════════════════════════════════════════
   rule({
@@ -996,9 +1085,9 @@ export const azureRules: RuleDefinition[] = [
     ...common,
     id: 'AZ-ARCH-020', service: 'Azure Monitor', scope: 'architecture',
     domain: 'OPERATIONAL_EXCELLENCE', category: 'Monitoring', severity: 'MEDIUM', priority: 'RECOMMENDED_IMPROVEMENT',
-    title: 'Azure Monitor / Log Analytics configuration not modelled',
-    description: 'CloudCraft has no resource type for Log Analytics workspaces, Application Insights or diagnostic settings.',
-    rationale: 'The previous rule reported "no monitoring" for every Azure architecture because it looked for resource types that cannot be created in CloudCraft. It is now NOT EVALUATED with a clear data requirement.',
+    title: 'Azure Monitor diagnostic settings and alert rules not modelled',
+    description: 'CloudCraft models the Log Analytics workspace (the Azure Monitor resource) but not the diagnostic settings that send each resource\'s logs to it, nor alert rules.',
+    rationale: 'Whether each resource really sends logs to the workspace, and whether alerts exist, cannot be seen in the design, so this control is NOT EVALUATED with a clear data requirement. Whether a workspace is in the design at all is checked by AZ-MON-001.',
     risk: 'Monitoring coverage is unknown.', impact: 'Undetected failures if monitoring is absent.',
     wellArchitected: WA.ops('OE:07 — Monitoring system'),
     references: ['AZ-WA-operational_excellence', 'MCSB-LT-3'],

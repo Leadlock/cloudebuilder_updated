@@ -1,0 +1,164 @@
+[
+  {
+    "id": "table.accountControlEvidence",
+    "label": "Create table \"accountControlEvidence\"",
+    "summary": "Creates table \"accountControlEvidence\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "accountControlEvidence"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"accountControlEvidence\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"accountControlEvidence\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"accountControlEvidence\"",
+        "sql": "CREATE TABLE \"public\".\"accountControlEvidence\" (\n  \"accountLabel\" text DEFAULT '' NOT NULL,\n  \"checkedBy\" text DEFAULT '' NOT NULL,\n  \"cloudAccountId\" text NOT NULL,\n  \"controlId\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"observation\" text NOT NULL,\n  \"observedAt\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"status\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"accountControlEvidence\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"accountControlEvidence\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.accountControlEvidence.accountControlEvidence_projectId_controlId_key",
+    "label": "Add unique constraint on \"accountControlEvidence\" (projectId, controlId)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "accountControlEvidence_projectId_controlId_key",
+        "table": "accountControlEvidence"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"accountControlEvidence_projectId_controlId_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "accountControlEvidence_projectId_controlId_key",
+          "public",
+          "\"public\".\"accountControlEvidence\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"accountControlEvidence_projectId_controlId_key\"",
+        "sql": "ALTER TABLE \"public\".\"accountControlEvidence\" ADD CONSTRAINT \"accountControlEvidence_projectId_controlId_key\" UNIQUE (\"projectId\", \"controlId\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"accountControlEvidence_projectId_controlId_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "accountControlEvidence_projectId_controlId_key",
+          "public",
+          "\"public\".\"accountControlEvidence\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.accountControlEvidence.accountControlEvidence_projectId_idx_a96e4d92",
+    "label": "Create index \"accountControlEvidence_projectId_idx_a96e4d92\" on \"accountControlEvidence\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "accountControlEvidence_projectId_idx_a96e4d92",
+        "table": "accountControlEvidence"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"accountControlEvidence_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"accountControlEvidence_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"accountControlEvidence_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"accountControlEvidence_projectId_idx_a96e4d92\" ON \"public\".\"accountControlEvidence\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"accountControlEvidence_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"accountControlEvidence_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.accountControlEvidence.accountControlEvidence_projectId_fkey",
+    "label": "Add foreign key \"accountControlEvidence_projectId_fkey\" on \"accountControlEvidence\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "accountControlEvidence_projectId_fkey",
+        "table": "accountControlEvidence"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"accountControlEvidence_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "accountControlEvidence_projectId_fkey",
+          "public",
+          "\"public\".\"accountControlEvidence\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"accountControlEvidence_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"accountControlEvidence\"\nADD CONSTRAINT \"accountControlEvidence_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"accountControlEvidence_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "accountControlEvidence_projectId_fkey",
+          "public",
+          "\"public\".\"accountControlEvidence\""
+        ]
+      }
+    ]
+  }
+]

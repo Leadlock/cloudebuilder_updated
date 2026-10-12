@@ -11,6 +11,10 @@ import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId, resolveArchitecture } from '@/lib/api/phase2d';
 import { wellArchitectedFrameworkService } from '@/lib/engines/wellArchitected/WellArchitectedFrameworkService';
 import { wellArchitectedRepository } from '@/lib/repositories/wellArchitectedRepository';
+import { loadQuestionnaire } from '@/lib/api/waQuestionnaire';
+import { loadAccountEvidence } from '@/lib/api/accountEvidence';
+import { wellArchitectedAnswerRepository } from '@/lib/repositories/wellArchitectedAnswerRepository';
+import { accountControlEvidenceRepository } from '@/lib/repositories/accountControlEvidenceRepository';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,6 +52,16 @@ export async function GET(
     }
 
     const cached = await wellArchitectedRepository.findLatestByArchitecture(ctx.arch.id);
+    // A review made before the questionnaire was last changed no longer reflects the answers, so it is stale too.
+    const answersChangedAt = cached ? await wellArchitectedAnswerRepository.lastChangedAt(projectId).catch(() => null) : null;
+    if (cached && !cached.isStale && answersChangedAt && answersChangedAt > cached.evaluatedAt) {
+      return ok({ assessment: { ...cached, isStale: true, staleReason: 'answers' as const } });
+    }
+    // Likewise a review made before the account's controls were last checked does not include that reading.
+    const accountCheckedAt = cached ? await accountControlEvidenceRepository.lastCheckedAt(projectId).catch(() => null) : null;
+    if (cached && !cached.isStale && accountCheckedAt && accountCheckedAt > cached.evaluatedAt) {
+      return ok({ assessment: { ...cached, isStale: true, staleReason: 'account' as const } });
+    }
     return ok({ assessment: cached });
   } catch (err) {
     console.error('[GET /api/projects/:id/well-architected]', err instanceof Error ? err.message : err);
@@ -96,6 +110,8 @@ export async function POST(
       projectId,
       resources: arch.resources,
       connections: arch.connections,
+      questionnaire: await loadQuestionnaire(projectId),
+      accountEvidence: await loadAccountEvidence(projectId),
     });
 
     // Persist the assessment

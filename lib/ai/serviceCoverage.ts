@@ -33,6 +33,9 @@ export const SERVICES: ServiceEntry[] = [
   S('KMS', /\bkms\b/i, ['aws_kms']), S('Key Vault', /\bkey\s?vault\b/i, ['azure_key_vault']),
   S('Cosmos DB', /\bcosmos\s?db\b/i, ['azure_cosmos_db']), S('Azure SQL', /\bazure sql\b/i, ['azure_sql']),
   S('App Service', /\bapp\s?service\b/i, ['azure_app_service']), S('Azure Functions', /\bazure functions\b/i, ['azure_functions']),
+  // Engines and messaging: a request for one must not be answered with another (PostgreSQL asked, Azure SQL drawn; a queue asked, none drawn).
+  S('PostgreSQL', /\bpostgres(?:ql)?\b/i, ['aws_rds', 'azure_postgres']), S('MySQL', /\bmy\s?sql\b|\bmaria\s?db\b/i, ['aws_rds', 'azure_mysql']),
+  S('Message queue', /\b(?:message|task|job|work|background)\s+queues?\b|\bmessage\s+broker\b|\bqueue\s+for\b|\bpub\s?\/?\s?sub\b/i, ['aws_sqs', 'azure_service_bus']),
   S('AKS', /\baks\b/i, ['azure_aks']), S('Front Door', /\bfront\s?door\b/i, ['azure_front_door']), S('Azure Bastion', /\bbastion\b/i, ['azure_bastion']),
 
   // ── Not modelled today ──
@@ -51,6 +54,7 @@ export const SERVICES: ServiceEntry[] = [
   S('Transit Gateway', /\btransit gateway\b/i, ['aws_transit_gateway']), S('SES', /\bses\b|simple email service/i, ['aws_ses']),
   S('AppSync', /\bapp\s?sync\b/i, ['aws_appsync']),  S('Service Bus', /\bservice\s?bus\b/i, ['azure_service_bus']), S('Event Hubs', /\bevent\s?hubs?\b/i, ['azure_event_hubs']),
   S('Event Grid', /\bevent\s?grid\b/i, ['azure_event_grid']), S('Logic Apps', /\blogic\s?apps?\b/i, ['azure_logic_apps'], ['azure_functions']),
+  S('Container Apps', /\bcontainer\s?apps?\b/i, ['azure_container_apps'], ['azure_aks', 'azure_app_service']),
   S('API Management', /\bapi management\b|\bapim\b/i, ['azure_api_management'], ['azure_app_gateway', 'azure_functions']),
   S('Synapse', /\bsynapse\b/i, ['azure_synapse']), S('Data Factory', /\bdata factory\b/i, ['azure_data_factory']),
   S('Databricks', /\bdatabricks\b/i, ['azure_databricks']), S('Azure Container Registry', /\bcontainer registry\b|\bacr\b/i, ['azure_acr']),
@@ -64,6 +68,16 @@ export interface ServiceNotices {
   unsupported: { service: string; nearest: string[] }[];
   /** Named in the request, supported, but absent from the generated design. */
   missing: { service: string }[];
+}
+
+/**
+ * Resource types that stand in for a service because of how they are configured: an Application Gateway or Front Door with its WAF switched on
+ * is the WAF the user asked for, even though no separate WAF policy node was drawn. Use this for the design argument of detectServiceNotices.
+ */
+export function designTypesOf(nodes: Array<{ resourceType: string; config?: Record<string, unknown> }>): string[] {
+  const types = nodes.map((n) => n.resourceType);
+  if (nodes.some((n) => (n.resourceType === 'azure_app_gateway' || n.resourceType === 'azure_front_door') && (n.config?.['wafEnabled'] === true || n.config?.['wafPolicy']))) types.push('azure_waf');
+  return types;
 }
 
 /** "no Redis", "without a CDN"… — a service mentioned only to be excluded is not requested. */

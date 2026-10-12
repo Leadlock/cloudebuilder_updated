@@ -365,7 +365,7 @@ export interface DeployReadiness {
 }
 
 /** Types that attach by association/containment rather than by traffic. */
-const AMBIENT = new Set(['aws_sg', 'aws_nacl', 'aws_route_table', 'azure_nsg', 'azure_route_table']);
+const AMBIENT = new Set(['aws_sg', 'aws_nacl', 'aws_route_table', 'azure_nsg', 'azure_route_table', 'azure_firewall']);
 /** Regional services that must still be wired to something. */
 const CONTAINERLESS_MUST_CONNECT = new Set(['aws_iam', 'aws_kms', 'aws_cloudwatch']);
 

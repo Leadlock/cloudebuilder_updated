@@ -1,0 +1,420 @@
+/**
+ * Container templates: turns a short, validated form into the files a service needs to run in Docker
+ * (Dockerfile, .dockerignore, docker-compose.yml, .env.example, README.md, plus nginx.conf for a static site).
+ *
+ * Pure and deterministic, so the panel previews exactly what it downloads and the tests can check every output.
+ *
+ * Safety:
+ *  - Every value that reaches a file is validated first; an invalid form returns errors and no files.
+ *  - Nothing is ever spliced in raw. Names, versions, ports, paths and variable names are matched against strict patterns, and
+ *    free text (commands, values) may not contain line breaks or control characters, so one field cannot add instructions.
+ *  - Commands are written in JSON array form. Values are double-quoted with their quotes, backslashes and `$` escaped.
+ *  - A variable marked secret never has its value written: .env.example leaves it blank and compose reads it from the host.
+ *  - Images run as a non-root user unless the form explicitly turns that off.
+ */
+
+export type ContainerStack = 'node' | 'python' | 'java' | 'static';
+
+import { generateSampleApp } from './sampleApps';
+import { defaultEc2, ec2Warnings, generateEc2Files, validateEc2, type Ec2Config } from './ec2Deploy';
+export type { Ec2Config } from './ec2Deploy';
+
+export interface EnvVar { key: string; value: string; secret?: boolean }
+
+export interface ContainerConfig {
+  stack: ContainerStack;
+  appName: string;
+  port: number;
+  /** Runtime version: Node 18/20/22, Python 3.10–3.13, Java 17/21, nginx 1.27 (ignored for static). */
+  version: string;
+  env: EnvVar[];
+  healthPath: string;
+  runAsNonRoot: boolean;
+  /** compose */
+  restart: 'no' | 'always' | 'unless-stopped' | 'on-failure';
+  memoryLimit: string;
+  cpuLimit: string;
+  postgres: boolean;
+  redis: boolean;
+  /** stack options */
+  packageManager: 'npm' | 'yarn' | 'pnpm';
+  buildCommand: string;
+  startCommand: string;
+  nextStandalone: boolean;
+  pythonFramework: 'fastapi' | 'django' | 'flask' | 'other';
+  pythonModule: string;
+  javaBuildTool: 'maven' | 'gradle';
+  staticBuildDir: string;
+  staticSpaFallback: boolean;
+  /** Optional "deploy to EC2" bundle (Terraform + start-up script + CI workflow). */
+  ec2: Ec2Config;
+  /** Add a tiny working sample app next to the Dockerfile, so the template runs before you have your own code. */
+  includeSample: boolean;
+}
+
+export interface GeneratedFile { path: string; content: string; /** Set the executable bit when zipped (shell scripts). */ executable?: boolean }
+export type GenerateResult = { ok: true; files: GeneratedFile[]; warnings: string[] } | { ok: false; errors: string[] };
+
+export const STACK_LABEL: Record<ContainerStack, string> = {
+  node: 'Node.js / Next.js', python: 'Python (FastAPI / Django / Flask)', java: 'Java (Spring Boot)', static: 'Static site (nginx)',
+};
+export const VERSIONS: Record<ContainerStack, string[]> = {
+  node: ['22', '20', '18'], python: ['3.13', '3.12', '3.11', '3.10'], java: ['21', '17'], static: ['1.27'],
+};
+
+export function defaultConfig(stack: ContainerStack = 'node'): ContainerConfig {
+  return {
+    stack, appName: 'my-app', port: stack === 'static' ? 8080 : stack === 'java' ? 8080 : stack === 'python' ? 8000 : 3000,
+    version: VERSIONS[stack][0]!, env: [], healthPath: stack === 'java' ? '/actuator/health' : '/', runAsNonRoot: true,
+    restart: 'unless-stopped', memoryLimit: '512m', cpuLimit: '1.0', postgres: false, redis: false,
+    packageManager: 'npm', buildCommand: 'npm run build', startCommand: 'npm start', nextStandalone: false,
+    pythonFramework: 'fastapi', pythonModule: 'main:app', javaBuildTool: 'maven', staticBuildDir: 'dist', staticSpaFallback: true, ec2: defaultEc2(), includeSample: false,
+  };
+}
+
+// ─── validation ──────────────────────────────────────────────────────────────
+
+const NAME = /^[a-z0-9][a-z0-9_-]{0,62}$/;
+const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+const PATH = /^\/[A-Za-z0-9._~\-/]{0,200}$/;
+const RELDIR = /^[A-Za-z0-9._-][A-Za-z0-9._/-]{0,100}$/;
+const MEM = /^[1-9][0-9]{0,5}[mg]$/;
+const CPU = /^(?:[0-9]{1,2})(?:\.[0-9]{1,2})?$/;
+const MODULE = /^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*$/;
+const RESERVED_ENV = new Set(['PATH', 'HOME', 'USER', 'SHELL', 'LD_PRELOAD', 'LD_LIBRARY_PATH']);
+const CONTROL = /[\u0000-\u001f\u007f]/;
+
+export function validate(c: ContainerConfig): string[] {
+  const e: string[] = [];
+  if (!(c.stack in VERSIONS)) e.push('Choose a stack.');
+  if (!NAME.test(c.appName)) e.push('App name: lowercase letters, digits, "-" and "_" only, up to 63 characters.');
+  if (!Number.isInteger(c.port) || c.port < 1 || c.port > 65535) e.push('Port must be a whole number from 1 to 65535.');
+  if (c.stack === 'static' && c.port < 1024) e.push('A static site runs without root, so its port must be 1024 or higher (for example 8080).');
+  if (VERSIONS[c.stack] && !VERSIONS[c.stack].includes(c.version)) e.push(`Version ${c.version} is not offered for this stack.`);
+  if (!PATH.test(c.healthPath)) e.push('Health check path must start with "/" and use only letters, digits and "._~-/".');
+  if (!['no', 'always', 'unless-stopped', 'on-failure'].includes(c.restart)) e.push('Unknown restart policy.');
+  if (!MEM.test(c.memoryLimit)) e.push('Memory limit looks like 512m or 2g.');
+  if (!CPU.test(c.cpuLimit) || Number(c.cpuLimit) <= 0) e.push('CPU limit looks like 0.5 or 2.');
+  for (const [label, v] of [['Build command', c.buildCommand], ['Start command', c.startCommand]] as const) {
+    if (v.length > 300 || CONTROL.test(v)) e.push(`${label} must be one line of at most 300 characters.`);
+  }
+  if (c.stack === 'node' && !c.startCommand.trim()) e.push('Start command is required.');
+  if (c.stack === 'python' && c.pythonFramework !== 'django' && !MODULE.test(c.pythonModule)) e.push('Python module looks like "main:app".');
+  if (c.stack === 'python' && c.pythonFramework === 'django' && !/^[A-Za-z_][A-Za-z0-9_.]*$/.test(c.pythonModule.split(':')[0] ?? '')) e.push('Django project name must be a Python module name, e.g. "config".');
+  if (c.stack === 'static' && !RELDIR.test(c.staticBuildDir)) e.push('Build output folder must be a relative folder name such as "dist" or "build".');
+  if (c.stack === 'static' && c.staticBuildDir.split('/').includes('..')) e.push('Build output folder cannot go up a level.');
+  const seen = new Set<string>();
+  if (c.env.length > 50) e.push('At most 50 environment variables.');
+  for (const v of c.env) {
+    if (!ENV_KEY.test(v.key)) e.push(`Variable name "${v.key.slice(0, 30)}" is not valid (letters, digits and "_", not starting with a digit).`);
+    else if (RESERVED_ENV.has(v.key.toUpperCase())) e.push(`${v.key} is reserved by the system and cannot be set here.`);
+    else if (seen.has(v.key)) e.push(`${v.key} is listed twice.`);
+    seen.add(v.key);
+    if (v.value.length > 500 || CONTROL.test(v.value)) e.push(`${v.key}: the value must be one line of at most 500 characters.`);
+  }
+  return [...e, ...validateEc2(c)];
+}
+
+// ─── quoting ─────────────────────────────────────────────────────────────────
+
+/** A YAML double-quoted string: only backslash and quote need escaping. */
+const yq = (s: string) => `"${s.replace(/[\\"]/g, (m) => `\\${m}`)}"`;
+const json = (s: string) => JSON.stringify(s);
+const shCmd = (cmd: string) => `CMD ["sh", "-c", ${json(cmd)}]`;
+const plain = (c: ContainerConfig) => c.env.filter((v) => !v.secret);
+const secrets = (c: ContainerConfig) => c.env.filter((v) => v.secret);
+
+// ─── Dockerfiles ─────────────────────────────────────────────────────────────
+
+function userBlock(c: ContainerConfig, alpine: boolean): string {
+  if (!c.runAsNonRoot) return '# WARNING: the container runs as root. Prefer a non-root user in production.\n';
+  return alpine
+    ? 'RUN addgroup --system --gid 1001 app && adduser --system --uid 1001 --ingroup app app\nUSER app\n'
+    : 'RUN groupadd --system --gid 1001 app && useradd --system --uid 1001 --gid app --no-create-home app\nUSER app\n';
+}
+
+function healthcheck(c: ContainerConfig, tool: 'wget' | 'curl' | 'node' | 'python'): string {
+  const url = `http://127.0.0.1:${c.port}${c.healthPath}`;
+  const cmd = tool === 'wget' ? `wget -q --spider ${url} || exit 1`
+    : tool === 'curl' ? `curl -fsS ${url} > /dev/null || exit 1`
+      : tool === 'node' ? `node -e "fetch('${url}').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"`
+        : `python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('${url}').status<400 else 1)"`;
+  return `HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ${cmd}\n`;
+}
+
+function nodeDockerfile(c: ContainerConfig): string {
+  const pm = c.packageManager;
+  const lock = pm === 'npm' ? 'package-lock.json' : pm === 'yarn' ? 'yarn.lock' : 'pnpm-lock.yaml';
+  const install = pm === 'npm' ? 'npm ci' : pm === 'yarn' ? 'yarn install --frozen-lockfile' : 'corepack enable && pnpm install --frozen-lockfile';
+  const prune = pm === 'npm' ? 'npm prune --omit=dev' : pm === 'yarn' ? 'yarn install --frozen-lockfile --production' : 'pnpm prune --prod';
+  const corepack = pm === 'npm' ? '' : 'RUN corepack enable\n';
+  const runtime = c.nextStandalone
+    ? `COPY --from=build /app/.next/standalone ./
+COPY --from=build /app/.next/static ./.next/static
+COPY --from=build /app/public ./public
+`
+    : `COPY --from=build /app ./
+`;
+  const start = c.nextStandalone ? 'node server.js' : c.startCommand;
+  return `# syntax=docker/dockerfile:1
+# ${c.appName}: Node.js ${c.version}, multi-stage build
+FROM node:${c.version}-alpine AS deps
+WORKDIR /app
+${corepack}COPY package.json ${lock}* ./
+RUN ${install}
+
+FROM node:${c.version}-alpine AS build
+WORKDIR /app
+${corepack}COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN ${c.buildCommand.trim() || 'true'}
+${c.nextStandalone ? '' : `RUN ${prune}\n`}
+FROM node:${c.version}-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=${c.port}
+ENV HOSTNAME=0.0.0.0
+${runtime}${userBlock(c, true)}EXPOSE ${c.port}
+${healthcheck(c, 'wget')}${shCmd(start)}
+`;
+}
+
+function pythonDockerfile(c: ContainerConfig): string {
+  const [mod] = c.pythonModule.split(':');
+  const cmd = c.pythonFramework === 'fastapi' ? `uvicorn ${c.pythonModule} --host 0.0.0.0 --port ${c.port}`
+    : c.pythonFramework === 'django' ? `gunicorn ${mod}.wsgi:application --bind 0.0.0.0:${c.port}`
+      : c.pythonFramework === 'flask' ? `gunicorn ${c.pythonModule} --bind 0.0.0.0:${c.port}`
+        : c.startCommand;
+  return `# syntax=docker/dockerfile:1
+# ${c.appName}: Python ${c.version}, ${c.pythonFramework}
+FROM python:${c.version}-slim AS build
+WORKDIR /app
+ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+COPY requirements.txt ./
+RUN pip install -r requirements.txt
+
+FROM python:${c.version}-slim AS runtime
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ENV PATH="/opt/venv/bin:$PATH"
+ENV PORT=${c.port}
+COPY --from=build /opt/venv /opt/venv
+COPY . .
+${userBlock(c, false)}EXPOSE ${c.port}
+${healthcheck(c, 'python')}${shCmd(cmd)}
+`;
+}
+
+function javaDockerfile(c: ContainerConfig): string {
+  const mvn = c.javaBuildTool === 'maven';
+  return `# syntax=docker/dockerfile:1
+# ${c.appName}: Spring Boot on Java ${c.version}, ${mvn ? 'Maven' : 'Gradle'}
+FROM ${mvn ? `maven:3-eclipse-temurin-${c.version}` : `gradle:8-jdk${c.version}`} AS build
+WORKDIR /workspace
+COPY . .
+RUN ${mvn ? 'mvn -B -q -DskipTests package' : 'gradle --no-daemon -q bootJar -x test'}
+RUN cp ${mvn ? 'target' : 'build/libs'}/*.jar /workspace/app.jar
+
+FROM eclipse-temurin:${c.version}-jre-alpine AS runtime
+WORKDIR /app
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75"
+ENV SERVER_PORT=${c.port}
+COPY --from=build /workspace/app.jar ./app.jar
+${userBlock(c, true)}EXPOSE ${c.port}
+${healthcheck(c, 'wget')}ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+`;
+}
+
+function staticDockerfile(c: ContainerConfig): string {
+  return `# syntax=docker/dockerfile:1
+# ${c.appName}: static site served by nginx ${c.version}
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci
+COPY . .
+RUN ${c.buildCommand.trim() || 'npm run build'}
+
+FROM nginxinc/nginx-unprivileged:${c.version}-alpine AS runtime
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/${c.staticBuildDir} /usr/share/nginx/html
+EXPOSE ${c.port}
+${healthcheck(c, 'wget')}CMD ["nginx", "-g", "daemon off;"]
+`;
+}
+
+function nginxConf(c: ContainerConfig): string {
+  return `server {
+  listen ${c.port};
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+
+  gzip on;
+  gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+
+  add_header X-Content-Type-Options nosniff always;
+  add_header X-Frame-Options SAMEORIGIN always;
+  add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+  location / {
+    try_files $uri $uri/ ${c.staticSpaFallback ? '/index.html' : '=404'};
+  }
+
+  location ~* \\.(?:js|css|png|jpg|jpeg|gif|svg|ico|woff2?)$ {
+    expires 30d;
+    add_header Cache-Control "public, immutable";
+  }
+}
+`;
+}
+
+// ─── compose, env, docker ignore, README ─────────────────────────────────────
+
+function compose(c: ContainerConfig): string {
+  const plainVars = plain(c);
+  const secretVars = secrets(c);
+  const dbName = c.appName.replace(/-/g, '_');
+  const dbEnv = c.postgres ? [`DATABASE_URL: "postgres://${dbName}:\${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${dbName}"`] : [];
+  const redisEnv = c.redis ? ['REDIS_URL: "redis://redis:6379"'] : [];
+  const envLines = [
+    // Compose treats $ as interpolation, so a literal $ in a value is doubled.
+    ...plainVars.map((v) => `${v.key}: ${yq(v.value.replace(/\$/g, '$$$$'))}`),
+    ...secretVars.map((v) => `${v.key}: "\${${v.key}:?set ${v.key}}"`),
+    ...dbEnv, ...redisEnv,
+  ];
+  const deps = [c.postgres && 'postgres', c.redis && 'redis'].filter(Boolean) as string[];
+  const db = c.appName.replace(/-/g, '_');
+  return `# Run with: docker compose up --build
+services:
+  ${c.appName}:
+    build: .
+    image: ${c.appName}:latest
+    restart: ${c.restart}
+    ports:
+      - "${c.port}:${c.port}"
+${envLines.length ? `    environment:\n${envLines.map((l) => `      ${l}`).join('\n')}\n` : ''}${deps.length ? `    depends_on:\n${deps.map((d) => `      ${d}:\n        condition: service_healthy`).join('\n')}\n` : ''}    mem_limit: ${c.memoryLimit}
+    cpus: ${c.cpuLimit}
+    security_opt:
+      - no-new-privileges:true
+${c.postgres ? `
+  postgres:
+    image: postgres:16-alpine
+    restart: ${c.restart}
+    environment:
+      POSTGRES_DB: ${db}
+      POSTGRES_USER: ${db}
+      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${db} -d ${db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+` : ''}${c.redis ? `
+  redis:
+    image: redis:7-alpine
+    restart: ${c.restart}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+` : ''}${c.postgres ? '\nvolumes:\n  pgdata:\n' : ''}`;
+}
+
+function envExample(c: ContainerConfig): string {
+  const lines = [
+    '# Copy to .env and fill in. Never commit .env.',
+    ...plain(c).map((v) => `${v.key}=${v.value}`),
+    ...secrets(c).map((v) => `${v.key}=`),
+    ...(c.postgres ? ['POSTGRES_PASSWORD='] : []),
+  ];
+  return `${lines.join('\n')}\n`;
+}
+
+function dockerignore(c: ContainerConfig): string {
+  const common = ['.git', '.gitignore', '.env', '.env.*', '!.env.example', 'Dockerfile', 'docker-compose*.yml', '.dockerignore', '*.md', '.vscode', '.idea', '.DS_Store'];
+  const per: Record<ContainerStack, string[]> = {
+    node: ['node_modules', '.next', 'dist', 'coverage', 'npm-debug.log*'],
+    static: ['node_modules', 'dist', 'build', 'coverage'],
+    python: ['__pycache__', '*.pyc', '.venv', 'venv', '.pytest_cache', '.mypy_cache'],
+    java: ['target', 'build', '.gradle', '.mvn/wrapper/maven-wrapper.jar'],
+  };
+  const deploy = c.ec2.enabled ? ['ec2', '.github', '.terraform'] : [];
+  return `${[...common, ...deploy, ...per[c.stack]].join('\n')}\n`;
+}
+
+function readme(c: ContainerConfig): string {
+  const secretNames = secrets(c).map((v) => v.key);
+  return `# ${c.appName}
+
+Generated by CloudCraft Container Templates (${STACK_LABEL[c.stack]}).
+
+## Run locally
+
+\`\`\`bash
+cp .env.example .env   # fill in the blank values${secretNames.length ? ` (${secretNames.join(', ')})` : ''}
+docker compose up --build
+\`\`\`
+
+The service listens on http://localhost:${c.port}${c.healthPath}.
+
+## Build and run the image alone
+
+\`\`\`bash
+docker build -t ${c.appName} .
+docker run --rm -p ${c.port}:${c.port} --env-file .env ${c.appName}
+\`\`\`
+
+## What is configured
+
+- Runtime: ${c.stack === 'static' ? `nginx ${c.version}` : `${STACK_LABEL[c.stack]} ${c.version}`}
+- Port: ${c.port}, health check: \`${c.healthPath}\`
+- Runs as ${c.runAsNonRoot ? 'a non-root user' : 'root (not recommended)'}
+- Limits: ${c.memoryLimit} memory, ${c.cpuLimit} CPU, restart \`${c.restart}\`
+${c.postgres ? '- PostgreSQL 16 (set POSTGRES_PASSWORD in .env)\n' : ''}${c.redis ? '- Redis 7\n' : ''}
+${c.stack === 'node' ? `## Before you build\n\nYour project needs a ${c.packageManager === 'npm' ? 'package-lock.json' : c.packageManager === 'yarn' ? 'yarn.lock' : 'pnpm-lock.yaml'}.${c.nextStandalone ? ' Set \`output: "standalone"\` in next.config.' : ''}\n` : ''}${c.stack === 'python' ? '## Before you build\n\nYour project needs a requirements.txt' + (c.pythonFramework === 'fastapi' ? ' that includes uvicorn.' : c.pythonFramework === 'other' ? '.' : ' that includes gunicorn.') + '\n' : ''}${c.stack === 'java' ? `## Before you build\n\nYour project needs a Spring Boot ${c.javaBuildTool === 'maven' ? 'pom.xml' : 'build.gradle with the bootJar task'}. The health check path needs Spring Actuator (\`spring-boot-starter-actuator\`).\n` : ''}`;
+}
+
+// ─── entry point ─────────────────────────────────────────────────────────────
+
+export function generateContainerFiles(config: ContainerConfig): GenerateResult {
+  const errors = validate(config);
+  if (errors.length > 0) return { ok: false, errors };
+  const c = config;
+  const dockerfile = c.stack === 'node' ? nodeDockerfile(c) : c.stack === 'python' ? pythonDockerfile(c) : c.stack === 'java' ? javaDockerfile(c) : staticDockerfile(c);
+  const sample = generateSampleApp(c);
+  const files: GeneratedFile[] = [
+    { path: 'Dockerfile', content: dockerfile },
+    { path: '.dockerignore', content: dockerignore(c) },
+    { path: 'docker-compose.yml', content: compose(c) },
+    { path: '.env.example', content: envExample(c) },
+    ...(c.stack === 'static' ? [{ path: 'nginx.conf', content: nginxConf(c) }] : []),
+    { path: 'README.md', content: readme(c) },
+    ...generateEc2Files(c),
+    ...sample.files,
+  ];
+  return { ok: true, files, warnings: [...sample.warnings, ...ec2Warnings(c)] };
+}
+
+// ─── starter templates ───────────────────────────────────────────────────────
+
+export interface StarterTemplate { id: string; title: string; blurb: string; config: () => ContainerConfig }
+
+const starter = (stack: ContainerStack, appName: string, over: Partial<ContainerConfig> = {}): ContainerConfig => {
+  const d = defaultConfig(stack);
+  return { ...d, appName, includeSample: true, ec2: { ...d.ec2, enabled: true }, ...over };
+};
+
+/** Ready-made starting points: a stack, a working sample app and the EC2 deployment already switched on. */
+export const STARTER_TEMPLATES: StarterTemplate[] = [
+  { id: 'node-web', title: 'Node.js web app', blurb: 'A small Node.js server with a health check, deployed to EC2.', config: () => starter('node', 'node-web') },
+  { id: 'fastapi-api', title: 'FastAPI service', blurb: 'A Python FastAPI API with /health, deployed to EC2.', config: () => starter('python', 'fastapi-api', { healthPath: '/health' }) },
+  { id: 'spring-boot', title: 'Spring Boot service', blurb: 'A minimal Spring Boot app with Actuator health, deployed to EC2.', config: () => starter('java', 'spring-boot', { memoryLimit: '768m' }) },
+  { id: 'static-site', title: 'Static website', blurb: 'A one-page website served by nginx, deployed to EC2.', config: () => starter('static', 'static-site') },
+];

@@ -7,6 +7,8 @@ import { AppView, Environment } from '@/types';
 import { cloudRegionService } from '@/lib/cloud/regions/CloudRegionService';
 import { SUPPORTED_CURRENCIES } from '@/lib/currency/types';
 import LoginModal from '@/components/auth/LoginModal';
+import { useOrgPolicy } from '@/components/policy/orgPolicyStore';
+import { isRegionAllowed } from '@/lib/engines/policy/allowed';
 
 const VIEW_LABELS: Partial<Record<AppView, string>> = {
   dashboard: 'Dashboard',
@@ -20,11 +22,13 @@ const VIEW_LABELS: Partial<Record<AppView, string>> = {
   'ai-generator': 'AI Generator',
   advisor: 'Architecture Advisor',
   'disaster-recovery': 'DR Designer',
+  'container-templates': 'Container Templates',
   import: 'Import Infrastructure',
   accounts: 'Cloud Accounts',
   history: 'Version History',
   environments: 'Environments',
   review: 'Architecture Review',
+  policy: 'Organization Policy',
   team: 'Team Management',
 };
 
@@ -46,6 +50,8 @@ export default function TopBar() {
   const isLight = theme === 'light';
   const activeProject = useActiveProject();
   const activeRegion = activeProject?.environments[activeEnvironment]?.region ?? activeProject?.region ?? 'us-east-1';
+  const regionProvider = activeProject?.provider === 'azure' ? 'azure' : 'aws';
+  const { policy } = useOrgPolicy(currentUser?.id);
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -138,11 +144,15 @@ export default function TopBar() {
                   isLight ? "text-slate-800" : "text-gray-200"
                 )}
               >
-                {cloudRegionService.getRegions(activeProject.provider === 'azure' ? 'azure' : 'aws').map((r) => (
-                  <option key={r.id} value={r.id} className={clsx(isLight ? "bg-white text-slate-900" : "bg-gray-900 text-gray-200")}>
-                    {r.id} — {r.displayName}
-                  </option>
-                ))}
+                {cloudRegionService.getRegions(regionProvider).map((r) => {
+                  // Regions the organization policy does not approve are greyed out; the region already in use never is.
+                  const blocked = r.id !== activeRegion && !isRegionAllowed(policy, regionProvider, r.id);
+                  return (
+                    <option key={r.id} value={r.id} disabled={blocked} className={clsx(blocked ? "text-slate-400" : isLight ? "bg-white text-slate-900" : "bg-gray-900 text-gray-200")}>
+                      {r.id} — {r.displayName}{blocked ? ' (outside org policy)' : ''}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           </div>
@@ -214,7 +224,7 @@ export default function TopBar() {
         )}
 
         {/* Deploy button */}
-        {activeProject && !['dashboard', 'wizard', 'templates', 'ai-generator', 'import', 'disaster-recovery'].includes(activeView) && (
+        {activeProject && !['dashboard', 'wizard', 'templates', 'ai-generator', 'import', 'container-templates', 'disaster-recovery'].includes(activeView) && (
           <button
             onClick={() => dispatch({ type: 'SET_VIEW', view: 'deploy' })}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors shrink-0 shadow-sm active:scale-[0.98]"

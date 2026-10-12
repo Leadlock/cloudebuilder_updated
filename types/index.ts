@@ -63,10 +63,12 @@ export type AppView =
   | 'well-architected'
   | 'disaster-recovery'
   | 'import'
+  | 'container-templates'
   | 'accounts'
   | 'history'
   | 'environments'
   | 'review'
+  | 'policy'
   | 'team';
 
 export type Environment = 'development' | 'staging' | 'production';

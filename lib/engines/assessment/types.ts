@@ -11,7 +11,7 @@
  * This module is isomorphic (browser + server): no Node-only imports.
  */
 
-export const RULESET_VERSION = '2026.09.2';
+export const RULESET_VERSION = '2026.10.3';
 export const ENGINE_NAME = 'CloudCraft Assessment Engine';
 
 export type AssessmentProvider = 'aws' | 'azure';
@@ -65,7 +65,7 @@ export type RemediationPriority = 'REQUIRED_REMEDIATION' | 'RECOMMENDED_IMPROVEM
 export type CostImpact = 'NONE' | 'POSSIBLE_INCREASE' | 'POSSIBLE_DECREASE';
 
 /** How a piece of evidence was obtained. */
-export type EvidenceBasis = 'CONFIGURATION' | 'RELATIONSHIP' | 'TOPOLOGY' | 'NOT_MODELLED';
+export type EvidenceBasis = 'CONFIGURATION' | 'RELATIONSHIP' | 'TOPOLOGY' | 'NOT_MODELLED' | 'QUESTIONNAIRE' | 'ACCOUNT_API';
 
 /**
  * Provenance of the configuration an evaluation relied on (weakest field wins):
@@ -176,6 +176,12 @@ export interface AssessContext {
   /** Resources directly connected to `id` by an edge (either direction) or containment. */
   neighbors(id: string): AssessResource[];
   providers: AssessmentProvider[];
+  /** Answers to the Well-Architected questionnaire, by question id. Only present when a questionnaire is supplied (see questionnaire/). */
+  answers?: Record<string, { answer: string; note?: string }>;
+  /** Dated readings of account-level controls (CloudTrail, GuardDuty, root MFA, Config), by rule id. See accountEvidence.ts. */
+  accountEvidence?: Record<string, { status: 'PASS' | 'WARNING' | 'FAIL' | 'UNAVAILABLE'; observation: string; observedAt: string; accountLabel?: string }>;
+  /** The time of this assessment, so a rule can tell how old a reading is. */
+  now?: string;
 }
 
 export interface RuleOutcome {
@@ -186,6 +192,8 @@ export interface RuleOutcome {
   severity?: Severity;
   /** For architecture/account-scoped rules. */
   resourceIds?: string[];
+  /** Set when the evidence is not configuration (for example a reading taken from the cloud account); otherwise derived from the evidence. */
+  provenance?: EvidenceProvenance;
   /** What CloudCraft would need to evaluate the control (NOT_EVALUATED / INSUFFICIENT_DATA). */
   requiredData?: string;
 }
@@ -358,6 +366,10 @@ export interface PillarResult {
   status: 'No issues observed' | 'Observations only' | 'Issues found' | 'Critical issues' | 'Insufficient evidence';
   strengths: string[];
   findingIds: string[];
+  /** How many DIFFERENT scored rules were evaluated (a rule checked on six subnets is one check; informational rules carry no weight). */
+  evaluatedRules: number;
+  /** True when fewer than THIN_PILLAR_RULES different rules were evaluated: show the score as indicative, never as a verdict. */
+  limitedEvidence: boolean;
 }
 
 export type Soc1EvidenceType =

@@ -17,8 +17,9 @@ import { inferNodeProvider } from '@/types';
 import { getResourceDefinition } from '@/lib/resources';
 import { computeGraphHash, toCanonicalGraph } from '@/lib/domain/canonicalArchitecture';
 import { ALL_RULES, RULES_BY_ID } from './rules';
+import { QUESTION_RULES } from './questionnaire/questionRules';
 import { resolveReferences } from './references';
-import { scoreOf } from './scoring';
+import { scoreOf, SCORE_WEIGHTS, THIN_PILLAR_RULES } from './scoring';
 import { buildSoc1 } from './soc1';
 import { pillarsFor, frameworkName } from './pillars';
 import type {
@@ -110,7 +111,11 @@ export function toAssessResources(nodes: CanvasNode[], opts: ToAssessOptions = {
     });
 }
 
-export function buildContext(resources: AssessResource[], edges: AssessEdge[]): AssessContext {
+export function buildContext(
+  resources: AssessResource[],
+  edges: AssessEdge[],
+  extras: Pick<AssessContext, 'answers' | 'accountEvidence' | 'now'> = {},
+): AssessContext {
   const byId = new Map(resources.map((r) => [r.id, r]));
   const adjacency = new Map<string, Set<string>>();
   const link = (a: string, b: string) => {
@@ -131,6 +136,7 @@ export function buildContext(resources: AssessResource[], edges: AssessEdge[]): 
     edges,
     byId,
     providers,
+    ...extras,
     ofType: (...types: string[]) => resources.filter((r) => types.includes(r.resourceType)),
     neighbors: (id: string) => Array.from(adjacency.get(id) ?? []).map((x) => byId.get(x)!).filter(Boolean),
   };
@@ -167,7 +173,7 @@ function toEvaluation(rule: RuleDefinition, outcome: RuleOutcome, ctx: AssessCon
     observation: outcome.observation,
     evidence: outcome.evidence,
     requiredData: outcome.requiredData,
-    provenance: provenanceOf(outcome, resource ? [resource] : resources),
+    provenance: outcome.provenance ?? provenanceOf(outcome, resource ? [resource] : resources),
   };
 }
 
@@ -246,14 +252,24 @@ export interface AssessInput {
    * entries older than LIVE_EVIDENCE_MAX_AGE_MS are ignored.
    */
   liveEvidence?: Record<string, LiveEvidence>;
+  /**
+   * Answers to the Well-Architected questionnaire. When supplied, each question joins the assessment as a check in its pillar
+   * (unanswered = NOT_EVALUATED). Left out, questions play no part, so other callers see exactly what they always did.
+   */
+  questionnaire?: { answers: Record<string, { answer: string; note?: string }> };
+  /**
+   * Dated readings of account-level controls (see accountEvidence.ts). Without them the account-level rules are NOT EVALUATED, as they
+   * always were; with a fresh reading they pass or fail, and the evaluation is marked live-verified.
+   */
+  accountEvidence?: AssessContext['accountEvidence'];
 }
 
 export function runAssessment(input: AssessInput): AssessmentResult {
   const evaluatedAt = input.evaluatedAt ?? new Date().toISOString();
-  const rules = input.rules ?? ALL_RULES;
+  const rules = input.rules ?? (input.questionnaire ? [...ALL_RULES, ...QUESTION_RULES] : ALL_RULES);
   const resources = toAssessResources(input.nodes ?? [], { liveEvidence: input.liveEvidence, evaluatedAt });
   const edges: AssessEdge[] = (input.edges ?? []).map((e) => ({ id: e.id, source: e.source, target: e.target, label: e.label }));
-  const ctx = buildContext(resources, edges);
+  const ctx = buildContext(resources, edges, { answers: input.questionnaire?.answers, accountEvidence: input.accountEvidence, now: evaluatedAt });
 
   const evaluations: Evaluation[] = [];
   for (const rule of rules) evaluations.push(...evaluateRule(rule, ctx));
@@ -281,11 +297,15 @@ export function runAssessment(input: AssessInput): AssessmentResult {
         : failing.some((e) => e.status === 'FAIL' && e.severity === 'CRITICAL') ? 'Critical issues'
           : failing.some((e) => e.severity !== 'INFORMATIONAL') ? 'Issues found'
             : failing.length > 0 ? 'Observations only' : 'No issues observed';
+      const evaluatedRules = new Set(
+        evals.filter((e) => (e.status === 'PASS' || e.status === 'FAIL' || e.status === 'WARNING') && SCORE_WEIGHTS[e.severity] > 0).map((e) => e.ruleId),
+      ).size;
       const strengths = Array.from(new Set(evals.filter((e) => e.status === 'PASS' && e.resourceLabels.length > 0)
         .map((e) => `${e.resourceLabels[0]}: ${e.observation}`))).slice(0, 6);
       pillarResults.push({
         provider, framework: frameworkName(provider), pillar: p.id, label: p.label, referenceUrl: p.referenceUrl,
         score, status, strengths, findingIds: failing.map((e) => e.findingId),
+        evaluatedRules, limitedEvidence: evaluatedRules < THIN_PILLAR_RULES,
       });
     }
   }

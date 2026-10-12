@@ -6,7 +6,7 @@
 import type { ArchitectureSpec } from '@/lib/ai/architectureSpec';
 import { SpecBuilder, awsCore, azureCore, type Cfg } from './builder';
 import { awsRegionOf, AWS_SIZING } from './awsPatterns';
-import { azureRegionOf } from './azurePatterns';
+import { azureData, azureRegionOf, storageAndVault } from './azurePatterns';
 import type { Requirements } from './requirements';
 
 const cap = (s: string) => s.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
@@ -74,35 +74,35 @@ export function awsLambdaPrivateApi(r: Requirements): ArchitectureSpec {
 
 // ─── Azure ────────────────────────────────────────────────────────────────────────────
 
-/** Static website: Blob storage origin behind Front Door with a WAF policy. */
+/** Static website: a storage account's static website behind Front Door with a WAF policy (the content is public by design, so the account accepts the network that serves it). */
 export function azureStaticSite(r: Requirements): ArchitectureSpec {
   const region = azureRegionOf(r.region);
   const b = new SpecBuilder();
   const boundary = b.add('azure-cloud', 'azure_cloud_boundary', `Azure — ${region.id}`, undefined, { region: region.id });
   const storage = b.add('storage', 'azure_storage', 'Static Site Storage Account', boundary, {
     name: `${slug(r.app)}site`, sku: r.regulated ? 'Standard_GRS' : 'Standard_ZRS', httpsOnly: true, allowBlobPublicAccess: false,
-    minimumTlsVersion: 'TLS1_2', networkDefaultAction: 'Deny', blobVersioningEnabled: true, blobSoftDeleteRetentionDays: 14,
+    minimumTlsVersion: 'TLS1_2', networkDefaultAction: 'Allow', staticWebsite: true, blobVersioningEnabled: true, blobSoftDeleteRetentionDays: 14,
   });
   const fd = b.add('fd', 'azure_front_door', 'Front Door', boundary, {
     name: `${slug(r.app)}-fd`, sku: r.regulated ? 'Premium_AzureFrontDoor' : 'Standard_AzureFrontDoor', httpsOnly: true, originHostName: `${slug(r.app)}site.blob.core.windows.net`,
   });
   const waf = b.add('fd-waf', 'azure_waf', 'Front Door WAF Policy', boundary, { name: `${slug(r.app)}fdwaf`, mode: 'Prevention' });
   b.connect(waf, fd); b.connect(fd, storage);
-  return b.build(`${cap(r.app)} on Azure — static website`, `Front Door with a WAF policy in Prevention mode serves the site from a Blob storage account that denies direct network access. No servers to manage; deployed in ${region.id} (${r.scale} tier).`);
+  return b.build(`${cap(r.app)} on Azure — static website`, `Front Door with a WAF policy in Prevention mode serves the site from a storage account's static website, with anonymous blob access disabled. Front Door adds caching, HTTPS and the firewall in front of it. No servers to manage; deployed in ${region.id} (${r.scale} tier).`);
 }
 
-/** Functions inside the VNet behind a WAF Application Gateway, with Azure SQL on a private data subnet. */
+/** Functions inside the VNet behind a WAF Application Gateway, with the chosen database on a private subnet. */
 export function azureFunctionsPrivateApi(r: Requirements): ArchitectureSpec {
   const region = azureRegionOf(r.region);
   const b = new SpecBuilder();
   const core = azureCore(b, { region, tiers: { bastion: false } });
-  const agw = b.add('agw', 'azure_app_gateway', 'Application Gateway (WAF v2)', core.web, { name: `${slug(r.app)}-agw`, sku: 'WAF_v2', wafEnabled: true, wafMode: 'Prevention', autoscaleEnabled: true, minCapacity: 2, maxCapacity: 5 });
+  const agw = b.add('agw', 'azure_app_gateway', 'Application Gateway (WAF v2)', core.web, { name: `${slug(r.app)}-agw`, sku: 'WAF_v2', wafEnabled: true, wafMode: 'Prevention', zones: '1,2,3', autoscaleEnabled: true, minCapacity: 2, maxCapacity: 5 });
   const fn = b.add('func', 'azure_functions', 'API Function App', core.app, { name: `${slug(r.app)}-api`, runtime: 'node', osType: 'Linux', planType: 'EP1', alwaysOn: true, httpsOnly: true, minimumTlsVersion: '1.2', publicNetworkAccess: false });
   b.connect(agw, fn);
-  const sql = b.add('sql', 'azure_sql', 'Azure SQL Database', core.data, { name: `${slug(r.app)}-sql`, tier: 'GeneralPurpose', maxSizeGb: 32, zoneRedundant: true, publicNetworkAccess: false, allowAzureServices: false, minimumTlsVersion: '1.2', auditingEnabled: true, threatDetectionEnabled: true, requestedBackupStorageRedundancy: 'Zone' });
-  const storage = b.add('storage', 'azure_storage', 'Assets Storage Account', core.rg, { name: `${slug(r.app)}assets`, sku: 'Standard_ZRS', httpsOnly: true, allowBlobPublicAccess: false, minimumTlsVersion: 'TLS1_2', networkDefaultAction: 'Deny', blobVersioningEnabled: true, blobSoftDeleteRetentionDays: 14 });
-  const vault = b.add('vault', 'azure_key_vault', 'Key Vault', core.rg, { name: `${slug(r.app)}-kv`, sku: 'standard', enableRbacAuthorization: true, publicNetworkAccessEnabled: false, networkAclsDefaultAction: 'Deny', purgeProtectionEnabled: true, softDeleteRetentionDays: 90 });
-  b.connect(fn, sql); b.connect(fn, storage); b.connect(fn, vault);
+  const data = azureData(b, r, core);
+  const { storage, vault } = storageAndVault(b, r, core);
+  for (const d of [data.sql, data.cache, data.cosmos, data.bus]) if (d) b.connect(fn, d);
+  b.connect(fn, storage); b.connect(fn, vault);
   const nsg = (id: string, label: string, subnet: string, cfg: NonNullable<Cfg>) => { b.add(id, 'azure_nsg', label, core.vnet, cfg); b.connect(id, subnet); };
   nsg('nsg-web', 'Web NSG', core.web, { allowHttp: false, allowHttps: true });
   nsg('nsg-app', 'App NSG', core.app, { allowHttp: true, allowHttps: false, sourceCidr: '10.0.0.0/8' });

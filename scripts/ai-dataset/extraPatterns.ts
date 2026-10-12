@@ -91,7 +91,7 @@ export function azureGatewayAppService(r: Requirements): ArchitectureSpec {
   const core = azureCore(b, { region, tiers: { web: true, app: false, data: true, bastion: false } });
   const sz = AZURE_SIZING[r.scale];
   const agw = b.add('agw', 'azure_app_gateway', 'Application Gateway (WAF v2)', core.web, {
-    name: `${slug(r.app)}-agw`, sku: 'WAF_v2', wafEnabled: true, wafMode: 'Prevention', autoscaleEnabled: true, minCapacity: 2, maxCapacity: r.scale === 'large' ? 10 : 5,
+    name: `${slug(r.app)}-agw`, sku: 'WAF_v2', wafEnabled: true, wafMode: 'Prevention', zones: '1,2,3', autoscaleEnabled: true, minCapacity: 2, maxCapacity: r.scale === 'large' ? 10 : 5,
   });
   const app = b.add('app', 'azure_app_service', 'Web App', undefined, {
     name: `${slug(r.app)}-web`, skuName: sz.appPlan.skuName, alwaysOn: true, httpsOnly: true, minimumTlsVersion: '1.2', ftpsState: 'Disabled', http2Enabled: true, healthCheckPath: '/health', publicNetworkAccess: false,
@@ -99,7 +99,7 @@ export function azureGatewayAppService(r: Requirements): ArchitectureSpec {
   b.connect(agw, app);
   const data = azureData(b, r, core);
   const { storage, vault } = storageAndVault(b, r, core);
-  for (const d of [data.sql, data.cache, data.cosmos]) if (d) b.connect(app, d);
+  for (const d of [data.sql, data.cache, data.cosmos, data.bus]) if (d) b.connect(app, d);
   b.connect(app, storage); b.connect(app, vault);
   nsg(b, core, 'nsg-web', 'Web NSG', core.web, { allowHttp: false, allowHttps: true });
   nsg(b, core, 'nsg-data', 'Data NSG', core.data, { allowHttp: false, allowHttps: false, sourceCidr: '10.0.0.0/8' });

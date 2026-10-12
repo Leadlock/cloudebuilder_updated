@@ -4,6 +4,9 @@
  * Score = 100 × (1 − weighted failures ÷ weighted evaluated checks)
  *   weights: CRITICAL 10, HIGH 6, MEDIUM 3, LOW 1 (INFORMATIONAL checks are not scored)
  *   a WARNING counts as half a failure.
+ *   A rule is weighed ONCE however many resources it is evaluated on: its weight is shared equally between them, so one failing
+ *   subnet of six is one sixth of that rule failing. Without this a design with more resources carried more weight per rule, so
+ *   its many passing checks hid medium and low failures and larger designs drifted toward "Strong".
  * Caps: any failing CRITICAL check caps the score at 40; any failing HIGH at 70.
  * Only PASS / FAIL / WARNING count as evaluated. NOT_EVALUATED and
  * INSUFFICIENT_DATA reduce COVERAGE, never the score — and they never count as
@@ -17,12 +20,15 @@ import type { CoverageSummary, Evaluation, ScoreResult, Severity } from './types
 
 export const SCORE_WEIGHTS: Record<Severity, number> = { CRITICAL: 10, HIGH: 6, MEDIUM: 3, LOW: 1, INFORMATIONAL: 0 };
 export const LOW_COVERAGE_THRESHOLD = 60;
+/** A pillar scored from fewer DIFFERENT checks than this is flagged "limited evidence": its score is an indication, not a verdict. */
+export const THIN_PILLAR_RULES = 5;
 
 export const SCORE_METHODOLOGY =
   'Score = 100 × (1 − Σ weight of failed checks ÷ Σ weight of evaluated checks), with weights CRITICAL 10, HIGH 6, MEDIUM 3, LOW 1; ' +
   'warnings count as half a failure; informational checks are not scored. Any failing CRITICAL check caps the score at 40 and any failing ' +
   'HIGH check at 70. Checks that were not evaluated or lacked data are excluded from the score and reported as reduced coverage; ' +
-  'they are never treated as passes. Coverage = evaluated checks ÷ applicable checks. When coverage is below 60%, a score that would ' +
+  'they are never treated as passes. Each rule counts once however many resources it is checked on (its weight is shared between them), ' +
+  'so adding resources does not dilute the weight of a failing rule. Coverage = evaluated checks ÷ applicable checks. When coverage is below 60%, a score that would ' +
   'rate Strong or Good is rated "Limited evidence": the checks that could be evaluated passed, but too few could be evaluated to ' +
   'describe the overall posture.';
 
@@ -50,9 +56,13 @@ export function scoreOf(evals: Evaluation[]): ScoreResult {
     return { score: null, rating: 'Not scored', coverage, lowCoverage, methodology: SCORE_METHODOLOGY };
   }
 
+  // Share each rule's weight between the resources it was evaluated on (see the header comment).
+  const perRule = new Map<string, number>();
+  for (const e of scored) perRule.set(e.ruleId, (perRule.get(e.ruleId) ?? 0) + 1);
+
   let total = 0; let failed = 0;
   for (const e of scored) {
-    const w = SCORE_WEIGHTS[e.severity];
+    const w = SCORE_WEIGHTS[e.severity] / (perRule.get(e.ruleId) ?? 1);
     total += w;
     if (e.status === 'FAIL') failed += w;
     else if (e.status === 'WARNING') failed += w / 2;

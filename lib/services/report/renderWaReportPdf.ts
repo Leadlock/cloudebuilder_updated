@@ -3,6 +3,7 @@
  * scorecard, one section per pillar, optional validated AI commentary, improvement roadmap, evidence gaps, method.
  * Built from report data with pdfkit — vector text and tables, not a screenshot.
  */
+import { LIMITED_EVIDENCE_NOTE, pillarScoreText } from '@/lib/engines/assessment/report/waReportView';
 import { COMMENTARY_DISCLAIMER, waUnscoredNotice } from '@/lib/ai/reportCommentary';
 import type { AssessmentReport, RecommendationGroup } from '@/lib/engines/assessment/report/buildReport';
 import { waPillarViews, strongestAndWeakest, WA_REPORT_DISCLAIMER, type WaPillarView } from '@/lib/engines/assessment/report/waReportView';
@@ -41,7 +42,7 @@ function recTable(w: Writer, groups: RecommendationGroup[], empty: string) {
 function pillarSection(w: Writer, p: WaPillarView, ai: AssessmentReport['aiWaCommentary']) {
   w.h2(`${p.label} — ${p.status}`, true);
   w.p(p.evaluable
-    ? `${p.framework} · Score ${scoreText(p.score)} (${p.rating}) · Coverage ${pct(p.coveragePct)} — ${p.evaluated} of ${p.applicable} applicable checks evaluated · ${p.failed} failed · ${p.warnings} warnings · ${p.passed} passed`
+    ? `${p.framework} · Score ${pillarScoreText(p.score, p.limitedEvidence, p.evaluatedRules)} (${p.rating}) · Coverage ${pct(p.coveragePct)} — ${p.evaluated} of ${p.applicable} applicable checks evaluated · ${p.failed} failed · ${p.warnings} warnings · ${p.passed} passed`
     : `${p.framework} · Not scored — ${p.evaluated} of ${p.applicable} applicable checks could be evaluated`, { size: 8.5, color: statusColor(p.status) });
   if (!p.evaluable) { const n = waUnscoredNotice(p.insufficient); w.box(n.title, n.text, p.insufficient ? '#B45309' : C.accent); }
   if (p.strengths.length) { w.h3('What the design does well'); w.bullets(p.strengths, { size: 9 }); }
@@ -90,8 +91,9 @@ export async function renderWaReportPdf(report: AssessmentReport): Promise<Buffe
   w.h1('1', 'Executive Summary');
   w.p(`Overall Well-Architected score ${scoreText(report.executive.overall.score)} (${report.executive.overall.rating}), assessment coverage ${pct(report.executive.overall.coverage.coveragePct)}.${strongest && weakest ? ` The strongest evaluated pillar is ${strongest.label} (${scoreText(strongest.score)}); the weakest is ${weakest.label} (${scoreText(weakest.score)}).` : ''}`);
   w.table([
-    { header: 'Pillar', width: 34 }, { header: 'Framework', width: 22 }, { header: 'Status', width: 28, render: (r) => ({ color: statusColor(r[2]) }) }, { header: 'Score', width: 14 }, { header: 'Cov.', width: 11 }, { header: 'Open', width: 9, align: 'center' },
-  ], views.map((v) => [v.label, v.provider.toUpperCase(), v.status, scoreText(v.score), pct(v.coveragePct), String(v.findings.length)]), { size: 8.5 });
+    { header: 'Pillar', width: 30 }, { header: 'Framework', width: 20 }, { header: 'Status', width: 26, render: (r) => ({ color: statusColor(r[2]) }) }, { header: 'Score', width: 22 }, { header: 'Cov.', width: 11 }, { header: 'Open', width: 9, align: 'center' },
+  ], views.map((v) => [v.label, v.provider.toUpperCase(), v.status, pillarScoreText(v.score, v.limitedEvidence, v.evaluatedRules, true), pct(v.coveragePct), String(v.findings.length)]), { size: 8.5 });
+  if (views.some((v) => v.limitedEvidence)) w.p(LIMITED_EVIDENCE_NOTE, { size: 8, color: C.muted });
   w.h3('Open findings by severity');
   w.table(SEVERITIES.map((s) => ({ header: s, width: 20, align: 'center' as const, render: () => ({ color: C.sev[s], bold: true }) })), [SEVERITIES.map((s) => String(counts[s]))]);
   if (report.executive.counts.CRITICAL > 0 || report.executive.counts.HIGH > 0) w.box('Critical or high-severity findings are open', 'See the improvement roadmap for the order in which to address them.', C.fail);

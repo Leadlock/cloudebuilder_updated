@@ -16,10 +16,8 @@ import type { AskModel } from './askModel';
 export const AZURE_METER_SOURCES: Record<string, { service: string }> = {
   azure_redis: { service: 'Redis Cache' },
   azure_cosmos_db: { service: 'Azure Cosmos DB' },
-  azure_nat: { service: 'NAT Gateway' },
   azure_bastion: { service: 'Azure Bastion' },
   azure_app_service: { service: 'Azure App Service' },
-  azure_public_ip: { service: 'Virtual Network' },
   azure_dns: { service: 'Azure DNS' },
   azure_monitor: { service: 'Azure Monitor' },
 };
@@ -29,7 +27,7 @@ export const AI_MATCHED_SOURCE = 'azure-retail-api-ai-matched';
 const MAX_CANDIDATES = 40;
 const MAX_PICKS = 4;
 /** How far the AI-matched total may be from the built-in estimate before it is distrusted. */
-const ANCHOR_FACTOR = 8;
+const ANCHOR_FACTOR = 3;
 
 const DROP = /spot|low priority|dev\/test|devtest|secondary|reservation|\bpreview\b/i;
 

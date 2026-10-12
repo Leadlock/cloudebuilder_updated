@@ -27,6 +27,9 @@ export const AWS_DISCOVERY_ACTIONS: readonly string[] = [
   'cloudwatch:DescribeAlarms',
   // optional features
   'cloudwatch:GetMetricStatistics', 'wellarchitected:ListWorkloads', 'wellarchitected:GetWorkload',
+  // account-level checks for the Well-Architected review (CloudTrail, GuardDuty, root MFA, AWS Config): status reads only
+  'cloudtrail:DescribeTrails', 'cloudtrail:GetTrailStatus', 'guardduty:ListDetectors', 'guardduty:GetDetector',
+  'iam:GetAccountSummary', 'config:DescribeConfigurationRecorders', 'config:DescribeConfigurationRecorderStatus',
 ];
 
 /** The inline policy to attach to the read-only IAM user (or role) CloudCraft connects with. */

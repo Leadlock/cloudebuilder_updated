@@ -107,7 +107,6 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
-      ...(process.env.NODE_ENV === 'development' ? { 'x-user-id': 'dev-user-id' } : {}),
     },
     ...init,
   });

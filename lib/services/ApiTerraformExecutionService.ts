@@ -19,12 +19,8 @@ function parseErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-function authHeaders(user?: { id: string; role?: string }): Record<string, string> {
+function authHeaders(_user?: { id: string; role?: string }): Record<string, string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (user?.id) {
-    headers['x-user-id'] = user.id;
-    if (user.role) headers['x-user-role'] = user.role;
-  }
   return headers;
 }
 
@@ -250,10 +246,6 @@ export class ApiTerraformExecutionService {
     applyRunId?: string | null,
   ): Promise<TerraformApplyStatus> {
     const headers: Record<string, string> = {};
-    if (user?.id) {
-      headers['x-user-id'] = user.id;
-      if (user.role) headers['x-user-role'] = user.role;
-    }
     const res = await fetch(`/api/projects/${projectId}/terraform/apply?jobId=${encodeURIComponent(jobId)}${applyRunId ? `&applyRunId=${encodeURIComponent(applyRunId)}` : ''}`, {
       headers,
       credentials: 'include',

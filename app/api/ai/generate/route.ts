@@ -19,15 +19,16 @@ export async function POST(req: NextRequest) {
     const authHeader = req.headers.get('authorization');
     const bearerToken = authHeader?.toLowerCase().startsWith('bearer ') ? authHeader.substring(7).trim() : null;
     const token = cookieToken || bearerToken;
-    let session = token ? AuthService.getSession(token) : null;
-    const devUserId = req.headers.get('x-user-id');
-
-    if (!session?.user?.id) {
-      if (process.env.NODE_ENV === 'development' || devUserId || process.env.CLOUDCRAFT_ALLOW_LOCAL_SIGNUP === '1') {
-        session = { user: { id: devUserId || 'dev-user-id', email: 'dev@cloudcraft.local', role: 'admin' } as any } as any;
-      } else {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
+    const found = token ? AuthService.getSession(token) : null;
+    // Fail closed: only a real session is accepted. The one exception is `next dev` on a developer's machine (NODE_ENV is never
+    // 'development' in a production build). A request header or an env flag must never stand in for a login.
+    const session = found?.user?.id
+      ? found
+      : process.env.NODE_ENV === 'development'
+        ? { user: { id: 'dev-user-id', email: 'dev@cloudcraft.local', role: 'admin' as const } }
+        : null;
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const rl = await checkRateLimit(`${session.user.id}:ai-generate`, RATE_LIMITS.AI_GENERATE.limit, RATE_LIMITS.AI_GENERATE.windowMs);
@@ -99,9 +100,6 @@ export async function POST(req: NextRequest) {
           : []),
       ...(result.needsReview
         ? [`Review before deploying: the AI's design still has ${result.issues.length} point(s) CloudCraft's checks flag — ${result.issues.slice(0, 4).join('; ')}${result.issues.length > 4 ? '; …' : ''}. Fix them on the canvas (the Security and Validate panels show how) before deploying.`]
-        : []),
-      ...(result.autoRepairs && result.autoRepairs.length > 0
-        ? [`CloudCraft corrected ${result.autoRepairs.length} setting(s) the AI got wrong: ${result.autoRepairs.slice(0, 4).join('; ')}${result.autoRepairs.length > 4 ? '; …' : ''}.`]
         : []),
       ...describeNotices(result.notices),
       ...describeSanitized(result.sanitized),

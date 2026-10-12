@@ -1,7 +1,86 @@
-# Security & Well-Architected Engine Audit (ruleset 2026.09.2)
+# Security & Well-Architected Engine Audit (ruleset 2026.10.3)
 
 This records what was wrong with the assessment engines before this change, and what replaced them. The full per-rule matrix is in
 [RULE_MATRIX.md](./RULE_MATRIX.md).
+
+## 00. Changes in ruleset 2026.10.2: Azure designs that could not work
+
+Found by running the AI generator on five Azure requests and reading what came back. Every design passed every gate, and most could not work
+when deployed, or were not what was asked for.
+
+| Weakness | Change |
+|---|---|
+| Storage, Key Vault, SQL, Redis and Cosmos DB were generated with their public endpoint off, but CloudCraft had no Private Endpoint and the Terraform generator never wrote one, so the application could not reach its own data. The repo's own verified patterns had the same flaw. | New resource `azure_private_endpoint`; Terraform writes the endpoint, one private DNS zone per kind of service and one link per network. Rule `AZ-PE-001` (HIGH) fails a service that is called but has no private path; `AZ-PE-002` checks the endpoint itself. `lib/engines/assessment/privateAccess.ts` is the one table the rule, the Terraform and the AI repair read. A service nothing calls is not flagged. |
+| A request for PostgreSQL or MySQL came back as Azure SQL, and a request for a queue came back with none, both with no notice. The dataset taught this: every Azure relational request was written as "managed SQL". | New resources `azure_postgres`, `azure_mysql` (flexible servers placed in a delegated subnet), `azure_service_bus`, `azure_acr`, `azure_monitor` (Log Analytics + Application Insights), each with Terraform, cost, relationship rules and assessment rules (`AZ-PG-*`, `AZ-MY-*`, `AZ-SB-*`, `AZ-ACR-*`, `AZ-MON-001`). The service-notice check now knows PostgreSQL, MySQL and plain "message queue", and an Application Gateway or Front Door with its WAF switched on counts as the WAF that was asked for. The dataset, knowledge base and patterns were rebuilt so each engine is drawn as asked. |
+| The AI repair now adds a Private Endpoint for each private service, gives a private flexible server a subnet of its own, connects an endpoint the model drew but left floating, and turns a monitor or registry arrow around. | `lib/ai/specRepair.ts` (steps `privateEndpoints`, `flexSubnets`, `reversed`). |
+| A "three-tier" request produced one scale set. Compute had no availability zones. | The Azure three-tier pattern has separate web and API scale sets. VM Scale Sets and Application Gateway have an Availability Zones setting (Terraform `zones`); `AZ-VMSS-011` and `AZ-AGW-011` (LOW) report a tier with none. |
+| Service Bus and Container Registry need the Premium tier for private access (about $677 and $50 a month). | Their private-access rules (`AZ-SB-001`, `AZ-ACR-002`) are LOW recommendations, the generator keeps public access on a lower tier and says so, and cost is estimated from the Retail Prices API list prices read on 2026-10-12. |
+
+### Ruleset 2026.10.3: the gaps left by 2026.10.2, found by running `terraform validate` on the generated code
+
+`scripts/tf-validate-azure.ts` generates Terraform for every verified Azure pattern plus a hand-drawn design that uses every new resource, and runs
+`terraform validate` on each (needs a terraform binary; it downloads the azurerm provider, so it is not part of `npm test`). It found and fixed:
+
+| Weakness | Change |
+|---|---|
+| Network security groups and route tables were created but never associated with their subnets, so a design that showed every subnet protected deployed with none protected. | The generator writes `azurerm_subnet_network_security_group_association` and `azurerm_subnet_route_table_association`. A subnet that hosts an Application Gateway also gets the rule Azure needs to manage the gateway (ports 65200-65535 from `GatewayManager`); without it the gateway fails. Firewall and Bastion subnets take no group (Azure refuses it, or needs its own rules) and the person is told. |
+| A Front Door pointed at an example host name, and its WAF was an Application Gateway policy that was never attached to anything. | The origin is a reference to the connected storage static website, App Service, Functions app or gateway address. A WAF connected to a Front Door is a Front Door firewall policy plus the security policy that attaches it to the endpoint; managed rules exist only on Premium, so Standard gets a rate-limit rule and a warning. |
+| A static website behind Front Door with a firewalled storage account could not be reached. | Storage has a Static Website setting (Terraform `static_website`); the pattern uses it with all networks allowed (a website is public by design) and anonymous blob access off. `AZ-STG-004` does not flag such an account. |
+| App Service `health_check_path` was written outside `site_config`, which Terraform rejects. | Moved inside `site_config`. |
+
+New resources, each with Terraform, cost, relationships, rules and discovery: Azure Firewall (own subnet named `AzureFirewallSubnet`; a route table connected to it
+routes traffic through it; a baseline outbound rule, because a new firewall policy denies everything), Event Hubs, Event Grid (topic only: subscriptions
+need the receiving endpoint and are not generated), API Management (publisher name and email are `REPLACE-WITH-YOUR-*` placeholders), and Container Apps
+(an environment per app; in a subnet it needs a /23 and is checked by `AZ-CA-001`). Private Endpoints now also reach Event Hubs and Event Grid. Discovery reads
+PostgreSQL, MySQL, Service Bus, Container Registry, Log Analytics, Private Endpoints and the five services above with one generic Resource Manager reader, and never fills in a setting the API did not return. The AWS-to-Azure cost comparison maps RDS PostgreSQL and MySQL to the flexible servers, other engines to Azure SQL, and SQS to Service Bus.
+
+Still not covered: Front Door Premium with a Private Link origin (it needs a manual approval that Terraform cannot give); Event Grid subscriptions and role assignments for
+Entra-only access; Logic Apps. Nothing was applied to a real Azure subscription: `terraform validate` proves the code is well formed, not that a deployment succeeds.
+
+## 0. Changes in ruleset 2026.10.1
+
+Found by running the engine on an AI-generated design and comparing every verdict with the real configuration, and by running it on a
+deliberately insecure design to confirm each check fires. The checks and the arithmetic were correct; these were the weaknesses.
+
+| Weakness | Change |
+|---|---|
+| A rule was weighed once **per resource**, so a design with more resources carried more weight per rule: many passing checks hid medium and low failures and larger designs drifted toward "Strong". | A rule now counts **once**, however many resources it is checked on; its weight is shared between them and a failure is proportional (scoring.ts). CRITICAL/HIGH caps are unchanged. |
+| Performance Efficiency, Sustainability and Cost had 1-2 checks each (Azure Performance 1, informational only), so a pillar score rested on almost nothing. | 15 new rules (10 AWS, 5 Azure): CloudFront compression and HTTP version, Auto Scaling scaling policy, RDS Performance Insights, Graviton (EC2, Auto Scaling, RDS), SQS long polling, log retention, App Service HTTP/2 and Always on, Front Door caching, scale set and Application Gateway autoscale. Pillar cards now show **how many different checks** a pillar rests on and flag fewer than 5 as *Limited evidence*. Sustainability (AWS) and Azure Cost and Operational Excellence are **still thin**; the card says so. |
+| `AWS-VPC-003` (VPC DNS) was filed under Operational Excellence, where as a MEDIUM check it carried most of that pillar's weight. | Moved to Reliability (plan the network topology). |
+| No check for load balancer, CDN or web ACL visibility. | `AWS-ELB-005` (ALB access logs), `AWS-CF-003` (CloudFront standard logging), `AWS-WAF-002` (WAF metrics and sampling). The ALB and CloudFront logging settings were added to the resource forms and reach the generated Terraform (the bucket name is validated). Full WAF request logging is still not modelled. |
+| A placeholder certificate ARN (`REPLACE-WITH-YOUR-CERTIFICATE-ID`) read as "a certificate is attached". | Still a PASS, because the AI generator and templates deliberately use it and the deploy gate rejects insufficient data, but the observation now says it is a placeholder. |
+| Live providers for the AWS Well-Architected Tool and Azure Advisor were never called, and the AWS one gave every pillar the same workload-wide score. | Removed, together with the two SDK dependencies only they used. The tab is design-time only. |
+
+All new rules are LOW and manual-only, so none blocks a deployment or changes a design by itself.
+
+### Follow-ups in the same ruleset
+
+| Weakness | Change |
+|---|---|
+| A pillar score that rests on two checks (for example two low-severity findings) read as a "25", as if it were a verdict. | Pillar results now carry `evaluatedRules` (different scored rules, informational ones excluded) and `limitedEvidence` (fewer than 5). The pillar cards show a **Limited** tag and an "indicative score"; the HTML and PDF reports print "(limited)" with a one-line footnote, and the per-pillar text says "indicative: limited evidence, N checks". |
+| A saved review was shown as current even after the rules changed, because the database did not record which ruleset produced it (only canvas edits marked a review stale). | New column `wellArchitectedAssessment.rulesetVersion` (additive migration `add_wa_ruleset_version`). A review from another ruleset, or from before it was recorded, is stale with `staleReason: ruleset`; the review tab re-runs a stale review automatically and says why. |
+| Every "Run Review" was saved but nothing read the history. | `GET /api/projects/:id/well-architected/history` and a **Since the last review** card: score and pillar movement, findings that appeared, findings that were fixed, and a note when the ruleset changed in between. Identical consecutive re-runs collapse into one entry. |
+| The claim that rules read the same settings as the resource forms and the Terraform generator was not enforced. | `__tests__/ruleSchemaConsistency.test.ts` checks, for every rule, that each setting it reads exists in the resource definition, that a default resource never gives "insufficient data", that Auto-Fix patches write real settings, and that each setting changes the generated Terraform. It found Azure Front Door `cachingEnabled` read by a rule but never emitted (fixed). Two known gaps remain, listed in the test with reasons: `aws_ebs.snapshotSchedule` (no Backup/DLM resources) and `aws_s3.loggingEnabled` (needs a target bucket). The list is itself checked, so it cannot hide a new gap or outlive a fixed one. |
+
+### Well-Architected questionnaire
+
+Four of the six pillars rested on one to five automated checks, because a diagram cannot show how a workload is run. The review now has
+a questionnaire of practice questions (`lib/engines/assessment/questionnaire/questions.ts`, 35 questions across all pillars):
+deployment and rollback, on-call, restored backups, tested DR, SSO and MFA, secrets, budget ownership, and so on.
+
+- **An answer is a check.** Each question becomes a rule per framework it belongs to (`WAQ-AWS-REL-01`, `WAQ-AZ-REL-01`), so pillar,
+  severity weight, findings, coverage and reports work unchanged. Yes passes, Partly counts as half a failure, No fails, Not applicable
+  is excluded. A "No" on a HIGH question caps the pillar at 70 like any failing HIGH check.
+- **Unknown is never a pass.** An unanswered question is `NOT_EVALUATED` and "Don't know" is `INSUFFICIENT_DATA`; both only lower coverage.
+- **Opt-in.** Question rules are not in `ALL_RULES`; they join an assessment only when answers are supplied. A project that has not
+  answered anything is assessed exactly as before, and the Security tab, the AI generator's deploy gate and stored scans never see them.
+  After the first answer, unanswered questions count as not evaluated.
+- **Answers belong to the project** (table `wellArchitectedAnswer`, one row per project and question, shared by its environments).
+  `GET/PUT /api/projects/:id/well-architected/questions`; writing needs the owner, admin or member role; the body is validated
+  (known question id, known answer, note up to 500 characters, up to 100 answers per request).
+- **Consistency.** The review, the saved-review staleness check (a review made before the answers last changed is stale, reason
+  `answers`) and the Well-Architected report (HTML, PDF, JSON) all include the answers, so an export says what the tab says.
+- Answering enough questions is what clears a pillar's "Limited evidence" flag.
 
 ## 1. Root causes found in the previous implementation
 
@@ -139,3 +218,20 @@ observations to control areas as input for control owners and auditors.
   500 resources).
 - **Platform.** Template instances get unique IDs. The migration MARKER_MISMATCH was fixed
   without resetting data (see `docs/database/MIGRATION_MARKER_MISMATCH.md`).
+
+### Closing the last coverage gaps
+
+- **VPC flow logs are modelled.** `aws_vpc` has `flowLogsEnabled`, `flowLogsBucket` and `flowLogsTrafficType`; `AWS-VPC-002` (LOW, so it
+  never blocks the AI generator) evaluates them, and the Terraform generator writes an `aws_flow_log` to S3 only for a valid bucket name.
+  ALB access logs and CloudFront logging follow the same pattern.
+- **Account-level controls can be read live.** CloudTrail, GuardDuty, root MFA and AWS Config (`AWS-ACCT-001..004`) are settings of the
+  account, not of the diagram. With a connected AWS account, **Account checks** in the review makes read-only calls
+  (`lib/cloud/accountControls/readAwsAccountControls.ts`) through the discovery role and stores one dated reading per control
+  (`accountControlEvidence`).
+  - A reading counts for 7 days and is marked `LIVE_VERIFIED`; after that, or when no check was made, the control is NOT EVALUATED.
+  - A refused or failed read is `UNAVAILABLE` with the permission to add. It is never a pass and never a fail.
+  - A clear negative in one Region stays a FAIL even if another Region could not be read.
+  - A review made before the account was last checked is stale (reason `account`). Scans and both reports use the same readings.
+  - `GET/POST /api/projects/:id/well-architected/account-controls`; running a check needs the owner, admin or member role. The seven
+    extra read actions are listed in `lib/cloud/discoveryPolicy.ts` and are optional: discovery works without them.
+- **Still not covered:** Azure account-level controls (`AZ-ACCT-*`) stay NOT EVALUATED, and the 30 unanswered questions count until answered.

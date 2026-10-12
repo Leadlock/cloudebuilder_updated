@@ -26,6 +26,7 @@
  *   not duplicate.
  */
 import { PricingClient, GetProductsCommand } from '@aws-sdk/client-pricing';
+import { estimateCloudFront } from '@/lib/engines/cost/cloudfrontEstimate';
 import type { ICloudPricingProvider, NormalizedPrice, PriceQuery } from './types';
 
 // ─── AWS Regional Pricing Multipliers (static fallback only) ─────────────
@@ -175,20 +176,22 @@ const EC2_BASE_HOURLY: Record<string, number> = {
  * 0.015/0.058 vs the now-verified 0.016/0.065 — corrected at the same time).
  */
 const RDS_BASE_HOURLY: Record<string, number> = {
-  'db.t3.micro':    0.017,
-  'db.t3.small':    0.034,
-  'db.t3.medium':   0.068,
-  'db.t3.large':    0.136,
-  'db.t3.xlarge':   0.272,
+  // PostgreSQL Single-AZ, us-east-1. Checked against the AWS price list: db.t3.medium $0.072, db.m5.large $0.178, db.r5.large $0.25.
+  // The other sizes in a family follow by doubling per size step. MySQL/MariaDB run roughly 4-6% lower; Oracle and SQL Server add licence cost.
+  'db.t3.micro':    0.018,
+  'db.t3.small':    0.036,
+  'db.t3.medium':   0.072,
+  'db.t3.large':    0.145,
+  'db.t3.xlarge':   0.290,
   'db.t4g.micro':   0.016,
   'db.t4g.small':   0.029,
   'db.t4g.medium':  0.065,
-  'db.m5.large':    0.240,
-  'db.m5.xlarge':   0.480,
-  'db.m5.2xlarge':  0.960,
-  'db.r5.large':    0.300,
-  'db.r5.xlarge':   0.600,
-  'db.r5.2xlarge':  1.200,
+  'db.m5.large':    0.178,
+  'db.m5.xlarge':   0.356,
+  'db.m5.2xlarge':  0.712,
+  'db.r5.large':    0.250,
+  'db.r5.xlarge':   0.500,
+  'db.r5.2xlarge':  1.000,
   'db.r6g.xlarge':  0.450,
   'db.r6g.2xlarge': 0.899,
   'db.r6g.4xlarge': 1.798,
@@ -487,6 +490,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
           ? `Live on-demand rate from AWS Price List API: $${hourly.toFixed(4)}/hr ($${computeMonthly.toFixed(2)}/mo)`
           : `Compute: $${hourly.toFixed(4)}/hr ($${computeMonthly.toFixed(2)}/mo)`,
         `Storage (${storageGb}GB): $${storageMonthly.toFixed(2)}/mo`,
+        ...(!live && /oracle|sqlserver/i.test(engine) ? [`The built-in rate is the PostgreSQL rate and leaves out ${engine} licence cost`] : []),
         `Region: ${region}`,
       ],
     };
@@ -749,31 +753,25 @@ export class AwsPricingProvider implements ICloudPricingProvider {
     };
   }
 
-  private _getCloudFrontPrice(_config: Record<string, unknown>, region: string, _factor: number): NormalizedPrice {
-    // Not live — see file header. Static reference rate only.
-    // 1TB free tier out per month, then ~$0.085/GB
-    const monthlyPrice = 12.0; // Typical distribution with moderate bandwidth
+  private _getCloudFrontPrice(config: Record<string, unknown>, region: string, _factor: number): NormalizedPrice {
+    // Not live (no price-list credentials, or the list did not answer): the shared built-in estimate, same model as the live lookup above.
+    const e = estimateCloudFront(config);
     return {
       provider: 'aws',
       service: 'AmazonCloudFront',
       resourceType: 'aws_cloudfront',
       region,
-      sku: 'Global Edge Distribution',
+      sku: e.priceClass,
       pricingModel: 'consumption',
       unit: '1 GB Egress',
-      unitPrice: 0.085,
-      monthlyPrice,
+      unitPrice: e.ratePerGb,
+      monthlyPrice: e.monthlyUsd,
       currency: 'USD',
-      description: 'AWS CloudFront CDN Distribution',
+      description: `AWS CloudFront ${e.priceClass}: ${e.dataGb.toLocaleString('en-US')} GB out and ${e.requests.toLocaleString('en-US')} HTTPS requests a month`,
       source: 'aws-static-rate-table',
       retrievedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
-      assumptions: [
-        'Includes AWS Always Free 1TB data transfer out per month',
-        'Includes 10,000,000 HTTP/HTTPS requests/mo free',
-        'Estimate reflects standard production CDN operations',
-        `Region: ${region}`,
-      ],
+      assumptions: [...e.assumptions, `Region: ${region}`],
     };
   }
 

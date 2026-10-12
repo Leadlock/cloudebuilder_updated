@@ -13,6 +13,7 @@ import AIGenerator from '@/components/ai/AIGenerator';
 import AdvisorPanel from '@/components/panels/AdvisorPanel';
 import DisasterRecovery from '@/components/panels/DisasterRecovery';
 import ImportPanel from '@/components/panels/ImportPanel';
+import ContainerTemplatesPanel from '@/components/panels/ContainerTemplatesPanel';
 import CloudAccountsPanel from '@/components/panels/CloudAccountsPanel';
 import VersionHistory from '@/components/panels/VersionHistory';
 import EnvironmentsPanel from '@/components/panels/EnvironmentsPanel';
@@ -21,6 +22,7 @@ import ReviewWorkflowPanel from '@/components/panels/ReviewWorkflowPanel';
 import AnalyzePanel from '@/components/panels/AnalyzePanel';
 import CostComparisonPanel from '@/components/panels/CostComparisonPanel';
 import TeamPanel from '@/components/panels/TeamPanel';
+import PolicyPanel from '@/components/panels/PolicyPanel';
 import LoginModal from '@/components/auth/LoginModal';
 import { useApp } from '@/context/AppContext';
 import { AppView } from '@/types';
@@ -58,10 +60,12 @@ function MainContent() {
     advisor:            <AdvisorPanel />,
     'disaster-recovery':<DisasterRecovery />,
     import:             <ImportPanel />,
+    'container-templates': <ContainerTemplatesPanel />,
     accounts:           <CloudAccountsPanel />,
     history:            <VersionHistory />,
     environments:       <EnvironmentsPanel />,
     review:             <ReviewWorkflowPanel />,
+    policy:             <PolicyPanel />,
     team:               <TeamPanel />,
   };
 

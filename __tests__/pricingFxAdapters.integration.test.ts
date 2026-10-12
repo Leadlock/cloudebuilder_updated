@@ -328,8 +328,29 @@ describe('CostEstimator tiers and currency honesty', () => {
     silence();
     const est = new CostEstimator({ pricing: new CloudProviderPricingService(new MemCache(), [fakeProvider([null])]), currency: { getExchangeRate: async () => null } });
     const r = await est.estimateAsync({ architectureId: 'a', projectId: 'p', resources: [
-      res('asg', 'aws_auto_scaling', 'aws', {}, 'us-east-1'), res('b1', 'aws_cloud_boundary', 'aws', {}, 'us-east-1'), res('b2', 'azure_cloud_boundary', 'azure', {}, 'eastus'),
+      res('nacl', 'aws_nacl', 'aws', {}, 'us-east-1'), res('b1', 'aws_cloud_boundary', 'aws', {}, 'us-east-1'), res('b2', 'azure_cloud_boundary', 'azure', {}, 'eastus'),
     ] }, 'REAL');
     expect(r.items).toEqual([]);
+  });
+
+  test('an Auto Scaling group is priced as its instances, from the live EC2 price when there is one and the built-in table when there is not', async () => {
+    silence();
+    const asg = res('asg', 'aws_auto_scaling', 'aws', { instanceType: 't3.medium', desiredCapacity: 3 }, 'us-east-1');
+    // Built-in table: the live lookup finds nothing, so the group falls back to 3 x the t3.medium table price.
+    const offline = new CostEstimator({ pricing: new CloudProviderPricingService(new MemCache(), [fakeProvider([null])]), currency: { getExchangeRate: async () => null } });
+    const o = await offline.estimateAsync({ architectureId: 'a', projectId: 'p', resources: [asg] }, 'REAL');
+    expect(o.items).toHaveLength(1);
+    expect(o.items[0].monthlyUsd).toBeGreaterThan(90); // 3 x ($30.37 compute + EBS)
+    expect(o.items[0].pricingTier).toBe('FALLBACK_ESTIMATE');
+    // Live price: the group is asked for as an aws_ec2 instance, and the one-instance price is multiplied by the capacity.
+    const asked: string[] = [];
+    const live = new CostEstimator({
+      pricing: { getPrice: async (q) => { asked.push(q.resourceType); return { provider: 'aws', service: 'AmazonEC2', resourceType: 'aws_ec2', region: 'us-east-1', sku: 't3.medium', pricingModel: 'on-demand', unit: '1 Hour', unitPrice: 0.0416, monthlyPrice: 30.37, currency: 'USD', description: 'EC2', source: 'aws-price-list-api', retrievedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 1e6).toISOString(), assumptions: [], tier: 'LIVE' } as never; } },
+      currency: { getExchangeRate: async () => null },
+    });
+    const l = await live.estimateAsync({ architectureId: 'a', projectId: 'p', resources: [asg] }, 'REAL');
+    expect(asked).toEqual(['aws_ec2']);
+    expect(l.items[0].monthlyUsd).toBeCloseTo(30.37 * 3, 2);
+    expect(l.items[0].breakdown[0].label).toMatch(/^3 × t3\.medium/);
   });
 });

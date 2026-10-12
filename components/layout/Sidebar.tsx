@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Box, Code2, ShieldCheck, DollarSign, Rocket,
   ChevronLeft, ChevronRight, Cloud, Plus, Trash2, Wand2, LayoutGrid,
   Sparkles, Brain, History, GitBranch, Shield, Upload, CheckSquare, FileCheck,
-  Activity, Scale, Users, X, GripVertical, Link2, LogOut, User
+  Activity, Scale, Users, Package, X, GripVertical, Link2, LogOut, User, ClipboardList
 } from 'lucide-react';
 import clsx from 'clsx';
 import { AppView, Project } from '@/types';
@@ -27,6 +27,7 @@ const NAV_GROUPS = [
       { id: 'templates',  label: 'Templates',         icon: LayoutGrid,      requiresProject: false },
       { id: 'ai-generator',label: 'AI Generator',    icon: Sparkles,        requiresProject: false },
       { id: 'import',     label: 'Import',            icon: Upload,          requiresProject: false },
+      { id: 'container-templates', label: 'Container Templates', icon: Package, requiresProject: false },
     ],
   },
   {
@@ -55,6 +56,7 @@ const NAV_GROUPS = [
       { id: 'accounts',   label: 'Cloud Accounts',    icon: Link2,           requiresProject: false },
       { id: 'environments', label: 'Environments',   icon: GitBranch,       requiresProject: true },
       { id: 'history',    label: 'History',           icon: History,         requiresProject: true },
+      { id: 'policy',     label: 'Policy',            icon: ClipboardList,   requiresProject: false },
       { id: 'team',       label: 'Team',              icon: Users,           requiresProject: false, adminOnly: true },
     ],
   },

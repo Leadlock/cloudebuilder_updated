@@ -94,7 +94,7 @@ export interface AssessmentReport {
     overview: string;
     security: ScoreResult;
     overall: ScoreResult;
-    wellArchitected: { provider: string; framework: string; pillars: { label: string; status: string; score: number | null; coverage: number | null }[] }[];
+    wellArchitected: { provider: string; framework: string; pillars: { label: string; status: string; score: number | null; coverage: number | null; limited: boolean; checks: number }[] }[];
     soc1: { observed: number; gaps: number; partial: number; notEvaluated: number };
     strengths: string[];
     majorRisks: string[];
@@ -210,7 +210,7 @@ export function buildReport(snap: ReportSnapshotInput, opts: { comparison?: Comp
   const waSummary = a.providers.map((p) => ({
     provider: PROVIDER_LABEL[p] ?? p,
     framework: p === 'aws' ? 'AWS Well-Architected Framework' : 'Azure Well-Architected Framework',
-    pillars: a.pillarResults.filter((r) => r.provider === p).map((r) => ({ label: r.label, status: r.status, score: r.score.score, coverage: r.score.coverage.coveragePct })),
+    pillars: a.pillarResults.filter((r) => r.provider === p).map((r) => ({ label: r.label, status: r.status, score: r.score.score, coverage: r.score.coverage.coveragePct, limited: r.limitedEvidence, checks: r.evaluatedRules })),
   }));
 
   // ── Architecture ──

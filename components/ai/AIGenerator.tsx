@@ -1,8 +1,8 @@
 'use client';
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { calculateCosts } from '@/lib/analysis';
 import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
+import { calculateCosts } from '@/lib/analysis';
 import { rekeyGraph } from '@/lib/domain/instantiateTemplate';
 import {
   CloudProvider,
@@ -16,7 +16,6 @@ import {
 import {
   Sparkles,
   Server,
-  DollarSign,
   ShieldCheck,
   ChevronRight,
   Loader2,
@@ -33,6 +32,7 @@ import {
   Activity,
   Zap,
   Check,
+  DollarSign,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -45,9 +45,9 @@ const EXAMPLE_PROMPTS = [
 ];
 
 function summarizeGraph(nodes: CanvasNode[], edges: CanvasEdge[], prompt: string): AIGeneratorResult {
+  const security = runAssessment({ nodes, edges }).securityScore;
   const costs = calculateCosts(nodes);
   const estimatedCost = Math.round(costs.reduce((acc, c) => acc + c.monthlyCost, 0));
-  const security = runAssessment({ nodes, edges }).securityScore;
   const suggestedResources = Array.from(new Set(nodes.map((n) => n.label || n.resourceType)));
   return {
     nodes,

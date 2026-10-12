@@ -32,18 +32,18 @@ const PATTERNS: PatternDef[] = [
   { id: 'aws-ecs', provider: 'aws', fn: awsEcs, target: 70, dims: ['region', 'scale', 'db', 'cache', 'cdn', 'regulated', 'queue'] },
   { id: 'aws-eks', provider: 'aws', fn: awsEks, target: 60, dims: ['region', 'scale', 'db', 'cache', 'cdn', 'regulated', 'queue'] },
   { id: 'aws-serverless', provider: 'aws', fn: awsServerless, target: 40, dims: ['region', 'scale', 'regulated', 'queue'], fixed: { db: 'nosql', cache: false, cdn: true } },
-  { id: 'azure-three-tier', provider: 'azure', fn: azureThreeTier, target: 70, dims: ['region', 'scale', 'db', 'cache', 'cdn', 'regulated'], fixed: { queue: false } },
-  { id: 'azure-app-service', provider: 'azure', fn: azureAppService, target: 50, dims: ['region', 'scale', 'db', 'cache', 'cdn', 'regulated'], fixed: { queue: false } },
+  { id: 'azure-three-tier', provider: 'azure', fn: azureThreeTier, target: 80, dims: ['region', 'scale', 'db', 'cache', 'cdn', 'regulated', 'queue'] },
+  { id: 'azure-app-service', provider: 'azure', fn: azureAppService, target: 60, dims: ['region', 'scale', 'db', 'cache', 'cdn', 'regulated', 'queue'] },
   { id: 'azure-serverless', provider: 'azure', fn: azureServerless, target: 30, dims: ['region', 'scale', 'cdn', 'regulated'], fixed: { db: 'nosql', cache: false, queue: false } },
-  { id: 'azure-aks', provider: 'azure', fn: azureAks, target: 50, dims: ['region', 'scale', 'db', 'cache', 'cdn', 'regulated'], fixed: { queue: false } },
+  { id: 'azure-aks', provider: 'azure', fn: azureAks, target: 60, dims: ['region', 'scale', 'db', 'cache', 'cdn', 'regulated', 'queue'] },
   { id: 'aws-static-site', provider: 'aws', fn: awsStaticSite, target: 12, dims: ['region', 'scale'], fixed: { db: 'none', cache: false, cdn: true, queue: false } },
   { id: 'aws-event-driven', provider: 'aws', fn: awsEventDriven, target: 12, dims: ['region', 'scale'], fixed: { db: 'nosql', cache: false, cdn: false, queue: false } },
   { id: 'aws-lambda-private-api', provider: 'aws', fn: awsLambdaPrivateApi, target: 12, dims: ['region', 'scale'], fixed: { db: 'postgres', cache: false, cdn: false, queue: false } },
   { id: 'azure-static-site', provider: 'azure', fn: azureStaticSite, target: 6, dims: ['region', 'regulated'], fixed: { db: 'none', cache: false, cdn: true, queue: false } },
-  { id: 'azure-functions-private-api', provider: 'azure', fn: azureFunctionsPrivateApi, target: 3, dims: ['region'], fixed: { db: 'postgres', cache: false, cdn: false, queue: false } },
+  { id: 'azure-functions-private-api', provider: 'azure', fn: azureFunctionsPrivateApi, target: 3, dims: ['region'], fixed: { db: 'sql', cache: false, cdn: false, queue: false } },
   { id: 'aws-queue-worker', provider: 'aws', fn: awsQueueWorker, target: 60, dims: ['region', 'scale', 'db', 'cache', 'cdn', 'regulated'], fixed: { queue: true } },
   { id: 'aws-microservices', provider: 'aws', fn: awsMicroservices, target: 50, dims: ['region', 'scale', 'cache', 'cdn', 'regulated'], fixed: { db: 'postgres', queue: true } },
-  { id: 'azure-gateway-app-service', provider: 'azure', fn: azureGatewayAppService, target: 40, dims: ['region', 'scale', 'db', 'cache', 'regulated'], fixed: { cdn: false, queue: false } },
+  { id: 'azure-gateway-app-service', provider: 'azure', fn: azureGatewayAppService, target: 50, dims: ['region', 'scale', 'db', 'cache', 'regulated', 'queue'], fixed: { cdn: false } },
   { id: 'multi-aws-azure-dr', provider: 'multi', fn: multiAwsAzureDr, target: 40, dims: ['region', 'regionB', 'scale', 'db', 'cache', 'regulated'], fixed: { cdn: false, queue: false } },
   { id: 'multi-active-active', provider: 'multi', fn: multiActiveActive, target: 40, dims: ['region', 'regionB', 'scale', 'db', 'cache', 'regulated'], fixed: { cdn: false, queue: false } },
 ];
@@ -64,14 +64,16 @@ function shuffle<T>(arr: T[], rand: () => number): T[] {
 
 const SCALES: Scale[] = ['small', 'medium', 'large'];
 const DBS: Database[] = ['postgres', 'mysql', 'nosql', 'none'];
-const DBS_NON_AWS: Database[] = ['postgres', 'nosql', 'none'];
+const DBS_AZURE: Database[] = ['postgres', 'mysql', 'sql', 'nosql', 'none'];
+/** A multi-cloud design uses the same engine on both sides, so only the engines both clouds offer. */
+const DBS_MULTI: Database[] = ['postgres', 'mysql', 'nosql', 'none'];
 
 function lattice(p: PatternDef): Requirements[] {
   const awsRegions = AWS_REGIONS.map((r) => r.id);
   const azRegions = AZURE_REGIONS.map((r) => r.id);
   const primary = p.provider === 'azure' ? azRegions : awsRegions;
   const opts: Record<string, unknown[]> = {
-    region: primary, regionB: azRegions, scale: SCALES, db: p.provider === 'aws' ? DBS : DBS_NON_AWS,
+    region: primary, regionB: azRegions, scale: SCALES, db: p.provider === 'aws' ? DBS : p.provider === 'azure' ? DBS_AZURE : DBS_MULTI,
     cache: [true, false], cdn: [true, false], regulated: [false, true], queue: [false, true],
   };
   let combos: Partial<Requirements>[] = [{}];
@@ -90,19 +92,23 @@ const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 /** First candidate that CloudCraft actually rejects — a mutation that leaves the design valid teaches nothing. */
 const firstBroken = (candidates: ArchitectureSpec[]): ArchitectureSpec | null => candidates.find((c) => !evaluateSpec(c).ok) ?? null;
 const byType = (s: ArchitectureSpec, type: string) => s.resources.find((r) => r.type === type);
+/** The relational database of an Azure design, whichever engine it uses. */
+const azureDb = (s: ArchitectureSpec) => byType(s, 'azure_sql') ?? byType(s, 'azure_postgres') ?? byType(s, 'azure_mysql');
 const MUTATIONS: Mutation[] = [
   { id: 'drop-certificate', apply: (s) => { const c = clone(s); const r = byType(c, 'aws_alb'); if (!r?.config?.certificateArn) return null; delete r.config.certificateArn; return c; } },
   { id: 'drop-waf', apply: (s) => { const c = clone(s); const w = c.resources.find((r) => r.id.endsWith('waf-alb')); if (!w) return null; c.resources = c.resources.filter((r) => r !== w); c.connections = c.connections.filter((x) => x.from !== w.id && x.to !== w.id); return c; } },
   { id: 'drop-security-group', apply: (s) => { const c = clone(s); const g = c.resources.find((r) => /(^|-)sg-db$/.test(r.id) || /(^|-)nsg-data$/.test(r.id)); if (!g) return null; c.resources = c.resources.filter((r) => r !== g); c.connections = c.connections.filter((x) => x.from !== g.id && x.to !== g.id); return c; } },
-  { id: 'public-database', apply: (s) => { const c = clone(s); const d = byType(c, 'aws_rds') ?? byType(c, 'azure_sql'); if (!d) return null; d.config = { ...(d.config ?? {}), ...(d.type === 'aws_rds' ? { publiclyAccessible: true } : { publicNetworkAccess: true }) }; return c; } },
+  { id: 'public-database', apply: (s) => { const c = clone(s); const d = byType(c, 'aws_rds') ?? azureDb(c); if (!d) return null; d.config = { ...(d.config ?? {}), ...(d.type === 'aws_rds' ? { publiclyAccessible: true } : { publicNetworkAccess: true }) }; return c; } },
+  // The service has its public endpoint switched off but the design never says how the application reaches it.
+  { id: 'drop-private-endpoint', apply: (s) => { const c = clone(s); const pe = c.resources.find((r) => r.type === 'azure_private_endpoint'); if (!pe) return null; c.resources = c.resources.filter((r) => r !== pe); c.connections = c.connections.filter((x) => x.from !== pe.id && x.to !== pe.id); return c; } },
   { id: 'public-storage', apply: (s) => { const c = clone(s); const d = byType(c, 'azure_storage'); if (!d) return null; d.config = { ...(d.config ?? {}), allowBlobPublicAccess: true, networkDefaultAction: 'Allow' }; return c; } },
   { id: 'unencrypted-database', apply: (s) => { const c = clone(s); const d = byType(c, 'aws_rds'); if (!d) return null; d.config = { ...(d.config ?? {}), storageEncrypted: false }; return c; } },
-  { id: 'single-az', apply: (s) => { const c = clone(s); const d = byType(c, 'aws_rds') ?? byType(c, 'azure_sql'); if (!d) return null; d.config = { ...(d.config ?? {}), ...(d.type === 'aws_rds' ? { multiAz: false } : { zoneRedundant: false }) }; return c; } },
+  { id: 'single-az', apply: (s) => { const c = clone(s); const d = byType(c, 'aws_rds') ?? azureDb(c); if (!d) return null; d.config = { ...(d.config ?? {}), ...(d.type === 'aws_rds' ? { multiAz: false } : d.type === 'azure_sql' ? { zoneRedundant: false } : { highAvailability: 'Disabled' }) }; return c; } },
   { id: 'invalid-setting', apply: (s) => { const c = clone(s); const a = byType(c, 'aws_auto_scaling'); if (!a) return null; a.config = { ...(a.config ?? {}), instanceType: 't3.gigantic' }; return c; } },
   { id: 'unknown-setting', apply: (s) => { const c = clone(s); const a = byType(c, 'aws_alb') ?? byType(c, 'azure_app_gateway'); if (!a) return null; a.config = { ...(a.config ?? {}), highAvailability: true }; return c; } },
-  { id: 'reversed-connection', apply: (s) => { const c = clone(s); const i = c.connections.findIndex((x) => /rds$|sql$|cache$|redis$|cosmos$|ddb$/.test(x.to)); if (i < 0) return null; const x = c.connections[i]; c.connections[i] = { ...x, from: x.to, to: x.from }; return c; } },
+  { id: 'reversed-connection', apply: (s) => { const c = clone(s); const i = c.connections.findIndex((x) => /rds$|sql$|cache$|redis$|cosmos$|ddb$|postgres$|mysql$|bus$/.test(x.to)); if (i < 0) return null; const x = c.connections[i]; c.connections[i] = { ...x, from: x.to, to: x.from }; return c; } },
   { id: 'orphan-resource', apply: (s) => { const c = clone(s); const a = c.resources.find((r) => /assets$|storage$/.test(r.id)); if (!a) return null; c.connections = c.connections.filter((x) => x.from !== a.id && x.to !== a.id); return c; } },
-  { id: 'wrong-parent', apply: (s) => { const c = clone(s); const a = c.resources.find((r) => r.type === 'aws_rds' || r.type === 'azure_sql'); const pub = c.resources.find((r) => /(^|-)public-a$|(^|-)web-subnet$/.test(r.id)); if (!a || !pub || a.parent === pub.id) return null; a.parent = pub.id; return c; } },
+  { id: 'wrong-parent', apply: (s) => { const c = clone(s); const a = c.resources.find((r) => r.type === 'aws_rds' || r.type === 'azure_sql' || r.type === 'azure_postgres' || r.type === 'azure_mysql'); const pub = c.resources.find((r) => /(^|-)public-a$|(^|-)web-subnet$/.test(r.id)); if (!a || !pub || a.parent === pub.id) return null; a.parent = pub.id; return c; } },
   { id: 'overlapping-cidr', apply: (s) => { const c = clone(s); const subs = c.resources.filter((r) => r.type === 'aws_subnet'); if (subs.length < 2) return null; subs[1].config = { ...(subs[1].config ?? {}), cidrBlock: String(subs[0].config?.cidrBlock ?? '10.0.0.0/24') }; return c; } },
   { id: 'dangling-connection', apply: (s) => { const c = clone(s); if (!c.connections.length) return null; c.connections.push({ from: c.connections[0].from, to: 'does-not-exist' }); return c; } },
 
@@ -146,7 +152,7 @@ const MUTATIONS: Mutation[] = [
   } },
   // A connection drawn from a subnet (a container) to a data store.
   { id: 'subnet-connection', apply: (s) => {
-    const data = s.resources.find((x) => x.type === 'aws_rds' || x.type === 'azure_sql');
+    const data = s.resources.find((x) => x.type === 'aws_rds' || x.type === 'azure_sql' || x.type === 'azure_postgres' || x.type === 'azure_mysql');
     if (!data) return null;
     return firstBroken(s.resources.filter((x) => x.type.endsWith('subnet')).map((sub) => { const c = clone(s); c.connections.push({ from: sub.id, to: data.id }); return c; }));
   } },

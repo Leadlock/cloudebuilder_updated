@@ -17,14 +17,10 @@ export class ApiReviewService {
   static async getReviews(
     projectId: string,
     environment?: string,
-    user?: { id: string; role?: string }
+    _user?: { id: string; role?: string }
   ): Promise<{ reviews: ArchitectureReview[]; latest: ArchitectureReview | null }> {
     const url = `/api/projects/${projectId}/reviews${environment ? `?env=${environment}` : ''}`;
     const headers: Record<string, string> = {};
-    if (user?.id) {
-      headers['x-user-id'] = user.id;
-      if (user.role) headers['x-user-role'] = user.role;
-    }
 
     const res = await fetch(url, {
       headers,
@@ -44,13 +40,9 @@ export class ApiReviewService {
     nodes: CanvasNode[],
     edges: CanvasEdge[],
     summary: { nodeCount: number; edgeCount: number; criticalIssuesCount: number; estimatedMonthlyCost: number },
-    user?: { id: string; role?: string }
+    _user?: { id: string; role?: string }
   ): Promise<ArchitectureReview> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (user?.id) {
-      headers['x-user-id'] = user.id;
-      if (user.role) headers['x-user-role'] = user.role;
-    }
 
     const res = await fetch(`/api/projects/${projectId}/reviews`, {
       method: 'POST',
@@ -70,13 +62,9 @@ export class ApiReviewService {
     projectId: string,
     reviewId: string,
     comments?: string,
-    user?: { id: string; role?: string }
+    _user?: { id: string; role?: string }
   ): Promise<ArchitectureReview> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (user?.id) {
-      headers['x-user-id'] = user.id;
-      if (user.role) headers['x-user-role'] = user.role;
-    }
 
     const res = await fetch(`/api/projects/${projectId}/reviews/${reviewId}/approve`, {
       method: 'POST',
@@ -96,13 +84,9 @@ export class ApiReviewService {
     projectId: string,
     reviewId: string,
     comments: string,
-    user?: { id: string; role?: string }
+    _user?: { id: string; role?: string }
   ): Promise<ArchitectureReview> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (user?.id) {
-      headers['x-user-id'] = user.id;
-      if (user.role) headers['x-user-role'] = user.role;
-    }
 
     const res = await fetch(`/api/projects/${projectId}/reviews/${reviewId}/reject`, {
       method: 'POST',
@@ -122,13 +106,9 @@ export class ApiReviewService {
     projectId: string,
     reviewId: string,
     comments: string,
-    user?: { id: string; role?: string }
+    _user?: { id: string; role?: string }
   ): Promise<ArchitectureReview> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (user?.id) {
-      headers['x-user-id'] = user.id;
-      if (user.role) headers['x-user-role'] = user.role;
-    }
 
     const res = await fetch(`/api/projects/${projectId}/reviews/${reviewId}/request-changes`, {
       method: 'POST',
@@ -149,13 +129,9 @@ export class ApiReviewService {
     environment: string,
     nodes: CanvasNode[],
     edges: CanvasEdge[],
-    user?: { id: string; role?: string }
+    _user?: { id: string; role?: string }
   ): Promise<DeploymentRecord> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (user?.id) {
-      headers['x-user-id'] = user.id;
-      if (user.role) headers['x-user-role'] = user.role;
-    }
 
     const res = await fetch(`/api/projects/${projectId}/deploy`, {
       method: 'POST',
@@ -174,14 +150,10 @@ export class ApiReviewService {
   static async getDeployments(
     projectId: string,
     environment?: string,
-    user?: { id: string; role?: string }
+    _user?: { id: string; role?: string }
   ): Promise<DeploymentRecord[]> {
     const url = `/api/projects/${projectId}/deployments${environment ? `?env=${environment}` : ''}`;
     const headers: Record<string, string> = {};
-    if (user?.id) {
-      headers['x-user-id'] = user.id;
-      if (user.role) headers['x-user-role'] = user.role;
-    }
 
     const res = await fetch(url, { headers, credentials: 'include' });
     if (!res.ok) {
