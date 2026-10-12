@@ -7,7 +7,7 @@ describe('unsupported services', () => {
   it('flags every service CloudCraft cannot model, however the request is worded', () => {
     expect(names('Design a real-time data pipeline on AWS using Kinesis, Glue and Redshift.')).toEqual(['Kinesis', 'Glue', 'Redshift']);
     expect(names('Build an API Gateway and Step Functions workflow on AWS')).toEqual(['API Gateway', 'Step Functions']);
-    expect(names('azure event hubs + logic apps + api management')).toEqual(['Event Hubs', 'Logic Apps', 'API Management']);
+    expect(names('azure logic apps + stream analytics + cognitive search')).toEqual(['Logic Apps']);
     expect(names('we use apigateway with cognito')).toEqual(['API Gateway', 'Cognito']);
   });
 

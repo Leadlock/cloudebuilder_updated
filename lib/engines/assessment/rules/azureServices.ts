@@ -12,7 +12,7 @@ import { PRIVATE_LINK_TARGETS, needsPrivateEndpoint } from '../privateAccess';
 const V = '1.0.0';
 const TF = 'TF-AZURERM';
 /** Resource types that call a service over the network: the ones that need a path to it. */
-const CALLERS = new Set(['azure_vm', 'azure_vmss', 'azure_functions', 'azure_app_service', 'azure_aks']);
+const CALLERS = new Set(['azure_vm', 'azure_vmss', 'azure_functions', 'azure_app_service', 'azure_aks', 'azure_container_apps']);
 const common = { version: V, lastReviewed: REVIEWED, provider: 'azure' as const };
 const WA = {
   sec: (practice: string) => ({ pillar: 'security' as const, practice }),
@@ -343,6 +343,244 @@ export const azureServiceRules: RuleDefinition[] = [
   }),
 
   // ════════════════════════════════════════════════════════════════════════
+  // Azure Firewall
+  // ════════════════════════════════════════════════════════════════════════
+  rule({
+    ...common,
+    id: 'AZ-FW-001', service: 'Azure Firewall', scope: 'resource', resourceTypes: ['azure_firewall'],
+    domain: 'SECURITY', category: 'Threat detection', severity: 'MEDIUM', priority: 'REQUIRED_REMEDIATION',
+    title: 'Azure Firewall threat intelligence is off',
+    description: 'The firewall does not alert on or block traffic to and from known malicious addresses and domains.',
+    rationale: 'MCSB NS-1 / LT-1: threat intelligence filtering is a built-in control of the firewall and costs nothing extra. "Alert" is the default; "Alert and deny" blocks as well.',
+    risk: 'Traffic with known malicious hosts passes unnoticed.', impact: 'Undetected compromise and data exfiltration.',
+    wellArchitected: WA.sec('SE:06 — Network controls'),
+    references: ['MCSB-NS-2', 'AZ-WA-security', TF],
+    soc1: ['SOC1-OP-02'],
+    remediation: { recommendation: 'Set threat intelligence to "Alert" (or "Alert and deny").', manualSteps: ['Set the threat intelligence mode on the firewall policy.'], terraform: 'azurerm_firewall_policy.threat_intelligence_mode = "Alert"' },
+    autoFix: {
+      safety: 'REVIEW_REQUIRED', safetyReason: 'Alerts add log volume; "Alert and deny" can block legitimate traffic to a wrongly listed address.',
+      description: 'Turn threat intelligence on in alert mode.', patch: () => ({ threatIntelMode: 'Alert' }),
+      architectureImpact: 'Matches against Microsoft threat intelligence are logged.', costImpact: 'NONE', terraformExpect: /threat_intelligence_mode\s*=\s*"Alert"/,
+    },
+    evaluate: configEvaluator(['threatIntelMode'], { threatIntelMode: 'Alert or Deny' }, (c) => c.threatIntelMode === 'Off'
+      ? { status: 'FAIL', observation: 'Threat intelligence is off.' }
+      : { status: 'PASS', observation: `Threat intelligence mode is ${String(c.threatIntelMode)}.` }),
+  }),
+  rule({
+    ...common,
+    id: 'AZ-FW-010', service: 'Azure Firewall', scope: 'resource', resourceTypes: ['azure_firewall'],
+    domain: 'RELIABILITY', category: 'Resilience', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'Azure Firewall is not spread across availability zones',
+    description: 'A firewall deployed without zones is lost with its single zone, and every route through it fails.',
+    rationale: 'Azure Well-Architected Reliability (RE:05). Zones add no charge for the firewall itself. Zones are fixed when the firewall is created.',
+    risk: 'A zone outage cuts all traffic that is routed through the firewall.', impact: 'Outage during zone incidents.',
+    wellArchitected: WA.rel('RE:05 — Redundancy'),
+    references: ['AZ-WA-reliability', TF],
+    soc1: ['SOC1-OP-04'],
+    remediation: { recommendation: 'Deploy the firewall across zones 1, 2 and 3 in a region that offers them.', manualSteps: ['Confirm the region has availability zones.', 'Set the zones setting.'] },
+    evaluate: configEvaluator(['zones'], { zones: 'Zones 1, 2 and 3' }, (c) => typeof c.zones === 'string' && c.zones !== ''
+      ? { status: 'PASS', observation: `Spread across zones ${String(c.zones).replace(/,/g, ', ')}.` }
+      : { status: 'WARNING', observation: 'No availability zones are set.' }),
+  }),
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Event Hubs and Event Grid
+  // ════════════════════════════════════════════════════════════════════════
+  rule({
+    ...common,
+    id: 'AZ-EH-001', service: 'Azure Event Hubs', scope: 'resource', resourceTypes: ['azure_event_hubs'],
+    domain: 'SECURITY', category: 'Network exposure', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'Event Hubs namespace is reachable from the internet',
+    description: 'Public network access is on. Access still needs credentials.',
+    rationale: 'MCSB NS-2. Private access needs a private endpoint, available on the Standard and Premium tiers, so this is a recommendation and not a defect.',
+    risk: 'Leaked credentials work from anywhere.', impact: 'Unauthorized sending or reading of events.',
+    wellArchitected: WA.sec('SE:06 — Network controls'),
+    references: ['MCSB-NS-2', 'AZ-WA-security', TF],
+    soc1: ['SOC1-LA-01'],
+    remediation: { recommendation: 'Add a Private Endpoint and turn public access off.', manualSteps: ['Add a Private Endpoint.', 'Turn public network access off.'] },
+    autoFix: { safety: 'MANUAL_ONLY', safetyReason: 'Turning public access off without a private endpoint cuts every client off.', description: 'Manual: Private Endpoint.', patch: () => ({}), architectureImpact: 'Private access only.', costImpact: 'POSSIBLE_INCREASE' },
+    evaluate: configEvaluator(['publicNetworkAccess', 'sku'], { publicNetworkAccess: 'Disabled / No' }, (c) => c.publicNetworkAccess === false
+      ? { status: 'PASS', observation: 'Public network access is disabled.' }
+      : { status: 'WARNING', observation: c.sku === 'Basic' ? 'Public network access is enabled; private access needs the Standard or Premium tier (this is the Basic tier).' : 'Public network access is enabled.' }),
+  }),
+  rule({
+    ...common,
+    id: 'AZ-EH-002', service: 'Azure Event Hubs', scope: 'resource', resourceTypes: ['azure_event_hubs'],
+    domain: 'SECURITY', category: 'Identity & access', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'Event Hubs allows shared access keys',
+    description: 'Shared access signature keys can send and receive. They do not expire and are hard to scope.',
+    rationale: 'MCSB IM-1 / IM-3: prefer Microsoft Entra ID (managed identities). LOW because turning keys off needs a role assignment for each application, which CloudCraft does not generate.',
+    risk: 'A leaked key gives full access until it is rotated.', impact: 'Unauthorized access to events.',
+    wellArchitected: WA.sec('SE:05 — Identity and access management'),
+    references: ['AZ-WA-security', TF],
+    soc1: ['SOC1-LA-02'],
+    remediation: { recommendation: 'Disable shared access keys and give each application a managed identity with the Azure Event Hubs Data Sender / Receiver role.', manualSteps: ['Assign data roles to the applications\' managed identities.', 'Disable shared access keys.'], terraform: 'azurerm_eventhub_namespace.local_authentication_enabled = false' },
+    autoFix: {
+      safety: 'REVIEW_REQUIRED', safetyReason: 'Any client using a connection string stops working until it uses Entra ID.',
+      description: 'Disable shared access keys.', patch: () => ({ localAuthEnabled: false }), architectureImpact: 'Only Entra ID authentication is accepted.', costImpact: 'NONE', terraformExpect: /local_authentication_enabled\s*=\s*false/,
+    },
+    evaluate: configEvaluator(['localAuthEnabled'], { localAuthEnabled: 'Disabled / No' }, (c) => c.localAuthEnabled === false
+      ? { status: 'PASS', observation: 'Shared access keys are disabled.' }
+      : { status: 'WARNING', observation: 'Shared access keys are allowed.' }),
+  }),
+  rule({
+    ...common,
+    id: 'AZ-EH-003', service: 'Azure Event Hubs', scope: 'resource', resourceTypes: ['azure_event_hubs'],
+    domain: 'SECURITY', category: 'Encryption in transit', severity: 'MEDIUM', priority: 'REQUIRED_REMEDIATION',
+    title: 'Event Hubs permits TLS versions older than 1.2',
+    description: 'The minimum TLS version is 1.0 or 1.1.',
+    rationale: 'MCSB DP-3.',
+    risk: 'Clients can negotiate deprecated TLS.', impact: 'Weaker transport encryption.',
+    wellArchitected: WA.sec('SE:07 — Encrypt data'),
+    references: ['MCSB-DP-3', 'AZ-WA-security', TF],
+    soc1: ['SOC1-DP-02'],
+    remediation: { recommendation: 'Set the minimum TLS version to 1.2.', manualSteps: ['Set minimum TLS version to 1.2.'] },
+    autoFix: {
+      safety: 'REVIEW_REQUIRED', safetyReason: 'Legacy clients may not support TLS 1.2.', description: 'Set minimum TLS to 1.2.', patch: () => ({ minimumTlsVersion: '1.2' }),
+      architectureImpact: 'TLS < 1.2 refused.', costImpact: 'NONE', terraformExpect: /minimum_tls_version\s*=\s*"1\.2"/,
+    },
+    evaluate: configEvaluator(['minimumTlsVersion'], { minimumTlsVersion: '1.2' }, (c) => ['1.0', '1.1'].includes(String(c.minimumTlsVersion))
+      ? { status: 'FAIL', observation: `Minimum TLS version is ${String(c.minimumTlsVersion)}.` }
+      : { status: 'PASS', observation: `Minimum TLS version is ${String(c.minimumTlsVersion)}.` }),
+  }),
+  rule({
+    ...common,
+    id: 'AZ-EH-010', service: 'Azure Event Hubs', scope: 'resource', resourceTypes: ['azure_event_hubs'],
+    domain: 'RELIABILITY', category: 'Resilience', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'Event Hubs namespace is not zone-redundant',
+    description: 'A zone failure interrupts event ingestion. The Basic tier does not offer zone redundancy, so it is not evaluated.',
+    rationale: 'Azure Well-Architected Reliability (RE:05). Zone redundancy is chosen when the namespace is created, in regions that offer zones.',
+    risk: 'A zone outage interrupts the event pipeline.', impact: 'Outage during zone incidents.',
+    wellArchitected: WA.rel('RE:05 — Redundancy'),
+    references: ['AZ-WA-reliability', TF],
+    soc1: ['SOC1-OP-04'],
+    remediation: { recommendation: 'Enable zone redundancy on the namespace.', manualSteps: ['Confirm the region has availability zones.', 'Enable zone redundancy.'] },
+    autoFix: {
+      safety: 'REVIEW_REQUIRED', safetyReason: 'Only available in regions with availability zones and fixed when the namespace is created.', description: 'Enable zone redundancy.', patch: () => ({ zoneRedundant: true }),
+      architectureImpact: 'The namespace is spread across zones.', costImpact: 'NONE', terraformExpect: /zone_redundant\s*=\s*true/,
+    },
+    evaluate: configEvaluator(['sku', 'zoneRedundant'], {}, (c) => c.sku === 'Basic'
+      ? { status: 'NOT_APPLICABLE', observation: 'The Basic tier does not offer zone redundancy.' }
+      : c.zoneRedundant === true ? { status: 'PASS', observation: 'Zone redundancy is enabled.' } : { status: 'WARNING', observation: 'Zone redundancy is disabled.' }),
+  }),
+  rule({
+    ...common,
+    id: 'AZ-EG-001', service: 'Azure Event Grid', scope: 'resource', resourceTypes: ['azure_event_grid'],
+    domain: 'SECURITY', category: 'Network exposure', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'Event Grid topic is reachable from the internet',
+    description: 'Public network access is on. Publishing still needs a key or Entra ID token.',
+    rationale: 'MCSB NS-2. A private endpoint costs about $7 a month, so this is a recommendation for sensitive topics.',
+    risk: 'Leaked keys work from anywhere.', impact: 'Unauthorized publishing of events.',
+    wellArchitected: WA.sec('SE:06 — Network controls'),
+    references: ['MCSB-NS-2', 'AZ-WA-security', TF],
+    soc1: ['SOC1-LA-01'],
+    remediation: { recommendation: 'Add a Private Endpoint and turn public access off.', manualSteps: ['Add a Private Endpoint.', 'Turn public network access off.'] },
+    autoFix: { safety: 'MANUAL_ONLY', safetyReason: 'Turning public access off without a private endpoint cuts every publisher off.', description: 'Manual: Private Endpoint.', patch: () => ({}), architectureImpact: 'Private access only.', costImpact: 'POSSIBLE_INCREASE' },
+    evaluate: configEvaluator(['publicNetworkAccess'], { publicNetworkAccess: 'Disabled / No' }, (c) => c.publicNetworkAccess === false
+      ? { status: 'PASS', observation: 'Public network access is disabled.' }
+      : { status: 'WARNING', observation: 'Public network access is enabled.' }),
+  }),
+  rule({
+    ...common,
+    id: 'AZ-EG-002', service: 'Azure Event Grid', scope: 'resource', resourceTypes: ['azure_event_grid'],
+    domain: 'SECURITY', category: 'Identity & access', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'Event Grid topic allows access keys',
+    description: 'Access keys can publish to the topic. They do not expire and are hard to scope.',
+    rationale: 'MCSB IM-1 / IM-3: prefer Microsoft Entra ID. LOW because turning keys off needs a role assignment for each publisher, which CloudCraft does not generate.',
+    risk: 'A leaked key lets anyone publish events.', impact: 'Unauthorized events trigger downstream work.',
+    wellArchitected: WA.sec('SE:05 — Identity and access management'),
+    references: ['AZ-WA-security', TF],
+    soc1: ['SOC1-LA-02'],
+    remediation: { recommendation: 'Disable access keys and give publishers the Event Grid Data Sender role.', manualSteps: ['Assign data roles.', 'Disable access keys.'], terraform: 'azurerm_eventgrid_topic.local_auth_enabled = false' },
+    autoFix: {
+      safety: 'REVIEW_REQUIRED', safetyReason: 'Any publisher using a key stops working until it uses Entra ID.', description: 'Disable access keys.', patch: () => ({ localAuthEnabled: false }),
+      architectureImpact: 'Only Entra ID authentication is accepted.', costImpact: 'NONE', terraformExpect: /local_auth_enabled\s*=\s*false/,
+    },
+    evaluate: configEvaluator(['localAuthEnabled'], { localAuthEnabled: 'Disabled / No' }, (c) => c.localAuthEnabled === false
+      ? { status: 'PASS', observation: 'Access keys are disabled.' }
+      : { status: 'WARNING', observation: 'Access keys are allowed.' }),
+  }),
+
+  // ════════════════════════════════════════════════════════════════════════
+  // API Management and Container Apps
+  // ════════════════════════════════════════════════════════════════════════
+  rule({
+    ...common,
+    id: 'AZ-APIM-001', service: 'Azure API Management', scope: 'resource', resourceTypes: ['azure_api_management'],
+    domain: 'RELIABILITY', category: 'Resilience', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'API Management is on the Developer tier, which has no SLA',
+    description: 'The Developer tier is meant for development and testing: it has no service level agreement and no redundancy.',
+    rationale: 'Azure Well-Architected Reliability. LOW because the tier is a deliberate choice for non-production designs. Basic and above carry an SLA.',
+    risk: 'The API front end can be down with no recourse.', impact: 'Outage with no availability guarantee.',
+    wellArchitected: WA.rel('RE:05 — Redundancy'),
+    references: ['AZ-WA-reliability', TF],
+    soc1: ['SOC1-OP-04'],
+    remediation: { recommendation: 'Use the Basic, Standard or Premium tier (or Consumption) for production.', manualSteps: ['Change the tier.'] },
+    evaluate: configEvaluator(['sku'], { sku: 'Basic or higher' }, (c) => c.sku === 'Developer'
+      ? { status: 'WARNING', observation: 'The Developer tier has no SLA.' }
+      : { status: 'PASS', observation: `The ${String(c.sku)} tier carries an SLA.` }),
+  }),
+  rule({
+    ...common,
+    id: 'AZ-APIM-010', service: 'Azure API Management', scope: 'resource', resourceTypes: ['azure_api_management'],
+    domain: 'RELIABILITY', category: 'Resilience', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'Premium API Management is not spread across availability zones',
+    description: 'Only the Premium tier can use zones; this one does not.',
+    rationale: 'Azure Well-Architected Reliability (RE:05). Other tiers are not evaluated.',
+    risk: 'A zone outage takes the API front end down.', impact: 'Outage during zone incidents.',
+    wellArchitected: WA.rel('RE:05 — Redundancy'),
+    references: ['AZ-WA-reliability', TF],
+    soc1: ['SOC1-OP-04'],
+    remediation: { recommendation: 'Set zones 1, 2 and 3 on the Premium instance.', manualSteps: ['Confirm the region has availability zones.', 'Set the zones setting.'] },
+    evaluate: configEvaluator(['sku', 'zones'], {}, (c) => c.sku !== 'Premium'
+      ? { status: 'NOT_APPLICABLE', observation: `Zones are offered on the Premium tier only (this is the ${String(c.sku)} tier).` }
+      : typeof c.zones === 'string' && c.zones !== '' ? { status: 'PASS', observation: `Spread across zones ${String(c.zones).replace(/,/g, ', ')}.` } : { status: 'WARNING', observation: 'No availability zones are set.' }),
+  }),
+  rule({
+    ...common,
+    id: 'AZ-CA-001', service: 'Azure Container Apps', scope: 'resource', resourceTypes: ['azure_container_apps'],
+    domain: 'RELIABILITY', category: 'Operations', severity: 'MEDIUM', priority: 'REQUIRED_REMEDIATION',
+    title: 'Container App is in a subnet smaller than /23',
+    description: 'A Container Apps environment placed in a subnet needs an address range of /23 or larger (512 addresses).',
+    rationale: 'Azure requires a /23 or larger subnet for the Consumption-only environment type. A smaller subnet makes the deployment fail.',
+    risk: 'The environment cannot be created.', impact: 'Failed deployment.',
+    wellArchitected: WA.rel('RE:03 — Workload architecture'),
+    references: ['AZ-WA-reliability', TF],
+    soc1: ['SOC1-OP-04'],
+    remediation: { recommendation: 'Give the app a subnet of its own with a /23 (or larger) address range.', manualSteps: ['Add a subnet with at least 512 addresses.', 'Place the app in it.'] },
+    autoFix: { safety: 'MANUAL_ONLY', safetyReason: 'Needs a new address range inside the network.', description: 'Manual: a /23 subnet.', patch: () => ({}), architectureImpact: 'The environment can be created.', costImpact: 'NONE' },
+    evaluate: (r, ctx) => {
+      const parent = r.parentId ? ctx.byId.get(r.parentId) : undefined;
+      if (!parent || parent.resourceType !== 'azure_subnet') return { status: 'NOT_APPLICABLE', observation: 'The app is not placed in a subnet, so its environment is not integrated with a network.', evidence: [] };
+      const prefix = String(parent.config['addressPrefix'] ?? '');
+      const bits = /\/(\d{1,2})$/.exec(prefix)?.[1];
+      const evidence = [{ label: 'Subnet range', observed: prefix || 'Not specified', expected: '/23 or larger', basis: 'TOPOLOGY' as const }];
+      if (!bits) return { status: 'INSUFFICIENT_DATA', observation: 'The subnet has no address range.', evidence, requiredData: 'Set the subnet address prefix.' };
+      const holdsOthers = ctx.resources.some((x) => x.parentId === parent.id && x.id !== r.id && x.resourceType !== 'azure_nsg' && x.resourceType !== 'azure_container_apps');
+      if (Number(bits) > 23) return { status: 'FAIL', observation: `The subnet is ${prefix}, smaller than the /23 a Container Apps environment needs.`, evidence };
+      if (holdsOthers) return { status: 'FAIL', observation: 'The subnet also holds other resources, but a Container Apps environment needs a subnet of its own.', evidence };
+      return { status: 'PASS', observation: `The subnet is ${prefix}.`, evidence };
+    },
+  }),
+  rule({
+    ...common,
+    id: 'AZ-CA-002', service: 'Azure Container Apps', scope: 'resource', resourceTypes: ['azure_container_apps'],
+    domain: 'SECURITY', category: 'Network exposure', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
+    title: 'Container App ingress is open to the internet',
+    description: 'The app accepts traffic from the internet directly, without a gateway or firewall in front.',
+    rationale: 'MCSB NS-1: put a WAF (Front Door or Application Gateway) in front of internet-facing apps and keep the app internal. LOW because a public API or site is often intended.',
+    risk: 'The app is exposed to the whole internet without a WAF.', impact: 'Exposure to web attacks and abuse.',
+    wellArchitected: WA.sec('SE:06 — Network controls'),
+    references: ['MCSB-NS-2', 'AZ-WA-security', TF],
+    soc1: ['SOC1-LA-01'],
+    remediation: { recommendation: 'Put the app in a subnet with internal ingress and a Front Door or Application Gateway with a WAF in front.', manualSteps: ['Place the app in a subnet.', 'Turn internet-facing ingress off.', 'Add a WAF in front.'] },
+    autoFix: { safety: 'MANUAL_ONLY', safetyReason: 'Needs a subnet and a gateway first; internal ingress alone makes the app unreachable.', description: 'Manual: internal ingress behind a WAF.', patch: () => ({}), architectureImpact: 'Traffic goes through the gateway.', costImpact: 'POSSIBLE_INCREASE' },
+    evaluate: configEvaluator(['externalIngress'], { externalIngress: 'Disabled / No' }, (c) => c.externalIngress === false
+      ? { status: 'PASS', observation: 'Ingress is internal.' }
+      : { status: 'WARNING', observation: 'Ingress is open to the internet.' }),
+  }),
+
+  // ════════════════════════════════════════════════════════════════════════
   // Availability zones for the compute and gateway tiers
   // ════════════════════════════════════════════════════════════════════════
   ...([
@@ -382,7 +620,7 @@ export const azureServiceRules: RuleDefinition[] = [
     remediation: { recommendation: 'Add an Azure Monitor resource (Log Analytics workspace, with Application Insights for application telemetry) and connect the workloads to it.', manualSteps: ['Add Azure Monitor to the design.', 'Connect compute to it.'] },
     autoFix: { safety: 'MANUAL_ONLY', safetyReason: 'Adds a billable resource.', description: 'Manual: add Azure Monitor.', patch: () => ({}), architectureImpact: 'Telemetry has a destination.', costImpact: 'POSSIBLE_INCREASE' },
     evaluateArchitecture: (ctx) => {
-      const workloads = ctx.ofType('azure_vm', 'azure_vmss', 'azure_app_service', 'azure_functions', 'azure_aks', 'azure_sql', 'azure_postgres', 'azure_mysql', 'azure_cosmos_db');
+      const workloads = ctx.ofType('azure_vm', 'azure_vmss', 'azure_app_service', 'azure_functions', 'azure_aks', 'azure_container_apps', 'azure_sql', 'azure_postgres', 'azure_mysql', 'azure_cosmos_db');
       if (workloads.length === 0) return [{ status: 'NOT_APPLICABLE', observation: 'No Azure compute or database resources.', evidence: [] }];
       const monitors = ctx.ofType('azure_monitor');
       const evidence = [{ label: 'Workloads', observed: String(workloads.length), basis: 'TOPOLOGY' as const }, { label: 'Azure Monitor workspaces', observed: String(monitors.length), basis: 'TOPOLOGY' as const }];

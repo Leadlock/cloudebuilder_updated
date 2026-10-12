@@ -1,8 +1,8 @@
 {
   "seed": 20260929,
   "examples": {
-    "train": 1343,
-    "validation": 154,
+    "train": 1340,
+    "validation": 157,
     "designs": 1002,
     "repairs": 306,
     "adjusts": 189,
@@ -163,13 +163,13 @@
     "unencrypted-database+drop-certificate": 1
   },
   "tokensEstimate": {
-    "train": 3114312,
-    "validation": 376455,
+    "train": 3210239,
+    "validation": 391819,
     "perEpochTrainNote": "Estimated at 4 characters per token; billing uses the real tokenizer.",
-    "systemPrompt": 757
+    "systemPrompt": 831
   },
   "designsWithDeploymentPlaceholders": 537,
-  "catalogTypes": 57,
+  "catalogTypes": 62,
   "generation": {
     "candidatesEvaluated": 836,
     "rejectedByGates": 0,

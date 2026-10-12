@@ -54,6 +54,7 @@ export const SERVICES: ServiceEntry[] = [
   S('Transit Gateway', /\btransit gateway\b/i, ['aws_transit_gateway']), S('SES', /\bses\b|simple email service/i, ['aws_ses']),
   S('AppSync', /\bapp\s?sync\b/i, ['aws_appsync']),  S('Service Bus', /\bservice\s?bus\b/i, ['azure_service_bus']), S('Event Hubs', /\bevent\s?hubs?\b/i, ['azure_event_hubs']),
   S('Event Grid', /\bevent\s?grid\b/i, ['azure_event_grid']), S('Logic Apps', /\blogic\s?apps?\b/i, ['azure_logic_apps'], ['azure_functions']),
+  S('Container Apps', /\bcontainer\s?apps?\b/i, ['azure_container_apps'], ['azure_aks', 'azure_app_service']),
   S('API Management', /\bapi management\b|\bapim\b/i, ['azure_api_management'], ['azure_app_gateway', 'azure_functions']),
   S('Synapse', /\bsynapse\b/i, ['azure_synapse']), S('Data Factory', /\bdata factory\b/i, ['azure_data_factory']),
   S('Databricks', /\bdatabricks\b/i, ['azure_databricks']), S('Azure Container Registry', /\bcontainer registry\b|\bacr\b/i, ['azure_acr']),

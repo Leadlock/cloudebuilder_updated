@@ -74,21 +74,21 @@ export function awsLambdaPrivateApi(r: Requirements): ArchitectureSpec {
 
 // ─── Azure ────────────────────────────────────────────────────────────────────────────
 
-/** Static website: Blob storage origin behind Front Door with a WAF policy. */
+/** Static website: a storage account's static website behind Front Door with a WAF policy (the content is public by design, so the account accepts the network that serves it). */
 export function azureStaticSite(r: Requirements): ArchitectureSpec {
   const region = azureRegionOf(r.region);
   const b = new SpecBuilder();
   const boundary = b.add('azure-cloud', 'azure_cloud_boundary', `Azure — ${region.id}`, undefined, { region: region.id });
   const storage = b.add('storage', 'azure_storage', 'Static Site Storage Account', boundary, {
     name: `${slug(r.app)}site`, sku: r.regulated ? 'Standard_GRS' : 'Standard_ZRS', httpsOnly: true, allowBlobPublicAccess: false,
-    minimumTlsVersion: 'TLS1_2', networkDefaultAction: 'Deny', blobVersioningEnabled: true, blobSoftDeleteRetentionDays: 14,
+    minimumTlsVersion: 'TLS1_2', networkDefaultAction: 'Allow', staticWebsite: true, blobVersioningEnabled: true, blobSoftDeleteRetentionDays: 14,
   });
   const fd = b.add('fd', 'azure_front_door', 'Front Door', boundary, {
     name: `${slug(r.app)}-fd`, sku: r.regulated ? 'Premium_AzureFrontDoor' : 'Standard_AzureFrontDoor', httpsOnly: true, originHostName: `${slug(r.app)}site.blob.core.windows.net`,
   });
   const waf = b.add('fd-waf', 'azure_waf', 'Front Door WAF Policy', boundary, { name: `${slug(r.app)}fdwaf`, mode: 'Prevention' });
   b.connect(waf, fd); b.connect(fd, storage);
-  return b.build(`${cap(r.app)} on Azure — static website`, `Front Door with a WAF policy in Prevention mode serves the site from a Blob storage account that denies direct network access. No servers to manage; deployed in ${region.id} (${r.scale} tier).`);
+  return b.build(`${cap(r.app)} on Azure — static website`, `Front Door with a WAF policy in Prevention mode serves the site from a storage account's static website, with anonymous blob access disabled. Front Door adds caching, HTTPS and the firewall in front of it. No servers to manage; deployed in ${region.id} (${r.scale} tier).`);
 }
 
 /** Functions inside the VNet behind a WAF Application Gateway, with the chosen database on a private subnet. */

@@ -12,7 +12,7 @@ const MAX_MONTHLY_USD: Record<string, number> = {
   aws_cloudwatch: 5_000, aws_waf: 2_000, aws_kms: 500,
   // Azure
   azure_vm: 20_000, azure_vmss: 120_000, azure_sql: 30_000, azure_storage: 60_000, azure_lb: 800, azure_app_gateway: 4_000, azure_nat: 1_000,
-  azure_public_ip: 100, azure_postgres: 60_000, azure_mysql: 60_000, azure_service_bus: 15_000, azure_acr: 500, azure_private_endpoint: 5_000, azure_redis: 30_000, azure_cosmos_db: 60_000, azure_functions: 8_000, azure_aks: 120_000, azure_key_vault: 500,
+  azure_public_ip: 100, azure_postgres: 60_000, azure_mysql: 60_000, azure_service_bus: 15_000, azure_acr: 500, azure_private_endpoint: 5_000, azure_firewall: 20_000, azure_event_hubs: 40_000, azure_event_grid: 10_000, azure_api_management: 60_000, azure_container_apps: 40_000, azure_redis: 30_000, azure_cosmos_db: 60_000, azure_functions: 8_000, azure_aks: 120_000, azure_key_vault: 500,
   azure_bastion: 2_000, azure_front_door: 5_000, azure_waf: 2_000, azure_app_service: 10_000, azure_dns: 1_000, azure_monitor: 5_000,
 };
 const DEFAULT_MAX_MONTHLY_USD = 100_000;

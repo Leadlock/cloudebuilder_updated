@@ -465,7 +465,7 @@ Settings:
 
 ## azure_resource_group — Resource Group
 Provider: azure; category: networking.
-Container. May contain: azure_vnet, azure_storage, azure_sql, azure_key_vault, azure_postgres, azure_mysql, azure_service_bus, azure_acr, azure_monitor.
+Container. May contain: azure_vnet, azure_storage, azure_sql, azure_key_vault, azure_postgres, azure_mysql, azure_service_bus, azure_acr, azure_monitor, azure_event_hubs, azure_event_grid, azure_api_management, azure_container_apps.
 Allowed parent(s): azure_cloud_boundary.
 Settings:
 - name (text); default "my-rg"
@@ -481,7 +481,7 @@ Settings:
 
 ## azure_subnet — Subnet
 Provider: azure; category: networking.
-Container. May contain: azure_vm, azure_vmss, azure_lb, azure_app_gateway, azure_sql, azure_redis, azure_functions, azure_aks, azure_nic, azure_postgres, azure_mysql, azure_private_endpoint.
+Container. May contain: azure_vm, azure_vmss, azure_lb, azure_app_gateway, azure_sql, azure_redis, azure_functions, azure_aks, azure_nic, azure_postgres, azure_mysql, azure_private_endpoint, azure_firewall, azure_container_apps.
 Allowed parent(s): azure_vnet.
 Settings:
 - name (text); default "my-subnet"
@@ -519,6 +519,9 @@ Settings:
 - allowBlobPublicAccess (boolean); default false
 - minimumTlsVersion (select one of [TLS1_0, TLS1_1, TLS1_2]); default "TLS1_2"
 - networkDefaultAction (select one of [Allow, Deny]); default "Allow"
+- staticWebsite (boolean); default false
+- indexDocument (text); default "index.html"
+- errorDocument (text); default "404.html"
 - blobVersioningEnabled (boolean); default false
 - blobSoftDeleteRetentionDays (number range 0–365); default 0
 - tags (keyvalue); default {}
@@ -797,7 +800,7 @@ Settings:
 
 ## azure_cloud_boundary — Azure Cloud Boundary
 Provider: azure; category: networking.
-Container. May contain: azure_resource_group, azure_vnet, azure_storage, azure_sql, azure_key_vault, azure_front_door, azure_waf, azure_postgres, azure_mysql, azure_service_bus, azure_acr, azure_monitor.
+Container. May contain: azure_resource_group, azure_vnet, azure_storage, azure_sql, azure_key_vault, azure_front_door, azure_waf, azure_postgres, azure_mysql, azure_service_bus, azure_acr, azure_monitor, azure_event_hubs, azure_event_grid, azure_api_management, azure_container_apps.
 Top-level container.
 Settings:
 - name (text); default "Microsoft Azure"
@@ -892,4 +895,78 @@ Settings:
 - subresource (select one of [auto, blob, file, queue, table, dfs]); default "auto"
 - privateDns (boolean); default true
 - estimatedDataGbPerMonth (number range 0–1000000); default 100
+- tags (keyvalue); default {}
+
+## azure_firewall — Azure Firewall
+Provider: azure; category: security.
+Allowed parent(s): azure_subnet.
+Assessment rules that check this type: AZ-FW-001 (medium), AZ-FW-010 (low). Satisfy them in the design instead of leaving them to fail.
+Settings:
+- name (text); default "my-firewall"
+- sku (select one of [Standard, Premium]); default "Standard"
+- threatIntelMode (select one of [Off, Alert, Deny]); default "Alert"
+- dnsProxy (boolean); default false
+- zones (select one of [, 1,2, 1,2,3]); default ""
+- estimatedDataGbPerMonth (number range 0–10000000); default 100
+- tags (keyvalue); default {}
+
+## azure_event_hubs — Event Hubs
+Provider: azure; category: messaging.
+Allowed parent(s): azure_resource_group, azure_cloud_boundary.
+Assessment rules that check this type: AZ-PE-001 (high), AZ-EH-001 (low), AZ-EH-002 (low), AZ-EH-003 (medium), AZ-EH-010 (low). Satisfy them in the design instead of leaving them to fail.
+Settings:
+- name (text); default "my-eventhubs"
+- sku (select one of [Basic, Standard, Premium]); default "Standard"
+- capacity (number range 1–20); default 1
+- hubNames (text); default "events"
+- partitionCount (number range 1–32); default 2
+- retentionDays (number range 1–90); default 1
+- zoneRedundant (boolean); default false
+- publicNetworkAccess (boolean); default true
+- localAuthEnabled (boolean); default true
+- minimumTlsVersion (select one of [1.0, 1.1, 1.2]); default "1.2"
+- estimatedMillionEventsPerMonth (number range 0–10000000); default 10
+- tags (keyvalue); default {}
+
+## azure_event_grid — Event Grid
+Provider: azure; category: messaging.
+Allowed parent(s): azure_resource_group, azure_cloud_boundary.
+Assessment rules that check this type: AZ-PE-001 (high), AZ-EG-001 (low), AZ-EG-002 (low). Satisfy them in the design instead of leaving them to fail.
+Settings:
+- name (text); default "my-topic"
+- inputSchema (select one of [EventGridSchema, CloudEventSchemaV1_0]); default "EventGridSchema"
+- publicNetworkAccess (boolean); default true
+- localAuthEnabled (boolean); default true
+- estimatedMillionOpsPerMonth (number range 0–10000000); default 1
+- tags (keyvalue); default {}
+
+## azure_api_management — API Management
+Provider: azure; category: networking.
+Allowed parent(s): azure_resource_group, azure_cloud_boundary.
+Assessment rules that check this type: AZ-APIM-001 (low), AZ-APIM-010 (low). Satisfy them in the design instead of leaving them to fail.
+Settings:
+- name (text); default "my-apim"
+- sku (select one of [Consumption, Developer, Basic, Standard, Premium]); default "Developer"
+- capacity (number range 1–12); default 1
+- zones (select one of [, 1,2, 1,2,3]); default ""
+- publisherName (text); default "REPLACE-WITH-YOUR-ORGANIZATION"
+- publisherEmail (text); default "REPLACE-WITH-YOUR-EMAIL"
+- estimatedMillionCallsPerMonth (number range 0–10000000); default 1
+- tags (keyvalue); default {}
+
+## azure_container_apps — Container Apps
+Provider: azure; category: compute.
+Allowed parent(s): azure_resource_group, azure_subnet, azure_cloud_boundary.
+Assessment rules that check this type: AZ-CA-001 (medium), AZ-CA-002 (low). Satisfy them in the design instead of leaving them to fail.
+Settings:
+- name (text); default "my-container-app"
+- image (text); default "REPLACE-WITH-YOUR-CONTAINER-IMAGE"
+- cpu (select one of [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]); default "0.5"
+- minReplicas (number range 0–30); default 1
+- maxReplicas (number range 1–300); default 5
+- targetPort (number range 1–65535); default 80
+- externalIngress (boolean); default true
+- zoneRedundant (boolean); default false
+- estimatedMillionRequestsPerMonth (number range 0–10000000); default 1
+- estimatedActivePercent (number range 0–100); default 25
 - tags (keyvalue); default {}

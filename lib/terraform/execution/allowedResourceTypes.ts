@@ -32,7 +32,7 @@ export const ALLOWED_TERRAFORM_RESOURCE_TYPES: ReadonlySet<string> = new Set([
   'azurerm_subnet_nat_gateway_association', 'azurerm_virtual_network', 'azurerm_web_application_firewall_policy',
   'azurerm_windows_function_app', 'azurerm_windows_virtual_machine', 'azurerm_windows_virtual_machine_scale_set',
   'azurerm_windows_web_app',
-  'azurerm_application_insights', 'azurerm_container_registry', 'azurerm_log_analytics_workspace', 'azurerm_mysql_flexible_database',
+  'azurerm_api_management', 'azurerm_application_insights', 'azurerm_container_app', 'azurerm_container_app_environment', 'azurerm_eventgrid_topic', 'azurerm_eventhub', 'azurerm_eventhub_namespace', 'azurerm_firewall', 'azurerm_firewall_policy', 'azurerm_firewall_policy_rule_collection_group', 'azurerm_network_security_rule', 'azurerm_subnet_network_security_group_association', 'azurerm_subnet_route_table_association', 'azurerm_cdn_frontdoor_firewall_policy', 'azurerm_cdn_frontdoor_security_policy', 'azurerm_container_registry', 'azurerm_log_analytics_workspace', 'azurerm_mysql_flexible_database',
   'azurerm_mysql_flexible_server', 'azurerm_mysql_flexible_server_configuration', 'azurerm_mysql_flexible_server_firewall_rule',
   'azurerm_postgresql_flexible_server', 'azurerm_postgresql_flexible_server_configuration', 'azurerm_postgresql_flexible_server_database',
   'azurerm_postgresql_flexible_server_firewall_rule', 'azurerm_private_dns_zone', 'azurerm_private_dns_zone_virtual_network_link',

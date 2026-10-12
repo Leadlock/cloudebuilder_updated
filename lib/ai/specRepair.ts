@@ -28,8 +28,8 @@ interface SConn { from?: unknown; to?: unknown }
 interface Spec { resources?: SRes[]; connections?: SConn[]; [k: string]: unknown }
 
 const CERT_PLACEHOLDER = (region: string) => `arn:aws:acm:${region}:123456789012:certificate/REPLACE-WITH-YOUR-CERTIFICATE-ID`;
-const COMPUTE = new Set(['aws_auto_scaling', 'aws_ec2', 'aws_ecs', 'aws_lambda', 'azure_app_service', 'azure_functions', 'azure_vmss', 'azure_vm', 'azure_aks']);
-const DATA = new Set(['aws_rds', 'aws_elasticache', 'aws_dynamodb', 'aws_s3', 'azure_sql', 'azure_cosmos_db', 'azure_redis', 'azure_storage', 'azure_key_vault', 'azure_postgres', 'azure_mysql', 'azure_service_bus', 'azure_acr', 'azure_monitor']);
+const COMPUTE = new Set(['aws_auto_scaling', 'aws_ec2', 'aws_ecs', 'aws_lambda', 'azure_app_service', 'azure_functions', 'azure_vmss', 'azure_vm', 'azure_aks', 'azure_container_apps']);
+const DATA = new Set(['aws_rds', 'aws_elasticache', 'aws_dynamodb', 'aws_s3', 'azure_sql', 'azure_cosmos_db', 'azure_redis', 'azure_storage', 'azure_key_vault', 'azure_postgres', 'azure_mysql', 'azure_service_bus', 'azure_acr', 'azure_monitor', 'azure_event_hubs', 'azure_event_grid']);
 // Network edge pieces that must hang off the entry point: a firewall on the load balancer, the internet gateway to it, NAT to the gateway.
 const EDGE = new Set(['aws_waf', 'aws_igw', 'aws_nat', 'azure_waf']);
 const ENTRY = new Set(['aws_route53', 'aws_cloudfront', 'aws_alb', 'azure_front_door', 'azure_app_gateway', 'azure_lb']);
@@ -219,6 +219,8 @@ function addSubnetNsgs(spec: Spec): number {
   const connections = (spec.connections ??= []);
   let n = 0;
   for (const subnet of resources.filter((r) => r.type === 'azure_subnet')) {
+    // Azure refuses a group on a firewall's subnet and a Bastion subnet needs its own set of rules, so neither gets the standard one.
+    if (resources.some((x) => x.parent === subnet.id && (x.type === 'azure_firewall' || x.type === 'azure_bastion'))) continue;
     const protectedAlready = connections.some((c) => c.to === subnet.id && resources.some((x) => x.id === c.from && x.type === 'azure_nsg'));
     if (protectedAlready) continue;
     const vnet = resources.find((r) => r.id === subnet.parent && r.type === 'azure_vnet');
@@ -236,7 +238,7 @@ function addSubnetNsgs(spec: Spec): number {
 /** Where each kind of resource belongs: the subnet tier it goes in. */
 const TIER: Record<string, 'web' | 'app' | 'data'> = {
   aws_alb: 'web', aws_nat: 'web', azure_app_gateway: 'web', azure_lb: 'web', azure_bastion: 'web',
-  aws_auto_scaling: 'app', aws_ec2: 'app', aws_ecs: 'app', aws_lambda: 'app', azure_vm: 'app', azure_vmss: 'app', azure_functions: 'app', azure_aks: 'app',
+  aws_auto_scaling: 'app', aws_ec2: 'app', aws_ecs: 'app', aws_lambda: 'app', azure_vm: 'app', azure_vmss: 'app', azure_functions: 'app', azure_aks: 'app', azure_container_apps: 'app',
   aws_rds: 'data', aws_elasticache: 'data', azure_sql: 'data', azure_redis: 'data', azure_postgres: 'data', azure_mysql: 'data',
 };
 const TIER_WORDS: Record<'web' | 'app' | 'data', RegExp> = { web: /public|web|gateway/i, app: /app|private|compute|workload/i, data: /data|db|database/i };
@@ -389,7 +391,54 @@ function flipReversedEdges(spec: Spec): number {
   let n = 0;
   for (const c of spec.connections ?? []) {
     const from = byId.get(String(c.from)); const to = byId.get(String(c.to));
-    if (from && to && (from.type === 'azure_monitor' || from.type === 'azure_acr') && COMPUTE.has(String(to.type))) { [c.from, c.to] = [c.to, c.from]; n++; }
+    if (from && to && (from.type === 'azure_monitor' || from.type === 'azure_acr' || from.type === 'azure_event_hubs' && !(to.type === 'azure_functions')) && COMPUTE.has(String(to.type))) { [c.from, c.to] = [c.to, c.from]; n++; }
+  }
+  return n;
+}
+
+/**
+ * Azure Firewall: a firewall is not a caller (a line from it to compute or data says nothing and is removed), a network security group cannot be
+ * attached to its subnet (Azure refuses), and it only does anything when a route table sends traffic through it, so one is added for the workload
+ * subnets (never the firewall's own, a Bastion subnet or an Application Gateway subnet: the management traffic of those must not be rerouted).
+ */
+function wireFirewalls(spec: Spec): number {
+  const resources = spec.resources ?? [];
+  const connections = (spec.connections ??= []);
+  let n = 0;
+  const byId = new Map(resources.map((r) => [sid(r), r]));
+  const firewalls = resources.filter((r) => r.type === 'azure_firewall');
+  if (firewalls.length === 0) return 0;
+  const hostedBy = (subnet: SRes, ...types: string[]) => resources.some((x) => x.parent === subnet.id && types.includes(String(x.type)));
+  const firewallSubnets = new Set(firewalls.map((f) => String(f.parent)));
+
+  const before = connections.length;
+  spec.connections = connections.filter((c) => !(byId.get(String(c.from))?.type === 'azure_firewall' && byId.get(String(c.to))?.type !== 'azure_route_table'));
+  n += before - spec.connections.length;
+
+  const keep: SConn[] = [];
+  for (const c of spec.connections) {
+    const nsg = [c.from, c.to].map((id) => byId.get(String(id))).find((x) => x?.type === 'azure_nsg');
+    const subnet = [c.from, c.to].map((id) => byId.get(String(id))).find((x) => x?.type === 'azure_subnet');
+    if (nsg && subnet && (firewallSubnets.has(sid(subnet)) || hostedBy(subnet, 'azure_bastion'))) { n++; continue; }
+    keep.push(c);
+  }
+  spec.connections = keep;
+  // A group left with no connection by that is removed rather than left floating.
+  spec.resources = resources.filter((r) => !(r.type === 'azure_nsg' && !spec.connections!.some((c) => c.from === r.id || c.to === r.id) && n > 0 && /fw|firewall|bastion/i.test(`${sid(r)} ${String(r.label ?? '')}`)));
+  n += resources.length - spec.resources.length;
+
+  const vnet = (spec.resources ?? []).find((r) => r.type === 'azure_vnet');
+  for (const fw of firewalls) {
+    const routed = (spec.resources ?? []).some((rt) => rt.type === 'azure_route_table' && (spec.connections ?? []).some((c) => (c.from === rt.id && c.to === fw.id) || (c.to === rt.id && c.from === fw.id)));
+    if (routed || !vnet) continue;
+    const workload = (spec.resources ?? []).filter((x) => x.type === 'azure_subnet' && x.parent === vnet.id && !firewallSubnets.has(sid(x)) && !hostedBy(x, 'azure_bastion', 'azure_app_gateway'));
+    if (workload.length === 0) continue;
+    const id = `rt-${sid(fw)}`.slice(0, 63);
+    if ((spec.resources ?? []).some((r) => r.id === id)) continue;
+    spec.resources!.push({ id, type: 'azure_route_table', label: `${String(fw.label ?? sid(fw))} Route Table`, parent: vnet.id, config: {} });
+    spec.connections!.push({ from: id, to: sid(fw) });
+    for (const sn of workload) spec.connections!.push({ from: id, to: sid(sn) });
+    n++;
   }
   return n;
 }
@@ -408,11 +457,11 @@ function resetInvalidChoices(spec: Spec): number {
   return n;
 }
 
-export interface SpecRepairReport { reversed: number; privateEndpoints: number; flexSubnets: number; certificates: number; waf: number; connections: number; addressing: number; gateway: number; secured: number; nsgs: number; placed: number; containerEdges: number; groups: number; choices: number }
+export interface SpecRepairReport { firewalls: number; reversed: number; privateEndpoints: number; flexSubnets: number; certificates: number; waf: number; connections: number; addressing: number; gateway: number; secured: number; nsgs: number; placed: number; containerEdges: number; groups: number; choices: number }
 
 /** Returns the repaired design (a copy) and what was done. Steps that would make the design compile worse are undone. */
 export function repairSpecInput(input: unknown): { value: unknown; report: SpecRepairReport } {
-  const report: SpecRepairReport = { reversed: 0, privateEndpoints: 0, flexSubnets: 0, certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0, placed: 0, containerEdges: 0, groups: 0, choices: 0 };
+  const report: SpecRepairReport = { firewalls: 0, reversed: 0, privateEndpoints: 0, flexSubnets: 0, certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0, placed: 0, containerEdges: 0, groups: 0, choices: 0 };
   if (!input || typeof input !== 'object' || !Array.isArray((input as Spec).resources)) return { value: input, report };
 
   let spec = JSON.parse(JSON.stringify(input)) as Spec;
@@ -432,6 +481,7 @@ export function repairSpecInput(input: unknown): { value: unknown; report: SpecR
   step('flexSubnets', isolateFlexibleServers);
   step('privateEndpoints', addPrivateEndpoints);
   step('groups', attachLooseGroups);
+  step('firewalls', wireFirewalls);
   step('nsgs', addSubnetNsgs);
   step('certificates', addCertificates);
   step('waf', addWaf);
@@ -444,6 +494,7 @@ export function describeSpecRepair(report: SpecRepairReport): string[] {
   if (report.certificates > 0) out.push(`The load balancer had no certificate setting, so a placeholder was added: replace it with your own ACM certificate before deploying.`);
   if (report.waf > 0) out.push(`CloudCraft added a web application firewall in front of the internet-facing load balancer.`);
   if (report.secured > 0) out.push(`${report.secured} database or cache service(s) were left with insecure defaults, so CloudCraft made them private-only with auditing and TLS 1.2, as the verified patterns do.`);
+  if (report.firewalls > 0) out.push(`${report.firewalls} change(s) were made around the Azure Firewall: lines from it to workloads were removed, a network security group was kept off its subnet, and a route table was added to send the workload subnets' traffic through it.`);
   if (report.reversed > 0) out.push(`${report.reversed} connection(s) ran from a monitor or registry to the application, so they were turned around (the application sends telemetry and pulls images).`);
   if (report.privateEndpoints > 0) out.push(`${report.privateEndpoints} service(s) had their public endpoint switched off, so a Private Endpoint was added for each. Without one the application could not reach them.`);
   if (report.flexSubnets > 0) out.push(`${report.flexSubnets} database server(s) were given a subnet of their own, which a private PostgreSQL or MySQL flexible server needs.`);

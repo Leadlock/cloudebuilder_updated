@@ -167,7 +167,7 @@ describe('specRepair', () => {
 
   it('leaves a design that is already fine untouched', () => {
     const { value, report } = repairSpecInput(good);
-    expect(report).toEqual({ reversed: 0, privateEndpoints: 0, flexSubnets: 0, certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0, placed: 0, containerEdges: 0, groups: 0, choices: 0 });
+    expect(report).toEqual({ firewalls: 0, reversed: 0, privateEndpoints: 0, flexSubnets: 0, certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0, placed: 0, containerEdges: 0, groups: 0, choices: 0 });
     expect(value).toEqual(good);
   });
 
@@ -180,8 +180,8 @@ describe('specRepair', () => {
   });
 
   it('describes what it did', () => {
-    expect(describeSpecRepair({ reversed: 1, privateEndpoints: 1, flexSubnets: 1, certificates: 1, waf: 1, connections: 2, addressing: 3, gateway: 1, secured: 2, nsgs: 3, placed: 1, containerEdges: 1, groups: 1, choices: 1 })).toHaveLength(14);
-    expect(describeSpecRepair({ reversed: 0, privateEndpoints: 0, flexSubnets: 0, certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0, placed: 0, containerEdges: 0, groups: 0, choices: 0 })).toEqual([]);
+    expect(describeSpecRepair({ firewalls: 1, reversed: 1, privateEndpoints: 1, flexSubnets: 1, certificates: 1, waf: 1, connections: 2, addressing: 3, gateway: 1, secured: 2, nsgs: 3, placed: 1, containerEdges: 1, groups: 1, choices: 1 })).toHaveLength(15);
+    expect(describeSpecRepair({ firewalls: 0, reversed: 0, privateEndpoints: 0, flexSubnets: 0, certificates: 0, waf: 0, connections: 0, addressing: 0, gateway: 0, secured: 0, nsgs: 0, placed: 0, containerEdges: 0, groups: 0, choices: 0 })).toEqual([]);
   });
 
   it('never makes input that is not a design worse', () => {

@@ -417,6 +417,8 @@ const FAILING: Record<string, [string, Record<string, unknown>]> = {
   'AZ-PG-002': ['azure_postgres', { requireSecureTransport: false }], 'AZ-PG-010': ['azure_postgres', { skuName: 'GP_Standard_D2ds_v5', highAvailability: 'Disabled' }], 'AZ-PG-011': ['azure_postgres', { geoRedundantBackup: false }],
   'AZ-MY-002': ['azure_mysql', { requireSecureTransport: false }], 'AZ-MY-010': ['azure_mysql', { skuName: 'GP_Standard_D2ds_v4', highAvailability: 'Disabled' }], 'AZ-MY-011': ['azure_mysql', { geoRedundantBackup: false }],
   'AZ-SB-002': ['azure_service_bus', { localAuthEnabled: true }], 'AZ-SB-003': ['azure_service_bus', { minimumTlsVersion: '1.0' }], 'AZ-SB-010': ['azure_service_bus', { sku: 'Premium', zoneRedundant: false }],
+  'AZ-FW-001': ['azure_firewall', { threatIntelMode: 'Off' }], 'AZ-EH-002': ['azure_event_hubs', { localAuthEnabled: true }], 'AZ-EH-003': ['azure_event_hubs', { minimumTlsVersion: '1.0' }],
+  'AZ-EH-010': ['azure_event_hubs', { sku: 'Standard', zoneRedundant: false }], 'AZ-EG-002': ['azure_event_grid', { localAuthEnabled: true }],
   'AZ-ACR-001': ['azure_acr', { adminEnabled: true }], 'AZ-ACR-010': ['azure_acr', { sku: 'Premium', zoneRedundant: false }],
   'AZ-SQL-010': ['azure_sql', { tier: 'GeneralPurpose', zoneRedundant: false }], 'AZ-SQL-011': ['azure_sql', { requestedBackupStorageRedundancy: 'Local' }],
   'AZ-COS-001': ['azure_cosmos_db', { publicNetworkAccess: true }], 'AZ-COS-010': ['azure_cosmos_db', { enableAutomaticFailover: false }],

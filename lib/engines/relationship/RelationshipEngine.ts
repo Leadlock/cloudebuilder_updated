@@ -174,8 +174,10 @@ export class RelationshipEngine {
     allNodes: CanvasNode[] = [],
     _allEdges: CanvasEdge[] = []
   ): ConnectionValidationResult {
-    const sType = sourceNode.resourceType;
-    const tType = targetNode.resourceType;
+    // A Container App calls and is called like an App Service as far as these connection rules go.
+    const asAppService = (t: string) => (t === 'azure_container_apps' ? 'azure_app_service' : t);
+    const sType = asAppService(sourceNode.resourceType);
+    const tType = asAppService(targetNode.resourceType);
     const sProvider = sourceNode.provider ?? (sType.startsWith('azure_') ? 'azure' : 'aws');
     const tProvider = targetNode.provider ?? (tType.startsWith('azure_') ? 'azure' : 'aws');
 
@@ -632,8 +634,13 @@ export class RelationshipEngine {
         return { isValid: true, relationshipType: 'TRIGGERS', networkScope: 'internal', protocol: 'Service Bus Trigger', label: 'Queue Trigger' };
       }
 
+      // Valid: Event Hubs / Event Grid -> Functions (event triggers)
+      if ((sType === 'azure_event_hubs' || sType === 'azure_event_grid') && tType === 'azure_functions') {
+        return { isValid: true, relationshipType: 'TRIGGERS', networkScope: 'internal', protocol: sType === 'azure_event_hubs' ? 'Event Hub Trigger' : 'Event Grid Trigger', label: 'Event Trigger' };
+      }
+
       // Invalid: Storage/Database initiating connection to Compute
-      if ((sType === 'azure_sql' || sType === 'azure_storage' || sType === 'azure_redis' || sType === 'azure_postgres' || sType === 'azure_mysql' || sType === 'azure_service_bus' || sType === 'azure_acr') && (tType === 'azure_vm' || tType === 'azure_vmss' || tType === 'azure_functions' || tType === 'azure_app_service' || tType === 'azure_aks')) {
+      if ((sType === 'azure_event_hubs' || sType === 'azure_event_grid' || sType === 'azure_sql' || sType === 'azure_storage' || sType === 'azure_redis' || sType === 'azure_postgres' || sType === 'azure_mysql' || sType === 'azure_service_bus' || sType === 'azure_acr') && (tType === 'azure_vm' || tType === 'azure_vmss' || tType === 'azure_functions' || tType === 'azure_app_service' || tType === 'azure_aks')) {
         return {
           isValid: false,
           relationshipType: 'NETWORK_FLOW',
@@ -781,6 +788,27 @@ export class RelationshipEngine {
       // Valid: compute -> Service Bus (AMQP over TLS)
       if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_service_bus') {
         return { isValid: true, relationshipType: 'CONNECTS_TO', networkScope: 'private', protocol: 'AMQP over TLS', port: 5671, label: 'Service Bus / 5671' };
+      }
+
+      // Valid: compute -> Event Hubs (AMQP over TLS) and Event Grid (publishing over HTTPS)
+      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_event_hubs') {
+        return { isValid: true, relationshipType: 'CONNECTS_TO', networkScope: 'private', protocol: 'AMQP over TLS', port: 5671, label: 'Event Hubs / 5671' };
+      }
+      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_event_grid') {
+        return { isValid: true, relationshipType: 'WRITES_TO', networkScope: 'private', protocol: 'HTTPS', port: 443, label: 'Publish events / 443' };
+      }
+
+      // Valid: Front Door / Application Gateway -> API Management, and API Management -> the services it fronts
+      if ((sType === 'azure_front_door' || sType === 'azure_app_gateway') && tType === 'azure_api_management') {
+        return { isValid: true, relationshipType: 'ROUTES_TO', networkScope: 'public', protocol: 'HTTPS', port: 443, label: 'API traffic / 443' };
+      }
+      if (sType === 'azure_api_management' && (tType === 'azure_vm' || tType === 'azure_vmss' || tType === 'azure_functions' || tType === 'azure_app_service' || tType === 'azure_aks')) {
+        return { isValid: true, relationshipType: 'ROUTES_TO', networkScope: 'private', protocol: 'HTTPS', port: 443, label: 'Backend API / 443' };
+      }
+
+      // Valid: a route table sends its subnets' traffic through a firewall
+      if (sType === 'azure_route_table' && tType === 'azure_firewall') {
+        return { isValid: true, relationshipType: 'ROUTES_TO', networkScope: 'private', label: 'Default route via firewall' };
       }
 
       // Valid: compute pulls images from the Container Registry

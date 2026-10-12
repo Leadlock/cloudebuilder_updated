@@ -40,6 +40,11 @@ export const PRIVATE_LINK_TARGETS: Record<string, PrivateLinkTarget> = {
     label: 'Container Registry', subresource: 'registry', dnsZone: 'privatelink.azurecr.io', isPublic: (c) => c['publicNetworkAccess'] !== false, reads: ['publicNetworkAccess'],
     requires: { key: 'sku', values: ['Premium'], label: 'the Premium tier' },
   },
+  azure_event_hubs: {
+    label: 'Event Hubs', subresource: 'namespace', dnsZone: 'privatelink.servicebus.windows.net', isPublic: (c) => c['publicNetworkAccess'] !== false, reads: ['publicNetworkAccess'],
+    requires: { key: 'sku', values: ['Standard', 'Premium'], label: 'the Standard or Premium tier' },
+  },
+  azure_event_grid: { label: 'Event Grid', subresource: 'topic', dnsZone: 'privatelink.eventgrid.azure.net', isPublic: (c) => c['publicNetworkAccess'] !== false, reads: ['publicNetworkAccess'] },
   azure_service_bus: {
     label: 'Service Bus', subresource: 'namespace', dnsZone: 'privatelink.servicebus.windows.net', isPublic: (c) => c['publicNetworkAccess'] !== false, reads: ['publicNetworkAccess'],
     requires: { key: 'sku', values: ['Premium'], label: 'the Premium tier' },

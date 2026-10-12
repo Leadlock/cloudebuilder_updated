@@ -37,10 +37,26 @@ const AWS_TO_AZURE_TYPE: Record<string, string> = {
   aws_waf: 'azure_waf',
   aws_route53: 'azure_dns',
   aws_cloudwatch: 'azure_monitor',
+  aws_sqs: 'azure_service_bus',
 };
-const AZURE_TO_AWS_TYPE: Record<string, string> = Object.fromEntries(
-  Object.entries(AWS_TO_AZURE_TYPE).map(([aws, azure]) => [azure, aws]),
-);
+const AZURE_TO_AWS_TYPE: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(AWS_TO_AZURE_TYPE).map(([aws, azure]) => [azure, aws])),
+  // Both flexible servers are RDS (the engine setting says which).
+  azure_postgres: 'aws_rds',
+  azure_mysql: 'aws_rds',
+};
+
+/** An RDS instance is the Azure engine of the same name; only other engines (SQL Server, Oracle…) become Azure SQL. */
+const azureRelationalFor = (config: Record<string, unknown>): 'azure_postgres' | 'azure_mysql' | 'azure_sql' => {
+  const engine = String(config['engine'] ?? '').toLowerCase();
+  return engine.includes('postgres') ? 'azure_postgres' : /mysql|maria/.test(engine) ? 'azure_mysql' : 'azure_sql';
+};
+
+/** The type a resource becomes on the other provider. Chosen from the source configuration, so it must be read before the configuration is translated. */
+function targetTypeFor(sourceType: string, config: Record<string, unknown>, target: Provider): string {
+  if (target === 'azure' && sourceType === 'aws_rds') return azureRelationalFor(config);
+  return (target === 'azure' ? AWS_TO_AZURE_TYPE : AZURE_TO_AWS_TYPE)[sourceType] || sourceType;
+}
 
 // ─── Compute capacity tables (vCPU / RAM GB) ──────────────────────────────────
 // Sourced from the actual <select> option labels in lib/resources/aws.ts
@@ -98,6 +114,18 @@ const AWS_RDS_SPECS: ComputeSpec[] = [
  * instance at the S4 DTU tier ($294/mo), which the cost screen then had to flag as not the same size. Below 2 vCPU only the small DTU tiers
  * exist, so those remain; they are an approximation. vCore tiers are priced live per vCore by lib/cloud/pricing/AzurePricingProvider.ts.
  */
+/** The flexible-server sizes the catalog offers, by vCPU and memory (the same values as the "Compute Size" choices). */
+const FLEX_SPECS: Record<'azure_postgres' | 'azure_mysql', ComputeSpec[]> = {
+  azure_postgres: [
+    { key: 'B_Standard_B1ms', vcpu: 1, ramGb: 2 }, { key: 'B_Standard_B2s', vcpu: 2, ramGb: 4 }, { key: 'GP_Standard_D2ds_v5', vcpu: 2, ramGb: 8 },
+    { key: 'GP_Standard_D4ds_v5', vcpu: 4, ramGb: 16 }, { key: 'MO_Standard_E2ds_v5', vcpu: 2, ramGb: 16 }, { key: 'MO_Standard_E4ds_v5', vcpu: 4, ramGb: 32 },
+  ],
+  azure_mysql: [
+    { key: 'B_Standard_B1ms', vcpu: 1, ramGb: 2 }, { key: 'B_Standard_B2s', vcpu: 2, ramGb: 4 }, { key: 'GP_Standard_D2ds_v4', vcpu: 2, ramGb: 8 },
+    { key: 'GP_Standard_D4ds_v4', vcpu: 4, ramGb: 16 }, { key: 'MO_Standard_E2ds_v4', vcpu: 2, ramGb: 16 },
+  ],
+};
+
 const AZURE_SQL_TIERS: Array<{ key: string; vcpuEquivalent: number }> = [
   { key: 'S0', vcpuEquivalent: 0.1 },
   { key: 'S1', vcpuEquivalent: 0.2 },
@@ -189,6 +217,18 @@ const translateRdsSql: ConfigTranslator = (config, target) => {
   const multiAz = config['multiAz'] === true || config['zoneRedundant'] === true;
   if (target === 'azure') {
     const src = specOf(AWS_RDS_SPECS, String(config['instanceClass'] ?? 'db.t3.medium'));
+    const kind = azureRelationalFor(config);
+    if (kind !== 'azure_sql') {
+      // PostgreSQL / MySQL keep their engine: a flexible server of the nearest size, zone-redundant where the source was Multi-AZ.
+      const sku = nearestCompute(FLEX_SPECS[kind], src.vcpu, src.ramGb);
+      for (const k of ['instanceClass', 'engine', 'multiAz', 'allocatedStorage', 'engineVersion', 'storageEncrypted', 'publiclyAccessible']) delete next[k];
+      next['skuName'] = sku.key;
+      if (typeof config['allocatedStorage'] === 'number') next['storageGb'] = Math.max(kind === 'azure_postgres' ? 32 : 20, config['allocatedStorage']);
+      // Burstable sizes do not offer zone-redundant HA, so a Multi-AZ source gets a General Purpose size.
+      if (multiAz && sku.key.startsWith('B_')) next['skuName'] = FLEX_SPECS[kind].find((x) => x.key.startsWith('GP_'))!.key;
+      next['highAvailability'] = multiAz ? 'ZoneRedundant' : 'Disabled';
+      return next;
+    }
     delete next['instanceClass'];
     delete next['engine'];
     delete next['multiAz'];
@@ -208,6 +248,23 @@ const translateRdsSql: ConfigTranslator = (config, target) => {
   }
   return next;
 };
+
+/** A PostgreSQL / MySQL flexible server as an RDS instance of the same engine. */
+const translateFlexibleToRds = (kind: 'azure_postgres' | 'azure_mysql'): ConfigTranslator => (config, target) => {
+  const next = { ...config };
+  if (target === 'aws') {
+    const src = specOf(FLEX_SPECS[kind], String(config['skuName'] ?? 'B_Standard_B1ms'));
+    for (const k of ['skuName', 'storageGb', 'highAvailability', 'version', 'backupRetentionDays', 'geoRedundantBackup', 'publicNetworkAccess', 'allowAzureServices', 'requireSecureTransport', 'minimumTlsVersion', 'databaseName']) delete next[k];
+    next['engine'] = kind === 'azure_postgres' ? 'postgres' : 'mysql';
+    next['instanceClass'] = nearestCompute(AWS_RDS_SPECS, src.vcpu, src.ramGb).key;
+    if (typeof config['storageGb'] === 'number') next['allocatedStorage'] = config['storageGb'];
+    next['multiAz'] = config['highAvailability'] === 'ZoneRedundant';
+  }
+  return next;
+};
+
+/** SQS and Service Bus both carry the queue's name; sizing and pricing differ and are estimated from the target's own defaults. */
+const translateQueue: ConfigTranslator = (config, target) => (target === 'azure' ? { name: config['name'], sku: 'Standard', queueNames: 'jobs' } : { name: config['name'] });
 
 const translateStorage: ConfigTranslator = (config, target) => {
   const next = { ...config };
@@ -310,6 +367,10 @@ const CONFIG_TRANSLATORS: Partial<Record<string, ConfigTranslator>> = {
   azure_cosmos_db: translateNoSql,
   aws_elasticache: translateCache,
   azure_redis: translateCache,
+  azure_postgres: translateFlexibleToRds('azure_postgres'),
+  azure_mysql: translateFlexibleToRds('azure_mysql'),
+  aws_sqs: translateQueue,
+  azure_service_bus: translateQueue,
 };
 
 /**
@@ -354,6 +415,10 @@ const BRAND_LABEL: Partial<Record<string, { match: string[]; replacement: string
   azure_dns:         { match: ['Azure DNS', 'DNS'], replacement: 'Azure DNS' },
   aws_cloudwatch:    { match: ['CloudWatch Alarms', 'CloudWatch'], replacement: 'CloudWatch' },
   azure_monitor:     { match: ['Azure Monitor', 'Monitor'], replacement: 'Azure Monitor' },
+  azure_postgres:    { match: ['Azure PostgreSQL', 'PostgreSQL'], replacement: 'Azure PostgreSQL' },
+  azure_mysql:       { match: ['Azure MySQL', 'MySQL'], replacement: 'Azure MySQL' },
+  aws_sqs:           { match: ['SQS Queue', 'SQS'], replacement: 'SQS' },
+  azure_service_bus: { match: ['Service Bus'], replacement: 'Service Bus' },
 };
 
 function translateLabel(originalLabel: string, sourceType: string, targetType: string): string {
@@ -366,6 +431,7 @@ function translateLabel(originalLabel: string, sourceType: string, targetType: s
     if (idx !== -1) {
       return (originalLabel.slice(0, idx) + target.replacement + originalLabel.slice(idx + term.length))
         .replace(/\s+/g, ' ')
+        .replace(/\b([A-Za-z0-9]+) \1\b/gi, '$1')     // "RDS PostgreSQL" -> "Azure PostgreSQL PostgreSQL" -> "Azure PostgreSQL"
         .trim();
     }
   }
@@ -382,10 +448,8 @@ export class CloudCostComparisonService {
    * provider's config fields left untouched.
    */
   static translateNodes(nodes: CanvasNode[], targetProvider: Provider): CanvasNode[] {
-    const typeMap = targetProvider === 'azure' ? AWS_TO_AZURE_TYPE : AZURE_TO_AWS_TYPE;
-
     return nodes.map((node) => {
-      const translatedType = typeMap[node.resourceType] || node.resourceType;
+      const translatedType = targetTypeFor(node.resourceType, node.config ?? {}, targetProvider);
       const translator = CONFIG_TRANSLATORS[node.resourceType];
       const config = translator ? translator({ ...node.config }, targetProvider) : { ...node.config };
       const label = translateLabel(node.label, node.resourceType, translatedType);
@@ -412,10 +476,10 @@ export class CloudCostComparisonService {
     resources: T[],
     targetProvider: Provider,
   ): T[] {
-    const typeMap = targetProvider === 'azure' ? AWS_TO_AZURE_TYPE : AZURE_TO_AWS_TYPE;
-
     return resources.map((res) => {
-      const translatedType = typeMap[res.resourceType] || res.resourceType;
+      let sourceConfig: Record<string, unknown> = {};
+      if (typeof res.configJson === 'string') { try { sourceConfig = JSON.parse(res.configJson) as Record<string, unknown>; } catch { /* a malformed config translates as empty */ } }
+      const translatedType = targetTypeFor(res.resourceType, sourceConfig, targetProvider);
       const translator = CONFIG_TRANSLATORS[res.resourceType];
 
       let configJson = res.configJson;

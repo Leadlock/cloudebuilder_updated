@@ -349,3 +349,224 @@ export function privateEndpointBlocks(i: EndpointInput, dns: PrivateDnsRegistry)
   lines.push(tagsBlock(name, cfg), `}`);
   return { block: lines.join('\n'), warnings };
 }
+
+// ─── Azure Firewall ──────────────────────────────────────────────────────────
+
+const zonesList = (v: unknown): string | null => (v === '1,2' ? '["1", "2"]' : v === '1,2,3' ? '["1", "2", "3"]' : null);
+
+/**
+ * A firewall in its own subnet (the subnet is named AzureFirewallSubnet by the generator), with a public address, a policy and a baseline rule
+ * that lets the private networks reach the web. A new policy denies everything, so without a rule a route through the firewall would cut off
+ * every workload.
+ */
+export function firewallBlocks(name: string, cfg: Cfg, rgName: string, rgLoc: string, subnetRef: string | null, label: string): BlockResult {
+  const warnings: string[] = [];
+  if (!subnetRef) warnings.push(`Azure Firewall "${label}" is not placed in a subnet, so the firewall itself was not generated (only its address and policy). Put it in a subnet of its own.`);
+  const tier = pick(cfg['sku'], ['Standard', 'Premium'] as const, 'Standard');
+  const threat = pick(cfg['threatIntelMode'], ['Off', 'Alert', 'Deny'] as const, 'Alert');
+  const fw = lowerName(cfg['name'] ?? name, 'firewall', 50);
+  const zones = zonesList(cfg['zones']);
+  const parts = [
+    `resource "azurerm_public_ip" "${name}_pip" {
+  name                = "${fw}-pip"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+  allocation_method   = "Static"
+  sku                 = "Standard"${zones ? `\n  zones               = ${zones}` : ''}
+${tagsBlock(name, cfg)}
+}`,
+    `resource "azurerm_firewall_policy" "${name}_policy" {
+  name                     = "${fw}-policy"
+  resource_group_name      = ${rgName}
+  location                 = ${rgLoc}
+  sku                      = "${tier}"
+  threat_intelligence_mode = "${threat}"
+
+  dns {
+    proxy_enabled = ${cfg['dnsProxy'] === true}
+  }
+${tagsBlock(name, cfg)}
+}`,
+    `resource "azurerm_firewall_policy_rule_collection_group" "${name}_baseline" {
+  name               = "baseline"
+  firewall_policy_id = azurerm_firewall_policy.${name}_policy.id
+  priority           = 1000
+
+  network_rule_collection {
+    name     = "allow-web-outbound"
+    priority = 1000
+    action   = "Allow"
+    rule {
+      name                  = "web"
+      protocols             = ["TCP"]
+      source_addresses      = ["10.0.0.0/8"]
+      destination_addresses = ["*"]
+      destination_ports     = ["80", "443"]
+    }
+  }
+}`,
+    ...(subnetRef ? [`resource "azurerm_firewall" "${name}" {
+  name                = "${fw}"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+  sku_name            = "AZFW_VNet"
+  sku_tier            = "${tier}"
+  firewall_policy_id  = azurerm_firewall_policy.${name}_policy.id${zones ? `\n  zones               = ${zones}` : ''}
+
+  ip_configuration {
+    name                 = "configuration"
+    subnet_id            = ${subnetRef}
+    public_ip_address_id = azurerm_public_ip.${name}_pip.id
+  }
+${tagsBlock(name, cfg)}
+}`] : []),
+  ];
+  return { block: parts.join('\n\n'), warnings };
+}
+
+// ─── Event Hubs ──────────────────────────────────────────────────────────────
+
+export function eventHubsBlocks(name: string, cfg: Cfg, rgName: string, rgLoc: string): BlockResult {
+  const warnings: string[] = [];
+  const sku = pick(cfg['sku'], ['Basic', 'Standard', 'Premium'] as const, 'Standard');
+  let ns = lowerName(cfg['name'] ?? name, 'eventhubs', 40);
+  if (!/^[a-z]/.test(ns)) ns = `eh-${ns}`;
+  let publicAccess = cfg['publicNetworkAccess'] !== false;
+  if (!publicAccess && sku === 'Basic') {
+    publicAccess = true;
+    warnings.push(`Event Hubs "${cfg['name'] ?? name}" has public access off, which needs the Standard or Premium tier. It was created with public access on.`);
+  }
+  const capacity = num(cfg['capacity'], 1, 1, sku === 'Premium' ? 16 : 20);
+  const retentionMax = sku === 'Basic' ? 1 : sku === 'Standard' ? 7 : 90;
+  const retention = num(cfg['retentionDays'], 1, 1, retentionMax);
+  if (typeof cfg['retentionDays'] === 'number' && cfg['retentionDays'] > retentionMax) warnings.push(`Event Hubs "${cfg['name'] ?? name}" keeps events up to ${retentionMax} day(s) on the ${sku} tier, so retention was lowered from ${cfg['retentionDays']}.`);
+  const lines = [
+    `resource "azurerm_eventhub_namespace" "${name}" {`,
+    `  name                          = "${ns}-\${local.az_suffix}"`,
+    `  resource_group_name           = ${rgName}`,
+    `  location                      = ${rgLoc}`,
+    `  sku                           = "${sku}"`,
+    `  capacity                      = ${capacity}`,
+    `  zone_redundant                = ${cfg['zoneRedundant'] === true}`,
+    `  local_authentication_enabled  = ${cfg['localAuthEnabled'] !== false}`,
+    `  public_network_access_enabled = ${publicAccess}`,
+    `  minimum_tls_version           = "${pick(cfg['minimumTlsVersion'], ['1.0', '1.1', '1.2'] as const, '1.2')}"`,
+    tagsBlock(name, cfg), `}`,
+  ];
+  const parts = [lines.join('\n')];
+  const seen = new Set<string>();
+  const hubs = String(cfg['hubNames'] ?? 'events').split(',').map((h) => h.trim().replace(/[^A-Za-z0-9._-]/g, '')).filter((h) => h && !seen.has(h) && seen.add(h)).slice(0, 20);
+  if (hubs.length === 0) hubs.push('events');
+  hubs.forEach((h, i) => {
+    parts.push(`resource "azurerm_eventhub" "${name}_hub${i}" {
+  name                = "${h.slice(0, 50)}"
+  namespace_name      = azurerm_eventhub_namespace.${name}.name
+  resource_group_name = ${rgName}
+  partition_count     = ${num(cfg['partitionCount'], 2, 1, 32)}
+  message_retention   = ${retention}
+}`);
+  });
+  return { block: parts.join('\n\n'), warnings };
+}
+
+// ─── Event Grid ──────────────────────────────────────────────────────────────
+
+export function eventGridBlocks(name: string, cfg: Cfg, rgName: string, rgLoc: string): BlockResult {
+  const topic = lowerName(cfg['name'] ?? name, 'topic', 40);
+  return {
+    block: `resource "azurerm_eventgrid_topic" "${name}" {
+  name                          = "${topic.length < 3 ? `${topic}-topic` : topic}-\${local.az_suffix}"
+  resource_group_name           = ${rgName}
+  location                      = ${rgLoc}
+  input_schema                  = "${pick(cfg['inputSchema'], ['EventGridSchema', 'CloudEventSchemaV1_0'] as const, 'EventGridSchema')}"
+  public_network_access_enabled = ${cfg['publicNetworkAccess'] !== false}
+  local_auth_enabled            = ${cfg['localAuthEnabled'] !== false}
+${tagsBlock(name, cfg)}
+}
+
+# Event subscriptions (who receives the events) are not generated: they need the receiving endpoint, for example a function in an app that exists.`,
+    warnings: [],
+  };
+}
+
+// ─── API Management ──────────────────────────────────────────────────────────
+
+const APIM_UNITS: Record<string, [number, number]> = { Consumption: [0, 0], Developer: [1, 1], Basic: [1, 2], Standard: [1, 4], Premium: [1, 12] };
+
+export function apiManagementBlocks(name: string, cfg: Cfg, rgName: string, rgLoc: string): BlockResult {
+  const sku = pick(cfg['sku'], ['Consumption', 'Developer', 'Basic', 'Standard', 'Premium'] as const, 'Developer');
+  const [lo, hi] = APIM_UNITS[sku]!;
+  const units = sku === 'Consumption' ? 0 : num(cfg['capacity'], 1, lo, hi);
+  let apim = lowerName(cfg['name'] ?? name, 'apim', 40);
+  if (!/^[a-z]/.test(apim)) apim = `apim-${apim}`;
+  const zones = sku === 'Premium' ? zonesList(cfg['zones']) : null;
+  // Publisher values are free text from the form (already made safe by sanitizeResourcesForHcl); the placeholders stop a deployment until replaced.
+  const text = (v: unknown, fallback: string) => String(v ?? fallback).slice(0, 200);
+  return {
+    block: `resource "azurerm_api_management" "${name}" {
+  name                = "${apim}-\${local.az_suffix}"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+  publisher_name      = "${text(cfg['publisherName'], 'REPLACE-WITH-YOUR-ORGANIZATION')}"
+  publisher_email     = "${text(cfg['publisherEmail'], 'REPLACE-WITH-YOUR-EMAIL')}"
+  sku_name            = "${sku}_${units}"${zones ? `\n  zones               = ${zones}` : ''}
+${tagsBlock(name, cfg)}
+}`,
+    warnings: [],
+  };
+}
+
+// ─── Container Apps ──────────────────────────────────────────────────────────
+
+export function containerAppBlocks(name: string, cfg: Cfg, rgName: string, rgLoc: string, subnetRef: string | null, workspaceRef: string | null, label: string): BlockResult {
+  const warnings: string[] = [];
+  const cpu = pick(String(cfg['cpu']), ['0.25', '0.5', '0.75', '1', '1.25', '1.5', '1.75', '2'] as const, '0.5');
+  const memory = `${Number(cpu) * 2}Gi`;
+  let app = lowerName(cfg['name'] ?? name, 'app', 32);
+  if (!/^[a-z]/.test(app)) app = `a-${app}`.slice(0, 32).replace(/-+$/g, '');
+  const min = num(cfg['minReplicas'], 1, 0, 30);
+  const max = Math.max(min || 1, num(cfg['maxReplicas'], 5, 1, 300));
+  const external = cfg['externalIngress'] !== false;
+  const zone = cfg['zoneRedundant'] === true;
+  if (zone && !subnetRef) warnings.push(`Container App "${label}" asks for zone redundancy, which needs the app to be placed in a subnet (a /23 or larger), so it was left out.`);
+  const image = String(cfg['image'] ?? 'REPLACE-WITH-YOUR-CONTAINER-IMAGE').slice(0, 300);
+  const env = [
+    `resource "azurerm_container_app_environment" "${name}_env" {`,
+    `  name                = "${app.slice(0, 28)}-env"`,
+    `  resource_group_name = ${rgName}`,
+    `  location            = ${rgLoc}`,
+    ...(workspaceRef ? [`  log_analytics_workspace_id = ${workspaceRef}`] : []),
+    ...(subnetRef ? [`  infrastructure_subnet_id   = ${subnetRef}`, `  internal_load_balancer_enabled = ${!external}`, ...(zone ? [`  zone_redundancy_enabled    = true`] : [])] : []),
+    tagsBlock(name, cfg), `}`,
+  ].join('\n');
+  const appBlock = `resource "azurerm_container_app" "${name}" {
+  name                         = "${app}"
+  container_app_environment_id = azurerm_container_app_environment.${name}_env.id
+  resource_group_name          = ${rgName}
+  revision_mode                = "Single"
+
+  template {
+    min_replicas = ${min}
+    max_replicas = ${max}
+
+    container {
+      name   = "${app}"
+      image  = "${image}"
+      cpu    = ${cpu}
+      memory = "${memory}"
+    }
+  }
+
+  ingress {
+    external_enabled = ${external}
+    target_port      = ${num(cfg['targetPort'], 80, 1, 65535)}
+
+    traffic_weight {
+      latest_revision = true
+      percentage      = 100
+    }
+  }
+${tagsBlock(name, cfg)}
+}`;
+  return { block: `${env}\n\n${appBlock}`, warnings };
+}

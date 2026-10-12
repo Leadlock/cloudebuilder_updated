@@ -57,6 +57,7 @@ import type {
 } from '../discovery/types';
 import { retryWithBackoff, computeConfigHash } from '../discovery/utils';
 import type { InfrastructureDiscoveryProvider } from '../provider';
+import { discoverAzureServices } from './azureServicesDiscovery';
 
 // ─── Required permissions (Reader role) ──────────────────────────────────────
 
@@ -85,6 +86,17 @@ export const REQUIRED_AZURE_PERMISSIONS = [
   'Microsoft.DocumentDB/databaseAccounts/read',
   'Microsoft.Cache/redis/read',
   'Microsoft.Cdn/profiles/read',
+  'Microsoft.DBforPostgreSQL/flexibleServers/read',
+  'Microsoft.DBforMySQL/flexibleServers/read',
+  'Microsoft.ServiceBus/namespaces/read',
+  'Microsoft.ContainerRegistry/registries/read',
+  'Microsoft.OperationalInsights/workspaces/read',
+  'Microsoft.Network/privateEndpoints/read',
+  'Microsoft.Network/azureFirewalls/read',
+  'Microsoft.EventHub/namespaces/read',
+  'Microsoft.EventGrid/topics/read',
+  'Microsoft.ApiManagement/service/read',
+  'Microsoft.App/containerApps/read',
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -349,6 +361,11 @@ export class AzureDiscoveryAdapter implements InfrastructureDiscoveryProvider {
         this._discoverFrontDoorProfiles(credential),
       ]);
       allResources.push(...cosmosAccounts, ...redisCaches, ...frontDoors);
+
+      // 4f. PostgreSQL / MySQL flexible servers, Service Bus, Container Registry, Log Analytics, Private Endpoints
+      const services = await discoverAzureServices(new ResourceManagementClient(credential, this._subscriptionId).resources, this._subscriptionId, now);
+      allResources.push(...services.resources);
+      if (services.skipped.length > 0) warnings.push(`These resource types could not be read (check the Reader role): ${services.skipped.join(', ')}.`);
 
       // 5. Build Topology Relationships
       options.onProgress?.({
@@ -1571,6 +1588,16 @@ export class AzureDiscoveryAdapter implements InfrastructureDiscoveryProvider {
     for (const sub of subnets) {
       const nsgId = sub.configuration.networkSecurityGroupId as string;
       if (nsgId) addRel(nsgId, sub.id, 'security', 'Protects Subnet');
+    }
+
+    // 5b. Flexible servers and Private Endpoints sit in a subnet; an endpoint is associated with the service it reaches.
+    const known = new Set(resources.map((r) => r.id.toLowerCase()));
+    for (const r of resources) {
+      const subnetId = r.configuration.subnetId as string | undefined;
+      if (subnetId && ['postgres-flexible-server', 'mysql-flexible-server', 'private-endpoint', 'azure-firewall'].includes(r.resourceType)) addRel(subnetId, r.id, 'containment', 'In Subnet');
+      if (r.resourceType === 'private-endpoint') {
+        for (const target of (r.configuration.targetResourceIds as string[] | undefined) ?? []) if (known.has(target.toLowerCase())) addRel(r.id, target, 'association', 'Private Link');
+      }
     }
 
     // 5. Public IP to Load Balancers

@@ -14,7 +14,7 @@ const coreAzureResources: ResourceDefinition[] = [
     borderColor: '#7C3AED',
     monthlyBaseCost: 0,
     isContainer: true,
-    allowedChildren: ['azure_vnet', 'azure_storage', 'azure_sql', 'azure_key_vault', 'azure_postgres', 'azure_mysql', 'azure_service_bus', 'azure_acr', 'azure_monitor'],
+    allowedChildren: ['azure_vnet', 'azure_storage', 'azure_sql', 'azure_key_vault', 'azure_postgres', 'azure_mysql', 'azure_service_bus', 'azure_acr', 'azure_monitor', 'azure_event_hubs', 'azure_event_grid', 'azure_api_management', 'azure_container_apps'],
     defaultWidth: 840,
     defaultHeight: 540,
     defaultConfig: { location: 'eastus', name: 'my-rg' },
@@ -67,7 +67,7 @@ const coreAzureResources: ResourceDefinition[] = [
     borderColor: '#047857',
     monthlyBaseCost: 0,
     isContainer: true,
-    allowedChildren: ['azure_vm', 'azure_vmss', 'azure_lb', 'azure_app_gateway', 'azure_sql', 'azure_redis', 'azure_functions', 'azure_aks', 'azure_nic', 'azure_postgres', 'azure_mysql', 'azure_private_endpoint'],
+    allowedChildren: ['azure_vm', 'azure_vmss', 'azure_lb', 'azure_app_gateway', 'azure_sql', 'azure_redis', 'azure_functions', 'azure_aks', 'azure_nic', 'azure_postgres', 'azure_mysql', 'azure_private_endpoint', 'azure_firewall', 'azure_container_apps'],
     defaultWidth: 340,
     defaultHeight: 240,
     defaultConfig: { addressPrefix: '10.0.1.0/24', name: 'my-subnet' },
@@ -177,7 +177,7 @@ const coreAzureResources: ResourceDefinition[] = [
     defaultConfig: {
       sku: 'Standard_LRS', kind: 'StorageV2', httpsOnly: true, allowBlobPublicAccess: false, minimumTlsVersion: 'TLS1_2',
       blobVersioningEnabled: false, blobSoftDeleteRetentionDays: 0, networkDefaultAction: 'Allow',
-      name: 'mystorageacct', tags: {},
+      staticWebsite: false, indexDocument: 'index.html', errorDocument: '404.html', name: 'mystorageacct', tags: {},
     },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'mystorageacct', required: true },
@@ -215,6 +215,12 @@ const coreAzureResources: ResourceDefinition[] = [
           { label: 'Deny (firewall/VNet rules required)', value: 'Deny' },
         ],
       },
+      {
+        key: 'staticWebsite', label: 'Static Website', type: 'boolean', defaultValue: false, section: 'Static Website',
+        description: 'Serves the files in the $web container as a website. The content is public by design, so the account must accept connections from the network that serves it (for example Front Door). Needs the StorageV2 kind.',
+      },
+      { key: 'indexDocument', label: 'Index Document', type: 'text', defaultValue: 'index.html', section: 'Static Website', visibleWhen: (c) => c['staticWebsite'] === true },
+      { key: 'errorDocument', label: 'Error (404) Document', type: 'text', defaultValue: '404.html', section: 'Static Website', visibleWhen: (c) => c['staticWebsite'] === true },
       { key: 'blobVersioningEnabled', label: 'Blob Versioning', type: 'boolean', defaultValue: false, section: 'Backup & Recovery' },
       {
         key: 'blobSoftDeleteRetentionDays', label: 'Blob Soft Delete Retention (days)', type: 'number', defaultValue: 0, min: 0, max: 365,
@@ -1172,7 +1178,7 @@ const coreAzureResources: ResourceDefinition[] = [
     borderColor: '#0284C7',
     monthlyBaseCost: 0,
     isContainer: true,
-    allowedChildren: ['azure_resource_group', 'azure_vnet', 'azure_storage', 'azure_sql', 'azure_key_vault', 'azure_front_door', 'azure_waf', 'azure_postgres', 'azure_mysql', 'azure_service_bus', 'azure_acr', 'azure_monitor'],
+    allowedChildren: ['azure_resource_group', 'azure_vnet', 'azure_storage', 'azure_sql', 'azure_key_vault', 'azure_front_door', 'azure_waf', 'azure_postgres', 'azure_mysql', 'azure_service_bus', 'azure_acr', 'azure_monitor', 'azure_event_hubs', 'azure_event_grid', 'azure_api_management', 'azure_container_apps'],
     defaultWidth: 880,
     defaultHeight: 560,
     defaultConfig: { name: 'Microsoft Azure', region: 'eastus' },

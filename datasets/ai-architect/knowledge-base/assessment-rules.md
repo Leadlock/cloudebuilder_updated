@@ -1,4 +1,4 @@
-# Assessment rules (ruleset 2026.10.2)
+# Assessment rules (ruleset 2026.10.3)
 
 A design is only "deploy-ready" if none of these rules fails or warns at MEDIUM severity or above. Read the recommendation to see how to satisfy each rule.
 
@@ -987,7 +987,7 @@ Provider: azure; service: Azure Private Link; severity: HIGH; pillar: security (
 Public network access is off, but the design has no Private Endpoint giving the application a private path to the service.
 Why it matters: MCSB NS-2. Turning the public endpoint off is the right security default, but it only works together with a Private Endpoint in the application network and a private DNS zone. Without one the service is unreachable, so the application fails at runtime however secure the design looks.
 Recommendation: Add a Private Endpoint in a subnet of the application network and connect it to the service (CloudCraft creates the private DNS zone and link).
-Applies to: azure_sql, azure_storage, azure_key_vault, azure_redis, azure_cosmos_db, azure_acr, azure_service_bus.
+Applies to: azure_sql, azure_storage, azure_key_vault, azure_redis, azure_cosmos_db, azure_acr, azure_event_hubs, azure_event_grid, azure_service_bus.
 
 ## AZ-PE-002 — Private Endpoint is not connected to a service or not placed in a subnet
 Provider: azure; service: Azure Private Link; severity: MEDIUM; pillar: security (SE:06 — Network controls).
@@ -1044,6 +1044,90 @@ A Premium registry can be zone-redundant at no extra charge; this one is not.
 Why it matters: Azure Well-Architected Reliability (redundancy). Zone redundancy is a Premium feature, so other tiers are not evaluated.
 Recommendation: Enable zone redundancy on the Premium registry.
 Applies to: azure_acr.
+
+## AZ-FW-001 — Azure Firewall threat intelligence is off
+Provider: azure; service: Azure Firewall; severity: MEDIUM; pillar: security (SE:06 — Network controls).
+The firewall does not alert on or block traffic to and from known malicious addresses and domains.
+Why it matters: MCSB NS-1 / LT-1: threat intelligence filtering is a built-in control of the firewall and costs nothing extra. "Alert" is the default; "Alert and deny" blocks as well.
+Recommendation: Set threat intelligence to "Alert" (or "Alert and deny").
+Applies to: azure_firewall.
+
+## AZ-FW-010 — Azure Firewall is not spread across availability zones
+Provider: azure; service: Azure Firewall; severity: LOW; pillar: reliability (RE:05 — Redundancy).
+A firewall deployed without zones is lost with its single zone, and every route through it fails.
+Why it matters: Azure Well-Architected Reliability (RE:05). Zones add no charge for the firewall itself. Zones are fixed when the firewall is created.
+Recommendation: Deploy the firewall across zones 1, 2 and 3 in a region that offers them.
+Applies to: azure_firewall.
+
+## AZ-EH-001 — Event Hubs namespace is reachable from the internet
+Provider: azure; service: Azure Event Hubs; severity: LOW; pillar: security (SE:06 — Network controls).
+Public network access is on. Access still needs credentials.
+Why it matters: MCSB NS-2. Private access needs a private endpoint, available on the Standard and Premium tiers, so this is a recommendation and not a defect.
+Recommendation: Add a Private Endpoint and turn public access off.
+Applies to: azure_event_hubs.
+
+## AZ-EH-002 — Event Hubs allows shared access keys
+Provider: azure; service: Azure Event Hubs; severity: LOW; pillar: security (SE:05 — Identity and access management).
+Shared access signature keys can send and receive. They do not expire and are hard to scope.
+Why it matters: MCSB IM-1 / IM-3: prefer Microsoft Entra ID (managed identities). LOW because turning keys off needs a role assignment for each application, which CloudCraft does not generate.
+Recommendation: Disable shared access keys and give each application a managed identity with the Azure Event Hubs Data Sender / Receiver role.
+Applies to: azure_event_hubs.
+
+## AZ-EH-003 — Event Hubs permits TLS versions older than 1.2
+Provider: azure; service: Azure Event Hubs; severity: MEDIUM; pillar: security (SE:07 — Encrypt data).
+The minimum TLS version is 1.0 or 1.1.
+Why it matters: MCSB DP-3.
+Recommendation: Set the minimum TLS version to 1.2.
+Applies to: azure_event_hubs.
+
+## AZ-EH-010 — Event Hubs namespace is not zone-redundant
+Provider: azure; service: Azure Event Hubs; severity: LOW; pillar: reliability (RE:05 — Redundancy).
+A zone failure interrupts event ingestion. The Basic tier does not offer zone redundancy, so it is not evaluated.
+Why it matters: Azure Well-Architected Reliability (RE:05). Zone redundancy is chosen when the namespace is created, in regions that offer zones.
+Recommendation: Enable zone redundancy on the namespace.
+Applies to: azure_event_hubs.
+
+## AZ-EG-001 — Event Grid topic is reachable from the internet
+Provider: azure; service: Azure Event Grid; severity: LOW; pillar: security (SE:06 — Network controls).
+Public network access is on. Publishing still needs a key or Entra ID token.
+Why it matters: MCSB NS-2. A private endpoint costs about $7 a month, so this is a recommendation for sensitive topics.
+Recommendation: Add a Private Endpoint and turn public access off.
+Applies to: azure_event_grid.
+
+## AZ-EG-002 — Event Grid topic allows access keys
+Provider: azure; service: Azure Event Grid; severity: LOW; pillar: security (SE:05 — Identity and access management).
+Access keys can publish to the topic. They do not expire and are hard to scope.
+Why it matters: MCSB IM-1 / IM-3: prefer Microsoft Entra ID. LOW because turning keys off needs a role assignment for each publisher, which CloudCraft does not generate.
+Recommendation: Disable access keys and give publishers the Event Grid Data Sender role.
+Applies to: azure_event_grid.
+
+## AZ-APIM-001 — API Management is on the Developer tier, which has no SLA
+Provider: azure; service: Azure API Management; severity: LOW; pillar: reliability (RE:05 — Redundancy).
+The Developer tier is meant for development and testing: it has no service level agreement and no redundancy.
+Why it matters: Azure Well-Architected Reliability. LOW because the tier is a deliberate choice for non-production designs. Basic and above carry an SLA.
+Recommendation: Use the Basic, Standard or Premium tier (or Consumption) for production.
+Applies to: azure_api_management.
+
+## AZ-APIM-010 — Premium API Management is not spread across availability zones
+Provider: azure; service: Azure API Management; severity: LOW; pillar: reliability (RE:05 — Redundancy).
+Only the Premium tier can use zones; this one does not.
+Why it matters: Azure Well-Architected Reliability (RE:05). Other tiers are not evaluated.
+Recommendation: Set zones 1, 2 and 3 on the Premium instance.
+Applies to: azure_api_management.
+
+## AZ-CA-001 — Container App is in a subnet smaller than /23
+Provider: azure; service: Azure Container Apps; severity: MEDIUM; pillar: reliability (RE:03 — Workload architecture).
+A Container Apps environment placed in a subnet needs an address range of /23 or larger (512 addresses).
+Why it matters: Azure requires a /23 or larger subnet for the Consumption-only environment type. A smaller subnet makes the deployment fail.
+Recommendation: Give the app a subnet of its own with a /23 (or larger) address range.
+Applies to: azure_container_apps.
+
+## AZ-CA-002 — Container App ingress is open to the internet
+Provider: azure; service: Azure Container Apps; severity: LOW; pillar: security (SE:06 — Network controls).
+The app accepts traffic from the internet directly, without a gateway or firewall in front.
+Why it matters: MCSB NS-1: put a WAF (Front Door or Application Gateway) in front of internet-facing apps and keep the app internal. LOW because a public API or site is often intended.
+Recommendation: Put the app in a subnet with internal ingress and a Front Door or Application Gateway with a WAF in front.
+Applies to: azure_container_apps.
 
 ## AZ-VMSS-011 — VM scale set is not spread across availability zones
 Provider: azure; service: Azure Virtual Machine Scale Sets; severity: LOW; pillar: reliability (RE:05 — Redundancy).
