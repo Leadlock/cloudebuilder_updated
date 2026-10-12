@@ -64,47 +64,65 @@ export async function POST(
     if (!role) return forbidden();
 
     const ctx = await resolveArchitecture(projectId, orgId, body.env);
+    let archId = 'live-arch';
+    let defaultRegion = 'us-east-1';
+    let resources: any[] = [];
+
     if ('error' in ctx) {
-      if (ctx.error === 'project_not_found') return notFound('Project');
-      if (ctx.error === 'architecture_not_found') return ok({
-        items: [], totalMonthlyUsd: 0, totalHourlyUsd: 0,
-        currency: targetCurrency, estimateId: null,
-        message: 'No architecture saved yet.',
-      });
-      return notFound('Environment');
+      if (!body.resources || body.resources.length === 0) {
+        if (ctx.error === 'project_not_found') return notFound('Project');
+        if (ctx.error === 'architecture_not_found') return ok({
+          items: [], totalMonthlyUsd: 0, totalHourlyUsd: 0,
+          currency: targetCurrency, estimateId: null,
+          message: 'No architecture saved yet.',
+        });
+        return notFound('Environment');
+      }
+      const firstResource = body.resources[0];
+      defaultRegion = firstResource?.provider?.toLowerCase() === 'azure' ? 'eastus' : 'us-east-1';
+      resources = body.resources.map((r) => ({
+        id: r.id,
+        resourceType: r.resourceType,
+        provider: r.provider,
+        label: r.label,
+        positionX: 0,
+        positionY: 0,
+        configJson: JSON.stringify(r.config ?? {}),
+        region: r.region ?? defaultRegion,
+        groupId: null,
+        locked: false,
+        architectureId: 'live-arch',
+      }));
+    } else {
+      archId = ctx.arch.id;
+      defaultRegion = ctx.project.region;
+      resources = body.resources && body.resources.length > 0
+        ? body.resources.map((r) => ({
+            id: r.id,
+            resourceType: r.resourceType,
+            provider: r.provider,
+            label: r.label,
+            positionX: 0,
+            positionY: 0,
+            configJson: JSON.stringify(r.config ?? {}),
+            region: r.region ?? null,
+            groupId: null,
+            locked: false,
+            architectureId: ctx.arch.id,
+          }))
+        : ctx.arch.resources;
     }
-
-    const { arch, project } = ctx;
-
-    // Prefer the live canvas snapshot the client sent (current, possibly
-    // unsaved, node configs) over the persisted architecture — see
-    // RequestSchema.resources above for why.
-    const resources = body.resources && body.resources.length > 0
-      ? body.resources.map((r) => ({
-          id: r.id,
-          resourceType: r.resourceType,
-          provider: r.provider,
-          label: r.label,
-          positionX: 0,
-          positionY: 0,
-          configJson: JSON.stringify(r.config ?? {}),
-          region: r.region ?? null,
-          groupId: null,
-          locked: false,
-          architectureId: arch.id,
-        }))
-      : arch.resources;
 
     // Same price source as the cost comparison, so the two screens agree: AWS list prices through the organization's connected role.
     await ensureAwsPricingAccess(orgId);
 
     // Run real estimation with currency conversion
     const result = await costEstimator.estimateAsync({
-      architectureId: arch.id,
+      architectureId: archId,
       projectId,
       versionId: body.versionId,
       resources,
-      defaultRegion: project.region,
+      defaultRegion,
       targetCurrency,
     }, 'REAL');
 
@@ -116,7 +134,7 @@ export async function POST(
       await db.orm.public.CostEstimate.create({
         id: estimateId,
         projectId,
-        architectureId: arch.id,
+        architectureId: archId,
         versionId: body.versionId ?? null,
         currency: result.currency,
         totalMonthly: result.totalMonthlyConverted ?? result.totalMonthlyUsd,
@@ -133,7 +151,7 @@ export async function POST(
 
     return created({
       estimateId,
-      architectureId: arch.id,
+      architectureId: archId,
       ...result,
       createdAt: now,
     });

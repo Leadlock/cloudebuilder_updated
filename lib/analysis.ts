@@ -3,6 +3,8 @@ import { CanvasNode, CanvasEdge, SecurityIssue, CostItem } from '@/types';
 import { getResourceDefinition } from './resources';
 import { runAssessment } from './engines/assessment/AssessmentEngine';
 import type { Finding } from './engines/assessment/types';
+import { awsPricingProvider } from './engines/cost/awsPricing';
+import { azurePricingProvider } from './engines/cost/azurePricing';
 
 /**
  * Security findings for a canvas graph, produced by the unified assessment
@@ -47,48 +49,85 @@ export function calculateSecurityScore(issues: SecurityIssue[]): number {
   const totalDeduction = issues.reduce((acc, i) => acc + weights[i.severity], 0);
   return Math.max(0, 100 - totalDeduction);
 }
-
+ 
 export function calculateCosts(nodes: CanvasNode[]): CostItem[] {
   const costs: CostItem[] = [];
-  const instanceCostMap: Record<string, number> = {
-    't3.micro': 8.76, 't3.small': 17.52, 't3.medium': 35.04, 't3.large': 70.08,
-    'm5.large': 87.6, 'm5.xlarge': 175.2, 'c5.large': 76.65, 'r5.large': 109.5,
-    'Standard_B1s': 8.76, 'Standard_B2s': 36.5, 'Standard_B4ms': 73.0,
-    'Standard_D2s_v3': 87.6, 'Standard_D4s_v3': 175.2, 'Standard_E2s_v3': 91.98,
-  };
   for (const node of nodes) {
-    const def = getResourceDefinition(node.resourceType);
-    if (!def) continue;
-    let monthlyCost = def.monthlyBaseCost;
-    const breakdown: { label: string; cost: number }[] = [];
-    if (node.resourceType === 'aws_ec2') {
-      const instanceType = node.config.instanceType as string;
-      const cost = instanceCostMap[instanceType] ?? 33.84;
-      monthlyCost = cost;
-      breakdown.push({ label: `Instance (${instanceType})`, cost });
-    } else if (node.resourceType === 'azure_vm') {
-      const size = node.config.size as string;
-      const cost = instanceCostMap[size] ?? 36.5;
-      monthlyCost = cost;
-      breakdown.push({ label: `VM Size (${size})`, cost });
-    } else if (node.resourceType === 'aws_rds') {
-      const multiAzMultiplier = node.config.multiAz ? 2 : 1;
-      const instanceCost = 48.6 * multiAzMultiplier;
-      const storageCost = 23;
-      monthlyCost = instanceCost + storageCost;
-      breakdown.push({ label: `Instance${node.config.multiAz ? ' (Multi-AZ)' : ''}`, cost: instanceCost });
-      breakdown.push({ label: 'Storage (100GB)', cost: storageCost });
-    } else if (node.resourceType === 'aws_s3') {
-      const storageCost = 0.023 * 50;
-      const transferCost = 9;
-      monthlyCost = storageCost + transferCost;
-      breakdown.push({ label: 'Storage (50GB)', cost: storageCost });
-      breakdown.push({ label: 'Data Transfer', cost: transferCost });
-    } else if (monthlyCost > 0) {
-      breakdown.push({ label: def.label, cost: monthlyCost });
+    if (!node.resourceType) continue;
+    // Layout boundaries / containers are non-billable
+    if (
+      node.resourceType === 'aws_vpc' ||
+      node.resourceType === 'aws_subnet' ||
+      node.resourceType === 'aws_igw' ||
+      node.resourceType === 'aws_sg' ||
+      node.resourceType === 'aws_route_table' ||
+      node.resourceType === 'azure_resource_group' ||
+      node.resourceType === 'azure_vnet' ||
+      node.resourceType === 'azure_subnet' ||
+      node.resourceType === 'azure_nsg' ||
+      node.resourceType.endsWith('_cloud_boundary')
+    ) {
+      continue;
     }
-    if (monthlyCost > 0) {
-      costs.push({ nodeId: node.id, nodeLabel: node.label, resourceType: node.resourceType, provider: node.provider, monthlyCost, breakdown });
+
+    const providerKey = (node.provider || 'aws').toLowerCase();
+    const region = node.region || (providerKey === 'azure' ? 'eastus' : 'us-east-1');
+    const config = (node.config ?? {}) as Record<string, unknown>;
+
+    const dbResource = {
+      id: node.id,
+      resourceType: node.resourceType,
+      provider: node.provider,
+      label: node.label,
+      positionX: 0,
+      positionY: 0,
+      configJson: JSON.stringify(config),
+      region,
+      groupId: null,
+      locked: false,
+      architectureId: 'local',
+    };
+
+    const provider = providerKey === 'azure' ? azurePricingProvider : awsPricingProvider;
+    const lineItem = provider.estimateResource(dbResource, config, region);
+
+    if (lineItem) {
+      costs.push({
+        nodeId: node.id,
+        nodeLabel: node.label,
+        resourceType: node.resourceType,
+        provider: node.provider,
+        region,
+        monthlyCost: lineItem.monthlyUsd,
+        hourlyCost: lineItem.hourlyUsd,
+        currency: 'USD',
+        providerCostUsd: lineItem.monthlyUsd,
+        providerHourlyUsd: lineItem.hourlyUsd,
+        pricingTier: 'FALLBACK_ESTIMATE',
+        breakdown: lineItem.breakdown.map((b) => ({
+          label: b.label,
+          cost: b.monthlyUsd,
+          originalCostUsd: b.monthlyUsd,
+        })),
+      });
+    } else {
+      const def = getResourceDefinition(node.resourceType);
+      if (def && def.monthlyBaseCost > 0) {
+        costs.push({
+          nodeId: node.id,
+          nodeLabel: node.label,
+          resourceType: node.resourceType,
+          provider: node.provider,
+          region,
+          monthlyCost: def.monthlyBaseCost,
+          hourlyCost: def.monthlyBaseCost / 730,
+          currency: 'USD',
+          providerCostUsd: def.monthlyBaseCost,
+          providerHourlyUsd: def.monthlyBaseCost / 730,
+          pricingTier: 'FALLBACK_ESTIMATE',
+          breakdown: [{ label: def.label, cost: def.monthlyBaseCost, originalCostUsd: def.monthlyBaseCost }],
+        });
+      }
     }
   }
   return costs;

@@ -69,6 +69,16 @@ export default function CostPanel() {
         setError(null);
         setUsingFallback(false);
         setCalculating(false);
+
+        // Synchronize accurate monthly USD cost to the project so Dashboard & canvas headers match CostPanel
+        const totalUsd = result.reduce((a, c) => a + (c.providerCostUsd ?? c.monthlyCost), 0);
+        if (Math.abs(activeProject.estimatedMonthlyCost - totalUsd) > 0.01) {
+          dispatch({
+            type: 'UPDATE_PROJECT_COST',
+            projectId: activeProject.id,
+            estimatedMonthlyCost: totalUsd,
+          });
+        }
       }
     }).catch(() => {
       if (!cancelled) {
@@ -76,11 +86,17 @@ export default function CostPanel() {
           if (!cancelled) {
             setCosts(localCosts);
             setError(null);
-            // The API-backed estimate failed — this is a deterministic fixture
-            // fallback, not live pricing. Never present it as equivalent; see
-            // the cost-engine skill's rule on not conflating pricing sources.
             setUsingFallback(true);
             setCalculating(false);
+
+            const totalUsd = localCosts.reduce((a, c) => a + (c.providerCostUsd ?? c.monthlyCost), 0);
+            if (Math.abs(activeProject.estimatedMonthlyCost - totalUsd) > 0.01) {
+              dispatch({
+                type: 'UPDATE_PROJECT_COST',
+                projectId: activeProject.id,
+                estimatedMonthlyCost: totalUsd,
+              });
+            }
           }
         }).catch(() => {
           if (!cancelled) {

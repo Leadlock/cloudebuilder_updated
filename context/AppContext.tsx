@@ -69,7 +69,8 @@ type Action =
   | { type: 'TOGGLE_SIDEBAR' }
   | { type: 'SET_MOBILE_SIDEBAR'; open: boolean }
   | { type: 'TOGGLE_MOBILE_SIDEBAR' }
-  | { type: 'CREATE_PROJECT'; name: string; provider: CloudProvider; nodes?: CanvasNode[]; edges?: CanvasEdge[] }
+  | { type: 'CREATE_PROJECT'; name: string; provider: CloudProvider; nodes?: CanvasNode[]; edges?: CanvasEdge[]; estimatedMonthlyCost?: number }
+  | { type: 'UPDATE_PROJECT_COST'; projectId: string; estimatedMonthlyCost: number }
   | { type: 'DELETE_PROJECT'; id: string }
   | { type: 'UPDATE_CANVAS'; nodes: CanvasNode[]; edges: CanvasEdge[]; bumpCanvasKey?: boolean; name?: string }
   | { type: 'UPDATE_NODE_CONFIG'; nodeId: string; config: Record<string, unknown>; label?: string }
@@ -681,7 +682,7 @@ function reducer(state: AppState, action: Action): AppState {
       };
       const scores = nodes.length > 0 ? scoreArchitecture(nodes, edges) : { overall: 0 };
       const costs = calculateCosts(nodes);
-      const estimatedMonthlyCost = costs.reduce((acc, c) => acc + c.monthlyCost, 0);
+      const estimatedMonthlyCost = action.estimatedMonthlyCost ?? costs.reduce((acc, c) => acc + c.monthlyCost, 0);
       const newProject: Project = {
         id: `proj-${Date.now()}`,
         name: action.name,
@@ -708,6 +709,25 @@ function reducer(state: AppState, action: Action): AppState {
         activeView: 'canvas',
         activeEnvironment: 'production',
         canvasKey: state.canvasKey + 1,
+      };
+    }
+
+    case 'UPDATE_PROJECT_COST': {
+      const isDraft = !state.activeProjectId || state.activeProjectId === 'draft-project' || action.projectId === 'draft-project';
+      if (isDraft) {
+        return {
+          ...state,
+          draftProject: {
+            ...state.draftProject,
+            estimatedMonthlyCost: action.estimatedMonthlyCost,
+          },
+        };
+      }
+      return {
+        ...state,
+        projects: state.projects.map((p) =>
+          p.id === action.projectId ? { ...p, estimatedMonthlyCost: action.estimatedMonthlyCost } : p
+        ),
       };
     }
 
@@ -1049,9 +1069,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .then((data) => {
         if (data?.data?.user) {
           dispatch({ type: 'SET_USER', user: data.data.user });
+        } else if (typeof window !== 'undefined') {
+          const stored = localStorage.getItem('cloudcraft_demo_user');
+          if (stored) {
+            try { dispatch({ type: 'SET_USER', user: JSON.parse(stored) }); } catch {}
+          }
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        if (typeof window !== 'undefined') {
+          const stored = localStorage.getItem('cloudcraft_demo_user');
+          if (stored) {
+            try { dispatch({ type: 'SET_USER', user: JSON.parse(stored) }); } catch {}
+          }
+        }
+      })
       .finally(() => {
         dispatch({ type: 'SET_SESSION_CHECKED' });
       });
@@ -1410,6 +1442,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, []);
+
+  // ── Sync active project / environment / currency to API services ───────────
+  useEffect(() => {
+    const activeId = state.activeProjectId || 'draft-project';
+    setCostProjectId(activeId);
+    setSecurityProjectId(activeId);
+    setTerraformProjectId(activeId);
+    setAdvisorProjectId(activeId);
+    setWaProjectId(activeId);
+    setCostEnvironment(state.activeEnvironment);
+    setSecurityEnvironment(state.activeEnvironment);
+    setTerraformEnvironment(state.activeEnvironment);
+    setAdvisorEnvironment(state.activeEnvironment);
+    setWaEnvironment(state.activeEnvironment);
+    setActiveCurrency(state.displayCurrency || 'USD');
+  }, [state.activeProjectId, state.activeEnvironment, state.displayCurrency]);
 
   useEffect(() => {
     const queue = pendingActionsRef.current.splice(0);

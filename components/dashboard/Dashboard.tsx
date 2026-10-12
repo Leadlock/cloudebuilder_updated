@@ -316,7 +316,7 @@ export default function Dashboard() {
                 </div>
                 <div className="text-center">
                   <p className={clsx("text-[10px] uppercase tracking-wide mb-0.5 font-bold", isLight ? "text-slate-500" : "text-gray-500")}>Cost</p>
-                  <p className="text-orange-500 font-bold text-xs sm:text-sm truncate">{formatCurrency(project.estimatedMonthlyCost * exchangeRate, activeCurrency)}</p>
+                  <p className="text-orange-500 font-bold text-xs sm:text-sm truncate">{formatCurrency(project.estimatedMonthlyCost * effectiveRate, activeCurrency)}</p>
                 </div>
               </div>
 
