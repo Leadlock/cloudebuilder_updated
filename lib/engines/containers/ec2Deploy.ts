@@ -17,6 +17,7 @@
  *    (SecureString) at /<app>/<NAME> when the service starts. The role can read only that path.
  */
 import type { ContainerConfig } from './dockerTemplates';
+import { ec2HourlyUsd } from '@/lib/engines/cost/awsPricing';
 
 export interface Ec2Config {
   enabled: boolean;
@@ -31,10 +32,12 @@ export interface Ec2Config {
   githubActions: boolean;
   /** "owner/name" of the GitHub repository. When set, Terraform also creates the AWS role the workflow signs in with. */
   githubRepo: string;
+  /** Scan the built image with Trivy in the workflow and stop before pushing if it has a fixable HIGH or CRITICAL vulnerability. */
+  scanImage: boolean;
 }
 
 export const defaultEc2 = (): Ec2Config => ({
-  enabled: false, region: 'us-east-1', instanceType: 't3.small', allowedCidr: '0.0.0.0/0', volumeGb: 20, imageTag: 'latest', elasticIp: false, githubActions: true, githubRepo: '',
+  enabled: false, region: 'us-east-1', instanceType: 't3.small', allowedCidr: '0.0.0.0/0', volumeGb: 20, imageTag: 'latest', elasticIp: false, githubActions: true, githubRepo: '', scanImage: true,
 });
 
 const REGION = /^[a-z]{2}(?:-[a-z]+)+-\d$/;
@@ -70,6 +73,32 @@ export function ec2Warnings(c: ContainerConfig): string[] {
   if (c.env.some((v) => v.secret)) w.push(`EC2: create each secret in SSM Parameter Store as a SecureString named /${c.appName}/<NAME> before the service can start.`);
   return w;
 }
+
+// ─── monthly cost ────────────────────────────────────────────────────────────
+
+export interface Ec2CostLine { label: string; monthlyUsd: number }
+export interface Ec2Cost { monthlyUsd: number; lines: Ec2CostLine[]; notes: string[] }
+
+const HOURS = 730;
+const GP3_PER_GB = 0.08;
+const PUBLIC_IPV4_PER_HOUR = 0.005;
+
+/** List-price estimate (us-east-1, on demand, Linux) of what the EC2 deployment costs a month; undefined when it is switched off. */
+export function estimateEc2Cost(c: ContainerConfig): Ec2Cost | undefined {
+  const e = c.ec2;
+  if (!e.enabled) return undefined;
+  const hourly = ec2HourlyUsd(e.instanceType);
+  const lines: Ec2CostLine[] = [
+    { label: `Instance ${e.instanceType}`, monthlyUsd: round2((hourly ?? 0) * HOURS) },
+    { label: `Disk ${e.volumeGb} GB (gp3)`, monthlyUsd: round2(e.volumeGb * GP3_PER_GB) },
+    { label: 'Public IPv4 address', monthlyUsd: round2(PUBLIC_IPV4_PER_HOUR * HOURS) },
+  ];
+  const notes = ['Excludes data transfer out, ECR storage (about $0.10 per GB-month) and SSM Parameter Store (standard parameters are free).'];
+  if (hourly === undefined) notes.push(`${e.instanceType} is not in the price table, so its price is left out of the total.`);
+  if (e.region !== 'us-east-1') notes.push(`Priced for us-east-1; ${e.region} is usually a little higher.`);
+  return { monthlyUsd: round2(lines.reduce((t, l) => t + l.monthlyUsd, 0)), lines, notes };
+}
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 const secretNames = (c: ContainerConfig) => c.env.filter((v) => v.secret).map((v) => v.key);
 
@@ -466,12 +495,26 @@ jobs:
       - id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push
+      - name: Build
         env:
           REGISTRY: \${{ steps.ecr.outputs.registry }}
         run: |
           docker build -t "$REGISTRY/$ECR_REPOSITORY:\${{ github.sha }}" -t "$REGISTRY/$ECR_REPOSITORY:${c.ec2.imageTag}" .
-          docker push "$REGISTRY/$ECR_REPOSITORY" --all-tags
+${c.ec2.scanImage ? `
+      # Stops the deploy before anything is pushed if the image has a HIGH or CRITICAL vulnerability that already has a fix.
+      - name: Scan the image (Trivy)
+        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # v0.28.0
+        with:
+          image-ref: \${{ steps.ecr.outputs.registry }}/\${{ env.ECR_REPOSITORY }}:\${{ github.sha }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          vuln-type: os,library
+` : ''}
+      - name: Push
+        env:
+          REGISTRY: \${{ steps.ecr.outputs.registry }}
+        run: docker push "$REGISTRY/$ECR_REPOSITORY" --all-tags
 
       - name: Restart the service on the instance
         if: \${{ vars.EC2_INSTANCE_ID != '' }}

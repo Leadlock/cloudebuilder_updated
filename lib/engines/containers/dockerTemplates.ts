@@ -16,7 +16,8 @@
 export type ContainerStack = 'node' | 'python' | 'java' | 'static';
 
 import { generateSampleApp } from './sampleApps';
-import { defaultEc2, ec2Warnings, generateEc2Files, validateEc2, type Ec2Config } from './ec2Deploy';
+import { checkContainer, type ContainerFinding } from './checks';
+import { defaultEc2, ec2Warnings, estimateEc2Cost, type Ec2Cost, generateEc2Files, validateEc2, type Ec2Config } from './ec2Deploy';
 export type { Ec2Config } from './ec2Deploy';
 
 export interface EnvVar { key: string; value: string; secret?: boolean }
@@ -53,7 +54,7 @@ export interface ContainerConfig {
 }
 
 export interface GeneratedFile { path: string; content: string; /** Set the executable bit when zipped (shell scripts). */ executable?: boolean }
-export type GenerateResult = { ok: true; files: GeneratedFile[]; warnings: string[] } | { ok: false; errors: string[] };
+export type GenerateResult = { ok: true; files: GeneratedFile[]; warnings: string[]; findings: ContainerFinding[]; cost?: Ec2Cost } | { ok: false; errors: string[] };
 
 export const STACK_LABEL: Record<ContainerStack, string> = {
   node: 'Node.js / Next.js', python: 'Python (FastAPI / Django / Flask)', java: 'Java (Spring Boot)', static: 'Static site (nginx)',
@@ -399,7 +400,7 @@ export function generateContainerFiles(config: ContainerConfig): GenerateResult 
     ...generateEc2Files(c),
     ...sample.files,
   ];
-  return { ok: true, files, warnings: [...sample.warnings, ...ec2Warnings(c)] };
+  return { ok: true, files, warnings: [...sample.warnings, ...ec2Warnings(c)], findings: checkContainer(c, files), cost: estimateEc2Cost(c) };
 }
 
 // ─── starter templates ───────────────────────────────────────────────────────

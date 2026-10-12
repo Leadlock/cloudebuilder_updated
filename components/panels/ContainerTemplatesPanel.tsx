@@ -6,7 +6,7 @@
  */
 import { useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { Copy, Download, Package, Plus, Trash2, AlertTriangle, Check } from 'lucide-react';
+import { Copy, Download, Package, Plus, Trash2, AlertTriangle, Check, ShieldCheck } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import {
   defaultConfig, generateContainerFiles, STACK_LABEL, STARTER_TEMPLATES, VERSIONS,
@@ -161,6 +161,7 @@ export default function ContainerTemplatesPanel() {
                   <div><label className={label} htmlFor="ec2-tag">Image tag</label><input id="ec2-tag" className={input} value={cfg.ec2.imageTag} onChange={(e) => setEc2('imageTag', e.target.value)} /></div>
                   <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={cfg.ec2.elasticIp} onChange={(e) => setEc2('elasticIp', e.target.checked)} />Fixed public IP</label>
                   <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={cfg.ec2.githubActions} onChange={(e) => setEc2('githubActions', e.target.checked)} />GitHub Actions workflow</label>
+                  {cfg.ec2.githubActions && <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.ec2.scanImage} onChange={(e) => setEc2('scanImage', e.target.checked)} />Scan the image for vulnerabilities before pushing (Trivy)</label>}
                   {cfg.ec2.githubActions && (
                     <div className="col-span-2"><label className={label} htmlFor="ec2-gh">GitHub repository (optional, owner/name)</label>
                       <input id="ec2-gh" className={input} placeholder="yourname/yourapp" value={cfg.ec2.githubRepo} onChange={(e) => setEc2('githubRepo', e.target.value.trim())} />
@@ -201,6 +202,28 @@ export default function ContainerTemplatesPanel() {
                     {result.warnings.map((w) => <li key={w} className="flex gap-2"><AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />{w}</li>)}
                   </ul>
                 )}
+                {result.cost && (
+                  <div className={clsx('mb-3 rounded-lg border px-3 py-2 text-xs', isLight ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-slate-900 border-slate-700 text-slate-200')}>
+                    <p className="font-semibold">Estimated cost on EC2: ${result.cost.monthlyUsd.toFixed(2)} a month</p>
+                    <p className={muted}>{result.cost.lines.map((l) => `${l.label} $${l.monthlyUsd.toFixed(2)}`).join(' · ')}</p>
+                    {result.cost.notes.map((n) => <p key={n} className={muted}>{n}</p>)}
+                  </div>
+                )}
+                <div className={clsx('mb-3 rounded-lg border px-3 py-2 text-xs', isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-700')} data-testid="container-checks">
+                  <p className={clsx('flex items-center gap-2 font-semibold', isLight ? 'text-slate-900' : 'text-white')}><ShieldCheck className="w-4 h-4 text-emerald-500" />
+                    {result.findings.length === 0 ? 'Security checks: nothing found' : `Security checks: ${result.findings.length} finding${result.findings.length === 1 ? '' : 's'}`}</p>
+                  {result.findings.length > 0 && (
+                    <ul className="mt-2 space-y-2">
+                      {result.findings.map((f) => (
+                        <li key={`${f.id}${f.title}`} className="flex gap-2">
+                          <span className={clsx('mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase',
+                            f.severity === 'high' ? 'bg-rose-500/15 text-rose-500' : f.severity === 'medium' ? 'bg-amber-500/15 text-amber-600' : 'bg-slate-500/15 text-slate-500')}>{f.severity}</span>
+                          <span><span className="font-medium">{f.title}</span> <span className={muted}>({f.id}{f.file ? `, ${f.file}` : ''})</span><br /><span className={muted}>{f.detail} </span><span className="font-medium">Fix: </span><span className={muted}>{f.fix}</span></span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                   <div className="flex flex-wrap gap-1.5" role="tablist">
                     {files.map((f) => (

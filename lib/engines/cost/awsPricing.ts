@@ -136,6 +136,9 @@ function toMonthly(hourly: number): number {
 
 // ─── AWS Pricing Provider ─────────────────────────────────────────────────────
 
+/** Built-in on-demand hourly price (us-east-1, Linux) of an EC2 instance type, or undefined when it is not in the table. */
+export const ec2HourlyUsd = (instanceType: string): number | undefined => EC2_HOURLY_USD[instanceType];
+
 export class AwsPricingProvider implements PricingProvider {
   readonly name = 'aws-static-list-price';
 
