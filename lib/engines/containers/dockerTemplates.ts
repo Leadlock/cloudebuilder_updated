@@ -15,6 +15,9 @@
 
 export type ContainerStack = 'node' | 'python' | 'java' | 'static';
 
+import { defaultEc2, ec2Warnings, generateEc2Files, validateEc2, type Ec2Config } from './ec2Deploy';
+export type { Ec2Config } from './ec2Deploy';
+
 export interface EnvVar { key: string; value: string; secret?: boolean }
 
 export interface ContainerConfig {
@@ -42,10 +45,12 @@ export interface ContainerConfig {
   javaBuildTool: 'maven' | 'gradle';
   staticBuildDir: string;
   staticSpaFallback: boolean;
+  /** Optional "deploy to EC2" bundle (Terraform + start-up script + CI workflow). */
+  ec2: Ec2Config;
 }
 
 export interface GeneratedFile { path: string; content: string }
-export type GenerateResult = { ok: true; files: GeneratedFile[] } | { ok: false; errors: string[] };
+export type GenerateResult = { ok: true; files: GeneratedFile[]; warnings: string[] } | { ok: false; errors: string[] };
 
 export const STACK_LABEL: Record<ContainerStack, string> = {
   node: 'Node.js / Next.js', python: 'Python (FastAPI / Django / Flask)', java: 'Java (Spring Boot)', static: 'Static site (nginx)',
@@ -60,7 +65,7 @@ export function defaultConfig(stack: ContainerStack = 'node'): ContainerConfig {
     version: VERSIONS[stack][0]!, env: [], healthPath: stack === 'java' ? '/actuator/health' : '/', runAsNonRoot: true,
     restart: 'unless-stopped', memoryLimit: '512m', cpuLimit: '1.0', postgres: false, redis: false,
     packageManager: 'npm', buildCommand: 'npm run build', startCommand: 'npm start', nextStandalone: false,
-    pythonFramework: 'fastapi', pythonModule: 'main:app', javaBuildTool: 'maven', staticBuildDir: 'dist', staticSpaFallback: true,
+    pythonFramework: 'fastapi', pythonModule: 'main:app', javaBuildTool: 'maven', staticBuildDir: 'dist', staticSpaFallback: true, ec2: defaultEc2(),
   };
 }
 
@@ -104,7 +109,7 @@ export function validate(c: ContainerConfig): string[] {
     seen.add(v.key);
     if (v.value.length > 500 || CONTROL.test(v.value)) e.push(`${v.key}: the value must be one line of at most 500 characters.`);
   }
-  return e;
+  return [...e, ...validateEc2(c)];
 }
 
 // ─── quoting ─────────────────────────────────────────────────────────────────
@@ -337,7 +342,8 @@ function dockerignore(c: ContainerConfig): string {
     python: ['__pycache__', '*.pyc', '.venv', 'venv', '.pytest_cache', '.mypy_cache'],
     java: ['target', 'build', '.gradle', '.mvn/wrapper/maven-wrapper.jar'],
   };
-  return `${[...common, ...per[c.stack]].join('\n')}\n`;
+  const deploy = c.ec2.enabled ? ['ec2', '.github', '.terraform'] : [];
+  return `${[...common, ...deploy, ...per[c.stack]].join('\n')}\n`;
 }
 
 function readme(c: ContainerConfig): string {
@@ -386,6 +392,7 @@ export function generateContainerFiles(config: ContainerConfig): GenerateResult 
     { path: '.env.example', content: envExample(c) },
     ...(c.stack === 'static' ? [{ path: 'nginx.conf', content: nginxConf(c) }] : []),
     { path: 'README.md', content: readme(c) },
+    ...generateEc2Files(c),
   ];
-  return { ok: true, files };
+  return { ok: true, files, warnings: ec2Warnings(c) };
 }

@@ -26,8 +26,9 @@ export default function ContainerTemplatesPanel() {
   const result = useMemo(() => generateContainerFiles(cfg), [cfg]);
   const set = <K extends keyof ContainerConfig>(k: K, v: ContainerConfig[K]) => setCfg((c) => ({ ...c, [k]: v }));
   const pickStack = (s: ContainerStack) => setCfg((c) => ({
-    ...defaultConfig(s), appName: c.appName, env: c.env, runAsNonRoot: c.runAsNonRoot, restart: c.restart, postgres: c.postgres, redis: c.redis,
+    ...defaultConfig(s), appName: c.appName, env: c.env, runAsNonRoot: c.runAsNonRoot, restart: c.restart, postgres: c.postgres, redis: c.redis, ec2: c.ec2,
   }));
+  const setEc2 = <K extends keyof ContainerConfig['ec2']>(k: K, v: ContainerConfig['ec2'][K]) => setCfg((c) => ({ ...c, ec2: { ...c.ec2, [k]: v } }));
   const setEnv = (i: number, patch: Partial<EnvVar>) => setCfg((c) => ({ ...c, env: c.env.map((v, j) => (j === i ? { ...v, ...patch } : v)) }));
 
   const files = result.ok ? result.files : [];
@@ -133,6 +134,22 @@ export default function ContainerTemplatesPanel() {
               </div>
             </div>
 
+            <div className={clsx(card, 'space-y-3')}>
+              <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={cfg.ec2.enabled} onChange={(e) => setEc2('enabled', e.target.checked)} />Deploy to EC2</label>
+              <p className={clsx('text-xs', muted)}>Adds a Terraform project that creates an ECR repository and one EC2 server that pulls and runs the image. No SSH: you connect through Session Manager. Secrets are read from SSM Parameter Store, never written to Terraform.</p>
+              {cfg.ec2.enabled && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className={label} htmlFor="ec2-region">Region</label><input id="ec2-region" className={input} value={cfg.ec2.region} onChange={(e) => setEc2('region', e.target.value)} /></div>
+                  <div><label className={label} htmlFor="ec2-type">Instance type</label><input id="ec2-type" className={input} value={cfg.ec2.instanceType} onChange={(e) => setEc2('instanceType', e.target.value)} /></div>
+                  <div className="col-span-2"><label className={label} htmlFor="ec2-cidr">Who can connect to the app port</label><input id="ec2-cidr" className={input} value={cfg.ec2.allowedCidr} onChange={(e) => setEc2('allowedCidr', e.target.value)} /></div>
+                  <div><label className={label} htmlFor="ec2-disk">Disk (GB)</label><input id="ec2-disk" type="number" className={input} value={cfg.ec2.volumeGb} onChange={(e) => setEc2('volumeGb', Number(e.target.value))} /></div>
+                  <div><label className={label} htmlFor="ec2-tag">Image tag</label><input id="ec2-tag" className={input} value={cfg.ec2.imageTag} onChange={(e) => setEc2('imageTag', e.target.value)} /></div>
+                  <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={cfg.ec2.elasticIp} onChange={(e) => setEc2('elasticIp', e.target.checked)} />Fixed public IP</label>
+                  <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={cfg.ec2.githubActions} onChange={(e) => setEc2('githubActions', e.target.checked)} />GitHub Actions workflow</label>
+                </div>
+              )}
+            </div>
+
             <div className={clsx(card, 'space-y-2')}>
               <div className="flex items-center justify-between">
                 <p className={clsx('text-sm font-semibold', isLight ? 'text-slate-900' : 'text-white')}>Environment variables</p>
@@ -159,6 +176,11 @@ export default function ContainerTemplatesPanel() {
               </div>
             ) : (
               <>
+                {result.warnings.length > 0 && (
+                  <ul className={clsx('mb-3 space-y-1 rounded-lg border px-3 py-2 text-xs', isLight ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-amber-500/10 border-amber-500/30 text-amber-200')}>
+                    {result.warnings.map((w) => <li key={w} className="flex gap-2"><AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />{w}</li>)}
+                  </ul>
+                )}
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                   <div className="flex flex-wrap gap-1.5" role="tablist">
                     {files.map((f) => (
