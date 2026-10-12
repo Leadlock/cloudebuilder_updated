@@ -1,7 +1,41 @@
-# Security & Well-Architected Engine Audit (ruleset 2026.10.1)
+# Security & Well-Architected Engine Audit (ruleset 2026.10.3)
 
 This records what was wrong with the assessment engines before this change, and what replaced them. The full per-rule matrix is in
 [RULE_MATRIX.md](./RULE_MATRIX.md).
+
+## 00. Changes in ruleset 2026.10.2: Azure designs that could not work
+
+Found by running the AI generator on five Azure requests and reading what came back. Every design passed every gate, and most could not work
+when deployed, or were not what was asked for.
+
+| Weakness | Change |
+|---|---|
+| Storage, Key Vault, SQL, Redis and Cosmos DB were generated with their public endpoint off, but CloudCraft had no Private Endpoint and the Terraform generator never wrote one, so the application could not reach its own data. The repo's own verified patterns had the same flaw. | New resource `azure_private_endpoint`; Terraform writes the endpoint, one private DNS zone per kind of service and one link per network. Rule `AZ-PE-001` (HIGH) fails a service that is called but has no private path; `AZ-PE-002` checks the endpoint itself. `lib/engines/assessment/privateAccess.ts` is the one table the rule, the Terraform and the AI repair read. A service nothing calls is not flagged. |
+| A request for PostgreSQL or MySQL came back as Azure SQL, and a request for a queue came back with none, both with no notice. The dataset taught this: every Azure relational request was written as "managed SQL". | New resources `azure_postgres`, `azure_mysql` (flexible servers placed in a delegated subnet), `azure_service_bus`, `azure_acr`, `azure_monitor` (Log Analytics + Application Insights), each with Terraform, cost, relationship rules and assessment rules (`AZ-PG-*`, `AZ-MY-*`, `AZ-SB-*`, `AZ-ACR-*`, `AZ-MON-001`). The service-notice check now knows PostgreSQL, MySQL and plain "message queue", and an Application Gateway or Front Door with its WAF switched on counts as the WAF that was asked for. The dataset, knowledge base and patterns were rebuilt so each engine is drawn as asked. |
+| The AI repair now adds a Private Endpoint for each private service, gives a private flexible server a subnet of its own, connects an endpoint the model drew but left floating, and turns a monitor or registry arrow around. | `lib/ai/specRepair.ts` (steps `privateEndpoints`, `flexSubnets`, `reversed`). |
+| A "three-tier" request produced one scale set. Compute had no availability zones. | The Azure three-tier pattern has separate web and API scale sets. VM Scale Sets and Application Gateway have an Availability Zones setting (Terraform `zones`); `AZ-VMSS-011` and `AZ-AGW-011` (LOW) report a tier with none. |
+| Service Bus and Container Registry need the Premium tier for private access (about $677 and $50 a month). | Their private-access rules (`AZ-SB-001`, `AZ-ACR-002`) are LOW recommendations, the generator keeps public access on a lower tier and says so, and cost is estimated from the Retail Prices API list prices read on 2026-10-12. |
+
+### Ruleset 2026.10.3: the gaps left by 2026.10.2, found by running `terraform validate` on the generated code
+
+`scripts/tf-validate-azure.ts` generates Terraform for every verified Azure pattern plus a hand-drawn design that uses every new resource, and runs
+`terraform validate` on each (needs a terraform binary; it downloads the azurerm provider, so it is not part of `npm test`). It found and fixed:
+
+| Weakness | Change |
+|---|---|
+| Network security groups and route tables were created but never associated with their subnets, so a design that showed every subnet protected deployed with none protected. | The generator writes `azurerm_subnet_network_security_group_association` and `azurerm_subnet_route_table_association`. A subnet that hosts an Application Gateway also gets the rule Azure needs to manage the gateway (ports 65200-65535 from `GatewayManager`); without it the gateway fails. Firewall and Bastion subnets take no group (Azure refuses it, or needs its own rules) and the person is told. |
+| A Front Door pointed at an example host name, and its WAF was an Application Gateway policy that was never attached to anything. | The origin is a reference to the connected storage static website, App Service, Functions app or gateway address. A WAF connected to a Front Door is a Front Door firewall policy plus the security policy that attaches it to the endpoint; managed rules exist only on Premium, so Standard gets a rate-limit rule and a warning. |
+| A static website behind Front Door with a firewalled storage account could not be reached. | Storage has a Static Website setting (Terraform `static_website`); the pattern uses it with all networks allowed (a website is public by design) and anonymous blob access off. `AZ-STG-004` does not flag such an account. |
+| App Service `health_check_path` was written outside `site_config`, which Terraform rejects. | Moved inside `site_config`. |
+
+New resources, each with Terraform, cost, relationships, rules and discovery: Azure Firewall (own subnet named `AzureFirewallSubnet`; a route table connected to it
+routes traffic through it; a baseline outbound rule, because a new firewall policy denies everything), Event Hubs, Event Grid (topic only: subscriptions
+need the receiving endpoint and are not generated), API Management (publisher name and email are `REPLACE-WITH-YOUR-*` placeholders), and Container Apps
+(an environment per app; in a subnet it needs a /23 and is checked by `AZ-CA-001`). Private Endpoints now also reach Event Hubs and Event Grid. Discovery reads
+PostgreSQL, MySQL, Service Bus, Container Registry, Log Analytics, Private Endpoints and the five services above with one generic Resource Manager reader, and never fills in a setting the API did not return. The AWS-to-Azure cost comparison maps RDS PostgreSQL and MySQL to the flexible servers, other engines to Azure SQL, and SQS to Service Bus.
+
+Still not covered: Front Door Premium with a Private Link origin (it needs a manual approval that Terraform cannot give); Event Grid subscriptions and role assignments for
+Entra-only access; Logic Apps. Nothing was applied to a real Azure subscription: `terraform validate` proves the code is well formed, not that a deployment succeeds.
 
 ## 0. Changes in ruleset 2026.10.1
 

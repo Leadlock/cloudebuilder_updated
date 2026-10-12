@@ -148,9 +148,9 @@ describe('AI-proposed equivalents', () => {
 
   test('an invented or wrong-cloud type is ignored', async () => {
     const ask: AskModel = async () => ({ matches: [{ resourceType: 'aws_eks', to: 'azure_magic_cluster', reason: 'x' }, { resourceType: 'aws_sqs', to: 'aws_sqs', reason: 'x' }] });
-    const r = await translateResourcesWithAi([res('k', 'aws_eks'), res('q', 'aws_sqs')], 'azure', ask);
+    const r = await translateResourcesWithAi([res('k', 'aws_eks'), res('q', 'aws_kms')], 'azure', ask);
     expect(r.matches).toEqual([]);
-    expect(r.resources.map((x) => x.resourceType)).toEqual(['aws_eks', 'aws_sqs']); // left as-is: priced as unsupported, never invented
+    expect(r.resources.map((x) => x.resourceType)).toEqual(['aws_eks', 'aws_kms']); // left as-is: priced as unsupported, never invented
   });
 
   test('Route 53 and CloudWatch have fixed Azure equivalents, so the model is not asked about them', async () => {

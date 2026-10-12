@@ -1,6 +1,6 @@
 import { foundryClient, FOUNDRY_MODEL } from '../ai/foundryClient';
 import { buildGenerationContext } from '../ai/knowledgeBase';
-import { detectServiceNotices, unsupportedServiceNames, type ServiceNotices } from '../ai/serviceCoverage';
+import { detectServiceNotices, designTypesOf, unsupportedServiceNames, type ServiceNotices } from '../ai/serviceCoverage';
 import { sanitizeSpecInput, type SanitizeReport } from '../ai/specSanitizer';
 import { repairSpecInput } from '../ai/specRepair';
 import { closestVerifiedDesign, adjustPrompt } from '../ai/verifiedBase';
@@ -562,7 +562,7 @@ CloudCraft cannot model these services yet, so NEVER offer them as options (not 
       attempts: outcome.attempts,
       // Judged against what the user asked for, not what the model produced: an unsupported service the model
       // silently swapped for another one must still be reported.
-      notices: detectServiceNotices(request, chosen?.graph?.nodes.map((n) => n.resourceType)),
+      notices: detectServiceNotices(request, chosen?.graph ? designTypesOf(chosen.graph.nodes) : undefined),
       sanitized,
       issues: outcome.ok ? [] : (outcome.best?.issues ?? last.issues).map((i) => i.message),
       stage: last.stage,

@@ -8,6 +8,7 @@
 
 import { CanvasNode, CanvasEdge, RelationshipType, ConnectionValidationResult, NetworkScope } from '@/types';
 import { getResourceDefinition } from '@/lib/resources';
+import { PRIVATE_LINK_TARGETS } from '@/lib/engines/assessment/privateAccess';
 
 /**
  * SINGLE SOURCE OF TRUTH for whether a direct edge between two resources of
@@ -147,7 +148,7 @@ export class RelationshipEngine {
 
     // Database directly in VPC/VNet/ResourceGroup
     if (
-      (childType === 'aws_rds' || childType === 'azure_sql' || childType === 'aws_elasticache' || childType === 'azure_redis') &&
+      (childType === 'aws_rds' || childType === 'azure_sql' || childType === 'aws_elasticache' || childType === 'azure_redis' || childType === 'azure_postgres' || childType === 'azure_mysql') &&
       (parentType === 'aws_vpc' || parentType === 'azure_vnet' || parentType === 'azure_resource_group')
     ) {
       return {
@@ -173,8 +174,10 @@ export class RelationshipEngine {
     allNodes: CanvasNode[] = [],
     _allEdges: CanvasEdge[] = []
   ): ConnectionValidationResult {
-    const sType = sourceNode.resourceType;
-    const tType = targetNode.resourceType;
+    // A Container App calls and is called like an App Service as far as these connection rules go.
+    const asAppService = (t: string) => (t === 'azure_container_apps' ? 'azure_app_service' : t);
+    const sType = asAppService(sourceNode.resourceType);
+    const tType = asAppService(targetNode.resourceType);
     const sProvider = sourceNode.provider ?? (sType.startsWith('azure_') ? 'azure' : 'aws');
     const tProvider = targetNode.provider ?? (tType.startsWith('azure_') ? 'azure' : 'aws');
 
@@ -580,7 +583,7 @@ export class RelationshipEngine {
     // ── Azure Explicit Rules ────────────────────────────────────────────────
     if (sProvider === 'azure') {
       // Invalid: Internet directly to Azure SQL
-      if ((sType === 'azure_public_ip' || sType === 'aws_internet') && tType === 'azure_sql') {
+      if ((sType === 'azure_public_ip' || sType === 'aws_internet') && (tType === 'azure_sql' || tType === 'azure_postgres' || tType === 'azure_mysql')) {
         return {
           isValid: false,
           relationshipType: 'NETWORK_FLOW',
@@ -598,7 +601,7 @@ export class RelationshipEngine {
       }
 
       // Invalid: Reverse connection from Database to Internet
-      if ((sType === 'azure_sql' || sType === 'azure_storage' || sType === 'azure_redis') && (tType === 'azure_public_ip' || tType === 'aws_internet')) {
+      if ((sType === 'azure_sql' || sType === 'azure_storage' || sType === 'azure_redis' || sType === 'azure_postgres' || sType === 'azure_mysql') && (tType === 'azure_public_ip' || tType === 'aws_internet')) {
         return {
           isValid: false,
           relationshipType: 'NETWORK_FLOW',
@@ -626,8 +629,18 @@ export class RelationshipEngine {
         };
       }
 
+      // Valid: Service Bus -> Functions (queue trigger), the other event-source exception to the passive-endpoint rule below.
+      if (sType === 'azure_service_bus' && tType === 'azure_functions') {
+        return { isValid: true, relationshipType: 'TRIGGERS', networkScope: 'internal', protocol: 'Service Bus Trigger', label: 'Queue Trigger' };
+      }
+
+      // Valid: Event Hubs / Event Grid -> Functions (event triggers)
+      if ((sType === 'azure_event_hubs' || sType === 'azure_event_grid') && tType === 'azure_functions') {
+        return { isValid: true, relationshipType: 'TRIGGERS', networkScope: 'internal', protocol: sType === 'azure_event_hubs' ? 'Event Hub Trigger' : 'Event Grid Trigger', label: 'Event Trigger' };
+      }
+
       // Invalid: Storage/Database initiating connection to Compute
-      if ((sType === 'azure_sql' || sType === 'azure_storage' || sType === 'azure_redis') && (tType === 'azure_vm' || tType === 'azure_vmss' || tType === 'azure_functions' || tType === 'azure_app_service' || tType === 'azure_aks')) {
+      if ((sType === 'azure_event_hubs' || sType === 'azure_event_grid' || sType === 'azure_sql' || sType === 'azure_storage' || sType === 'azure_redis' || sType === 'azure_postgres' || sType === 'azure_mysql' || sType === 'azure_service_bus' || sType === 'azure_acr') && (tType === 'azure_vm' || tType === 'azure_vmss' || tType === 'azure_functions' || tType === 'azure_app_service' || tType === 'azure_aks')) {
         return {
           isValid: false,
           relationshipType: 'NETWORK_FLOW',
@@ -745,6 +758,67 @@ export class RelationshipEngine {
           port: 443,
           label: 'Cosmos DB / 443',
         };
+      }
+
+      // Valid: Private Endpoint <-> the service it reaches. The line says "this endpoint is the private way in"; the application connects
+      // to the service itself, as it always does (its name then resolves to the endpoint through the private DNS zone).
+      if ((sType === 'azure_private_endpoint' && tType in PRIVATE_LINK_TARGETS) || (tType === 'azure_private_endpoint' && sType in PRIVATE_LINK_TARGETS)) {
+        return { isValid: true, relationshipType: 'ASSOCIATED_WITH', networkScope: 'private', protocol: 'Private Link', port: 443, label: 'Private Link' };
+      }
+      if (sType === 'azure_private_endpoint' || tType === 'azure_private_endpoint') {
+        return {
+          isValid: false,
+          relationshipType: 'ASSOCIATED_WITH',
+          networkScope: 'private',
+          error: {
+            code: 'PRIVATE_ENDPOINT_TARGET',
+            message: 'A Private Endpoint connects to one of: Storage, Azure SQL, Key Vault, Redis, Cosmos DB, Container Registry or Service Bus.',
+            technicalReason: 'Private Link can expose these services (and a few others) on a private address. PostgreSQL and MySQL flexible servers are placed in a subnet instead, and compute is not reached through an endpoint.',
+            suggestedAlternatives: ['Connect the endpoint to the service it should reach.', 'Connect the application to the service, not to the endpoint.'],
+          },
+        };
+      }
+
+      // Valid: compute -> PostgreSQL / MySQL flexible server
+      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && (tType === 'azure_postgres' || tType === 'azure_mysql')) {
+        const pg = tType === 'azure_postgres';
+        return { isValid: true, relationshipType: 'DATABASE_CONNECTION', networkScope: 'private', protocol: pg ? 'PostgreSQL / TCP' : 'MySQL / TCP', port: pg ? 5432 : 3306, label: pg ? 'PostgreSQL / 5432' : 'MySQL / 3306' };
+      }
+
+      // Valid: compute -> Service Bus (AMQP over TLS)
+      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_service_bus') {
+        return { isValid: true, relationshipType: 'CONNECTS_TO', networkScope: 'private', protocol: 'AMQP over TLS', port: 5671, label: 'Service Bus / 5671' };
+      }
+
+      // Valid: compute -> Event Hubs (AMQP over TLS) and Event Grid (publishing over HTTPS)
+      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_event_hubs') {
+        return { isValid: true, relationshipType: 'CONNECTS_TO', networkScope: 'private', protocol: 'AMQP over TLS', port: 5671, label: 'Event Hubs / 5671' };
+      }
+      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_event_grid') {
+        return { isValid: true, relationshipType: 'WRITES_TO', networkScope: 'private', protocol: 'HTTPS', port: 443, label: 'Publish events / 443' };
+      }
+
+      // Valid: Front Door / Application Gateway -> API Management, and API Management -> the services it fronts
+      if ((sType === 'azure_front_door' || sType === 'azure_app_gateway') && tType === 'azure_api_management') {
+        return { isValid: true, relationshipType: 'ROUTES_TO', networkScope: 'public', protocol: 'HTTPS', port: 443, label: 'API traffic / 443' };
+      }
+      if (sType === 'azure_api_management' && (tType === 'azure_vm' || tType === 'azure_vmss' || tType === 'azure_functions' || tType === 'azure_app_service' || tType === 'azure_aks')) {
+        return { isValid: true, relationshipType: 'ROUTES_TO', networkScope: 'private', protocol: 'HTTPS', port: 443, label: 'Backend API / 443' };
+      }
+
+      // Valid: a route table sends its subnets' traffic through a firewall
+      if (sType === 'azure_route_table' && tType === 'azure_firewall') {
+        return { isValid: true, relationshipType: 'ROUTES_TO', networkScope: 'private', label: 'Default route via firewall' };
+      }
+
+      // Valid: compute pulls images from the Container Registry
+      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_acr') {
+        return { isValid: true, relationshipType: 'READS_FROM', networkScope: 'private', protocol: 'HTTPS', port: 443, label: 'Image pull / 443' };
+      }
+
+      // Valid: anything that produces telemetry -> Azure Monitor
+      if (tType === 'azure_monitor' && sType !== 'azure_monitor') {
+        return { isValid: true, relationshipType: 'WRITES_TO', networkScope: 'private', protocol: 'HTTPS', port: 443, label: 'Telemetry / 443' };
       }
 
       // Valid: NSG association

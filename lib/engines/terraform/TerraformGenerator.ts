@@ -11,6 +11,11 @@
 import { placeholderProblems } from './placeholderChecks';
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
 import { assertSafeHcl, escapeHclString, hclSafeId, sanitizeResourcesForHcl } from './hclSafety';
+import { PRIVATE_LINK_TARGETS } from '@/lib/engines/assessment/privateAccess';
+import {
+  acrBlocks, apiManagementBlocks, containerAppBlocks, eventGridBlocks, eventHubsBlocks, firewallBlocks, delegationBlock, DELEGATION_FOR_TYPE, monitorBlocks, mysqlBlocks, postgresBlocks, PrivateDnsRegistry,
+  privateEndpointBlocks, serviceBusBlocks,
+} from './azureServices';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,6 +82,11 @@ function indent(text: string, spaces = 2): string {
  * Given a connection source→target, returns the Terraform reference string
  * for the source resource appropriate for use inside the target resource block.
  */
+/** The availability zones a setting asks for, as an HCL list. Only the values the form offers are written; anything else means no zones. */
+function zonesHcl(v: unknown): string | null {
+  return v === '1,2' ? '["1", "2"]' : v === '1,2,3' ? '["1", "2", "3"]' : null;
+}
+
 class ReferenceResolver {
   private readonly nameMap: Map<string, string>; // resourceId → tfName
 
@@ -2502,6 +2512,7 @@ class AzureTerraformGenerator {
     const warnings: string[] = [];
     const resourceMap: Record<string, string> = {};
     let clientConfigEmitted = false;
+    const deferredEndpoints: DbArchitectureResource[] = [];
 
     const azureResources = resources.filter((r) => r.resourceType.startsWith('azure_'));
     if (azureResources.length === 0) return { blocks, warnings, resourceMap };
@@ -2563,7 +2574,16 @@ locals {
             blocks.push(this._dataSubnet(name, cfg, rgName, vnetName));
             resourceMap[r.id] = `data.azurerm_subnet.${name}`;
           } else {
-            blocks.push(this._subnet(name, cfg, rgName, vnetName));
+            // A flexible server placed in a subnet needs the subnet delegated to its service (and the subnet can serve only that service).
+            const delegated = resources.filter((x) => x.groupId === r.id && DELEGATION_FOR_TYPE[x.resourceType] && this._cfg(x)['publicNetworkAccess'] !== true);
+            const services = new Set(delegated.map((x) => x.resourceType));
+            if (services.size > 1) warnings.push(`Subnet "${r.label}" holds both a PostgreSQL and a MySQL flexible server. A subnet can be delegated to one service only: put each in its own subnet.`);
+            const mixed = delegated.length > 0 && resources.some((x) => x.groupId === r.id && !DELEGATION_FOR_TYPE[x.resourceType] && x.resourceType !== 'azure_nsg');
+            if (mixed) warnings.push(`Subnet "${r.label}" holds a flexible server together with other resources. A delegated subnet can hold nothing else: give the database its own subnet.`);
+            // Azure fixes the name of the subnet a firewall or a Bastion host lives in.
+            const hosts = (t: string) => resources.some((x) => x.groupId === r.id && x.resourceType === t);
+            const reserved = hosts('azure_firewall') ? 'AzureFirewallSubnet' : hosts('azure_bastion') ? 'AzureBastionSubnet' : undefined;
+            blocks.push(this._subnet(name, cfg, rgName, vnetName, delegated[0] ? delegationBlock(delegated[0].resourceType) : '', reserved));
             resourceMap[r.id] = `azurerm_subnet.${name}`;
           }
           break;
@@ -2650,6 +2670,81 @@ locals {
           resourceMap[r.id] = `azurerm_redis_cache.${name}`;
           break;
         }
+        case 'azure_postgres':
+        case 'azure_mysql': {
+          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources);
+          const vnet = subnet ? (resolver.resolveParent(subnet.id, 'azure_vnet', connections, resources) ?? explicitVnet) : undefined;
+          const gen = r.resourceType === 'azure_postgres' ? postgresBlocks : mysqlBlocks;
+          const out = gen({
+            name, cfg, rgName, rgLoc, label: r.label,
+            subnetRef: subnet ? this._subnetRef(subnet, resolver) : null,
+            vnetIdRef: vnet ? this._vnetIdRef(vnet, resolver) : null,
+          });
+          blocks.push(out.block);
+          warnings.push(...out.warnings);
+          resourceMap[r.id] = `${r.resourceType === 'azure_postgres' ? 'azurerm_postgresql_flexible_server' : 'azurerm_mysql_flexible_server'}.${name}`;
+          break;
+        }
+        case 'azure_firewall': {
+          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources);
+          const out = firewallBlocks(name, cfg, rgName, rgLoc, subnet ? this._subnetRef(subnet, resolver) : null, r.label);
+          blocks.push(out.block); warnings.push(...out.warnings);
+          resourceMap[r.id] = `azurerm_firewall.${name}`;
+          break;
+        }
+        case 'azure_event_hubs': {
+          const out = eventHubsBlocks(name, cfg, rgName, rgLoc);
+          blocks.push(out.block); warnings.push(...out.warnings);
+          resourceMap[r.id] = `azurerm_eventhub_namespace.${name}`;
+          break;
+        }
+        case 'azure_event_grid': {
+          const out = eventGridBlocks(name, cfg, rgName, rgLoc);
+          blocks.push(out.block); warnings.push(...out.warnings);
+          resourceMap[r.id] = `azurerm_eventgrid_topic.${name}`;
+          break;
+        }
+        case 'azure_api_management': {
+          const out = apiManagementBlocks(name, cfg, rgName, rgLoc);
+          blocks.push(out.block); warnings.push(...out.warnings);
+          resourceMap[r.id] = `azurerm_api_management.${name}`;
+          break;
+        }
+        case 'azure_container_apps': {
+          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources);
+          const monitor = connections
+            .filter((c) => c.sourceId === r.id || c.targetId === r.id)
+            .map((c) => resources.find((x) => x.id === (c.sourceId === r.id ? c.targetId : c.sourceId)))
+            .find((x) => x?.resourceType === 'azure_monitor');
+          const out = containerAppBlocks(name, cfg, rgName, rgLoc, subnet ? this._subnetRef(subnet, resolver) : null, monitor ? `azurerm_log_analytics_workspace.${resolver.tfNameOf(monitor.id) ?? 'main'}.id` : null, r.label);
+          blocks.push(out.block); warnings.push(...out.warnings);
+          resourceMap[r.id] = `azurerm_container_app.${name}`;
+          break;
+        }
+        case 'azure_service_bus': {
+          const out = serviceBusBlocks(name, cfg, rgName, rgLoc);
+          blocks.push(out.block); warnings.push(...out.warnings);
+          resourceMap[r.id] = `azurerm_servicebus_namespace.${name}`;
+          break;
+        }
+        case 'azure_acr': {
+          const out = acrBlocks(name, cfg, rgName, rgLoc);
+          blocks.push(out.block); warnings.push(...out.warnings);
+          resourceMap[r.id] = `azurerm_container_registry.${name}`;
+          break;
+        }
+        case 'azure_monitor': {
+          const out = monitorBlocks(name, cfg, rgName, rgLoc);
+          blocks.push(out.block); warnings.push(...out.warnings);
+          resourceMap[r.id] = `azurerm_log_analytics_workspace.${name}`;
+          break;
+        }
+        case 'azure_private_endpoint': {
+          // Needs the address of the service it reaches, which may be generated after this resource: handled once the loop is done.
+          deferredEndpoints.push(r);
+          resourceMap[r.id] = `azurerm_private_endpoint.${name}`;
+          break;
+        }
         case 'azure_public_ip': {
           blocks.push(this._publicIpAzure(name, cfg, rgName, rgLoc));
           resourceMap[r.id] = `azurerm_public_ip.${name}`;
@@ -2667,7 +2762,11 @@ locals {
           break;
         }
         case 'azure_route_table': {
-          blocks.push(this._azureRouteTable(name, cfg, rgName, rgLoc));
+          const fw = connections
+            .filter((c) => c.sourceId === r.id || c.targetId === r.id)
+            .map((c) => resources.find((x) => x.id === (c.sourceId === r.id ? c.targetId : c.sourceId)))
+            .find((x) => x?.resourceType === 'azure_firewall');
+          blocks.push(this._azureRouteTable(name, cfg, rgName, rgLoc, fw ? `azurerm_firewall.${resolver.tfNameOf(fw.id) ?? 'main'}` : null));
           resourceMap[r.id] = `azurerm_route_table.${name}`;
           break;
         }
@@ -2682,13 +2781,29 @@ locals {
           break;
         }
         case 'azure_front_door': {
-          blocks.push(this._frontDoor(name, cfg, rgName));
+          // The origin is the service the Front Door is connected to, by reference, so it is always the real host name. A literal
+          // host name is used only when nothing it can serve is connected.
+          const origin = this._frontDoorOrigin(r.id, resolver, connections, resources);
+          if (!origin && (!cfg['originHostName'] || cfg['originHostName'] === 'origin.example.com')) warnings.push(`Front Door "${r.label}" is not connected to anything it can serve (a storage account with a static website, an App Service or a Functions app) and its origin host name is still the example value: set the real host name.`);
+          blocks.push(this._frontDoor(name, cfg, rgName, origin));
           resourceMap[r.id] = `azurerm_cdn_frontdoor_profile.${name}`;
           break;
         }
         case 'azure_waf': {
-          blocks.push(this._azureWaf(name, cfg, rgName, rgLoc));
-          resourceMap[r.id] = `azurerm_web_application_firewall_policy.${name}`;
+          // A WAF connected to a Front Door is a Front Door policy (a different resource type from an Application Gateway policy) and must be
+          // attached to the endpoint by a security policy, or it protects nothing.
+          const fd = connections
+            .filter((c) => c.sourceId === r.id || c.targetId === r.id)
+            .map((c) => resources.find((x) => x.id === (c.sourceId === r.id ? c.targetId : c.sourceId)))
+            .find((x) => x?.resourceType === 'azure_front_door');
+          if (fd) {
+            const fdName = resolver.tfNameOf(fd.id) ?? 'main';
+            blocks.push(this._frontDoorWaf(name, cfg, rgName, fdName, String(this._cfg(fd)['sku'] ?? 'Standard_AzureFrontDoor'), warnings, r.label));
+            resourceMap[r.id] = `azurerm_cdn_frontdoor_firewall_policy.${name}`;
+          } else {
+            blocks.push(this._azureWaf(name, cfg, rgName, rgLoc));
+            resourceMap[r.id] = `azurerm_web_application_firewall_policy.${name}`;
+          }
           break;
         }
         case 'azure_vmss': {
@@ -2741,7 +2856,96 @@ locals {
       }
     }
 
+    const rgNameOf = (id: string) => this._resolveRg(id, resolver, connections, resources, explicitRg).rgName;
+
+    // Private endpoints: each reaches the one service it is connected to, in the subnet it is placed in, with one DNS zone per service kind.
+    if (deferredEndpoints.length > 0) {
+      const dns = new PrivateDnsRegistry();
+      const endpointBlocks: string[] = [];
+      for (const r of deferredEndpoints) {
+        const cfg = this._cfg(r);
+        const name = resolver.tfNameOf(r.id) ?? tfName(r.label);
+        const { rgName, rgLoc } = this._resolveRg(r.id, resolver, connections, resources, explicitRg);
+        const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources);
+        const vnet = subnet ? (resolver.resolveParent(subnet.id, 'azure_vnet', connections, resources) ?? explicitVnet) : undefined;
+        const linked = connections
+          .filter((c) => c.sourceId === r.id || c.targetId === r.id)
+          .map((c) => resources.find((x) => x.id === (c.sourceId === r.id ? c.targetId : c.sourceId)))
+          .filter((x): x is DbArchitectureResource => !!x && x.resourceType in PRIVATE_LINK_TARGETS);
+        if (linked.length > 1) warnings.push(`Private Endpoint "${r.label}" is connected to ${linked.length} services. It reaches only "${linked[0]!.label}": use one endpoint per service.`);
+        const t = linked[0];
+        const out = privateEndpointBlocks({
+          name, cfg, label: r.label, rgName, rgLoc,
+          subnetRef: subnet ? this._subnetRef(subnet, resolver) : null,
+          vnetTf: vnet ? (resolver.tfNameOf(vnet.id) ?? 'main') : null,
+          vnetIdRef: vnet ? this._vnetIdRef(vnet, resolver) : null,
+          target: t && resourceMap[t.id] ? { type: t.resourceType, cfg: this._cfg(t), address: resourceMap[t.id]! } : null,
+        }, dns);
+        endpointBlocks.push(out.block);
+        warnings.push(...out.warnings);
+      }
+      blocks.push(...dns.blocks, ...endpointBlocks);
+    }
+
+    // A network security group or route table drawn against a subnet applies to it only through an association. Without these resources the
+    // groups were created but protected nothing and routed nothing.
+    const subnetOf = (id: string) => connections
+      .filter((c) => c.sourceId === id || c.targetId === id)
+      .map((c) => resources.find((x) => x.id === (c.sourceId === id ? c.targetId : c.sourceId)))
+      .filter((x): x is DbArchitectureResource => !!x && x.resourceType === 'azure_subnet');
+    const subnetHosts = (subnetId: string, type: string) => resources.some((x) => x.groupId === subnetId && x.resourceType === type);
+    for (const g of resources.filter((x) => x.resourceType === 'azure_nsg' || x.resourceType === 'azure_route_table')) {
+      const gCfg = this._cfg(g);
+      if (gCfg['imported'] || gCfg['importState'] === 'imported') continue;
+      const gName = resolver.tfNameOf(g.id) ?? tfName(g.label);
+      const isNsg = g.resourceType === 'azure_nsg';
+      for (const sn of subnetOf(g.id)) {
+        const snCfg = this._cfg(sn);
+        if (snCfg['imported'] || snCfg['importState'] === 'imported') continue;
+        const snName = resolver.tfNameOf(sn.id) ?? tfName(sn.label);
+        if (isNsg && subnetHosts(sn.id, 'azure_firewall')) { warnings.push(`Network security group "${g.label}" is drawn against the subnet of an Azure Firewall, which Azure does not allow, so it was not associated.`); continue; }
+        if (isNsg && subnetHosts(sn.id, 'azure_bastion')) { warnings.push(`Network security group "${g.label}" is drawn against the subnet of an Azure Bastion host, which needs a specific set of rules that CloudCraft does not generate, so it was not associated.`); continue; }
+        if (isNsg) {
+          blocks.push(`resource "azurerm_subnet_network_security_group_association" "${gName}_${snName}" {
+  subnet_id                 = azurerm_subnet.${snName}.id
+  network_security_group_id = azurerm_network_security_group.${gName}.id
+}`);
+          // Application Gateway v2 is managed from Azure's own addresses on ports 65200-65535; a group that does not allow them makes the gateway fail.
+          if (subnetHosts(sn.id, 'azure_app_gateway')) {
+            blocks.push(`resource "azurerm_network_security_rule" "${gName}_${snName}_gateway_manager" {
+  name                        = "allow-gateway-manager"
+  priority                    = 1100
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "65200-65535"
+  source_address_prefix       = "GatewayManager"
+  destination_address_prefix  = "*"
+  resource_group_name         = ${rgNameOf(g.id)}
+  network_security_group_name = azurerm_network_security_group.${gName}.name
+}`);
+          }
+        } else {
+          blocks.push(`resource "azurerm_subnet_route_table_association" "${gName}_${snName}" {
+  subnet_id      = azurerm_subnet.${snName}.id
+  route_table_id = azurerm_route_table.${gName}.id
+}`);
+        }
+      }
+    }
+
     return { blocks, warnings, resourceMap };
+  }
+
+  private _subnetRef(subnet: DbArchitectureResource, resolver: ReferenceResolver): string {
+    const imported = Boolean(this._cfg(subnet).imported || this._cfg(subnet).importState === 'imported');
+    return `${imported ? 'data.' : ''}azurerm_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id`;
+  }
+
+  private _vnetIdRef(vnet: DbArchitectureResource, resolver: ReferenceResolver): string {
+    const imported = Boolean(this._cfg(vnet).imported || this._cfg(vnet).importState === 'imported');
+    return `${imported ? 'data.' : ''}azurerm_virtual_network.${resolver.tfNameOf(vnet.id) ?? 'main'}.id`;
   }
 
   private _cfg(r: DbArchitectureResource): Record<string, unknown> {
@@ -2824,12 +3028,12 @@ data "azurerm_network_security_group" "${name}" {
 }`;
   }
 
-  private _subnet(name: string, cfg: Record<string, unknown>, rgName: string, vnetName: string): string {
+  private _subnet(name: string, cfg: Record<string, unknown>, rgName: string, vnetName: string, extra = '', reservedName?: string): string {
     return `resource "azurerm_subnet" "${name}" {
-  name                 = "${name}"
+  name                 = "${reservedName ?? name}"
   resource_group_name  = ${rgName}
   virtual_network_name = ${vnetName}
-  address_prefixes     = ["${cfg['addressPrefix'] ?? '10.0.1.0/24'}"]
+  address_prefixes     = ["${cfg['addressPrefix'] ?? '10.0.1.0/24'}"]${extra}
 }`;
   }
 
@@ -2952,6 +3156,12 @@ data "azurerm_network_security_group" "${name}" {
 
     if (cfg['networkDefaultAction'] === 'Deny') {
       lines.push(`  network_rules {`, `    default_action = "Deny"`, `  }`);
+    }
+
+    if (cfg['staticWebsite'] === true && (cfg['kind'] ?? 'StorageV2') === 'StorageV2') {
+      // Document names are file names: keep them to the characters a blob name normally has.
+      const doc = (v: unknown, fallback: string) => String(v ?? fallback).replace(/[^A-Za-z0-9._\-/]/g, '').slice(0, 200) || fallback;
+      lines.push(`  static_website {`, `    index_document     = "${doc(cfg['indexDocument'], 'index.html')}"`, `    error_404_document = "${doc(cfg['errorDocument'], '404.html')}"`, `  }`);
     }
 
     lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
@@ -3229,15 +3439,14 @@ data "azurerm_network_security_group" "${name}" {
       `  public_network_access_enabled = ${cfg['publicNetworkAccess'] !== false}`,
       `  client_affinity_enabled    = ${cfg['clientAffinityEnabled'] === true}`,
     ];
-    if (cfg['healthCheckPath']) {
-      appLines.push(`  health_check_path          = "${cfg['healthCheckPath']}"`);
-    }
     appLines.push(
       `  site_config {`,
       `    minimum_tls_version = "${cfg['minimumTlsVersion'] ?? '1.2'}"`,
       `    ftps_state          = "${cfg['ftpsState'] ?? 'Disabled'}"`,
       `    http2_enabled       = ${cfg['http2Enabled'] !== false}`,
     );
+    // The health check belongs inside site_config; at the top level azurerm rejects it ("argument named health_check_path is not expected").
+    if (cfg['healthCheckPath']) appLines.push(`    health_check_path   = "${cfg['healthCheckPath']}"`);
     if (skuName !== 'F1') {
       appLines.push(`    always_on           = ${cfg['alwaysOn'] !== false}`);
     }
@@ -3428,10 +3637,11 @@ ${tagLines.join('\n')}
 }`;
   }
 
-  private _azureRouteTable(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
+  private _azureRouteTable(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string, firewallRef: string | null = null): string {
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
-    const nextHopType = (cfg['nextHopType'] as string) || 'Internet';
+    // Connected to a firewall, the table sends its traffic through it (the usual default route to the firewall's private address).
+    const nextHopType = firewallRef ? 'VirtualAppliance' : ((cfg['nextHopType'] as string) || 'Internet');
 
     const lines: string[] = [
       `resource "azurerm_route_table" "${name}" {`,
@@ -3441,8 +3651,9 @@ ${tagLines.join('\n')}
       `  disable_bgp_route_propagation = ${cfg['disableBgpRoutePropagation'] === true}`,
     ];
     if (nextHopType !== 'None') {
-      lines.push(`  route {`, `    name           = "${name}-route"`, `    address_prefix = "${cfg['destinationCidr'] ?? '0.0.0.0/0'}"`, `    next_hop_type  = "${nextHopType}"`);
-      if (nextHopType === 'VirtualAppliance' && cfg['nextHopIpAddress']) {
+      lines.push(`  route {`, `    name           = "${name}-route"`, `    address_prefix = "${firewallRef ? '0.0.0.0/0' : (cfg['destinationCidr'] ?? '0.0.0.0/0')}"`, `    next_hop_type  = "${nextHopType}"`);
+      if (firewallRef) lines.push(`    next_hop_in_ip_address = ${firewallRef}.ip_configuration[0].private_ip_address`);
+      else if (nextHopType === 'VirtualAppliance' && cfg['nextHopIpAddress']) {
         lines.push(`    next_hop_in_ip_address = "${cfg['nextHopIpAddress']}"`);
       }
       lines.push(`  }`);
@@ -3496,8 +3707,102 @@ ${tagLines.join('\n')}
     return lines.join('\n');
   }
 
-  private _frontDoor(name: string, cfg: Record<string, unknown>, rgName: string): string {
+  /** The host name expression of the service a Front Door serves, taken from the connected resource; null when none can be used. */
+  private _frontDoorOrigin(
+    fdId: string,
+    resolver: ReferenceResolver,
+    connections: DbArchitectureConnection[],
+    resources: DbArchitectureResource[],
+  ): { host: string; viaIp?: boolean } | null {
+    for (const c of connections) {
+      if (c.sourceId !== fdId && c.targetId !== fdId) continue;
+      const other = resources.find((x) => x.id === (c.sourceId === fdId ? c.targetId : c.sourceId));
+      if (!other) continue;
+      const tfn = resolver.tfNameOf(other.id) ?? 'main';
+      const cfg = this._cfg(other);
+      if (cfg['imported'] || cfg['importState'] === 'imported') continue;
+      if (other.resourceType === 'azure_storage' || other.resourceType === 'azure_blob') return { host: `azurerm_storage_account.${tfn}.${cfg['staticWebsite'] === true ? 'primary_web_host' : 'primary_blob_host'}` };
+      if (other.resourceType === 'azure_app_service') return { host: `${cfg['osType'] === 'Windows' ? 'azurerm_windows_web_app' : 'azurerm_linux_web_app'}.${tfn}.default_hostname` };
+      if (other.resourceType === 'azure_functions') return { host: `${cfg['osType'] === 'Windows' ? 'azurerm_windows_function_app' : 'azurerm_linux_function_app'}.${tfn}.default_hostname` };
+      if (other.resourceType === 'azure_app_gateway') {
+        // The gateway's public IP address is the origin (a certificate cannot match an address, so the name check is off for it).
+        const pip = resolver.resolveParent(other.id, 'azure_public_ip', connections, resources);
+        return { host: `azurerm_public_ip.${pip ? (resolver.tfNameOf(pip.id) ?? 'main') : `${tfn}_pip`}.ip_address`, viaIp: true };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The WAF for a Front Door: a Front Door firewall policy and the security policy that attaches it to the endpoint. Managed rule sets exist only on
+   * the Premium tier; on Standard the policy carries a rate-limit rule instead, and the person is told.
+   */
+  private _frontDoorWaf(name: string, cfg: Record<string, unknown>, rgName: string, fdName: string, fdSku: string, warnings: string[], label: string): string {
+    const premium = fdSku === 'Premium_AzureFrontDoor';
+    const policyName = (String(cfg['name'] ?? name).replace(/[^A-Za-z0-9]/g, '') || 'wafpolicy').replace(/^[^A-Za-z]+/, 'p').slice(0, 128);
+    const mode = cfg['mode'] === 'Detection' ? 'Detection' : 'Prevention';
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+    if (!premium) warnings.push(`WAF "${label}" protects a Front Door on the Standard tier, which supports custom and rate-limit rules but not managed rule sets (the OWASP/Default rule set needs Premium), so it carries a rate-limit rule only.`);
+    const rules = premium
+      ? `  managed_rule {
+    type    = "Microsoft_DefaultRuleSet"
+    version = "2.1"
+    action  = "Block"
+  }`
+      : `  custom_rule {
+    name                           = "RateLimitPerClient"
+    enabled                        = true
+    priority                       = 1
+    type                           = "RateLimitRule"
+    action                         = "Block"
+    rate_limit_duration_in_minutes = 1
+    rate_limit_threshold           = 1000
+    match_condition {
+      match_variable     = "RequestUri"
+      operator           = "Contains"
+      negation_condition = false
+      match_values       = ["/"]
+    }
+  }`;
+    return `resource "azurerm_cdn_frontdoor_firewall_policy" "${name}" {
+  name                = "${policyName}"
+  resource_group_name = ${rgName}
+  sku_name            = "${premium ? 'Premium_AzureFrontDoor' : 'Standard_AzureFrontDoor'}"
+  enabled             = true
+  mode                = "${mode}"
+
+${rules}
+
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+${tagLines.join('\n')}
+  }
+}
+
+resource "azurerm_cdn_frontdoor_security_policy" "${name}_attach" {
+  name                     = "${policyName}-attach"
+  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.${fdName}.id
+
+  security_policies {
+    firewall {
+      cdn_frontdoor_firewall_policy_id = azurerm_cdn_frontdoor_firewall_policy.${name}.id
+
+      association {
+        patterns_to_match = ["/*"]
+        domain {
+          cdn_frontdoor_domain_id = azurerm_cdn_frontdoor_endpoint.${fdName}_endpoint.id
+        }
+      }
+    }
+  }
+}`;
+  }
+
+  private _frontDoor(name: string, cfg: Record<string, unknown>, rgName: string, origin: { host: string; viaIp?: boolean } | null = null): string {
     const fdName = name.replace(/_/g, '-');
+    const hostExpr = origin ? origin.host : `"${cfg['originHostName'] ?? 'origin.example.com'}"`;
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
 
@@ -3525,9 +3830,9 @@ ${tagLines.join('\n')}
       `resource "azurerm_cdn_frontdoor_origin" "${name}_origin" {
   name                          = "${fdName}-origin"
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.${name}_origin_group.id
-  host_name                     = "${cfg['originHostName'] ?? 'origin.example.com'}"
-  origin_host_header            = "${cfg['originHostName'] ?? 'origin.example.com'}"
-  certificate_name_check_enabled = ${cfg['httpsOnly'] !== false}
+  host_name                     = ${hostExpr}
+  origin_host_header            = ${hostExpr}
+  certificate_name_check_enabled = ${origin?.viaIp ? false : cfg['httpsOnly'] !== false}
 }`,
       `resource "azurerm_cdn_frontdoor_route" "${name}_route" {
   name                          = "${fdName}-route"
@@ -3599,6 +3904,8 @@ ${tagLines.join('\n')}
       `  upgrade_mode         = "${cfg['upgradeMode'] ?? 'Manual'}"`,
       `  encryption_at_host_enabled = ${cfg['osDiskEncryption'] === true}`,
     ];
+    const vmssZones = zonesHcl(cfg['zones']);
+    if (vmssZones) lines.push(`  zones                = ${vmssZones}`);
     if (!isWindows) {
       lines.push(`  admin_ssh_key {`, `    username   = "${cfg['adminUsername'] ?? 'azureuser'}"`, `    public_key = var.admin_ssh_public_key`, `  }`);
     } else {
@@ -3683,6 +3990,7 @@ ${tagLines.join('\n')}
       `  name                = "${name}"`,
       `  resource_group_name = ${rgName}`,
       `  location            = ${rgLoc}`,
+      ...(zonesHcl(cfg['zones']) ? [`  zones               = ${zonesHcl(cfg['zones'])}`] : []),
       `  sku {`,
       `    name = "${cfg['sku'] ?? 'Standard_v2'}"`,
       `    tier = "${cfg['sku'] ?? 'Standard_v2'}"`,
@@ -4060,7 +4368,7 @@ ${required.join('\n')}
     const hasAws   = providers.includes('aws');
     const hasAzure = providers.includes('azure');
     const hasRds   = input.resources.some((r) => r.resourceType === 'aws_rds');
-    const hasSql   = input.resources.some((r) => r.resourceType === 'azure_sql');
+    const hasSql   = input.resources.some((r) => r.resourceType === 'azure_sql' || r.resourceType === 'azure_postgres' || r.resourceType === 'azure_mysql');
     const isVmLike = (r: DbArchitectureResource) => r.resourceType === 'azure_vm' || r.resourceType === 'azure_vmss';
     const hasVm    = input.resources.some(isVmLike);
     const parseCfg = (r: DbArchitectureResource): Record<string, unknown> => {
@@ -4121,13 +4429,13 @@ variable "db_password" {
 
     if (hasSql) {
       vars.push(`variable "sql_admin_login" {
-  description = "Azure SQL Server admin login"
+  description = "Azure SQL / PostgreSQL / MySQL server admin login"
   type        = string
   default     = "sqladmin"
 }
 
 variable "sql_admin_password" {
-  description = "Azure SQL Server admin password — set via TF_VAR_sql_admin_password environment variable"
+  description = "Azure SQL / PostgreSQL / MySQL server admin password — set via TF_VAR_sql_admin_password environment variable"
   type        = string
   sensitive   = true
   default     = "CloudCraft_SqlPass123!"

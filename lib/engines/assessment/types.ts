@@ -11,7 +11,7 @@
  * This module is isomorphic (browser + server): no Node-only imports.
  */
 
-export const RULESET_VERSION = '2026.10.1';
+export const RULESET_VERSION = '2026.10.3';
 export const ENGINE_NAME = 'CloudCraft Assessment Engine';
 
 export type AssessmentProvider = 'aws' | 'azure';

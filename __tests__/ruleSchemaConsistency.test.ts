@@ -29,6 +29,11 @@ const KNOWN_TERRAFORM_GAPS: Record<string, string> = {
 const CONTEXT: Record<string, Record<string, unknown>> = {
   'azure_app_gateway.wafEnabled': { sku: 'WAF_v2' },
   'azure_app_gateway.wafMode': { sku: 'WAF_v2', wafEnabled: true },
+  // Private access and zone redundancy exist only on the higher tiers; on the lower ones the generator keeps the default and says so.
+  'azure_acr.publicNetworkAccess': { sku: 'Premium' }, 'azure_acr.zoneRedundant': { sku: 'Premium' },
+  'azure_service_bus.publicNetworkAccess': { sku: 'Premium' }, 'azure_service_bus.zoneRedundant': { sku: 'Premium' },
+  'azure_api_management.zones': { sku: 'Premium' },
+  'azure_postgres.highAvailability': { skuName: 'GP_Standard_D2ds_v5' }, 'azure_mysql.highAvailability': { skuName: 'GP_Standard_D2ds_v4' },
 };
 
 type Def = NonNullable<ReturnType<typeof getResourceDefinition>>;

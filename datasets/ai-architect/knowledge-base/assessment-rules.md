@@ -1,4 +1,4 @@
-# Assessment rules (ruleset 2026.09.2)
+# Assessment rules (ruleset 2026.10.3)
 
 A design is only "deploy-ready" if none of these rules fails or warns at MEDIUM severity or above. Read the recommendation to see how to satisfy each rule.
 
@@ -149,17 +149,17 @@ Why it matters: Security Hub EC2.15 (medium).
 Recommendation: Disable auto-assign public IP; request public IPs explicitly only where required (e.g. NAT gateways, bastions).
 Applies to: aws_subnet.
 
-## AWS-VPC-002 — VPC flow logging not modelled
-Provider: aws; service: Amazon VPC; severity: MEDIUM; pillar: security (SEC 4 — Detect and investigate security events).
-Security Hub EC2.6 requires VPC Flow Logs. CloudCraft does not model flow logs.
-Why it matters: Reported NOT EVALUATED — flow logging is never assumed.
-Recommendation: Enable VPC Flow Logs (at least REJECT traffic) to CloudWatch Logs or S3.
+## AWS-VPC-002 — VPC Flow Logs are not enabled
+Provider: aws; service: Amazon VPC; severity: LOW; pillar: security (SEC 4 — Detect and investigate security events).
+Network traffic in the VPC is not being recorded.
+Why it matters: Security Hub EC2.6 rates this medium. It is LOW here because flow logs need an existing S3 bucket as their destination, which a design-time canvas does not create. An imported VPC whose flow-log setting is not known stays NOT EVALUATED: nothing is assumed.
+Recommendation: Enable VPC Flow Logs (all traffic, or at least rejected traffic) to a dedicated S3 bucket with a retention policy.
 Applies to: aws_vpc.
 
 ## AWS-VPC-003 — VPC DNS resolution is disabled
-Provider: aws; service: Amazon VPC; severity: MEDIUM; pillar: operational_excellence (Design for operations).
+Provider: aws; service: Amazon VPC; severity: MEDIUM; pillar: reliability (REL 2 — Plan your network topology).
 enableDnsSupport is false, so the Amazon-provided DNS resolver is unavailable in the VPC.
-Why it matters: Interface VPC endpoints with private DNS, EKS and many managed services require DNS support. This is an operational defect, not a security control.
+Why it matters: Interface VPC endpoints with private DNS, EKS and many managed services require DNS support. Whether services can find each other is a property of the network foundation, so it counts toward Reliability (plan the network topology); it is neither an operations practice nor a security control.
 Recommendation: Enable DNS support on the VPC.
 Applies to: aws_vpc.
 
@@ -408,31 +408,101 @@ Why it matters: Sustainability and Cost pillars recommend energy-efficient insta
 Recommendation: Switch to arm64 after confirming native dependencies are available for arm64.
 Applies to: aws_lambda.
 
+## AWS-ELB-005 — Load balancer access logging is disabled
+Provider: aws; service: Elastic Load Balancing; severity: LOW; pillar: security (SEC 4 — Detect and investigate security events).
+Access logs record each request the load balancer handles (client address, path, latency, response code, TLS details).
+Why it matters: Security Hub ELB.5 rates this medium. It is LOW here because logging needs an S3 bucket whose policy lets the regional Elastic Load Balancing account write to it, which a design-time canvas does not create.
+Recommendation: Turn on access logs and deliver them to a dedicated, access-restricted S3 bucket with a retention policy.
+Applies to: aws_alb.
+
+## AWS-CF-003 — CloudFront standard logging is disabled
+Provider: aws; service: Amazon CloudFront; severity: LOW; pillar: security (SEC 4 — Detect and investigate security events).
+Viewer requests to the distribution are not logged.
+Why it matters: Security Hub CloudFront.5 rates this medium. It is LOW here because standard logging needs an existing S3 bucket with ACLs enabled for log delivery, which a design-time canvas does not create.
+Recommendation: Enable standard logging to a dedicated S3 bucket (ACLs enabled for log delivery) with a retention policy.
+Applies to: aws_cloudfront.
+
+## AWS-WAF-002 — AWS WAF web ACL has CloudWatch metrics or request sampling disabled
+Provider: aws; service: AWS WAF; severity: LOW; pillar: security (SEC 4 — Detect and investigate security events).
+Without CloudWatch metrics and sampled requests there is no view of what the web ACL allows, blocks or counts.
+Why it matters: A web ACL that cannot be observed cannot be tuned, and a rule that is blocking real customers goes unnoticed. Full request logging (a logging configuration to Kinesis, S3 or CloudWatch Logs) is not modelled by CloudCraft, so this checks the visibility settings it does model.
+Recommendation: Enable CloudWatch metrics and sampled requests on the web ACL and every rule, and add a WAF logging configuration.
+Applies to: aws_waf.
+
+## AWS-PERF-001 — CloudFront does not compress objects automatically
+Provider: aws; service: Amazon CloudFront; severity: LOW; pillar: performance_efficiency (Networking and content delivery).
+Automatic compression is off, so text content (HTML, CSS, JavaScript, JSON) is sent uncompressed.
+Why it matters: Performance Efficiency: reduce the bytes sent over the network. Compression typically cuts text payloads substantially at no extra charge.
+Recommendation: Turn on automatic object compression.
+Applies to: aws_cloudfront.
+
+## AWS-PERF-002 — CloudFront serves viewers over HTTP/1.1 only
+Provider: aws; service: Amazon CloudFront; severity: LOW; pillar: performance_efficiency (Networking and content delivery).
+The distribution does not offer HTTP/2 or HTTP/3 to viewers.
+Why it matters: Performance Efficiency: HTTP/2 multiplexes requests over one connection and HTTP/3 reduces connection setup time, both of which help page load times.
+Recommendation: Use HTTP/2 (or HTTP/2 and HTTP/3) for viewer connections.
+Applies to: aws_cloudfront.
+
+## AWS-PERF-003 — Auto Scaling group has no scaling policy
+Provider: aws; service: Amazon EC2 Auto Scaling; severity: LOW; pillar: performance_efficiency (Compute — adapt capacity to demand).
+No target-tracking scaling policy is configured, so the group stays at its desired capacity whatever the load.
+Why it matters: Performance Efficiency: adapt capacity to demand. A group without a scaling policy is a fixed-size fleet that either runs out of headroom or pays for idle instances.
+Recommendation: Add a target-tracking policy (for example average CPU around 60%).
+Applies to: aws_auto_scaling.
+
+## AWS-PERF-004 — RDS Performance Insights is disabled
+Provider: aws; service: Amazon RDS; severity: LOW; pillar: performance_efficiency (Data management — monitor performance).
+Database load and top queries are not being collected.
+Why it matters: Performance Efficiency: monitor performance to find and fix bottlenecks. Performance Insights keeps 7 days of history at no charge.
+Recommendation: Enable Performance Insights (the 7-day retention is free).
+Applies to: aws_rds.
+
+## AWS-SUS-002 — Instances use x86 where an AWS Graviton equivalent exists
+Provider: aws; service: Amazon EC2, Auto Scaling and RDS; severity: LOW; pillar: sustainability (Hardware and services — use efficient hardware).
+The instance family is an x86 one (T3, M5, C5, R5 and similar); Graviton-based families (T4g, M6g, C6g, R6g and similar) do the same work using less energy.
+Why it matters: Sustainability pillar: use the most efficient hardware for the workload. Graviton instances deliver better performance per watt, and usually a lower price, if the software supports arm64.
+Recommendation: Move to the matching Graviton family where the workload runs on arm64 (test first).
+Applies to: aws_ec2, aws_auto_scaling, aws_rds.
+
+## AWS-COST-002 — SQS queue uses short polling
+Provider: aws; service: Amazon SQS; severity: LOW; pillar: cost_optimization (Select the correct resource type).
+The receive wait time is 0 seconds, so every receive call returns immediately, often with nothing, and is still billed as a request.
+Why it matters: Cost Optimization: SQS bills per request. Long polling (a receive wait time of up to 20 seconds) returns as soon as a message arrives and removes most empty receives.
+Recommendation: Set the receive wait time to 20 seconds (long polling).
+Applies to: aws_sqs.
+
+## AWS-COST-003 — CloudWatch log group never expires
+Provider: aws; service: Amazon CloudWatch Logs; severity: LOW; pillar: cost_optimization (Optimize over time).
+The log retention is 0 days, which means logs are kept forever and storage cost grows without limit.
+Why it matters: Cost Optimization: do not keep data longer than it is needed. Set the retention to the period the organization actually requires.
+Recommendation: Set a retention period that matches your policy (for example 30, 90 or 365 days).
+Applies to: aws_cloudwatch, aws_ecs.
+
 ## AWS-ACCT-001 — CloudTrail multi-Region trail — account-level control
 Provider: aws; service: AWS CloudTrail; severity: HIGH; pillar: security (SEC 4 — Detect and investigate security events).
 CloudTrail multi-Region trail is an AWS account/Region setting that is not part of an architecture diagram.
-Why it matters: Reported NOT EVALUATED at design time. CloudCraft never assumes account-level controls are enabled.
+Why it matters: Account-level controls are not part of an architecture diagram and CloudCraft never assumes them: a control is NOT EVALUATED until the account has been checked (read-only API calls through a connected AWS account). A reading is dated, only used for seven days, and a control the account would not let CloudCraft read stays NOT EVALUATED with the reason.
 Recommendation: Enable an organization or multi-Region CloudTrail trail with log file validation, delivered to a protected S3 bucket.
 Applies to the whole architecture.
 
 ## AWS-ACCT-002 — GuardDuty threat detection — account-level control
 Provider: aws; service: Amazon GuardDuty; severity: HIGH; pillar: security (SEC 4 — Detect and investigate security events).
 GuardDuty threat detection is an AWS account/Region setting that is not part of an architecture diagram.
-Why it matters: Reported NOT EVALUATED at design time. CloudCraft never assumes account-level controls are enabled.
+Why it matters: Account-level controls are not part of an architecture diagram and CloudCraft never assumes them: a control is NOT EVALUATED until the account has been checked (read-only API calls through a connected AWS account). A reading is dated, only used for seven days, and a control the account would not let CloudCraft read stays NOT EVALUATED with the reason.
 Recommendation: Enable GuardDuty in all Regions used by the workload (delegated administrator in AWS Organizations).
 Applies to the whole architecture.
 
 ## AWS-ACCT-003 — Root user MFA — account-level control
 Provider: aws; service: AWS IAM; severity: CRITICAL; pillar: security (SEC 2 — Manage authentication).
 Root user MFA is an AWS account/Region setting that is not part of an architecture diagram.
-Why it matters: Reported NOT EVALUATED at design time. CloudCraft never assumes account-level controls are enabled.
+Why it matters: Account-level controls are not part of an architecture diagram and CloudCraft never assumes them: a control is NOT EVALUATED until the account has been checked (read-only API calls through a connected AWS account). A reading is dated, only used for seven days, and a control the account would not let CloudCraft read stays NOT EVALUATED with the reason.
 Recommendation: Enable (hardware) MFA on the root user and avoid root usage.
 Applies to the whole architecture.
 
 ## AWS-ACCT-004 — AWS Config recording — account-level control
 Provider: aws; service: AWS Config; severity: MEDIUM; pillar: security (SEC 4 — Detect and investigate security events).
 AWS Config recording is an AWS account/Region setting that is not part of an architecture diagram.
-Why it matters: Reported NOT EVALUATED at design time. CloudCraft never assumes account-level controls are enabled.
+Why it matters: Account-level controls are not part of an architecture diagram and CloudCraft never assumes them: a control is NOT EVALUATED until the account has been checked (read-only API calls through a connected AWS account). A reading is dated, only used for seven days, and a control the account would not let CloudCraft read stays NOT EVALUATED with the reason.
 Recommendation: Enable AWS Config recording for all resources in each Region used.
 Applies to the whole architecture.
 
@@ -709,6 +779,41 @@ Why it matters: Azure Well-Architected Reliability guidance for App Service.
 Recommendation: Expose a health endpoint and set the health check path.
 Applies to: azure_app_service.
 
+## AZ-APP-020 — App Service does not use HTTP/2
+Provider: azure; service: Azure App Service; severity: LOW; pillar: performance_efficiency (PE:07 — Optimize code and infrastructure).
+HTTP/2 is disabled, so clients open several connections instead of multiplexing requests over one.
+Why it matters: Azure Well-Architected Performance Efficiency: optimize code and infrastructure. HTTP/2 reduces connection overhead and improves page load time.
+Recommendation: Enable HTTP/2 on the App Service.
+Applies to: azure_app_service.
+
+## AZ-APP-021 — App Service "Always on" is disabled
+Provider: azure; service: Azure App Service; severity: LOW; pillar: performance_efficiency (PE:07 — Optimize code and infrastructure).
+The app is unloaded after a period of inactivity, so the next request waits for a cold start.
+Why it matters: Azure Well-Architected Performance Efficiency: optimize code and infrastructure. Cold starts add seconds to the first request after idle time. (Always on needs the Basic tier or higher.)
+Recommendation: Enable Always on for production apps (Basic tier or higher).
+Applies to: azure_app_service.
+
+## AZ-AFD-010 — Front Door caching is disabled
+Provider: azure; service: Azure Front Door; severity: LOW; pillar: performance_efficiency (PE:07 — Optimize code and infrastructure).
+Every request is forwarded to the origin because edge caching is off.
+Why it matters: Azure Well-Architected Performance Efficiency: optimize code and infrastructure. Caching static content at the edge cuts latency and origin load.
+Recommendation: Enable caching for cacheable content and set the query-string behaviour.
+Applies to: azure_front_door.
+
+## AZ-VMSS-010 — Scale set autoscale is disabled
+Provider: azure; service: Azure Virtual Machine Scale Sets; severity: LOW; pillar: performance_efficiency (PE:05 — Optimize scaling and partitioning).
+The scale set stays at a fixed instance count whatever the load.
+Why it matters: Azure Well-Architected Performance Efficiency: optimize scaling and partitioning. A fixed-size scale set either runs out of headroom or pays for idle instances.
+Recommendation: Enable autoscale with minimum and maximum instance counts and a metric rule.
+Applies to: azure_vmss.
+
+## AZ-AGW-010 — Application Gateway autoscale is disabled
+Provider: azure; service: Azure Application Gateway; severity: LOW; pillar: performance_efficiency (PE:05 — Optimize scaling and partitioning).
+The gateway runs at a fixed capacity instead of scaling with traffic.
+Why it matters: Azure Well-Architected Performance Efficiency: optimize scaling and partitioning. A fixed-capacity gateway can throttle traffic at peaks or be over-provisioned the rest of the time.
+Recommendation: Enable autoscale with a sensible minimum and maximum capacity.
+Applies to: azure_app_gateway.
+
 ## AZ-AKS-001 — AKS Kubernetes RBAC is disabled
 Provider: azure; service: Azure Kubernetes Service; severity: HIGH; pillar: security (SE:05 — Identity and access management).
 Role-based access control is disabled for the cluster.
@@ -772,10 +877,10 @@ Why it matters: Azure Bastion shareable links bypass portal-based access paths; 
 Recommendation: Disable shareable links unless there is a governed business need.
 Applies to: azure_bastion.
 
-## AZ-ARCH-020 — Azure Monitor / Log Analytics configuration not modelled
+## AZ-ARCH-020 — Azure Monitor diagnostic settings and alert rules not modelled
 Provider: azure; service: Azure Monitor; severity: MEDIUM; pillar: operational_excellence (OE:07 — Monitoring system).
-CloudCraft has no resource type for Log Analytics workspaces, Application Insights or diagnostic settings.
-Why it matters: The previous rule reported "no monitoring" for every Azure architecture because it looked for resource types that cannot be created in CloudCraft. It is now NOT EVALUATED with a clear data requirement.
+CloudCraft models the Log Analytics workspace (the Azure Monitor resource) but not the diagnostic settings that send each resource's logs to it, nor alert rules.
+Why it matters: Whether each resource really sends logs to the workspace, and whether alerts exist, cannot be seen in the design, so this control is NOT EVALUATED with a clear data requirement. Whether a workspace is in the design at all is checked by AZ-MON-001.
 Recommendation: Send platform metrics and resource logs to a Log Analytics workspace via diagnostic settings and define alert rules.
 Applies to the whole architecture.
 
@@ -805,4 +910,242 @@ Provider: azure; service: Microsoft Entra ID; severity: HIGH; pillar: security (
 Multifactor authentication / Conditional Access is configured at the subscription or tenant level, outside an architecture diagram.
 Why it matters: Reported NOT EVALUATED at design time. CloudCraft never assumes subscription or tenant controls are enabled.
 Recommendation: Require MFA through Conditional Access for all users, and phishing-resistant MFA for privileged roles.
+Applies to the whole architecture.
+
+## AZ-PG-001 — PostgreSQL flexible server allows public network access
+Provider: azure; service: Azure Database for PostgreSQL; severity: HIGH; pillar: security (SE:06 — Network controls).
+The server has a public endpoint, reachable from the internet subject to its firewall rules and authentication.
+Why it matters: MCSB NS-2: keep data services off the public internet. A flexible server with private access is placed in a delegated subnet of the application network.
+Recommendation: Turn public access off and place the server in a subnet reserved for flexible servers.
+Applies to: azure_postgres.
+
+## AZ-PG-002 — PostgreSQL flexible server does not require TLS
+Provider: azure; service: Azure Database for PostgreSQL; severity: HIGH; pillar: security (SE:07 — Encrypt data).
+Clients can connect without encryption.
+Why it matters: MCSB DP-3: encrypt data in transit. The server parameter require_secure_transport rejects unencrypted connections.
+Recommendation: Require TLS for all connections.
+Applies to: azure_postgres.
+
+## AZ-PG-010 — PostgreSQL flexible server is not zone-redundant
+Provider: azure; service: Azure Database for PostgreSQL; severity: MEDIUM; pillar: reliability (RE:05 — Redundancy).
+High availability is off on a size that supports it, so a zone failure takes the database down.
+Why it matters: Azure Well-Architected Reliability (redundancy). Burstable sizes do not offer zone-redundant high availability, so they are not evaluated.
+Recommendation: Enable zone-redundant high availability for production databases on General Purpose or Memory Optimized sizes.
+Applies to: azure_postgres.
+
+## AZ-PG-011 — PostgreSQL backups are not geo-redundant
+Provider: azure; service: Azure Database for PostgreSQL; severity: LOW; pillar: reliability (RE:09 — Business continuity and disaster recovery).
+Backups are kept in the server's own region only.
+Why it matters: Azure Well-Architected Reliability (BCDR): geo-redundant backups allow a restore in the paired region after a regional loss. LOW because it adds cost and may conflict with data residency.
+Recommendation: Enable geo-redundant backup unless data residency forbids it.
+Applies to: azure_postgres.
+
+## AZ-PG-012 — Private PostgreSQL flexible server is not placed in a subnet
+Provider: azure; service: Azure Database for PostgreSQL; severity: MEDIUM; pillar: security (SE:06 — Network controls).
+Public access is off, but the server is not inside a subnet, so it cannot be created as a private server.
+Why it matters: A flexible server with private access is injected into a subnet delegated to its service. Without a subnet the generated Terraform creates it with a public endpoint, contrary to the design.
+Recommendation: Place the server in a subnet that holds nothing but flexible servers.
+Applies to: azure_postgres.
+
+## AZ-MY-001 — MySQL flexible server allows public network access
+Provider: azure; service: Azure Database for MySQL; severity: HIGH; pillar: security (SE:06 — Network controls).
+The server has a public endpoint, reachable from the internet subject to its firewall rules and authentication.
+Why it matters: MCSB NS-2: keep data services off the public internet. A flexible server with private access is placed in a delegated subnet of the application network.
+Recommendation: Turn public access off and place the server in a subnet reserved for flexible servers.
+Applies to: azure_mysql.
+
+## AZ-MY-002 — MySQL flexible server does not require TLS
+Provider: azure; service: Azure Database for MySQL; severity: HIGH; pillar: security (SE:07 — Encrypt data).
+Clients can connect without encryption.
+Why it matters: MCSB DP-3: encrypt data in transit. The server parameter require_secure_transport rejects unencrypted connections.
+Recommendation: Require TLS for all connections.
+Applies to: azure_mysql.
+
+## AZ-MY-010 — MySQL flexible server is not zone-redundant
+Provider: azure; service: Azure Database for MySQL; severity: MEDIUM; pillar: reliability (RE:05 — Redundancy).
+High availability is off on a size that supports it, so a zone failure takes the database down.
+Why it matters: Azure Well-Architected Reliability (redundancy). Burstable sizes do not offer zone-redundant high availability, so they are not evaluated.
+Recommendation: Enable zone-redundant high availability for production databases on General Purpose or Memory Optimized sizes.
+Applies to: azure_mysql.
+
+## AZ-MY-011 — MySQL backups are not geo-redundant
+Provider: azure; service: Azure Database for MySQL; severity: LOW; pillar: reliability (RE:09 — Business continuity and disaster recovery).
+Backups are kept in the server's own region only.
+Why it matters: Azure Well-Architected Reliability (BCDR): geo-redundant backups allow a restore in the paired region after a regional loss. LOW because it adds cost and may conflict with data residency.
+Recommendation: Enable geo-redundant backup unless data residency forbids it.
+Applies to: azure_mysql.
+
+## AZ-MY-012 — Private MySQL flexible server is not placed in a subnet
+Provider: azure; service: Azure Database for MySQL; severity: MEDIUM; pillar: security (SE:06 — Network controls).
+Public access is off, but the server is not inside a subnet, so it cannot be created as a private server.
+Why it matters: A flexible server with private access is injected into a subnet delegated to its service. Without a subnet the generated Terraform creates it with a public endpoint, contrary to the design.
+Recommendation: Place the server in a subnet that holds nothing but flexible servers.
+Applies to: azure_mysql.
+
+## AZ-PE-001 — Service has no public endpoint and no Private Endpoint, so nothing can reach it
+Provider: azure; service: Azure Private Link; severity: HIGH; pillar: security (SE:06 — Network controls).
+Public network access is off, but the design has no Private Endpoint giving the application a private path to the service.
+Why it matters: MCSB NS-2. Turning the public endpoint off is the right security default, but it only works together with a Private Endpoint in the application network and a private DNS zone. Without one the service is unreachable, so the application fails at runtime however secure the design looks.
+Recommendation: Add a Private Endpoint in a subnet of the application network and connect it to the service (CloudCraft creates the private DNS zone and link).
+Applies to: azure_sql, azure_storage, azure_key_vault, azure_redis, azure_cosmos_db, azure_acr, azure_event_hubs, azure_event_grid, azure_service_bus.
+
+## AZ-PE-002 — Private Endpoint is not connected to a service or not placed in a subnet
+Provider: azure; service: Azure Private Link; severity: MEDIUM; pillar: security (SE:06 — Network controls).
+A Private Endpoint must sit in a subnet and be connected to the service it exposes, or no Terraform is generated for it.
+Why it matters: The endpoint is a network interface in a subnet that maps to one service. Without both, it does nothing.
+Recommendation: Place the endpoint in a subnet and connect it to one service.
+Applies to: azure_private_endpoint.
+
+## AZ-SB-001 — Service Bus namespace is reachable from the internet
+Provider: azure; service: Azure Service Bus; severity: LOW; pillar: security (SE:06 — Network controls).
+Public network access is on. Access still needs credentials, but the endpoint is open to anyone who has them.
+Why it matters: MCSB NS-2. Private access (Private Endpoint) needs the Premium tier, which costs about $677 a month per messaging unit, so this is a recommendation and not a defect: Standard with TLS and Entra ID or keys is a common choice for modest workloads.
+Recommendation: For sensitive workloads use the Premium tier with a Private Endpoint and turn public access off.
+Applies to: azure_service_bus.
+
+## AZ-SB-002 — Service Bus allows shared access keys
+Provider: azure; service: Azure Service Bus; severity: LOW; pillar: security (SE:05 — Identity and access management).
+Shared access signature keys can send and receive. They do not expire and are hard to scope.
+Why it matters: MCSB IM-1 / IM-3: prefer Microsoft Entra ID (managed identities) over keys. LOW because turning keys off needs a role assignment for each application, which CloudCraft does not generate.
+Recommendation: Disable shared access keys and give each application a managed identity with the Azure Service Bus Data Sender / Receiver role.
+Applies to: azure_service_bus.
+
+## AZ-SB-003 — Service Bus permits TLS versions older than 1.2
+Provider: azure; service: Azure Service Bus; severity: MEDIUM; pillar: security (SE:07 — Encrypt data).
+The minimum TLS version is 1.0 or 1.1.
+Why it matters: MCSB DP-3.
+Recommendation: Set the minimum TLS version to 1.2.
+Applies to: azure_service_bus.
+
+## AZ-SB-010 — Premium Service Bus namespace is not zone-redundant
+Provider: azure; service: Azure Service Bus; severity: LOW; pillar: reliability (RE:05 — Redundancy).
+A Premium namespace can spread across availability zones; this one does not.
+Why it matters: Azure Well-Architected Reliability (redundancy). Only the Premium tier offers zone redundancy, so other tiers are not evaluated.
+Recommendation: Enable zone redundancy on the Premium namespace.
+Applies to: azure_service_bus.
+
+## AZ-ACR-001 — Container Registry admin user is enabled
+Provider: azure; service: Azure Container Registry; severity: MEDIUM; pillar: security (SE:05 — Identity and access management).
+The admin user is one shared username and password for the whole registry.
+Why it matters: Microsoft recommends disabling the admin account: it cannot be scoped or audited per person and its password does not expire. Use managed identities or repository-scoped tokens.
+Recommendation: Disable the admin user; let the platform pull images with its managed identity.
+Applies to: azure_acr.
+
+## AZ-ACR-002 — Container Registry is reachable from the internet
+Provider: azure; service: Azure Container Registry; severity: LOW; pillar: security (SE:06 — Network controls).
+Public network access is on. Pulling and pushing still needs credentials.
+Why it matters: MCSB NS-2. Private access needs the Premium tier (about $50 a month) and a Private Endpoint, so this is a recommendation for sensitive images and not a defect.
+Recommendation: For sensitive images use the Premium tier with a Private Endpoint and turn public access off.
+Applies to: azure_acr.
+
+## AZ-ACR-010 — Premium Container Registry is not zone-redundant
+Provider: azure; service: Azure Container Registry; severity: LOW; pillar: reliability (RE:05 — Redundancy).
+A Premium registry can be zone-redundant at no extra charge; this one is not.
+Why it matters: Azure Well-Architected Reliability (redundancy). Zone redundancy is a Premium feature, so other tiers are not evaluated.
+Recommendation: Enable zone redundancy on the Premium registry.
+Applies to: azure_acr.
+
+## AZ-FW-001 — Azure Firewall threat intelligence is off
+Provider: azure; service: Azure Firewall; severity: MEDIUM; pillar: security (SE:06 — Network controls).
+The firewall does not alert on or block traffic to and from known malicious addresses and domains.
+Why it matters: MCSB NS-1 / LT-1: threat intelligence filtering is a built-in control of the firewall and costs nothing extra. "Alert" is the default; "Alert and deny" blocks as well.
+Recommendation: Set threat intelligence to "Alert" (or "Alert and deny").
+Applies to: azure_firewall.
+
+## AZ-FW-010 — Azure Firewall is not spread across availability zones
+Provider: azure; service: Azure Firewall; severity: LOW; pillar: reliability (RE:05 — Redundancy).
+A firewall deployed without zones is lost with its single zone, and every route through it fails.
+Why it matters: Azure Well-Architected Reliability (RE:05). Zones add no charge for the firewall itself. Zones are fixed when the firewall is created.
+Recommendation: Deploy the firewall across zones 1, 2 and 3 in a region that offers them.
+Applies to: azure_firewall.
+
+## AZ-EH-001 — Event Hubs namespace is reachable from the internet
+Provider: azure; service: Azure Event Hubs; severity: LOW; pillar: security (SE:06 — Network controls).
+Public network access is on. Access still needs credentials.
+Why it matters: MCSB NS-2. Private access needs a private endpoint, available on the Standard and Premium tiers, so this is a recommendation and not a defect.
+Recommendation: Add a Private Endpoint and turn public access off.
+Applies to: azure_event_hubs.
+
+## AZ-EH-002 — Event Hubs allows shared access keys
+Provider: azure; service: Azure Event Hubs; severity: LOW; pillar: security (SE:05 — Identity and access management).
+Shared access signature keys can send and receive. They do not expire and are hard to scope.
+Why it matters: MCSB IM-1 / IM-3: prefer Microsoft Entra ID (managed identities). LOW because turning keys off needs a role assignment for each application, which CloudCraft does not generate.
+Recommendation: Disable shared access keys and give each application a managed identity with the Azure Event Hubs Data Sender / Receiver role.
+Applies to: azure_event_hubs.
+
+## AZ-EH-003 — Event Hubs permits TLS versions older than 1.2
+Provider: azure; service: Azure Event Hubs; severity: MEDIUM; pillar: security (SE:07 — Encrypt data).
+The minimum TLS version is 1.0 or 1.1.
+Why it matters: MCSB DP-3.
+Recommendation: Set the minimum TLS version to 1.2.
+Applies to: azure_event_hubs.
+
+## AZ-EH-010 — Event Hubs namespace is not zone-redundant
+Provider: azure; service: Azure Event Hubs; severity: LOW; pillar: reliability (RE:05 — Redundancy).
+A zone failure interrupts event ingestion. The Basic tier does not offer zone redundancy, so it is not evaluated.
+Why it matters: Azure Well-Architected Reliability (RE:05). Zone redundancy is chosen when the namespace is created, in regions that offer zones.
+Recommendation: Enable zone redundancy on the namespace.
+Applies to: azure_event_hubs.
+
+## AZ-EG-001 — Event Grid topic is reachable from the internet
+Provider: azure; service: Azure Event Grid; severity: LOW; pillar: security (SE:06 — Network controls).
+Public network access is on. Publishing still needs a key or Entra ID token.
+Why it matters: MCSB NS-2. A private endpoint costs about $7 a month, so this is a recommendation for sensitive topics.
+Recommendation: Add a Private Endpoint and turn public access off.
+Applies to: azure_event_grid.
+
+## AZ-EG-002 — Event Grid topic allows access keys
+Provider: azure; service: Azure Event Grid; severity: LOW; pillar: security (SE:05 — Identity and access management).
+Access keys can publish to the topic. They do not expire and are hard to scope.
+Why it matters: MCSB IM-1 / IM-3: prefer Microsoft Entra ID. LOW because turning keys off needs a role assignment for each publisher, which CloudCraft does not generate.
+Recommendation: Disable access keys and give publishers the Event Grid Data Sender role.
+Applies to: azure_event_grid.
+
+## AZ-APIM-001 — API Management is on the Developer tier, which has no SLA
+Provider: azure; service: Azure API Management; severity: LOW; pillar: reliability (RE:05 — Redundancy).
+The Developer tier is meant for development and testing: it has no service level agreement and no redundancy.
+Why it matters: Azure Well-Architected Reliability. LOW because the tier is a deliberate choice for non-production designs. Basic and above carry an SLA.
+Recommendation: Use the Basic, Standard or Premium tier (or Consumption) for production.
+Applies to: azure_api_management.
+
+## AZ-APIM-010 — Premium API Management is not spread across availability zones
+Provider: azure; service: Azure API Management; severity: LOW; pillar: reliability (RE:05 — Redundancy).
+Only the Premium tier can use zones; this one does not.
+Why it matters: Azure Well-Architected Reliability (RE:05). Other tiers are not evaluated.
+Recommendation: Set zones 1, 2 and 3 on the Premium instance.
+Applies to: azure_api_management.
+
+## AZ-CA-001 — Container App is in a subnet smaller than /23
+Provider: azure; service: Azure Container Apps; severity: MEDIUM; pillar: reliability (RE:03 — Workload architecture).
+A Container Apps environment placed in a subnet needs an address range of /23 or larger (512 addresses).
+Why it matters: Azure requires a /23 or larger subnet for the Consumption-only environment type. A smaller subnet makes the deployment fail.
+Recommendation: Give the app a subnet of its own with a /23 (or larger) address range.
+Applies to: azure_container_apps.
+
+## AZ-CA-002 — Container App ingress is open to the internet
+Provider: azure; service: Azure Container Apps; severity: LOW; pillar: security (SE:06 — Network controls).
+The app accepts traffic from the internet directly, without a gateway or firewall in front.
+Why it matters: MCSB NS-1: put a WAF (Front Door or Application Gateway) in front of internet-facing apps and keep the app internal. LOW because a public API or site is often intended.
+Recommendation: Put the app in a subnet with internal ingress and a Front Door or Application Gateway with a WAF in front.
+Applies to: azure_container_apps.
+
+## AZ-VMSS-011 — VM scale set is not spread across availability zones
+Provider: azure; service: Azure Virtual Machine Scale Sets; severity: LOW; pillar: reliability (RE:05 — Redundancy).
+The instances run in one place, so a single availability zone failing takes the tier down.
+Why it matters: Azure Well-Architected Reliability (RE:05 redundancy): spread each tier across zones in regions that offer them. LOW because not every region has zones and a design may intentionally run in one.
+Recommendation: Set Availability Zones to "Zones 1, 2 and 3" (or two zones) on the vm scale set, in a region that offers zones.
+Applies to: azure_vmss.
+
+## AZ-AGW-011 — Application Gateway is not spread across availability zones
+Provider: azure; service: Azure Application Gateway; severity: LOW; pillar: reliability (RE:05 — Redundancy).
+The gateway run in one place, so a single availability zone failing takes the tier down.
+Why it matters: Azure Well-Architected Reliability (RE:05 redundancy): spread each tier across zones in regions that offer them. LOW because not every region has zones and a design may intentionally run in one.
+Recommendation: Set Availability Zones to "Zones 1, 2 and 3" (or two zones) on the application gateway, in a region that offers zones.
+Applies to: azure_app_gateway.
+
+## AZ-MON-001 — Workload has no Azure Monitor workspace
+Provider: azure; service: Azure Monitor; severity: LOW; pillar: operational_excellence (OE:07 — Monitoring system).
+The design has compute or data services but no Log Analytics workspace to collect their telemetry.
+Why it matters: Azure Well-Architected Operational Excellence (OE:07): without a workspace there is nowhere to keep logs and metrics. LOW because the platform keeps basic metrics anyway and a workspace adds cost.
+Recommendation: Add an Azure Monitor resource (Log Analytics workspace, with Application Insights for application telemetry) and connect the workloads to it.
 Applies to the whole architecture.

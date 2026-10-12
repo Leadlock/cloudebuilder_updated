@@ -111,9 +111,11 @@ export const azureRules: RuleDefinition[] = [
       description: 'Set the storage firewall default action to Deny.', patch: () => ({ networkDefaultAction: 'Deny' }),
       architectureImpact: 'Only explicitly allowed networks can reach the account.', costImpact: 'NONE', terraformExpect: /default_action\s*=\s*"Deny"/,
     },
-    evaluate: configEvaluator(['networkDefaultAction'], { networkDefaultAction: 'Deny' }, (c) => c.networkDefaultAction === 'Allow'
-      ? { status: 'FAIL', observation: 'Network default action is Allow (all networks).' }
-      : { status: 'PASS', observation: 'Network default action is Deny.' }),
+    evaluate: configEvaluator(['networkDefaultAction'], { networkDefaultAction: 'Deny' }, (c) => c.staticWebsite === true && c.networkDefaultAction === 'Allow'
+      ? { status: 'NOT_APPLICABLE', observation: 'The account serves a static website, which is public by design, so it must accept connections from the network that serves it (use Front Door to add caching and a firewall in front).' }
+      : c.networkDefaultAction === 'Allow'
+        ? { status: 'FAIL', observation: 'Network default action is Allow (all networks).' }
+        : { status: 'PASS', observation: 'Network default action is Deny.' }, ['staticWebsite']),
   }),
   rule({
     ...common,
@@ -558,8 +560,10 @@ export const azureRules: RuleDefinition[] = [
     soc1: ['SOC1-LA-01'],
     remediation: { recommendation: 'Associate a least-privilege NSG with every workload subnet.', manualSteps: ['Create NSGs per tier.', 'Associate them with the subnets.'] },
     evaluateArchitecture: (ctx) => {
-      const subnets = ctx.ofType('azure_subnet');
-      if (subnets.length === 0) return [{ status: 'NOT_APPLICABLE', observation: 'No Azure subnets are modelled.', evidence: [] }];
+      // The subnet of an Azure Firewall cannot take a network security group (Azure refuses it), and a Bastion subnet is managed by the platform.
+      const exempt = (s: { id: string }) => ctx.resources.some((r) => r.parentId === s.id && (r.resourceType === 'azure_firewall' || r.resourceType === 'azure_bastion'));
+      const subnets = ctx.ofType('azure_subnet').filter((s) => !exempt(s));
+      if (subnets.length === 0) return [{ status: 'NOT_APPLICABLE', observation: 'No Azure subnets that take a network security group are modelled.', evidence: [] }];
       const nsgs = ctx.ofType('azure_nsg');
       const unprotected = subnets.filter((s) => !nsgs.some((n) => n.parentId === s.id || ctx.neighbors(s.id).some((x) => x.id === n.id)));
       const evidence = [
@@ -1081,9 +1085,9 @@ export const azureRules: RuleDefinition[] = [
     ...common,
     id: 'AZ-ARCH-020', service: 'Azure Monitor', scope: 'architecture',
     domain: 'OPERATIONAL_EXCELLENCE', category: 'Monitoring', severity: 'MEDIUM', priority: 'RECOMMENDED_IMPROVEMENT',
-    title: 'Azure Monitor / Log Analytics configuration not modelled',
-    description: 'CloudCraft has no resource type for Log Analytics workspaces, Application Insights or diagnostic settings.',
-    rationale: 'The previous rule reported "no monitoring" for every Azure architecture because it looked for resource types that cannot be created in CloudCraft. It is now NOT EVALUATED with a clear data requirement.',
+    title: 'Azure Monitor diagnostic settings and alert rules not modelled',
+    description: 'CloudCraft models the Log Analytics workspace (the Azure Monitor resource) but not the diagnostic settings that send each resource\'s logs to it, nor alert rules.',
+    rationale: 'Whether each resource really sends logs to the workspace, and whether alerts exist, cannot be seen in the design, so this control is NOT EVALUATED with a clear data requirement. Whether a workspace is in the design at all is checked by AZ-MON-001.',
     risk: 'Monitoring coverage is unknown.', impact: 'Undetected failures if monitoring is absent.',
     wellArchitected: WA.ops('OE:07 — Monitoring system'),
     references: ['AZ-WA-operational_excellence', 'MCSB-LT-3'],

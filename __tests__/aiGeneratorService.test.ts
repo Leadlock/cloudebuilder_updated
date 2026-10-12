@@ -341,7 +341,10 @@ describe('generateValidatedArchitecture — service notices', () => {
 
 describe('generateValidatedArchitecture — setting-name clean-up', () => {
   const { readFileSync } = jest.requireActual('fs') as typeof import('fs');
-  const good = JSON.parse((JSON.parse(readFileSync('datasets/ai-architect/validation.jsonl', 'utf8').split('\n')[0]!) as { messages: { content: string }[] }).messages[2]!.content);
+  // A design with an AWS load balancer (the tests below point a monitoring alarm at it). The dataset's order changes whenever it is regenerated.
+  const good = JSON.parse(readFileSync('datasets/ai-architect/validation.jsonl', 'utf8').split('\n').filter(Boolean)
+    .map((l) => (JSON.parse(l) as { messages: { content: string }[] }).messages[2]!.content)
+    .find((c) => c.trim().startsWith('{') && c.includes('"type":"aws_alb"'))!);
 
   beforeEach(() => { mockCreate.mockReset(); mockBuildContext.mockResolvedValue(''); });
 

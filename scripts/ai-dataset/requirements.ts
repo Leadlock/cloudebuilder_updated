@@ -4,7 +4,8 @@
  */
 export type Provider = 'aws' | 'azure' | 'multi';
 export type Scale = 'small' | 'medium' | 'large';
-export type Database = 'postgres' | 'mysql' | 'nosql' | 'none';
+/** 'sql' is Azure SQL Database (SQL Server); 'postgres' and 'mysql' are the engines on both clouds. */
+export type Database = 'postgres' | 'mysql' | 'sql' | 'nosql' | 'none';
 
 export interface Requirements {
   provider: Provider;
@@ -63,6 +64,7 @@ export const PATTERN_TEXT: Record<string, { title: string; phrases: string[] }> 
 const DB_TEXT: Record<Database, string[]> = {
   postgres: ['PostgreSQL', 'a PostgreSQL database', 'Postgres as the relational store'],
   mysql: ['MySQL', 'a MySQL database', 'MySQL as the relational store'],
+  sql: ['Azure SQL Database', 'a SQL Server (Azure SQL) database', 'Azure SQL as the relational store'],
   nosql: ['a NoSQL document/key-value store', 'a NoSQL database', 'a serverless NoSQL data store'],
   none: [],
 };
@@ -87,7 +89,7 @@ export function vagueRequirements(r: Requirements, fixed: Partial<Requirements> 
     ...r,
     region: r.provider === 'azure' ? 'eastus' : 'us-east-1',
     ...(r.provider === 'multi' ? { regionB: 'eastus' } : {}),
-    db: fixed.db ?? 'postgres', cache: fixed.cache ?? false, cdn: fixed.cdn ?? false, queue: fixed.queue ?? false, regulated: false,
+    db: fixed.db ?? (r.provider === 'azure' ? 'sql' : 'postgres'), cache: fixed.cache ?? false, cdn: fixed.cdn ?? false, queue: fixed.queue ?? false, regulated: false,
   };
 }
 
@@ -104,7 +106,7 @@ export function promptFor(r: Requirements, style: PromptStyle, seed: number): st
   const users = choose(SCALE_USERS[r.scale], seed);
   const regionText = r.provider === 'multi' ? `${r.region} (AWS) and ${r.regionB} (Azure)` : r.region;
   const extras: string[] = [];
-  if (r.db !== 'none') extras.push(r.provider !== 'aws' && r.db !== 'nosql' ? choose(['a managed SQL database', 'Azure SQL as the relational store', 'a relational database'], seed + 1) : choose(DB_TEXT[r.db], seed + 1));
+  if (r.db !== 'none') extras.push(choose(DB_TEXT[r.db], seed + 1));
   if (r.cache) extras.push(choose(['a Redis cache', 'caching for hot reads', 'an in-memory cache layer'], seed + 2));
   if (r.cdn) extras.push(choose(['a CDN in front', 'global edge delivery with a CDN', 'CDN and WAF at the edge'], seed + 3));
   if (r.queue) extras.push(choose(['a queue for background jobs', 'asynchronous processing through a queue', 'queue-based decoupling'], seed + 4));
@@ -123,12 +125,12 @@ export function promptFor(r: Requirements, style: PromptStyle, seed: number): st
     case 'casual':
       return `hey, we need ${choose(pat.phrases, seed)} on ${cloudName(r)}, ${users}. running it in ${regionText}.${extras.length ? ' we want ' + extras.join(', ') + '.' : ''}${r.regulated ? ' it handles sensitive customer data so please keep it locked down.' : ''} thanks!`;
     case 'technical':
-      return `Provision ${pat.title} on ${cloudName(r)} in ${regionText}. Target: ${users}. Data tier: ${r.db === 'none' ? 'none' : r.provider !== 'aws' && r.db !== 'nosql' ? 'managed SQL' : r.db}. ${r.cache ? 'Add a Redis cache tier. ' : ''}${r.cdn ? 'Front it with a CDN and WAF. ' : ''}${r.queue ? 'Use a queue for asynchronous work. ' : ''}Workloads in private subnets across two availability zones, encryption at rest and in transit${r.regulated ? ', audit logging and private-only management' : ''}.`;
+      return `Provision ${pat.title} on ${cloudName(r)} in ${regionText}. Target: ${users}. Data tier: ${r.db === 'none' ? 'none' : r.db === 'sql' ? 'Azure SQL' : r.db}. ${r.cache ? 'Add a Redis cache tier. ' : ''}${r.cdn ? 'Front it with a CDN and WAF. ' : ''}${r.queue ? 'Use a queue for asynchronous work. ' : ''}Workloads in private subnets across two availability zones, encryption at rest and in transit${r.regulated ? ', audit logging and private-only management' : ''}.`;
     case 'question':
       return `What's a good ${cloudName(r)} architecture for ${choose(pat.phrases, seed)}? We expect ${users} and will run in ${regionText}.${extraText}${r.regulated ? ' It has to meet compliance requirements.' : ''}`;
     case 'vague':
       return `I need ${choose(pat.phrases, seed)} on ${cloudName(r)} for ${users}.`;
     case 'constraints':
-      return `Requirements: cloud=${cloudName(r)}; region=${regionText}; workload=${r.app}; pattern=${pat.title}; scale=${users}; database=${r.provider !== 'aws' && r.db !== 'nosql' && r.db !== 'none' ? 'sql' : r.db}; cache=${r.cache ? 'yes' : 'no'}; cdn=${r.cdn ? 'yes' : 'no'}; queue=${r.queue ? 'yes' : 'no'}; regulated=${r.regulated ? 'yes' : 'no'}; availability=multi-AZ; must be deployable as-is.`;
+      return `Requirements: cloud=${cloudName(r)}; region=${regionText}; workload=${r.app}; pattern=${pat.title}; scale=${users}; database=${r.db}; cache=${r.cache ? 'yes' : 'no'}; cdn=${r.cdn ? 'yes' : 'no'}; queue=${r.queue ? 'yes' : 'no'}; regulated=${r.regulated ? 'yes' : 'no'}; availability=multi-AZ; must be deployable as-is.`;
   }
 }

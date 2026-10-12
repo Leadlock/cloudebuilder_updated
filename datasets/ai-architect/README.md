@@ -56,8 +56,11 @@ Nothing is hand-written prose. Every design is produced by code (`scripts/ai-dat
   generalises to real wording — trust its score over `eval-prompts.jsonl`. Add real user prompts (with an engine-verified design) to improve this.
 - **Designs within a pattern are structurally similar.** That is what makes the output consistent, but the model
   learns 10 patterns plus their variations, not arbitrary topologies. Requests outside them (e.g. API Gateway, Kinesis,
-  Service Bus — not in the resource catalog) will not be served; `design-guidelines.md` tells the model not to invent types.
-- Azure relational databases are modelled as **Azure SQL** only; the Azure "queue" option doesn't exist.
+  Event Hubs — not in the resource catalog) will not be served; `design-guidelines.md` tells the model not to invent types.
+- Azure relational databases are **Azure SQL, PostgreSQL and MySQL flexible servers**, and the Azure queue is **Service Bus**. A request for
+  one of these engines gets that engine (the dataset used to turn every Azure PostgreSQL or MySQL request into Azure SQL). Azure designs
+  also have Private Endpoints for every service whose public endpoint is off, and the three-tier pattern has separate web and API scale sets
+  spread over three zones.
 - Rule references (FSBP, MCSB, Well-Architected URLs) inherit the verification status documented in
   `docs/security-assessment/AUDIT.md`; some remain "reference verification required".
 - Nothing here is a compliance certification.

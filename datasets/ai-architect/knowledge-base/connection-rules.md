@@ -84,7 +84,7 @@ Direction matters: connect from the caller to the callee. The lists below are th
 - azure_storage (NETWORK_FLOW; seen in 4 verified designs)
 - azure_key_vault (NETWORK_FLOW; seen in 4 verified designs)
 - azure_redis (CONNECTS_TO, Redis TLS:6380; seen in 3 verified designs)
-- azure_sql (CONNECTS_TO, TDS / TCP:1433; seen in 2 verified designs)
+- azure_postgres (DATABASE_CONNECTION, PostgreSQL / TCP:5432; seen in 2 verified designs)
 - azure_cosmos_db (CONNECTS_TO, HTTPS:443; seen in 1 verified designs)
 
 ## azure_app_gateway connects to
@@ -97,7 +97,7 @@ Direction matters: connect from the caller to the callee. The lists below are th
 - azure_storage (STORES_IN, Blob HTTPS:443; seen in 8 verified designs)
 - azure_key_vault (AUTHENTICATES_WITH, Managed Identity:443; seen in 8 verified designs)
 - azure_redis (CONNECTS_TO, Redis TLS:6380; seen in 6 verified designs)
-- azure_sql (CONNECTS_TO, TDS / TCP:1433; seen in 4 verified designs)
+- azure_postgres (DATABASE_CONNECTION, PostgreSQL / TCP:5432; seen in 4 verified designs)
 - azure_cosmos_db (CONNECTS_TO, HTTPS:443; seen in 2 verified designs)
 
 ## azure_bastion connects to
@@ -112,17 +112,25 @@ Direction matters: connect from the caller to the callee. The lists below are th
 ## azure_functions connects to
 - azure_storage (STORES_IN, Blob HTTPS:443; seen in 8 verified designs)
 - azure_key_vault (AUTHENTICATES_WITH, Managed Identity:443; seen in 8 verified designs)
-- azure_cosmos_db (CONNECTS_TO, HTTPS:443; seen in 4 verified designs)
-- azure_sql (CONNECTS_TO, TDS / TCP:1433; seen in 4 verified designs)
+- azure_cosmos_db (CONNECTS_TO, HTTPS:443; seen in 5 verified designs)
+- azure_sql (CONNECTS_TO, TDS / TCP:1433; seen in 2 verified designs)
 
 ## azure_nsg connects to
 - azure_subnet (ASSOCIATED_WITH; seen in 32 verified designs)
 
+## azure_private_endpoint connects to
+- azure_storage (ASSOCIATED_WITH, Private Link:443; seen in 32 verified designs)
+- azure_key_vault (ASSOCIATED_WITH, Private Link:443; seen in 32 verified designs)
+- azure_redis (ASSOCIATED_WITH, Private Link:443; seen in 15 verified designs)
+- azure_cosmos_db (ASSOCIATED_WITH, Private Link:443; seen in 11 verified designs)
+- azure_sql (ASSOCIATED_WITH, Private Link:443; seen in 2 verified designs)
+
 ## azure_vmss connects to
+- azure_vmss (NETWORK_FLOW; seen in 12 verified designs)
 - azure_storage (STORES_IN, Blob HTTPS:443; seen in 12 verified designs)
 - azure_key_vault (AUTHENTICATES_WITH, Managed Identity:443; seen in 12 verified designs)
 - aws_s3 (CONNECTS_TO, HTTPS / VPN:443; seen in 8 verified designs)
-- azure_sql (CONNECTS_TO, TDS / TCP:1433; seen in 6 verified designs)
+- azure_postgres (DATABASE_CONNECTION, PostgreSQL / TCP:5432; seen in 6 verified designs)
 - azure_redis (CONNECTS_TO, Redis TLS:6380; seen in 6 verified designs)
 - azure_cosmos_db (CONNECTS_TO, HTTPS:443; seen in 3 verified designs)
 
