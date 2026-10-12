@@ -8,6 +8,10 @@ import clsx from 'clsx';
 import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedService';
 import { useApp, useActiveProject } from '@/context/AppContext';
 import type { WaFinding } from '@/lib/engines/wellArchitected/types';
+import PolicyWarnings from '@/components/policy/PolicyWarnings';
+import { useOrgPolicy } from '@/components/policy/orgPolicyStore';
+import { isInstanceSizeAllowed } from '@/lib/engines/policy/allowed';
+import type { OrgPolicyRules } from '@/lib/engines/policy/types';
 
 interface PropertiesPanelProps {
   node: CanvasNode | null;
@@ -54,11 +58,16 @@ function ConfigFieldInput({
   config,
   onChange,
   isLight = false,
+  resourceType = '',
+  policy = null,
 }: {
   field: ConfigField;
   config: Record<string, unknown>;
   onChange: (key: string, value: unknown) => void;
   isLight?: boolean;
+  /** With `policy`, options the organization policy does not allow are greyed out (never the value already chosen). */
+  resourceType?: string;
+  policy?: OrgPolicyRules | null;
 }) {
   const value = config[field.key] ?? field.defaultValue;
 
@@ -93,7 +102,10 @@ function ConfigFieldInput({
   }
 
   if (field.type === 'select') {
+    const outsidePolicy = (optionValue: string) => optionValue !== String(value) && !isInstanceSizeAllowed(policy, resourceType, field.key, optionValue);
+    const anyOutsidePolicy = Boolean(field.options?.some((opt) => outsidePolicy(opt.value)));
     return (
+      <>
       <select
         value={String(value)}
         onChange={(e) => onChange(field.key, e.target.value)}
@@ -104,12 +116,19 @@ function ConfigFieldInput({
             : 'bg-slate-950 border-slate-700/80 text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500'
         )}
       >
-        {field.options?.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
+        {field.options?.map((opt) => {
+          const blocked = outsidePolicy(opt.value);
+          return (
+            <option key={opt.value} value={opt.value} disabled={blocked} className={blocked ? 'text-slate-400' : undefined}>
+              {opt.label}{blocked ? ' — outside org policy' : ''}
+            </option>
+          );
+        })}
       </select>
+      {anyOutsidePolicy && (
+        <p className={clsx('mt-1 text-[10px]', isLight ? 'text-slate-500' : 'text-slate-400')}>Greyed options are outside your organization&apos;s policy.</p>
+      )}
+      </>
     );
   }
 
@@ -288,6 +307,7 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
   const { state } = useApp();
   const isLight = state.theme === 'light';
   const activeProject = useActiveProject();
+  const { policy } = useOrgPolicy(state.currentUser?.id);
   const [activeTab, setActiveTab] = useState<'config' | 'placement' | 'info' | 'waf'>('config');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [wafFindings, setWafFindings] = useState<WaFinding[]>([]);
@@ -421,6 +441,8 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
           <X className="w-4 h-4" />
         </button>
       </div>
+
+      <PolicyWarnings node={node} />
 
       {/* Tabs */}
       <div className={clsx(
@@ -603,7 +625,7 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
                               </span>
                             )}
                           </label>
-                          <ConfigFieldInput field={field} config={node.config} onChange={handleChange} isLight={isLight} />
+                          <ConfigFieldInput field={field} config={node.config} onChange={handleChange} isLight={isLight} resourceType={node.resourceType} policy={policy} />
                         </div>
                       ))}
                     </div>

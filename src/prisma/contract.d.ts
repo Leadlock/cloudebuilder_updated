@@ -33,9 +33,9 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'4f0f69f79ba0235bc1df2e06f1ce92bfff27139e160880dab8676128a94ad853'>;
+  StorageHashBase<'41d6dd89b711ca9453fcaf4c65d30fed941c2f1ca1b9d63af3850088ba333b78'>;
 export type ExecutionHash =
-  ExecutionHashBase<'9fd257afd92dfac18ca084dc96db4208d83bbdeb2ea2d0e6d3373335194fe90c'>;
+  ExecutionHashBase<'669adfe6418b48bad92fa7b8a4a0c8647bcaded79316139bf0aac3c5e1618445'>;
 export type ProfileHash =
   ProfileHashBase<'3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2'>;
 
@@ -465,6 +465,14 @@ export type FieldOutputTypes = {
       readonly orgId: CodecTypes['pg/text@1']['output'];
       readonly userId: CodecTypes['pg/text@1']['output'];
     };
+    readonly OrgPolicy: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly orgId: CodecTypes['pg/text@1']['output'];
+      readonly policyJson: CodecTypes['pg/text@1']['output'];
+      readonly version: CodecTypes['pg/int4@1']['output'];
+      readonly updatedAt: CodecTypes['pg/text@1']['output'];
+      readonly updatedBy: CodecTypes['pg/text@1']['output'];
+    };
     readonly Project: {
       readonly id: CodecTypes['pg/text@1']['output'];
       readonly name: CodecTypes['pg/text@1']['output'];
@@ -847,6 +855,14 @@ export type FieldInputTypes = {
       readonly role: CodecTypes['pg/text@1']['input'];
       readonly orgId: CodecTypes['pg/text@1']['input'];
       readonly userId: CodecTypes['pg/text@1']['input'];
+    };
+    readonly OrgPolicy: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly orgId: CodecTypes['pg/text@1']['input'];
+      readonly policyJson: CodecTypes['pg/text@1']['input'];
+      readonly version: CodecTypes['pg/int4@1']['input'];
+      readonly updatedAt: CodecTypes['pg/text@1']['input'];
+      readonly updatedBy: CodecTypes['pg/text@1']['input'];
     };
     readonly Project: {
       readonly id: CodecTypes['pg/text@1']['input'];
@@ -1231,6 +1247,14 @@ export type StorageColumnTypes = {
       readonly role: CodecTypes['pg/text@1']['output'];
       readonly userId: CodecTypes['pg/text@1']['output'];
     };
+    readonly orgPolicy: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly orgId: CodecTypes['pg/text@1']['output'];
+      readonly policyJson: CodecTypes['pg/text@1']['output'];
+      readonly updatedAt: CodecTypes['pg/text@1']['output'];
+      readonly updatedBy: CodecTypes['pg/text@1']['output'];
+      readonly version: CodecTypes['pg/int4@1']['output'];
+    };
     readonly project: {
       readonly createdAt: CodecTypes['pg/text@1']['output'];
       readonly description: CodecTypes['pg/text@1']['output'];
@@ -1613,6 +1637,14 @@ export type StorageColumnInputTypes = {
       readonly orgId: CodecTypes['pg/text@1']['input'];
       readonly role: CodecTypes['pg/text@1']['input'];
       readonly userId: CodecTypes['pg/text@1']['input'];
+    };
+    readonly orgPolicy: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly orgId: CodecTypes['pg/text@1']['input'];
+      readonly policyJson: CodecTypes['pg/text@1']['input'];
+      readonly updatedAt: CodecTypes['pg/text@1']['input'];
+      readonly updatedBy: CodecTypes['pg/text@1']['input'];
+      readonly version: CodecTypes['pg/int4@1']['input'];
     };
     readonly project: {
       readonly createdAt: CodecTypes['pg/text@1']['input'];
@@ -3576,6 +3608,48 @@ type ContractBase = Omit<
                 },
               ];
             };
+            readonly orgPolicy: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly orgId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly policyJson: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly version: {
+                  readonly nativeType: 'int4';
+                  readonly codecId: 'pg/int4@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/int4@1', 1>;
+                  };
+                };
+                readonly updatedAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly updatedBy: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [{ readonly columns: readonly ['orgId'] }];
+              indexes: readonly [];
+              foreignKeys: readonly [];
+            };
             readonly project: {
               columns: {
                 readonly id: {
@@ -4801,6 +4875,7 @@ type ContractBase = Omit<
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'TerraformApproval';
     };
+    readonly orgPolicy: { readonly namespace: 'public' & NamespaceId; readonly model: 'OrgPolicy' };
     readonly deploymentSecret: {
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'DeploymentSecret';
@@ -6498,6 +6573,47 @@ type ContractBase = Omit<
               };
             };
           };
+          readonly OrgPolicy: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly orgId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly policyJson: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly version: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/int4@1' };
+              };
+              readonly updatedAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly updatedBy: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: {
+              readonly table: 'orgPolicy';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly orgId: { readonly column: 'orgId' };
+                readonly policyJson: { readonly column: 'policyJson' };
+                readonly version: { readonly column: 'version' };
+                readonly updatedAt: { readonly column: 'updatedAt' };
+                readonly updatedBy: { readonly column: 'updatedBy' };
+              };
+            };
+          };
           readonly Project: {
             readonly fields: {
               readonly id: {
@@ -7812,6 +7928,14 @@ type ContractBase = Omit<
           readonly ref: {
             readonly namespace: 'public';
             readonly table: 'orgMember';
+            readonly column: 'id';
+          };
+          readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };
+        },
+        {
+          readonly ref: {
+            readonly namespace: 'public';
+            readonly table: 'orgPolicy';
             readonly column: 'id';
           };
           readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };

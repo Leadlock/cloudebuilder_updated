@@ -88,6 +88,10 @@
       "model": "OrgMember",
       "namespace": "public"
     },
+    "orgPolicy": {
+      "model": "OrgPolicy",
+      "namespace": "public"
+    },
     "organization": {
       "model": "Organization",
       "namespace": "public"
@@ -2807,6 +2811,77 @@
               },
               "namespaceId": "public",
               "table": "orgMember"
+            }
+          },
+          "OrgPolicy": {
+            "fields": {
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "orgId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "policyJson": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "updatedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "updatedBy": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "version": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "fields": {
+                "id": {
+                  "column": "id"
+                },
+                "orgId": {
+                  "column": "orgId"
+                },
+                "policyJson": {
+                  "column": "policyJson"
+                },
+                "updatedAt": {
+                  "column": "updatedAt"
+                },
+                "updatedBy": {
+                  "column": "updatedBy"
+                },
+                "version": {
+                  "column": "version"
+                }
+              },
+              "namespaceId": "public",
+              "table": "orgPolicy"
             }
           },
           "Organization": {
@@ -6916,6 +6991,58 @@
                 }
               ]
             },
+            "orgPolicy": {
+              "columns": {
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "orgId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "policyJson": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "updatedAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "updatedBy": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "version": {
+                  "codecId": "pg/int4@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": 1
+                  },
+                  "nativeType": "int4",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [],
+              "indexes": [],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": [
+                {
+                  "columns": [
+                    "orgId"
+                  ]
+                }
+              ]
+            },
             "organization": {
               "columns": {
                 "createdAt": {
@@ -8219,10 +8346,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "4f0f69f79ba0235bc1df2e06f1ce92bfff27139e160880dab8676128a94ad853"
+    "storageHash": "41d6dd89b711ca9453fcaf4c65d30fed941c2f1ca1b9d63af3850088ba333b78"
   },
   "execution": {
-    "executionHash": "9fd257afd92dfac18ca084dc96db4208d83bbdeb2ea2d0e6d3373335194fe90c",
+    "executionHash": "669adfe6418b48bad92fa7b8a4a0c8647bcaded79316139bf0aac3c5e1618445",
     "mutations": {
       "defaults": [
         {
@@ -8454,6 +8581,17 @@
             "column": "id",
             "namespace": "public",
             "table": "orgMember"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "orgPolicy"
           }
         },
         {

@@ -67,6 +67,7 @@ export type AppView =
   | 'history'
   | 'environments'
   | 'review'
+  | 'policy'
   | 'team';
 
 export type Environment = 'development' | 'staging' | 'production';

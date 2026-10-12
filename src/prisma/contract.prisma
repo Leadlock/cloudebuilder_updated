@@ -671,6 +671,18 @@ model TerraformApproval {
   @@index([orgId, status])
 }
 
+// The organization's policy: the regions, instance sizes, tags and naming standard its architectures should follow. One row per organization;
+// `policyJson` holds the rules (validated by lib/engines/policy/schema.ts on every write and read). `version` counts saves. Violations are
+// advisory warnings for now — see lib/engines/policy.
+model OrgPolicy {
+  id         String @id @default(uuid())
+  orgId      String @unique
+  policyJson String
+  version    Int    @default(1)
+  updatedAt  String
+  updatedBy  String
+}
+
 // Random passwords CloudCraft generated for a cloud account's deployments (database / admin passwords), encrypted with the credential key and
 // bound to this row. id is "<cloudAccountId>:<name>". Never returned by an API except to an owner/admin who asks for it.
 model DeploymentSecret {

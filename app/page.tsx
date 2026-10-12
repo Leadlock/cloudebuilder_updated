@@ -21,6 +21,7 @@ import ReviewWorkflowPanel from '@/components/panels/ReviewWorkflowPanel';
 import AnalyzePanel from '@/components/panels/AnalyzePanel';
 import CostComparisonPanel from '@/components/panels/CostComparisonPanel';
 import TeamPanel from '@/components/panels/TeamPanel';
+import PolicyPanel from '@/components/panels/PolicyPanel';
 import LoginModal from '@/components/auth/LoginModal';
 import { useApp } from '@/context/AppContext';
 import { AppView } from '@/types';
@@ -62,6 +63,7 @@ function MainContent() {
     history:            <VersionHistory />,
     environments:       <EnvironmentsPanel />,
     review:             <ReviewWorkflowPanel />,
+    policy:             <PolicyPanel />,
     team:               <TeamPanel />,
   };
 
