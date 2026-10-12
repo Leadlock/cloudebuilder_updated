@@ -9,7 +9,7 @@ import clsx from 'clsx';
 import { Copy, Download, Package, Plus, Trash2, AlertTriangle, Check } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import {
-  defaultConfig, generateContainerFiles, STACK_LABEL, VERSIONS,
+  defaultConfig, generateContainerFiles, STACK_LABEL, STARTER_TEMPLATES, VERSIONS,
   type ContainerConfig, type ContainerStack, type EnvVar,
 } from '@/lib/engines/containers/dockerTemplates';
 import { buildZip } from '@/lib/engines/containers/zip';
@@ -58,6 +58,20 @@ export default function ContainerTemplatesPanel() {
           <div>
             <h2 className={clsx('font-bold text-lg', isLight ? 'text-slate-900' : 'text-white')}>Container Templates</h2>
             <p className={clsx('text-sm', muted)}>Configure a service and get a ready-to-run Dockerfile, compose file and everything around it.</p>
+          </div>
+        </div>
+
+        <div className={card}>
+          <p className={clsx('text-sm font-semibold mb-1', isLight ? 'text-slate-900' : 'text-white')}>Start from a template</p>
+          <p className={clsx('text-xs mb-3', muted)}>Each one includes a small working app and the EC2 deployment, so <code>bash deploy.sh</code> runs it end to end. You can change everything below afterwards.</p>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {STARTER_TEMPLATES.map((t) => (
+              <button key={t.id} type="button" onClick={() => { setCfg(t.config()); setSelected('README.md'); }}
+                className={clsx('rounded-xl border p-3 text-left', isLight ? 'bg-white border-slate-300 hover:bg-slate-50' : 'bg-slate-900 border-slate-700 hover:bg-slate-800')}>
+                <span className={clsx('block text-sm font-semibold', isLight ? 'text-slate-900' : 'text-white')}>{t.title}</span>
+                <span className={clsx('block text-[11px] mt-0.5', muted)}>{t.blurb}</span>
+              </button>
+            ))}
           </div>
         </div>
 
@@ -131,12 +145,13 @@ export default function ContainerTemplatesPanel() {
                 {cfg.stack !== 'static' && <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.runAsNonRoot} onChange={(e) => set('runAsNonRoot', e.target.checked)} />Run as non-root (recommended)</label>}
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.postgres} onChange={(e) => set('postgres', e.target.checked)} />Add PostgreSQL</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.redis} onChange={(e) => set('redis', e.target.checked)} />Add Redis</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.includeSample} onChange={(e) => set('includeSample', e.target.checked)} />Include a sample app</label>
               </div>
             </div>
 
             <div className={clsx(card, 'space-y-3')}>
               <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={cfg.ec2.enabled} onChange={(e) => setEc2('enabled', e.target.checked)} />Deploy to EC2</label>
-              <p className={clsx('text-xs', muted)}>Adds a Terraform project that creates an ECR repository and one EC2 server that pulls and runs the image. No SSH: you connect through Session Manager. Secrets are read from SSM Parameter Store, never written to Terraform.</p>
+              <p className={clsx('text-xs', muted)}>Adds <code>deploy.sh</code> (one command to create the server, push the image and start the app), <code>destroy.sh</code>, and the Terraform behind them. No SSH: you connect through Session Manager. Secrets are read from SSM Parameter Store, never written to Terraform.</p>
               {cfg.ec2.enabled && (
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className={label} htmlFor="ec2-region">Region</label><input id="ec2-region" className={input} value={cfg.ec2.region} onChange={(e) => setEc2('region', e.target.value)} /></div>
@@ -146,6 +161,11 @@ export default function ContainerTemplatesPanel() {
                   <div><label className={label} htmlFor="ec2-tag">Image tag</label><input id="ec2-tag" className={input} value={cfg.ec2.imageTag} onChange={(e) => setEc2('imageTag', e.target.value)} /></div>
                   <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={cfg.ec2.elasticIp} onChange={(e) => setEc2('elasticIp', e.target.checked)} />Fixed public IP</label>
                   <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={cfg.ec2.githubActions} onChange={(e) => setEc2('githubActions', e.target.checked)} />GitHub Actions workflow</label>
+                  {cfg.ec2.githubActions && (
+                    <div className="col-span-2"><label className={label} htmlFor="ec2-gh">GitHub repository (optional, owner/name)</label>
+                      <input id="ec2-gh" className={input} placeholder="yourname/yourapp" value={cfg.ec2.githubRepo} onChange={(e) => setEc2('githubRepo', e.target.value.trim())} />
+                      <p className={clsx('text-[11px] mt-1', muted)}>If set, Terraform also creates the AWS role the workflow signs in with, so you only paste one value into GitHub.</p></div>
+                  )}
                 </div>
               )}
             </div>

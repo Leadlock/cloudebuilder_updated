@@ -32,7 +32,10 @@ export function buildZip(files: GeneratedFile[], folder: string): Uint8Array {
     const common = [...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0)];
     const local = new Uint8Array([0x50, 0x4b, 3, 4, ...common, ...name]);
     chunks.push(local, data);
-    central.push(new Uint8Array([0x50, 0x4b, 1, 2, ...u16(20), ...common, ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset), ...name]));
+    // Unix (3) made-by and the file mode in the high 16 bits of the external attributes, so scripts stay executable after unzip.
+    const madeBy = f.executable ? (3 << 8) | 20 : 20;
+    const external = f.executable ? (0o100755 << 16) >>> 0 : 0;
+    central.push(new Uint8Array([0x50, 0x4b, 1, 2, ...u16(madeBy), ...common, ...u16(0), ...u16(0), ...u16(0), ...u32(external), ...u32(offset), ...name]));
     offset += local.length + data.length;
   }
   const centralSize = central.reduce((n, c) => n + c.length, 0);

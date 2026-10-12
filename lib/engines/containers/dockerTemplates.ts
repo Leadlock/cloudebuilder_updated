@@ -15,6 +15,7 @@
 
 export type ContainerStack = 'node' | 'python' | 'java' | 'static';
 
+import { generateSampleApp } from './sampleApps';
 import { defaultEc2, ec2Warnings, generateEc2Files, validateEc2, type Ec2Config } from './ec2Deploy';
 export type { Ec2Config } from './ec2Deploy';
 
@@ -47,9 +48,11 @@ export interface ContainerConfig {
   staticSpaFallback: boolean;
   /** Optional "deploy to EC2" bundle (Terraform + start-up script + CI workflow). */
   ec2: Ec2Config;
+  /** Add a tiny working sample app next to the Dockerfile, so the template runs before you have your own code. */
+  includeSample: boolean;
 }
 
-export interface GeneratedFile { path: string; content: string }
+export interface GeneratedFile { path: string; content: string; /** Set the executable bit when zipped (shell scripts). */ executable?: boolean }
 export type GenerateResult = { ok: true; files: GeneratedFile[]; warnings: string[] } | { ok: false; errors: string[] };
 
 export const STACK_LABEL: Record<ContainerStack, string> = {
@@ -65,7 +68,7 @@ export function defaultConfig(stack: ContainerStack = 'node'): ContainerConfig {
     version: VERSIONS[stack][0]!, env: [], healthPath: stack === 'java' ? '/actuator/health' : '/', runAsNonRoot: true,
     restart: 'unless-stopped', memoryLimit: '512m', cpuLimit: '1.0', postgres: false, redis: false,
     packageManager: 'npm', buildCommand: 'npm run build', startCommand: 'npm start', nextStandalone: false,
-    pythonFramework: 'fastapi', pythonModule: 'main:app', javaBuildTool: 'maven', staticBuildDir: 'dist', staticSpaFallback: true, ec2: defaultEc2(),
+    pythonFramework: 'fastapi', pythonModule: 'main:app', javaBuildTool: 'maven', staticBuildDir: 'dist', staticSpaFallback: true, ec2: defaultEc2(), includeSample: false,
   };
 }
 
@@ -385,6 +388,7 @@ export function generateContainerFiles(config: ContainerConfig): GenerateResult 
   if (errors.length > 0) return { ok: false, errors };
   const c = config;
   const dockerfile = c.stack === 'node' ? nodeDockerfile(c) : c.stack === 'python' ? pythonDockerfile(c) : c.stack === 'java' ? javaDockerfile(c) : staticDockerfile(c);
+  const sample = generateSampleApp(c);
   const files: GeneratedFile[] = [
     { path: 'Dockerfile', content: dockerfile },
     { path: '.dockerignore', content: dockerignore(c) },
@@ -393,6 +397,24 @@ export function generateContainerFiles(config: ContainerConfig): GenerateResult 
     ...(c.stack === 'static' ? [{ path: 'nginx.conf', content: nginxConf(c) }] : []),
     { path: 'README.md', content: readme(c) },
     ...generateEc2Files(c),
+    ...sample.files,
   ];
-  return { ok: true, files, warnings: ec2Warnings(c) };
+  return { ok: true, files, warnings: [...sample.warnings, ...ec2Warnings(c)] };
 }
+
+// ─── starter templates ───────────────────────────────────────────────────────
+
+export interface StarterTemplate { id: string; title: string; blurb: string; config: () => ContainerConfig }
+
+const starter = (stack: ContainerStack, appName: string, over: Partial<ContainerConfig> = {}): ContainerConfig => {
+  const d = defaultConfig(stack);
+  return { ...d, appName, includeSample: true, ec2: { ...d.ec2, enabled: true }, ...over };
+};
+
+/** Ready-made starting points: a stack, a working sample app and the EC2 deployment already switched on. */
+export const STARTER_TEMPLATES: StarterTemplate[] = [
+  { id: 'node-web', title: 'Node.js web app', blurb: 'A small Node.js server with a health check, deployed to EC2.', config: () => starter('node', 'node-web') },
+  { id: 'fastapi-api', title: 'FastAPI service', blurb: 'A Python FastAPI API with /health, deployed to EC2.', config: () => starter('python', 'fastapi-api', { healthPath: '/health' }) },
+  { id: 'spring-boot', title: 'Spring Boot service', blurb: 'A minimal Spring Boot app with Actuator health, deployed to EC2.', config: () => starter('java', 'spring-boot', { memoryLimit: '768m' }) },
+  { id: 'static-site', title: 'Static website', blurb: 'A one-page website served by nginx, deployed to EC2.', config: () => starter('static', 'static-site') },
+];
