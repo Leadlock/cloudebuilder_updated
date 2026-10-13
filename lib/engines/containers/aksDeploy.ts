@@ -3,13 +3,15 @@
  * and an AKS cluster (managed identity, OIDC issuer and workload identity on, cluster autoscaler), plus the Kubernetes manifests and Helm
  * chart from the Kubernetes target, and deploy.sh / destroy.sh that build the image inside Azure, connect kubectl and roll the app out.
  *
- * The cluster pulls images with its kubelet identity, which holds only AcrPull on this registry: there is no registry password and no image
- * pull secret. The manifests are the same hardened ones as the plain Kubernetes target; their image is the registry's, filled in by deploy.sh.
+ * Secrets live in Key Vault: deploy.sh stores them there, and the pods read them through the Secrets Store CSI driver with workload identity
+ * (a federated credential ties the app's service account to a managed identity that can only read this vault). They never pass through kubectl or
+ * a file. The cluster pulls images with its kubelet identity, which holds only AcrPull on this registry: no registry password, no pull secret. The manifests are the same hardened ones as the plain Kubernetes target; their image is the registry's, filled in by deploy.sh.
  */
 import type { ContainerConfig } from './dockerTemplates';
 import { azureVmHourlyUsd } from '@/lib/engines/cost/azurePricing';
 import { TAG, q, secretNames, type DeployCost } from './ec2Deploy';
-import { generateK8sManifestFiles, k8sWarnings, validateK8s } from './kubernetesDeploy';
+import { generateK8sManifestFiles, k8sWarnings, KV_TOKENS, validateK8s } from './kubernetesDeploy';
+import { vaultSecretName } from './azureVmDeploy';
 
 export interface AksConfig {
   enabled: boolean;
@@ -31,7 +33,7 @@ const CLUSTER_NAME = /^[a-z][a-z0-9-]{0,52}[a-z0-9]$/;
 /** The Kubernetes settings the manifests are generated from: the form's, with the image deploy.sh will push and AKS's ingress class. */
 export function aksAsK8s(c: ContainerConfig): ContainerConfig {
   const k = c.k8s;
-  return { ...c, k8s: { ...k, enabled: true, image: `${c.appName}:${c.aks.imageTag}`, ingressClass: k.ingressClass === 'nginx' || k.ingressClass === '' ? 'webapprouting.kubernetes.azure.com' : k.ingressClass, githubActions: false } };
+  return { ...c, k8s: { ...k, enabled: true, image: `${c.appName}:${c.aks.imageTag}`, ingressClass: k.ingressClass === 'nginx' || k.ingressClass === '' ? 'webapprouting.kubernetes.azure.com' : k.ingressClass, githubActions: false, keyVault: true } };
 }
 
 export function validateAks(c: ContainerConfig): string[] {
@@ -51,7 +53,7 @@ export function aksWarnings(c: ContainerConfig): string[] {
   if (!a.enabled) return [];
   const w = k8sWarnings(aksAsK8s(c)).filter((x) => !/deploy\.sh asks for each secret/.test(x) && !/image has no version tag/.test(x));
   if (a.imageTag === 'latest') w.push('AKS: the "latest" tag is used. A version tag (for example the commit id) makes it clear what is running and allows a rollback.');
-  if (c.env.some((v) => v.secret)) w.push(`AKS: deploy.sh asks for each secret and stores it in a Kubernetes Secret named ${c.appName}-secrets (Kubernetes Secrets are only base64-encoded: enable etcd encryption with a key you control, or use the Key Vault CSI driver, for sensitive data).`);
+  if (c.env.some((v) => v.secret)) w.push('AKS: deploy.sh stores each secret in Key Vault (asks once, hidden). The pods read them through the Key Vault CSI driver and workload identity; the Kubernetes Secret the app reads is synced from the vault while a pod runs. After you change a secret, restart the deployment (kubectl rollout restart) so the pods pick up the new value.');
   if (c.k8s.ingressHost !== '') w.push('AKS: deploy.sh turns on the managed ingress controller (application routing). Point your DNS name at its public IP.');
   return w;
 }
@@ -83,7 +85,7 @@ export function estimateAksCost(c: ContainerConfig): DeployCost | undefined {
 const hcl = (s: string) => JSON.stringify(s).replace(/\$\{/g, () => '$${').replace(/%\{/g, () => '%%{');
 
 function mainTf(c: ContainerConfig): string {
-  void c;
+  const kv = secretNames(c).length > 0;
   return `terraform {
   required_version = ">= 1.5.0"
   required_providers {
@@ -95,7 +97,13 @@ function mainTf(c: ContainerConfig): string {
 }
 
 provider "azurerm" {
-  features {}
+  features {${kv ? `
+    key_vault {
+      # So destroy.sh leaves nothing behind that would block creating the same vault again.
+      purge_soft_delete_on_destroy    = true
+      recover_soft_deleted_key_vaults = true
+    }
+  ` : ''}}
 }
 
 data "azurerm_client_config" "current" {}
@@ -107,7 +115,8 @@ locals {
   }
   slug     = replace(replace(var.app_name, "-", ""), "_", "")
   suffix   = substr(md5("$\{data.azurerm_client_config.current.subscription_id}$\{var.app_name}"), 0, 6)
-  acr_name = substr("acr$\{local.slug}$\{local.suffix}", 0, 50)
+  acr_name = substr("acr$\{local.slug}$\{local.suffix}", 0, 50)${kv ? `
+  vault_name = "kv$\{substr(local.slug, 0, 12)}$\{local.suffix}"` : ''}
 }
 
 resource "azurerm_resource_group" "app" {
@@ -171,7 +180,12 @@ resource "azurerm_kubernetes_cluster" "app" {
   oms_agent {
     log_analytics_workspace_id = azurerm_log_analytics_workspace.app.id
   }
-}
+${kv ? `
+  # The add-on that mounts Key Vault secrets into pods (Secrets Store CSI driver, Azure provider).
+  key_vault_secrets_provider {
+    secret_rotation_enabled = true
+  }
+` : ''}}
 
 resource "azurerm_role_assignment" "pull" {
   scope                            = azurerm_container_registry.app.id
@@ -179,7 +193,51 @@ resource "azurerm_role_assignment" "pull" {
   principal_id                     = azurerm_kubernetes_cluster.app.kubelet_identity[0].object_id
   skip_service_principal_aad_check = true
 }
-`;
+${kv ? `
+# ── Secrets: Key Vault, read by the app's own identity (workload identity) ───
+
+resource "azurerm_key_vault" "app" {
+  name                       = local.vault_name
+  location                   = azurerm_resource_group.app.location
+  resource_group_name        = azurerm_resource_group.app.name
+  tenant_id                  = data.azurerm_client_config.current.tenant_id
+  sku_name                   = "standard"
+  enable_rbac_authorization  = true
+  soft_delete_retention_days = 7
+  purge_protection_enabled   = false
+  tags                       = local.tags
+}
+
+# Whoever runs deploy.sh can store secrets.
+resource "azurerm_role_assignment" "deployer_secrets" {
+  scope                = azurerm_key_vault.app.id
+  role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
+
+resource "azurerm_user_assigned_identity" "workload" {
+  name                = "id-$\{var.app_name}"
+  location            = azurerm_resource_group.app.location
+  resource_group_name = azurerm_resource_group.app.name
+  tags                = local.tags
+}
+
+resource "azurerm_role_assignment" "vault_read" {
+  scope                = azurerm_key_vault.app.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.workload.principal_id
+}
+
+# Only the pods that run as this service account in this namespace can act as the identity.
+resource "azurerm_federated_identity_credential" "workload" {
+  name                = "$\{var.app_name}-pods"
+  resource_group_name = azurerm_resource_group.app.name
+  parent_id           = azurerm_user_assigned_identity.workload.id
+  issuer              = azurerm_kubernetes_cluster.app.oidc_issuer_url
+  subject             = "system:serviceaccount:$\{var.k8s_namespace}:$\{var.app_name}"
+  audience            = ["api://AzureADTokenExchange"]
+}
+` : ''}`;
 }
 
 function variablesTf(c: ContainerConfig): string {
@@ -196,7 +254,13 @@ variable "app_name" {
   default     = ${hcl(c.appName)}
 }
 
-variable "node_size" {
+${secretNames(c).length ? `variable "k8s_namespace" {
+  description = "Namespace the app runs in (the identity is bound to the service account there)."
+  type        = string
+  default     = ${hcl(c.k8s.namespace)}
+}
+
+` : ''}variable "node_size" {
   description = "VM size of the node pool."
   type        = string
   default     = ${hcl(a.nodeSize)}
@@ -214,7 +278,7 @@ variable "max_nodes" {
 `;
 }
 
-function outputsTf(): string {
+function outputsTf(c: ContainerConfig): string {
   return `output "acr_name" {
   description = "The container registry that holds the image."
   value       = azurerm_container_registry.app.name
@@ -228,7 +292,21 @@ output "cluster_name" {
   value = azurerm_kubernetes_cluster.app.name
 }
 
-output "get_credentials" {
+${secretNames(c).length ? `output "vault_name" {
+  description = "Key Vault that holds the secrets (deploy.sh stores them here)."
+  value       = azurerm_key_vault.app.name
+}
+
+output "tenant_id" {
+  value = data.azurerm_client_config.current.tenant_id
+}
+
+output "workload_client_id" {
+  description = "Client id of the identity the pods use to read the vault."
+  value       = azurerm_user_assigned_identity.workload.client_id
+}
+
+` : ''}output "get_credentials" {
   description = "Point kubectl at the cluster."
   value       = "az aks get-credentials --resource-group $\{azurerm_resource_group.app.name} --name $\{azurerm_kubernetes_cluster.app.name}"
 }
@@ -240,11 +318,11 @@ output "get_credentials" {
 function deploySh(c: ContainerConfig): string {
   const k = c.k8s;
   const secrets = secretNames(c);
+  const total = secrets.length ? 4 : 3;
   return `#!/usr/bin/env bash
 # One command to deploy ${c.appName} to Azure Kubernetes Service: bash deploy.sh
-#   1. creates the resource group, container registry and AKS cluster with Terraform (first run: about 10 minutes), asking you to confirm
-#   2. builds the image inside Azure (az acr build), so Docker is not needed on this machine
-#   3. connects kubectl, stores any secret values in the cluster (asks once, hidden), and applies the manifests
+#   1. creates the resource group, container registry, AKS cluster${secrets.length ? ' and Key Vault' : ''} with Terraform (first run: about 10 minutes), asking you to confirm
+${secrets.length ? '#   2. stores any secret values in Key Vault (asks once, hidden), never in a file, in Terraform\'s state or in the cluster\'s command line\n#   3. builds the image inside Azure (az acr build), so Docker is not needed on this machine\n#   4. connects kubectl and applies the manifests' : '#   2. builds the image inside Azure (az acr build), so Docker is not needed on this machine\n#   3. connects kubectl and applies the manifests'}
 # Run it again to release a new version (IMAGE_TAG=v2 bash deploy.sh uses another tag). Add --yes to skip the Terraform confirmation.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -266,45 +344,55 @@ echo "Subscription: $(az account show --query name -o tsv)"
 az provider register --namespace Microsoft.ContainerService --wait >/dev/null
 az provider register --namespace Microsoft.ContainerRegistry --wait >/dev/null
 az provider register --namespace Microsoft.OperationalInsights --wait >/dev/null
-
-echo "==> 1/3  Registry and AKS cluster (Terraform)"
+${secrets.length ? 'az provider register --namespace Microsoft.KeyVault --wait >/dev/null\n' : ''}
+echo "==> 1/${total}  Registry and AKS cluster${secrets.length ? ' and Key Vault' : ''} (Terraform)"
 terraform -chdir=aks init -input=false >/dev/null
 terraform -chdir=aks apply \${APPROVE:+-auto-approve}
 ACR=$(terraform -chdir=aks output -raw acr_name)
 RG=$(terraform -chdir=aks output -raw resource_group)
 CLUSTER=$(terraform -chdir=aks output -raw cluster_name)
+${secrets.length ? `VAULT=$(terraform -chdir=aks output -raw vault_name)
+TENANT=$(terraform -chdir=aks output -raw tenant_id)
+CLIENT_ID=$(terraform -chdir=aks output -raw workload_client_id)
 
-echo "==> 2/3  Build the image in Azure"
+echo "==> 2/4  Secrets"
+for NAME in "\${SECRETS[@]}"; do
+  KVNAME=$(echo "$NAME" | tr '_' '-')
+  if az keyvault secret show --vault-name "$VAULT" --name "$KVNAME" >/dev/null 2>&1; then
+    echo "    $NAME: already stored"
+  else
+    read -r -s -p "    Value for $NAME (hidden): " VALUE; echo
+    [ -n "$VALUE" ] || { echo "    $NAME cannot be empty."; exit 1; }
+    TMP=$(mktemp); chmod 600 "$TMP"
+    printf '%s' "$VALUE" > "$TMP"
+    # A new role assignment can take a minute to take effect.
+    for TRY in 1 2 3 4 5 6 7 8; do
+      if az keyvault secret set --vault-name "$VAULT" --name "$KVNAME" --file "$TMP" >/dev/null 2>&1; then break; fi
+      [ "$TRY" = 8 ] && { rm -f "$TMP"; echo "    Could not store $NAME. Your account needs 'Key Vault Secrets Officer' on $VAULT."; exit 1; }
+      sleep 15
+    done
+    rm -f "$TMP"; unset VALUE
+    echo "    $NAME: stored"
+  fi
+done
+` : ''}
+echo "==> ${total === 4 ? '3' : '2'}/${total}  Build the image in Azure"
 az acr build --registry "$ACR" --image "$APP:$TAG" --platform linux/amd64 .
 
-echo "==> 3/3  Deploy to the cluster"
+echo "==> ${total}/${total}  Deploy to the cluster"
 # A private kubeconfig for this run: your own kubectl contexts are left alone.
 export KUBECONFIG="$(mktemp)"
 trap 'rm -f "$KUBECONFIG"' EXIT
 az aks get-credentials --resource-group "$RG" --name "$CLUSTER" --file "$KUBECONFIG" --overwrite-existing >/dev/null
 
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-if [ \${#SECRETS[@]} -gt 0 ]; then
-  if kubectl -n "$NAMESPACE" get secret "$APP-secrets" >/dev/null 2>&1; then
-    echo "    $APP-secrets already exists (delete it with: kubectl -n $NAMESPACE delete secret $APP-secrets)"
-  else
-    ARGS=()
-    for NAME in "\${SECRETS[@]}"; do
-      read -r -s -p "    Value for $NAME (hidden): " VALUE; echo
-      [ -n "$VALUE" ] || { echo "    $NAME cannot be empty."; exit 1; }
-      ARGS+=("--from-literal=$NAME=$VALUE")
-    done
-    kubectl -n "$NAMESPACE" create secret generic "$APP-secrets" "\${ARGS[@]}" >/dev/null
-    unset ARGS VALUE
-    echo "    stored"
-  fi
-fi
 ${k.ingressHost ? `
 # The managed ingress controller (application routing), once.
 az aks approuting enable --resource-group "$RG" --name "$CLUSTER" >/dev/null 2>&1 || true
 ` : ''}
-# The manifests name the image "${c.appName}:<tag>"; run it from this registry.
-kubectl kustomize k8s | sed "s#image: $APP:$TAG#image: $ACR.azurecr.io/$APP:$TAG#" | kubectl apply -f -
+# The manifests name the image "${c.appName}:<tag>"${secrets.length ? ' and carry placeholders for the vault, tenant and identity' : ''}; fill them in and apply.
+kubectl kustomize k8s | sed -e "s#image: $APP:$TAG#image: $ACR.azurecr.io/$APP:$TAG#"${secrets.length ? ` \\
+  -e "s#${KV_TOKENS.vaultName}#$VAULT#g" -e "s#${KV_TOKENS.tenantId}#$TENANT#g" -e "s#${KV_TOKENS.clientId}#$CLIENT_ID#g"` : ''} | kubectl apply -f -
 kubectl -n "$NAMESPACE" rollout status deployment/"$APP" --timeout=300s
 echo "Done. ${k.ingressHost ? `Point ${k.ingressHost} at the ingress address: kubectl -n app-routing-system get service nginx` : k.serviceType === 'LoadBalancer' ? 'Find the address with: kubectl -n "$NAMESPACE" get service "$APP"' : 'Try it with: kubectl -n "$NAMESPACE" port-forward service/"$APP" 8080:80'}"
 `;
@@ -353,7 +441,7 @@ It creates the resource group, container registry and cluster (the first run tak
 - A resource group \`rg-${c.appName}\` in \`${a.location}\` with an AKS cluster (Free tier control plane, ${a.minNodes} to ${a.maxNodes} \`${a.nodeSize}\` node${a.maxNodes === 1 ? '' : 's'} with the cluster autoscaler, Azure CNI overlay networking, workload identity and the OIDC issuer on, container insights).
 - A container registry (Basic, no admin user). The cluster pulls from it with its kubelet identity, which holds only AcrPull.
 - In namespace \`${k.namespace}\`: a Deployment of ${k.autoscaling ? `${k.minReplicas} to ${k.maxReplicas}` : k.replicas} pod${k.replicas === 1 && !k.autoscaling ? '' : 's'} with health probes on \`${c.healthPath}\`, resource limits and zero-downtime rolling updates, a Service (${k.serviceType})${k.ingressHost ? `, an Ingress for \`${k.ingressHost}\` through the managed ingress controller` : ''}${k.autoscaling ? ', a HorizontalPodAutoscaler' : ''}. Pods run as a non-root user with no privilege escalation, all capabilities dropped and no service account token.
-${secrets.length ? `- Secrets (${secrets.join(', ')}) are stored in the Kubernetes Secret \`${c.appName}-secrets\`, created by deploy.sh from what you type. Kubernetes Secrets are only base64-encoded unless you turn on encryption with a key you control; for sensitive data consider the Azure Key Vault CSI driver.\n` : ''}
+${secrets.length ? `- Secrets (${secrets.join(', ')}) are stored in a Key Vault (as ${secrets.map((x) => `\`${vaultSecretName(x)}\``).join(', ')}) by deploy.sh. The pods read them through the Key Vault CSI driver and workload identity: a managed identity that can only read this vault is tied, by a federated credential, to the service account \`${c.appName}\` in \`${k.namespace}\`. The Secret \`${c.appName}-secrets\` the app reads is synced from the vault while a pod runs. Values never pass through kubectl, a file or Terraform's state. After you change a secret in the vault, run \`kubectl -n ${k.namespace} rollout restart deployment/${c.appName}\`.\n` : ''}
 ## Look inside
 
 \`\`\`bash
@@ -366,16 +454,17 @@ ${k.helm ? `## Using Helm instead
 
 \`\`\`bash
 helm upgrade --install ${c.appName} helm/${c.appName} --namespace ${k.namespace} --create-namespace \\
-  --set image.repository=<acr_name>.azurecr.io/${c.appName} --set image.tag=${a.imageTag}
+  --set image.repository=<acr_name>.azurecr.io/${c.appName} --set image.tag=${a.imageTag}${secrets.length ? ` \\
+  --set keyVault.enabled=true --set keyVault.vaultName=<vault_name> --set keyVault.tenantId=<tenant_id> --set keyVault.clientId=<workload_client_id>` : ''}
 \`\`\`
 
-(\`terraform -chdir=aks output acr_name\` gives the registry name.)
+(\`terraform -chdir=aks output\` gives the registry name${secrets.length ? ', the vault name, the tenant id and the identity\'s client id' : ''}.)
 
 ` : ''}## Common problems
 
 - **ImagePullBackOff**: the image is not in the registry yet, or the AcrPull assignment has not taken effect (it can take a minute). Run \`bash deploy.sh\` again.
 - **"SkuNotAvailable" or a quota error**: the node size is not offered, or your subscription has no quota for it in that region. Change \`node_size\` in \`aks/variables.tf\`, or pick another region.
-- **CreateContainerConfigError**: a secret is missing. Create \`${c.appName}-secrets\` with the keys above.
+- **CreateContainerConfigError** or pods stuck in ContainerCreating: ${secrets.length ? `a secret is missing from the vault, or the identity cannot read it yet (a new role assignment can take a few minutes). Run \`kubectl -n ${k.namespace} describe pod\` and read the events; run \`bash deploy.sh\` again to be asked for missing secrets.` : 'a secret the app needs is missing.'}
 - **Pods restart in a loop**: read the logs. The health check path \`${c.healthPath}\` must answer on port ${c.port}.
 
 ## What to know
@@ -392,7 +481,7 @@ export function generateAksFiles(c: ContainerConfig): Array<{ path: string; cont
     { path: 'destroy.sh', content: destroySh(c), executable: true },
     { path: 'aks/main.tf', content: mainTf(c) },
     { path: 'aks/variables.tf', content: variablesTf(c) },
-    { path: 'aks/outputs.tf', content: outputsTf() },
+    { path: 'aks/outputs.tf', content: outputsTf(c) },
     { path: 'aks/.gitignore', content: '.terraform/\n*.tfstate\n*.tfstate.*\ncrash.log\n' },
     { path: 'aks/README.md', content: readme(c) },
     ...generateK8sManifestFiles(aksAsK8s(c)),

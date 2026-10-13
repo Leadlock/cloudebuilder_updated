@@ -27,6 +27,11 @@ export interface K8sConfig {
   maxReplicas: number;
   /** Also generate a Helm chart. */
   helm: boolean;
+  /**
+   * Read secrets from Azure Key Vault through the Secrets Store CSI driver and workload identity (set by the AKS target when the app has secrets):
+   * the values never pass through kubectl or a file, and the Kubernetes Secret the app reads is synced from the vault.
+   */
+  keyVault: boolean;
   /** Also generate a GitHub Actions workflow that builds, scans and pushes the image (GitHub Container Registry images only). */
   githubActions: boolean;
   scanImage: boolean;
@@ -34,7 +39,7 @@ export interface K8sConfig {
 
 export const defaultK8s = (): K8sConfig => ({
   enabled: false, namespace: 'default', image: '', replicas: 2, serviceType: 'ClusterIP', ingressHost: '', ingressClass: 'nginx', tlsSecret: '',
-  autoscaling: false, minReplicas: 2, maxReplicas: 6, helm: true, githubActions: false, scanImage: true,
+  autoscaling: false, minReplicas: 2, maxReplicas: 6, helm: true, keyVault: false, githubActions: false, scanImage: true,
 });
 
 const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -74,6 +79,13 @@ export function k8sWarnings(c: ContainerConfig): string[] {
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
+
+/** True when secrets come from Key Vault (the AKS target) rather than from a Secret the deploy script creates. */
+const usesKeyVault = (c: ContainerConfig) => c.k8s.keyVault && secretNames(c).length > 0;
+/** Key Vault secret names allow letters, digits and "-" only. */
+export const kvName = (key: string) => key.replace(/_/g, '-');
+/** Tokens in the Key Vault manifests that deploy.sh (or helm --set) fills in once Terraform has created the vault and the identity. */
+export const KV_TOKENS = { clientId: '__WORKLOAD_CLIENT_ID__', tenantId: '__TENANT_ID__', vaultName: '__VAULT_NAME__' } as const;
 
 const yq = (s: string) => `"${s.replace(/[\\"]/g, (m) => `\\${m}`)}"`;
 /** Docker "512m" / "2g" -> Kubernetes "512Mi" / "2Gi". */
@@ -152,6 +164,11 @@ function containerBlock(c: ContainerConfig, image: string, indent: number, helm:
     lines.push('    runAsNonRoot: true');
     lines.push(`    runAsUser: ${runAsUser(c.stack)}`);
   }
+  if (helm) {
+    lines.push('  {{- if .Values.keyVault.enabled }}', '  volumeMounts:', '    - name: secrets-store', '      mountPath: /mnt/secrets-store', '      readOnly: true', '  {{- end }}');
+  } else if (usesKeyVault(c)) {
+    lines.push('  volumeMounts:', '    - name: secrets-store', '      mountPath: /mnt/secrets-store', '      readOnly: true');
+  }
   return lines.map((l) => pad + l).join('\n');
 }
 
@@ -179,12 +196,60 @@ ${selector(c, 6)}
   template:
     metadata:
       labels:
-${labels(c, 8)}
+${labels(c, 8)}${usesKeyVault(c) ? '\n        azure.workload.identity/use: "true"' : ''}
     spec:
-      automountServiceAccountToken: false
+${usesKeyVault(c) ? `      serviceAccountName: ${c.appName}\n` : ''}      automountServiceAccountToken: false
       terminationGracePeriodSeconds: 30
       containers:
 ${containerBlock(c, k.image, 8, false)}
+${usesKeyVault(c) ? `      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: ${c.appName}
+` : ''}`;
+}
+
+function serviceAccountYaml(c: ContainerConfig): string {
+  return `# The identity the pods use to read Key Vault (workload identity): its client id is filled in by deploy.sh.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ${c.appName}
+  namespace: ${c.k8s.namespace}
+  labels:
+${labels(c, 4)}
+  annotations:
+    azure.workload.identity/client-id: ${KV_TOKENS.clientId}
+`;
+}
+
+function secretProviderClassYaml(c: ContainerConfig): string {
+  const secrets = secretNames(c);
+  return `# Reads the secrets from Azure Key Vault and syncs them into the Secret ${c.appName}-secrets while a pod runs.
+# The vault name, tenant and client id are filled in by deploy.sh once Terraform has created them.
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: ${c.appName}
+  namespace: ${c.k8s.namespace}
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false"
+    clientID: ${KV_TOKENS.clientId}
+    keyvaultName: ${KV_TOKENS.vaultName}
+    tenantId: ${KV_TOKENS.tenantId}
+    objects: |
+      array:
+${secrets.map((k) => `        - |\n          objectName: ${kvName(k)}\n          objectType: secret`).join('\n')}
+  secretObjects:
+    - secretName: ${c.appName}-secrets
+      type: Opaque
+      data:
+${secrets.map((k) => `        - objectName: ${kvName(k)}\n          key: ${k}`).join('\n')}
 `;
 }
 
@@ -286,7 +351,7 @@ const wantsPdb = (c: ContainerConfig) => (c.k8s.autoscaling ? c.k8s.minReplicas 
 
 function kustomizationYaml(c: ContainerConfig): string {
   const k = c.k8s;
-  const res = [...(k.namespace !== 'default' ? ['namespace.yaml'] : []), 'deployment.yaml', 'service.yaml', ...(k.ingressHost ? ['ingress.yaml'] : []), ...(k.autoscaling ? ['hpa.yaml'] : []), ...(wantsPdb(c) ? ['pdb.yaml'] : [])];
+  const res = [...(k.namespace !== 'default' ? ['namespace.yaml'] : []), ...(usesKeyVault(c) ? ['serviceaccount.yaml', 'secretproviderclass.yaml'] : []), 'deployment.yaml', 'service.yaml', ...(k.ingressHost ? ['ingress.yaml'] : []), ...(k.autoscaling ? ['hpa.yaml'] : []), ...(wantsPdb(c) ? ['pdb.yaml'] : [])];
   return `apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -335,6 +400,12 @@ secretName: ${c.appName}-secrets
 secretNames:${secrets.length === 0 ? ' []' : '\n' + secrets.map((s) => `  - ${s}`).join('\n')}
 nonRoot: ${c.runAsNonRoot || c.stack === 'static'}
 runAsUser: ${runAsUser(c.stack)}
+# Secrets from Azure Key Vault (Secrets Store CSI driver + workload identity). Fill these from the Terraform outputs (vault_name, tenant_id, workload_client_id).
+keyVault:
+  enabled: ${usesKeyVault(c)}
+  vaultName: ""
+  tenantId: ""
+  clientId: ""
 `;
   const helpers = `{{- define "app.name" -}}${c.appName}{{- end -}}
 {{- define "app.labels" -}}
@@ -372,11 +443,66 @@ spec:
     metadata:
       labels:
         {{- include "app.labels" . | nindent 8 }}
+        {{- if .Values.keyVault.enabled }}
+        azure.workload.identity/use: "true"
+        {{- end }}
     spec:
+      {{- if .Values.keyVault.enabled }}
+      serviceAccountName: {{ include "app.name" . }}
+      {{- end }}
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 30
       containers:
 ${container}
+      {{- if .Values.keyVault.enabled }}
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "app.name" . }}
+      {{- end }}
+`;
+  const kvServiceAccount = `{{- if .Values.keyVault.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "app.name" . }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+  annotations:
+    azure.workload.identity/client-id: {{ .Values.keyVault.clientId | quote }}
+{{- end }}
+`;
+  const kvProviderClass = `{{- if .Values.keyVault.enabled }}
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: {{ include "app.name" . }}
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false"
+    clientID: {{ .Values.keyVault.clientId | quote }}
+    keyvaultName: {{ .Values.keyVault.vaultName | quote }}
+    tenantId: {{ .Values.keyVault.tenantId | quote }}
+    objects: |
+      array:
+        {{- range .Values.secretNames }}
+        - |
+          objectName: {{ . | replace "_" "-" }}
+          objectType: secret
+        {{- end }}
+  secretObjects:
+    - secretName: {{ .Values.secretName }}
+      type: Opaque
+      data:
+        {{- range .Values.secretNames }}
+        - objectName: {{ . | replace "_" "-" }}
+          key: {{ . }}
+        {{- end }}
+{{- end }}
 `;
   const service = `apiVersion: v1
 kind: Service
@@ -469,6 +595,8 @@ spec:
     { path: `${dir}/templates/ingress.yaml`, content: ingress },
     { path: `${dir}/templates/hpa.yaml`, content: hpa },
     { path: `${dir}/templates/pdb.yaml`, content: pdb },
+    { path: `${dir}/templates/serviceaccount.yaml`, content: kvServiceAccount },
+    { path: `${dir}/templates/secretproviderclass.yaml`, content: kvProviderClass },
     { path: `${dir}/.helmignore`, content: '.git/\n*.swp\n' },
   ];
 }
@@ -660,6 +788,7 @@ export function generateK8sManifestFiles(c: ContainerConfig): Array<{ path: stri
     ...(k.namespace !== 'default' ? [{ path: 'k8s/namespace.yaml', content: namespaceYaml(c) }] : []),
     { path: 'k8s/deployment.yaml', content: deploymentYaml(c) },
     { path: 'k8s/service.yaml', content: serviceYaml(c) },
+    ...(usesKeyVault(c) ? [{ path: 'k8s/serviceaccount.yaml', content: serviceAccountYaml(c) }, { path: 'k8s/secretproviderclass.yaml', content: secretProviderClassYaml(c) }] : []),
     ...(k.ingressHost ? [{ path: 'k8s/ingress.yaml', content: ingressYaml(c) }] : []),
     ...(k.autoscaling ? [{ path: 'k8s/hpa.yaml', content: hpaYaml(c) }] : []),
     ...(wantsPdb(c) ? [{ path: 'k8s/pdb.yaml', content: pdbYaml(c) }] : []),

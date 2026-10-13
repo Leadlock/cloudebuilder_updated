@@ -503,13 +503,12 @@ describe('Azure Kubernetes Service', () => {
     expect(tf).toContain('oms_agent');
     expect(tf).toContain('network_plugin_mode = "overlay"');
   });
-  it('deploy.sh builds in Azure, uses a private kubeconfig, creates secrets by prompt, and runs the registry image', () => {
+  it('deploy.sh builds in Azure, uses a private kubeconfig, and runs the registry image', () => {
     const d = files()['deploy.sh']!;
+    expect(shellSyntaxOk(d)).toBe(true);
     expect(d).toContain('az acr build --registry');
     expect(d).toContain('KUBECONFIG="$(mktemp)"');
-    expect(d).toContain('create secret generic');
-    expect(d).toContain('read -r -s');
-    expect(d).toContain('sed "s#image: $APP:$TAG#image: $ACR.azurecr.io/$APP:$TAG#"');
+    expect(d).toContain('sed -e "s#image: $APP:$TAG#image: $ACR.azurecr.io/$APP:$TAG#"');
     expect(d.indexOf('terraform -chdir=aks apply')).toBeLessThan(d.indexOf('az acr build --registry'));
     expect(d.indexOf('az acr build --registry')).toBeLessThan(d.indexOf('kubectl apply'));
     expect(d).toContain('rollout status');
@@ -537,8 +536,107 @@ describe('Azure Kubernetes Service', () => {
   it('the cluster\'s own warnings replace the generic image-tag and secret ones', () => {
     const w = gen(on('aks', (c) => { c.env = [{ key: 'T', value: '', secret: true }]; })).warnings.join(' ');
     expect(w).toMatch(/AKS: the "latest" tag/);
-    expect(w).toMatch(/only base64-encoded/);
+    expect(w).toMatch(/AKS: deploy\.sh stores each secret in Key Vault/);
+    expect(w).not.toMatch(/base64/);
     expect(w).not.toMatch(/Kubernetes: the image has no version tag/);
+  });
+});
+
+describe('AKS: secrets in Key Vault (CSI driver and workload identity)', () => {
+  const files = (over?: (c: ContainerConfig) => void) => gen(on('aks', over)).byPath;
+  const noSecrets = (c: ContainerConfig) => { c.env = [{ key: 'LOG_LEVEL', value: 'info' }]; };
+
+  it('Terraform: a vault by role, an identity that only reads it, a federated credential for exactly this service account, and the CSI add-on', () => {
+    const tf = files((c) => { c.k8s.namespace = 'shop'; })['aks/main.tf']!;
+    expect(balanced(tf)).toBe(true);
+    expect(tf).toContain('key_vault_secrets_provider');
+    expect(tf).toContain('enable_rbac_authorization  = true');
+    expect(tf).toContain('role_definition_name = "Key Vault Secrets User"');
+    expect(tf).toContain('principal_id         = azurerm_user_assigned_identity.workload.principal_id');
+    expect(tf).toContain('role_definition_name = "Key Vault Secrets Officer"');
+    expect(tf).toContain('resource "azurerm_federated_identity_credential" "workload"');
+    expect(tf).toContain('issuer              = azurerm_kubernetes_cluster.app.oidc_issuer_url');
+    expect(tf).toContain('subject             = "system:serviceaccount:${var.k8s_namespace}:${var.app_name}"');
+    expect(tf).toContain('audience            = ["api://AzureADTokenExchange"]');
+    expect(tf).toContain('purge_soft_delete_on_destroy    = true');
+    expect(files((c) => { c.k8s.namespace = 'shop'; })['aks/variables.tf']).toMatch(/variable "k8s_namespace" \{[^}]*default     = "shop"/);
+    const out = files()['aks/outputs.tf']!;
+    for (const o of ['vault_name', 'tenant_id', 'workload_client_id']) expect(out).toContain(`output "${o}"`);
+  });
+  it('without secrets there is no vault, identity, add-on or output at all', () => {
+    const f = files(noSecrets);
+    expect(f['aks/main.tf']).not.toMatch(/key_vault|federated_identity|user_assigned_identity/);
+    expect(f['aks/variables.tf']).not.toContain('k8s_namespace');
+    expect(f['aks/outputs.tf']).not.toContain('vault_name');
+    expect(f['k8s/serviceaccount.yaml']).toBeUndefined();
+    expect(f['k8s/secretproviderclass.yaml']).toBeUndefined();
+    expect(balanced(f['aks/main.tf']!)).toBe(true);
+    expect(shellSyntaxOk(f['deploy.sh']!)).toBe(true);
+    expect(f['deploy.sh']).not.toContain('az keyvault');
+    expect(parse(f['k8s/deployment.yaml']!).spec.template.spec.volumes).toBeUndefined();
+  });
+  it('the manifests: a service account for the identity, a SecretProviderClass that syncs the Secret the app reads, and a pod that mounts it', () => {
+    const f = files();
+    const sa = parse(f['k8s/serviceaccount.yaml']!);
+    expect(sa.metadata.name).toBe('orders-api');
+    expect(sa.metadata.annotations['azure.workload.identity/client-id']).toBe('__WORKLOAD_CLIENT_ID__');
+    const spc = parse(f['k8s/secretproviderclass.yaml']!);
+    expect(spc.apiVersion).toBe('secrets-store.csi.x-k8s.io/v1');
+    expect(spc.spec.provider).toBe('azure');
+    expect(spc.spec.parameters).toMatchObject({ usePodIdentity: 'false', clientID: '__WORKLOAD_CLIENT_ID__', keyvaultName: '__VAULT_NAME__', tenantId: '__TENANT_ID__' });
+    expect(parse(spc.spec.parameters.objects).array.map((o: string) => parse(o))).toEqual([{ objectName: 'API-TOKEN', objectType: 'secret' }]);
+    expect(spc.spec.secretObjects).toEqual([{ secretName: 'orders-api-secrets', type: 'Opaque', data: [{ objectName: 'API-TOKEN', key: 'API_TOKEN' }] }]);
+    const dep = parse(f['k8s/deployment.yaml']!).spec.template;
+    expect(dep.metadata.labels['azure.workload.identity/use']).toBe('true');
+    expect(dep.spec.serviceAccountName).toBe('orders-api');
+    expect(dep.spec.volumes).toEqual([{ name: 'secrets-store', csi: { driver: 'secrets-store.csi.k8s.io', readOnly: true, volumeAttributes: { secretProviderClass: 'orders-api' } } }]);
+    const ctr = dep.spec.containers[0];
+    expect(ctr.volumeMounts).toEqual([{ name: 'secrets-store', mountPath: '/mnt/secrets-store', readOnly: true }]);
+    expect(ctr.env.find((e: { name: string }) => e.name === 'API_TOKEN').valueFrom.secretKeyRef).toEqual({ name: 'orders-api-secrets', key: 'API_TOKEN' });
+    expect(parse(f['k8s/kustomization.yaml']!).resources).toEqual(expect.arrayContaining(['serviceaccount.yaml', 'secretproviderclass.yaml']));
+    expect(JSON.stringify([...Object.values(f)])).not.toContain('hunter2');
+  });
+  it('the plain Kubernetes target is unchanged: its deploy script creates the Secret, and nothing mentions Key Vault', () => {
+    const f = gen(on('kubernetes')).byPath;
+    expect(f['k8s/serviceaccount.yaml']).toBeUndefined();
+    expect(f['deploy.sh']).toContain('create secret generic');
+    expect(JSON.stringify(parse(f['k8s/deployment.yaml']!))).not.toContain('secrets-store');
+    expect(parse(f['helm/orders-api/values.yaml']!).keyVault.enabled).toBe(false);
+  });
+  it('deploy.sh: vault first, secrets from a temp file with a retry, then the image, then the manifests with the placeholders filled in; nothing typed goes to kubectl', () => {
+    const d = files()['deploy.sh']!;
+    expect(d).not.toContain('create secret generic');
+    expect(d).not.toMatch(/--from-literal/);
+    expect(d).not.toMatch(/--value/);
+    expect(d).toContain('az keyvault secret set --vault-name "$VAULT" --name "$KVNAME" --file "$TMP"');
+    expect(d).toContain('for TRY in 1 2 3 4 5 6 7 8');
+    expect(d.indexOf('terraform -chdir=aks apply')).toBeLessThan(d.indexOf('az keyvault secret set'));
+    expect(d.indexOf('az keyvault secret set')).toBeLessThan(d.indexOf('az acr build --registry'));
+    expect(d.indexOf('az acr build --registry')).toBeLessThan(d.indexOf('kubectl apply'));
+    for (const t of ['__VAULT_NAME__#$VAULT', '__TENANT_ID__#$TENANT', '__WORKLOAD_CLIENT_ID__#$CLIENT_ID']) expect(d).toContain(t);
+    expect(d).toContain('workload_client_id');
+    expect(d).toContain('Microsoft.KeyVault');
+    expect(files((c) => { c.env = []; })['deploy.sh']).not.toContain('Microsoft.KeyVault');
+  });
+  it('Helm: the chart can use the vault, and its templates stay balanced and parse as the right objects', () => {
+    const f = files();
+    const v = parse(f['helm/orders-api/values.yaml']!);
+    expect(v.keyVault).toEqual({ enabled: true, vaultName: '', tenantId: '', clientId: '' });
+    expect(v.secretNames).toEqual(['API_TOKEN']);
+    for (const [path, text] of Object.entries(f).filter(([p]) => p.startsWith('helm/orders-api/templates/'))) {
+      const opens = (text.match(/\{\{-?\s*(if|range|define|with)\b/g) ?? []).length;
+      const closes = (text.match(/\{\{-?\s*end\s*-?\}\}/g) ?? []).length;
+      expect([path, opens]).toEqual([path, closes]);
+    }
+    expect(f['helm/orders-api/templates/secretproviderclass.yaml']).toContain('SecretProviderClass');
+    expect(f['helm/orders-api/templates/deployment.yaml']).toContain('serviceAccountName: {{ include "app.name" . }}');
+    expect(f['aks/README.md']).toContain('--set keyVault.enabled=true');
+  });
+  it('the README explains where secrets live and how to pick up a changed one', () => {
+    const r = files()['aks/README.md']!;
+    expect(r).toContain('Key Vault CSI driver and workload identity');
+    expect(r).toContain('rollout restart');
+    expect(r).not.toMatch(/only base64-encoded/);
   });
 });
 
