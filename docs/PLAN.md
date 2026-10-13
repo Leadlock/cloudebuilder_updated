@@ -39,7 +39,7 @@ Where the work stands and what comes next. Effort: S is under a day, M a few day
 
 ## Done: deploy access without editing `.env` per organization
 
-Operators (`CLOUDCRAFT_OPERATOR_EMAILS`) approve, deny or revoke organizations on the "Deploy access" page; an organization can also qualify by itself when `CLOUDCRAFT_TERRAFORM_AUTO_APPROVE=1` and its owner has the authenticator app on, has a cloud account that passed its check, and the server has its own encryption key. The old `CLOUDCRAFT_TERRAFORM_ORG_IDS` list still works as an override. Every request and decision is in the Terraform audit trail.
+Nothing has to be configured. The person who first signed up is the operator (`CLOUDCRAFT_OPERATOR_EMAILS` overrides that) and enables Terraform for their own organization with one click; they approve, deny or revoke others on the "Deploy access" page. Any other organization enables it itself once its owner has the authenticator app on, it has a cloud account that passed its check and, on a production server, the server has its own encryption key (`CLOUDCRAFT_TERRAFORM_AUTO_APPROVE=0` makes every request wait for an operator). The old `CLOUDCRAFT_TERRAFORM_ORG_IDS` list still works as an override. Every request and decision is in the Terraform audit trail.
 
 ## Phase 4: code health (ongoing)
 

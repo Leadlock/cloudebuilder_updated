@@ -4,7 +4,8 @@
  *
  *  - authenticator: the person asking has turned on the authenticator app, so a leaked password alone cannot deploy or tear down anything;
  *  - cloud-account: the organization has a cloud account that was checked and works, so the deploy targets something real;
- *  - encryption-key: this server holds stored credentials under a key of its own, not a published example.
+ *  - encryption-key: this server holds stored credentials under a key of its own, not a published example (checked in production only:
+ *    a development machine uses a throwaway key by design, and refuses it the moment it runs as a real server).
  */
 import { totpEnabled } from '@/lib/api/totpStore';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
@@ -21,7 +22,8 @@ export async function evaluateEligibility(userId: string, orgId: string): Promis
     total = accounts.length;
     active = accounts.filter((a) => a.status === 'active').length;
   } catch { /* unreadable counts as none */ }
-  const key = encryptionKeyIsTrustworthy();
+  const production = process.env['NODE_ENV'] === 'production';
+  const key = production ? encryptionKeyIsTrustworthy() : { ok: true };
   return [
     {
       id: 'authenticator', label: 'Authenticator app turned on for you', passed: totp,
@@ -35,7 +37,7 @@ export async function evaluateEligibility(userId: string, orgId: string): Promis
     },
     {
       id: 'encryption-key', label: 'Credentials stored under the server\'s own key', passed: key.ok,
-      detail: key.ok ? 'The server uses its own encryption key.' : 'The server is using a published example key or a weak one.',
+      detail: !production ? 'Not required on a development machine.' : key.ok ? 'The server uses its own encryption key.' : 'The server is using a published example key or a weak one.',
       fix: 'The server operator sets a real ENCRYPTION_KEY (npm run credentials:new-key).',
     },
   ];

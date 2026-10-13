@@ -22,7 +22,7 @@ function makeTable(store: Store) {
   };
 }
 
-const stores: Record<string, Store> = Object.fromEntries(['Organization', 'OrgMember', 'User', 'TerraformAccess', 'TerraformAuditEvent'].map((k) => [k, new Map()]));
+const stores: Record<string, Store> = Object.fromEntries(['Organization', 'OrgMember', 'User', 'TerraformAccess', 'TerraformAuditEvent', 'User'].map((k) => [k, new Map()]));
 const mockDb = { orm: { public: Object.fromEntries(Object.entries(stores).map(([k, s]) => [k, makeTable(s)])) } };
 
 jest.mock('@/src/prisma/db', () => ({ db: mockDb, rawTransaction: jest.fn(), rawExec: jest.fn() }));
@@ -38,6 +38,7 @@ import { GET as OPERATOR_LIST } from '@/app/api/operator/terraform-access/route'
 import { PUT as DECIDE } from '@/app/api/operator/terraform-access/[orgId]/route';
 import { terraformExecutionDenied } from '@/lib/api/terraformAccess';
 import { statusAccessCache } from '@/lib/api/accessCache';
+import { _resetOperatorCacheForTests } from '@/lib/terraform/access/operators';
 
 const GOOD_KEY = 'a'.repeat(32) + 'b'.repeat(16) + 'c'.repeat(16);
 const ENV_KEYS = ['CLOUDCRAFT_ALLOW_TEST_AUTH_HEADERS', 'CLOUDCRAFT_OPERATOR_EMAILS', 'CLOUDCRAFT_TERRAFORM_AUTO_APPROVE', 'CLOUDCRAFT_TERRAFORM_ORG_IDS', 'ENCRYPTION_KEY', 'CLOUDCRAFT_DEV_SHORTCUTS'];
@@ -61,6 +62,7 @@ beforeEach(() => {
   process.env['CLOUDCRAFT_ALLOW_TEST_AUTH_HEADERS'] = '1';
   process.env['CLOUDCRAFT_OPERATOR_EMAILS'] = 'ops@platform.test, Boss@Platform.test';
   process.env['ENCRYPTION_KEY'] = GOOD_KEY;
+  _resetOperatorCacheForTests();
   seed();
 });
 afterEach(() => { for (const k of ENV_KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
@@ -96,14 +98,15 @@ describe('before anyone has asked', () => {
 });
 
 describe('asking for access', () => {
-  it('goes to an operator when the server does not approve automatically, even if every check passes', async () => {
+  it('goes to an operator when the server has turned automatic approval off, even if every check passes', async () => {
+    process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'] = '0';
     const r = await json(await request());
     expect(r).toMatchObject({ status: 'requested', automatic: false });
     expect(await denied()).toMatch(/waiting for an operator/);
     expect(stores.TerraformAuditEvent.size).toBe(1);
   });
-  it('is approved at once when the server allows it and every check passes', async () => {
-    process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'] = '1';
+  it('is approved at once by default when every check passes, with nothing configured', async () => {
+    delete process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'];
     const r = await json(await request());
     expect(r).toMatchObject({ status: 'approved', automatic: true });
     expect(await denied()).toBeNull();
@@ -113,9 +116,7 @@ describe('asking for access', () => {
   it.each([
     ['no authenticator app', () => mockTotp.mockResolvedValue(false)],
     ['no working cloud account', () => mockAccounts.mockResolvedValue([{ status: 'pending' }, { status: 'invalid' }])],
-    ['a weak encryption key', () => { process.env['ENCRYPTION_KEY'] = 'short'; }],
   ])('is NOT approved automatically with %s: it waits for an operator, and the failed check is recorded', async (_n, breakIt) => {
-    process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'] = '1';
     breakIt();
     const r = await json(await request());
     expect(r.status).toBe('requested');
@@ -139,8 +140,9 @@ describe('asking for access', () => {
 
 describe('operators', () => {
   it('see requests first with the organization name, the person and the checks; nobody else can', async () => {
+    process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'] = '0';
     await request('owner-a', 'org-a');
-    process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'] = '1';
+    delete process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'];
     await request('owner-b', 'org-b');
     const list = await json(await OPERATOR_LIST(req('GET', 'ops', { email: 'ops@platform.test', path: 'operator/terraform-access' })));
     expect(list.entries.map((e: { orgName: string; status: string }) => [e.orgName, e.status])).toEqual([['Acme', 'requested'], ['Bravo', 'approved']]);
@@ -165,6 +167,7 @@ describe('operators', () => {
     expect([...stores.TerraformAccess.values()][0]).toMatchObject({ status: 'approved', source: 'operator', decidedBy: 'ops@platform.test', note: 'trial customer' });
   });
   it('deny keeps it blocked with the reason, and the organization may ask again', async () => {
+    process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'] = '0';
     await request();
     await decide('org-a', { action: 'deny', note: 'please connect a test account first' });
     expect(await denied()).toMatch(/declined it: please connect a test account first/);
@@ -172,7 +175,6 @@ describe('operators', () => {
     expect((await json(await request())).status).toBe('requested');
   });
   it('revoke stops a running organization at once, and neither asking again nor passing every check undoes it', async () => {
-    process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'] = '1';
     await request();
     expect(await denied()).toBeNull();
     await decide('org-a', { action: 'revoke', note: 'abuse report' });
@@ -185,6 +187,7 @@ describe('operators', () => {
     expect(await denied()).toBeNull();
   });
   it('every decision and request is in the audit trail, with who did it', async () => {
+    process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'] = '0';
     await request();
     await decide('org-a', { action: 'approve' });
     await decide('org-a', { action: 'revoke', note: 'x' });
@@ -217,7 +220,65 @@ describe('what each state means to terraformExecutionDenied', () => {
     expect(await denied('owner-b', 'org-b')).toMatch(/not enabled/);
   });
   it('a database problem reading the record means "not enabled", never "enabled"', async () => {
+    const table = (mockDb.orm.public as Record<string, unknown>)['TerraformAccess'];
     (mockDb.orm.public as Record<string, unknown>)['TerraformAccess'] = { where: () => ({ first: async () => { throw new Error('db down'); } }) };
-    expect(await denied()).toMatch(/not enabled/);
+    try { expect(await denied()).toMatch(/not enabled/); } finally { (mockDb.orm.public as Record<string, unknown>)['TerraformAccess'] = table; }
+  });
+});
+
+describe('with nothing configured', () => {
+  const noOperatorList = () => { delete process.env['CLOUDCRAFT_OPERATOR_EMAILS']; _resetOperatorCacheForTests(); };
+  beforeEach(() => {
+    noOperatorList();
+    stores.User.set('u0', { id: 'u0', email: 'dev@cloudcraft.local', createdAt: '2026-01-01T00:00:00Z' });
+    stores.User.set('u1', { id: 'u1', email: 'First@Owner.test', createdAt: '2026-02-01T00:00:00Z' });
+    stores.User.set('u2', { id: 'u2', email: 'later@customer.test', createdAt: '2026-03-01T00:00:00Z' });
+  });
+  const operatorOf = async (email: string) => (await json(await GET(req('GET', 'owner-a', { org: 'org-a', email })))).operator;
+
+  it('the person who first signed up is the operator (the built-in development account does not count, and case does not matter)', async () => {
+    expect(await operatorOf('first@owner.test')).toBe(true);
+    expect(await operatorOf('FIRST@OWNER.TEST')).toBe(true);
+    expect(await operatorOf('later@customer.test')).toBe(false);
+    expect(await operatorOf('dev@cloudcraft.local')).toBe(false);
+    expect(await operatorOf('nobody@x.test')).toBe(false);
+  });
+  it('nobody can become the operator later: the first account stays it even after others sign up or the data changes', async () => {
+    expect(await operatorOf('first@owner.test')).toBe(true);
+    stores.User.set('u3', { id: 'u3', email: 'sneaky@x.test', createdAt: '2025-01-01T00:00:00Z' }); // an earlier date added afterwards
+    expect(await operatorOf('sneaky@x.test')).toBe(false);
+    expect(await operatorOf('first@owner.test')).toBe(true);
+  });
+  it('naming operators in the environment replaces the first-signup rule', async () => {
+    process.env['CLOUDCRAFT_OPERATOR_EMAILS'] = 'boss@platform.test';
+    expect(await operatorOf('boss@platform.test')).toBe(true);
+    expect(await operatorOf('first@owner.test')).toBe(false);
+  });
+  it('with no accounts at all, or an unreadable user table, nobody is an operator', async () => {
+    stores.User.clear();
+    expect(await operatorOf('first@owner.test')).toBe(false);
+  });
+  it('the operator can enable Terraform for their own organization with no checks and no one else\'s say', async () => {
+    mockTotp.mockResolvedValue(false); mockAccounts.mockResolvedValue([]);
+    const r = await json(await POST(req('POST', 'owner-a', { org: 'org-a', email: 'first@owner.test' })));
+    expect(r.status).toBe('approved');
+    expect(await denied('owner-a')).toBeNull();
+    expect([...stores.TerraformAccess.values()][0]).toMatchObject({ status: 'approved', source: 'operator', decidedBy: 'first@owner.test' });
+  });
+  it('the same request from anyone else still needs the checks', async () => {
+    mockTotp.mockResolvedValue(false); mockAccounts.mockResolvedValue([]);
+    const r = await json(await POST(req('POST', 'owner-b', { org: 'org-b', email: 'later@customer.test' })));
+    expect(r.status).toBe('requested');
+  });
+  it('the encryption key is only checked on a real server: a development machine\'s throwaway key does not block it', async () => {
+    process.env['ENCRYPTION_KEY'] = 'short';
+    const dev = await json(await GET(req('GET', 'owner-a', { org: 'org-a', email: 'later@customer.test' })));
+    expect(dev.checks.find((c: { id: string }) => c.id === 'encryption-key').passed).toBe(true);
+    const was = process.env['NODE_ENV'];
+    (process.env as Record<string, string>)['NODE_ENV'] = 'production';
+    try {
+      const prod = await json(await GET(req('GET', 'owner-a', { org: 'org-a', email: 'later@customer.test' })));
+      expect(prod.checks.find((c: { id: string }) => c.id === 'encryption-key').passed).toBe(false);
+    } finally { (process.env as Record<string, string>)['NODE_ENV'] = was ?? 'test'; }
   });
 });

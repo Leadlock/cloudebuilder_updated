@@ -17,7 +17,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ orgI
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
-    if (!isOperatorEmail(identity.email)) return forbidden('Only a platform operator can decide on access.');
+    if (!(await isOperatorEmail(identity.email))) return forbidden('Only a platform operator can decide on access.');
     const parsed = await parseBody(req, Body);
     if (!parsed.ok) return parsed.response;
     const { orgId } = await params;

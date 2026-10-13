@@ -111,7 +111,7 @@ async function toAuthUser(user: { id: string; email: string; name: string | null
   const orgIds = await orgRepository_resolveOrgIds(user.id);
   const orgId = orgIds[0]?.orgId ?? '';
   const role: AuthUser['role'] = orgIds[0] && ADMIN_ORG_ROLES.has(orgIds[0].role) ? 'admin' : 'user';
-  return { id: user.id, email: user.email, name: user.name ?? user.email, role, orgId, operator: isOperatorEmail(user.email) };
+  return { id: user.id, email: user.email, name: user.name ?? user.email, role, orgId, operator: await isOperatorEmail(user.email) };
 }
 
 // Lazily imported to avoid a hard dependency cycle at module init.

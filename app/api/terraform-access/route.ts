@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
       canRequest: (role === 'owner' || role === 'admin') && !listed && status !== 'approved' && status !== 'revoked',
       mayDeploy: denied === null,
       reason: denied,
-      operator: isOperatorEmail(identity.email),
+      operator: await isOperatorEmail(identity.email),
     });
   } catch (err) {
     console.error('[GET terraform-access]', err instanceof Error ? err.message : String(err));

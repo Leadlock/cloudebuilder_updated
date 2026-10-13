@@ -17,6 +17,7 @@ interface Summary {
   canRequest: boolean;
   mayDeploy: boolean;
   reason: string | null;
+  operator: boolean;
 }
 
 async function call<T>(init?: RequestInit): Promise<T> {
@@ -62,7 +63,7 @@ export default function TerraformAccessCard({ onChanged }: { onChanged?: () => v
       {s.note && <p className={muted}>Operator&apos;s note: {s.note}</p>}
       {s.status !== 'revoked' && (
         <>
-          <p className={muted}>{s.autoApprove ? 'This server approves automatically when all of these are in place:' : 'An operator approves each request. These show whether the organization is ready:'}</p>
+          <p className={muted}>{s.operator ? 'You run this server, so you can enable it without these. They are what any other organization needs:' : s.autoApprove ? 'This server enables Terraform automatically when all of these are in place:' : 'An operator approves each request. These show whether the organization is ready:'}</p>
           <ul className="space-y-1">
             {s.checks.map((c) => (
               <li key={c.id} className="flex gap-1.5">
@@ -76,7 +77,7 @@ export default function TerraformAccessCard({ onChanged }: { onChanged?: () => v
       {error && <p role="alert" className="text-rose-500">{error}</p>}
       {s.canRequest && s.status !== 'requested' && (
         <button type="button" disabled={busy} onClick={() => void ask()} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-600 text-white hover:bg-cyan-500 disabled:opacity-50">
-          {busy ? 'Sending…' : s.autoApprove && s.checks.every((c) => c.passed) ? 'Enable Terraform' : 'Ask for access'}
+          {busy ? 'Sending…' : s.operator || (s.autoApprove && s.checks.every((c) => c.passed)) ? 'Enable Terraform' : 'Ask for access'}
         </button>
       )}
       {!s.canRequest && s.status === 'none' && <p className={muted}>Ask an owner or admin of the organization to request it.</p>}

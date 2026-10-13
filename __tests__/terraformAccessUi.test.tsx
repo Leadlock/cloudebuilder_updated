@@ -48,7 +48,7 @@ describe('the access card', () => {
     });
     const onChanged = jest.fn();
     const { container } = render(<TerraformAccessCard onChanged={onChanged} />);
-    expect(await screen.findByText(/approves automatically when all of these are in place/)).toBeTruthy();
+    expect(await screen.findByText(/enables Terraform automatically when all of these are in place/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Enable Terraform' }));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(asked).toBe(1);
@@ -59,6 +59,12 @@ describe('the access card', () => {
     fakeFetch({ 'GET /api/terraform-access': () => ({ data: summary({ autoApprove: true, checks: checks({ cloud: false }) }) }) });
     render(<TerraformAccessCard />);
     expect(await screen.findByRole('button', { name: 'Ask for access' })).toBeTruthy();
+  });
+  it('the operator sees "Enable Terraform" even with checks failing, and is told why', async () => {
+    fakeFetch({ 'GET /api/terraform-access': () => ({ data: summary({ operator: true, checks: checks({ authenticator: false, cloud: false }) }) }) });
+    render(<TerraformAccessCard />);
+    expect(await screen.findByText(/You run this server, so you can enable it without these/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Enable Terraform' })).toBeTruthy();
   });
   it('a pending request has no button; a withdrawn one shows the operator\'s note and no checklist', async () => {
     fakeFetch({ 'GET /api/terraform-access': () => ({ data: summary({ status: 'requested' }) }) });

@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
-    if (!isOperatorEmail(identity.email)) return forbidden('Only a platform operator can see this.');
+    if (!(await isOperatorEmail(identity.email))) return forbidden('Only a platform operator can see this.');
     const records = await terraformAccessRepository.list();
     const entries = await Promise.all(records.map(async (r) => {
       const org = (await db.orm.public.Organization.where({ id: r.orgId }).first().catch(() => null)) as { name?: string } | null;
