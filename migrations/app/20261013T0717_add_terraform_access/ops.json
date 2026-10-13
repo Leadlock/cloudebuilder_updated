@@ -1,0 +1,83 @@
+[
+  {
+    "id": "table.terraformAccess",
+    "label": "Create table \"terraformAccess\"",
+    "summary": "Creates table \"terraformAccess\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "terraformAccess"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"terraformAccess\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"terraformAccess\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"terraformAccess\"",
+        "sql": "CREATE TABLE \"public\".\"terraformAccess\" (\n  \"checksJson\" text DEFAULT '[]' NOT NULL,\n  \"decidedAt\" text,\n  \"decidedBy\" text,\n  \"id\" text NOT NULL,\n  \"note\" text,\n  \"orgId\" text NOT NULL,\n  \"requestedAt\" text,\n  \"requestedBy\" text,\n  \"source\" text NOT NULL,\n  \"status\" text NOT NULL,\n  \"updatedAt\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"terraformAccess\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"terraformAccess\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.terraformAccess.terraformAccess_orgId_key",
+    "label": "Add unique constraint on \"terraformAccess\" (orgId)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "terraformAccess_orgId_key",
+        "table": "terraformAccess"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"terraformAccess_orgId_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "terraformAccess_orgId_key",
+          "public",
+          "\"public\".\"terraformAccess\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"terraformAccess_orgId_key\"",
+        "sql": "ALTER TABLE \"public\".\"terraformAccess\" ADD CONSTRAINT \"terraformAccess_orgId_key\" UNIQUE (\"orgId\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"terraformAccess_orgId_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "terraformAccess_orgId_key",
+          "public",
+          "\"public\".\"terraformAccess\""
+        ]
+      }
+    ]
+  }
+]

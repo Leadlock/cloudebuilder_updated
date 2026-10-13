@@ -13,12 +13,12 @@ import { terraformExecutionDenied } from '@/lib/api/terraformAccess';
 import { peekRateLimit } from '@/lib/api/rateLimit';
 import { planLimit, planRateKey } from '@/lib/terraform/execution/limits';
 import { isProjectLocked } from '@/lib/terraform/execution/projectLock';
-import { TtlCache } from '@/lib/api/ttlCache';
+import { statusAccessCache } from '@/lib/api/accessCache';
 import { APPLY_WORKER, APPLY_WORKER_COMMAND, workerStatus } from '@/lib/terraform/execution/applyProgress';
 
 export const dynamic = 'force-dynamic';
 
-const accessCache = new TtlCache<{ denied: string | null }>(30_000, 1000);
+const accessCache = statusAccessCache;
 
 /** For tests. */
 export function _clearStatusAccessCacheForTests(): void { accessCache.clear(); }

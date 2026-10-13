@@ -58,6 +58,7 @@ const NAV_GROUPS = [
       { id: 'history',    label: 'History',           icon: History,         requiresProject: true },
       { id: 'policy',     label: 'Policy',            icon: ClipboardList,   requiresProject: false },
       { id: 'team',       label: 'Team',              icon: Users,           requiresProject: false, adminOnly: true },
+      { id: 'operator-access', label: 'Deploy access', icon: ShieldCheck,     requiresProject: false, operatorOnly: true },
     ],
   },
 ] as const;
@@ -198,7 +199,7 @@ export default function Sidebar() {
               <p className={clsx("text-[10px] uppercase tracking-widest font-bold px-2.5 mb-1.5", isLight ? "text-slate-400" : "text-gray-500")}>{group.label}</p>
             )}
             <div className="space-y-1">
-              {group.items.filter((item) => !('adminOnly' in item && item.adminOnly) || isAdmin).map(({ id, label, icon: Icon, requiresProject }) => {
+              {group.items.filter((item) => (!('adminOnly' in item && item.adminOnly) || isAdmin) && (!('operatorOnly' in item && item.operatorOnly) || currentUser?.operator === true)).map(({ id, label, icon: Icon, requiresProject }) => {
                 const active = activeView === id;
                 const hasArchitecture = !!activeProjectId || (state.draftProject && state.draftProject.nodes.length > 0) || activeView === 'canvas';
                 const disabled = requiresProject && !hasArchitecture;

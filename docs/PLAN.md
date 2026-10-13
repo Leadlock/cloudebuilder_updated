@@ -37,6 +37,10 @@ Where the work stands and what comes next. Effort: S is under a day, M a few day
 | 11 | Container Templates: saved templates, and a canvas "Container service" node that feeds cost, review and Terraform (L). Done: saved templates (`/api/container-templates`), node `aws_container_service` with cost, 4 review rules (`AWS-CTR-001` to `004`), Terraform, relationships and org policy. Not yet applied to a real AWS account; the Terraform is validated in CI. |
 | 12 | Remaining Azure gaps: Front Door Premium with Private Link, Event Grid subscriptions, role assignments for Entra-only access, Logic Apps (M each). |
 
+## Done: deploy access without editing `.env` per organization
+
+Operators (`CLOUDCRAFT_OPERATOR_EMAILS`) approve, deny or revoke organizations on the "Deploy access" page; an organization can also qualify by itself when `CLOUDCRAFT_TERRAFORM_AUTO_APPROVE=1` and its owner has the authenticator app on, has a cloud account that passed its check, and the server has its own encryption key. The old `CLOUDCRAFT_TERRAFORM_ORG_IDS` list still works as an override. Every request and decision is in the Terraform audit trail.
+
 ## Phase 4: code health (ongoing)
 
 | # | Task |

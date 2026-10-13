@@ -4,6 +4,7 @@ import { Timer, Lock, Loader2, ShieldOff } from 'lucide-react';
 import clsx from 'clsx';
 import { ApiTerraformExecutionService, type TerraformExecutionStatus } from '@/lib/services/ApiTerraformExecutionService';
 import { useApp } from '@/context/AppContext';
+import TerraformAccessCard from './TerraformAccessCard';
 
 const mmss = (totalSeconds: number) => `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
 
@@ -58,11 +59,14 @@ export default function TerraformLimitsBar({ projectId, environment, user, refre
   }
   if (!status.enabled) {
     return (
+      <>
       <div className={`flex items-start gap-2 text-[11px] rounded-lg px-3 py-2 border ${
         isLight ? 'text-amber-900 bg-amber-50 border-amber-200' : 'text-amber-300 bg-amber-900/20 border-amber-800/40'
       }`} data-testid="tf-limits">
         <ShieldOff className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${isLight ? 'text-amber-600' : ''}`} /><span>{status.reason ?? 'Terraform execution is not available for you.'}</span>
       </div>
+      {/^Terraform execution is not enabled for this organization/.test(status.reason ?? '') && <TerraformAccessCard onChanged={() => void load()} />}
+      </>
     );
   }
 

@@ -29,6 +29,7 @@ const VIEW_LABELS: Partial<Record<AppView, string>> = {
   environments: 'Environments',
   review: 'Architecture Review',
   policy: 'Organization Policy',
+  'operator-access': 'Deploy access',
   team: 'Team Management',
 };
 

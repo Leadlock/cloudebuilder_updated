@@ -721,3 +721,21 @@ model ContainerTemplate {
 
   @@index([orgId])
 }
+
+// Whether an organization may run Terraform plan / apply / destroy on this server (one row per organization). An operator decides, or the
+// organization qualifies automatically when the server allows that and every check passes. checksJson is the checks as they were when the
+// request was made, so an operator can see why it was or was not approved automatically. status: approved | requested | denied | revoked.
+// source: auto | operator.
+model TerraformAccess {
+  id          String  @id @default(uuid())
+  orgId       String  @unique
+  status      String
+  source      String
+  requestedBy String?
+  requestedAt String?
+  decidedBy   String?
+  decidedAt   String?
+  note        String?
+  checksJson  String  @default("[]")
+  updatedAt   String
+}

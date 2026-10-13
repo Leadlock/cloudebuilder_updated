@@ -33,9 +33,9 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'5bfc0e6cb4dfb9a61d46c15ac5c67599c20ce0fe4d876b35682e0becec40ef84'>;
+  StorageHashBase<'7167758b68498480ae8b67247dcd88f5f04cbab50f57ff8d1e97cd9713263e29'>;
 export type ExecutionHash =
-  ExecutionHashBase<'0ba7a56e397b4c234f59cde950dcc8884f8ebda6c818d547470e07df945bb4af'>;
+  ExecutionHashBase<'9a04c7460656bcb28d5e8658ca2d0b60f090f024e49dfa8d3aa9e1d67dca7907'>;
 export type ProfileHash =
   ProfileHashBase<'3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2'>;
 
@@ -532,6 +532,19 @@ export type FieldOutputTypes = {
       readonly createdAt: CodecTypes['pg/text@1']['output'];
       readonly completedAt: CodecTypes['pg/text@1']['output'] | null;
     };
+    readonly TerraformAccess: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly orgId: CodecTypes['pg/text@1']['output'];
+      readonly status: CodecTypes['pg/text@1']['output'];
+      readonly source: CodecTypes['pg/text@1']['output'];
+      readonly requestedBy: CodecTypes['pg/text@1']['output'] | null;
+      readonly requestedAt: CodecTypes['pg/text@1']['output'] | null;
+      readonly decidedBy: CodecTypes['pg/text@1']['output'] | null;
+      readonly decidedAt: CodecTypes['pg/text@1']['output'] | null;
+      readonly note: CodecTypes['pg/text@1']['output'] | null;
+      readonly checksJson: CodecTypes['pg/text@1']['output'];
+      readonly updatedAt: CodecTypes['pg/text@1']['output'];
+    };
     readonly TerraformApproval: {
       readonly id: CodecTypes['pg/text@1']['output'];
       readonly createdAt: CodecTypes['pg/text@1']['output'];
@@ -931,6 +944,19 @@ export type FieldInputTypes = {
       readonly findingsJson: CodecTypes['pg/text@1']['input'];
       readonly createdAt: CodecTypes['pg/text@1']['input'];
       readonly completedAt: CodecTypes['pg/text@1']['input'] | null;
+    };
+    readonly TerraformAccess: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly orgId: CodecTypes['pg/text@1']['input'];
+      readonly status: CodecTypes['pg/text@1']['input'];
+      readonly source: CodecTypes['pg/text@1']['input'];
+      readonly requestedBy: CodecTypes['pg/text@1']['input'] | null;
+      readonly requestedAt: CodecTypes['pg/text@1']['input'] | null;
+      readonly decidedBy: CodecTypes['pg/text@1']['input'] | null;
+      readonly decidedAt: CodecTypes['pg/text@1']['input'] | null;
+      readonly note: CodecTypes['pg/text@1']['input'] | null;
+      readonly checksJson: CodecTypes['pg/text@1']['input'];
+      readonly updatedAt: CodecTypes['pg/text@1']['input'];
     };
     readonly TerraformApproval: {
       readonly id: CodecTypes['pg/text@1']['input'];
@@ -1332,6 +1358,19 @@ export type StorageColumnTypes = {
       readonly status: CodecTypes['pg/text@1']['output'];
       readonly versionId: CodecTypes['pg/text@1']['output'] | null;
     };
+    readonly terraformAccess: {
+      readonly checksJson: CodecTypes['pg/text@1']['output'];
+      readonly decidedAt: CodecTypes['pg/text@1']['output'] | null;
+      readonly decidedBy: CodecTypes['pg/text@1']['output'] | null;
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly note: CodecTypes['pg/text@1']['output'] | null;
+      readonly orgId: CodecTypes['pg/text@1']['output'];
+      readonly requestedAt: CodecTypes['pg/text@1']['output'] | null;
+      readonly requestedBy: CodecTypes['pg/text@1']['output'] | null;
+      readonly source: CodecTypes['pg/text@1']['output'];
+      readonly status: CodecTypes['pg/text@1']['output'];
+      readonly updatedAt: CodecTypes['pg/text@1']['output'];
+    };
     readonly terraformApproval: {
       readonly action: CodecTypes['pg/text@1']['output'];
       readonly comment: CodecTypes['pg/text@1']['output'] | null;
@@ -1731,6 +1770,19 @@ export type StorageColumnInputTypes = {
       readonly score: CodecTypes['pg/int4@1']['input'];
       readonly status: CodecTypes['pg/text@1']['input'];
       readonly versionId: CodecTypes['pg/text@1']['input'] | null;
+    };
+    readonly terraformAccess: {
+      readonly checksJson: CodecTypes['pg/text@1']['input'];
+      readonly decidedAt: CodecTypes['pg/text@1']['input'] | null;
+      readonly decidedBy: CodecTypes['pg/text@1']['input'] | null;
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly note: CodecTypes['pg/text@1']['input'] | null;
+      readonly orgId: CodecTypes['pg/text@1']['input'];
+      readonly requestedAt: CodecTypes['pg/text@1']['input'] | null;
+      readonly requestedBy: CodecTypes['pg/text@1']['input'] | null;
+      readonly source: CodecTypes['pg/text@1']['input'];
+      readonly status: CodecTypes['pg/text@1']['input'];
+      readonly updatedAt: CodecTypes['pg/text@1']['input'];
     };
     readonly terraformApproval: {
       readonly action: CodecTypes['pg/text@1']['input'];
@@ -4114,6 +4166,73 @@ type ContractBase = Omit<
                 },
               ];
             };
+            readonly terraformAccess: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly orgId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly status: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly source: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly requestedBy: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly requestedAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly decidedBy: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly decidedAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly note: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly checksJson: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', '[]'>;
+                  };
+                };
+                readonly updatedAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [{ readonly columns: readonly ['orgId'] }];
+              indexes: readonly [];
+              foreignKeys: readonly [];
+            };
             readonly terraformApproval: {
               columns: {
                 readonly id: {
@@ -4970,6 +5089,10 @@ type ContractBase = Omit<
     readonly containerTemplate: {
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'ContainerTemplate';
+    };
+    readonly terraformAccess: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'TerraformAccess';
     };
   };
   readonly domain: {
@@ -7236,6 +7359,72 @@ type ContractBase = Omit<
               };
             };
           };
+          readonly TerraformAccess: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly orgId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly status: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly source: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly requestedBy: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly requestedAt: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly decidedBy: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly decidedAt: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly note: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly checksJson: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly updatedAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: {
+              readonly table: 'terraformAccess';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly orgId: { readonly column: 'orgId' };
+                readonly status: { readonly column: 'status' };
+                readonly source: { readonly column: 'source' };
+                readonly requestedBy: { readonly column: 'requestedBy' };
+                readonly requestedAt: { readonly column: 'requestedAt' };
+                readonly decidedBy: { readonly column: 'decidedBy' };
+                readonly decidedAt: { readonly column: 'decidedAt' };
+                readonly note: { readonly column: 'note' };
+                readonly checksJson: { readonly column: 'checksJson' };
+                readonly updatedAt: { readonly column: 'updatedAt' };
+              };
+            };
+          };
           readonly TerraformApproval: {
             readonly fields: {
               readonly id: {
@@ -8104,6 +8293,14 @@ type ContractBase = Omit<
           readonly ref: {
             readonly namespace: 'public';
             readonly table: 'securityScan';
+            readonly column: 'id';
+          };
+          readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };
+        },
+        {
+          readonly ref: {
+            readonly namespace: 'public';
+            readonly table: 'terraformAccess';
             readonly column: 'id';
           };
           readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };

@@ -23,6 +23,7 @@ import AnalyzePanel from '@/components/panels/AnalyzePanel';
 import CostComparisonPanel from '@/components/panels/CostComparisonPanel';
 import TeamPanel from '@/components/panels/TeamPanel';
 import PolicyPanel from '@/components/panels/PolicyPanel';
+import OperatorAccessPanel from '@/components/panels/OperatorAccessPanel';
 import LoginModal from '@/components/auth/LoginModal';
 import { useApp } from '@/context/AppContext';
 import { AppView } from '@/types';
@@ -66,6 +67,7 @@ function MainContent() {
     environments:       <EnvironmentsPanel />,
     review:             <ReviewWorkflowPanel />,
     policy:             <PolicyPanel />,
+    'operator-access':  <OperatorAccessPanel />,
     team:               <TeamPanel />,
   };
 

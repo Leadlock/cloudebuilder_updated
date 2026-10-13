@@ -58,6 +58,12 @@ export function assessEncryptionKey(raw: string | undefined, production: boolean
   return { ok: true, warning: 'is a passphrase, not 64 random hex characters. It works here, but production will refuse it. Generate a proper key with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"' };
 }
 
+/** Whether the configured encryption key is one this server should be trusted with credentials under (not an example, not a weak passphrase). */
+export function encryptionKeyIsTrustworthy(env: NodeJS.ProcessEnv = process.env): { ok: boolean; reason?: string } {
+  const v = assessEncryptionKey(env['ENCRYPTION_KEY'], env['NODE_ENV'] === 'production');
+  return v.ok && !v.warning ? { ok: true } : { ok: false, reason: v.problem ?? v.warning };
+}
+
 function toKeyBuffer(raw: string): Buffer {
   return HEX64.test(raw) ? Buffer.from(raw, 'hex') : createHash('sha256').update(raw, 'utf8').digest();
 }

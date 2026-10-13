@@ -11,7 +11,7 @@
 import { randomUUID } from 'crypto';
 import { db } from '@/src/prisma/db';
 
-export type TerraformAuditAction = 'plan' | 'apply' | 'destroy' | 'unlock' | 'approval' | 'state-backend';
+export type TerraformAuditAction = 'plan' | 'apply' | 'destroy' | 'unlock' | 'approval' | 'state-backend' | 'access';
 export type TerraformAuditOutcome = 'requested' | 'allowed' | 'denied' | 'blocked' | 'succeeded' | 'failed';
 
 export interface TerraformAuditEventInput {
