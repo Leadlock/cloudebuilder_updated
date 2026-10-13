@@ -12,6 +12,8 @@ import { defaultConfig, deployTargets, generateContainerFiles, validate, withDep
 import { estimateEcsCost, fargateMemoryOptions } from '@/lib/engines/containers/ecsDeploy';
 import { estimateAcaCost } from '@/lib/engines/containers/containerAppsDeploy';
 import { splitImage, k8sMemory } from '@/lib/engines/containers/kubernetesDeploy';
+import { azureCloudInit, estimateAzVmCost, vaultSecretName } from '@/lib/engines/containers/azureVmDeploy';
+import { aksAsK8s, estimateAksCost } from '@/lib/engines/containers/aksDeploy';
 import { parseStoredConfig } from '@/lib/engines/containers/stored';
 
 const base = (): ContainerConfig => ({
@@ -65,9 +67,9 @@ describe('choosing a target', () => {
 });
 
 describe('every script is valid shell, and a secret value is never written', () => {
-  test.each(['ec2', 'ecs', 'container-apps', 'kubernetes'] as const)('%s', (t) => {
+  test.each(['ec2', 'ecs', 'azure-vm', 'container-apps', 'aks', 'kubernetes'] as const)('%s', (t) => {
     const { files, byPath } = gen(on(t));
-    for (const f of files.filter((x) => x.path.endsWith('.sh') && x.path !== 'ec2/user_data.sh')) {
+    for (const f of files.filter((x) => x.path.endsWith('.sh') && !/^(ec2\/user_data|azvm\/cloud-init)\.sh$/.test(x.path))) {
       expect(shellSyntaxOk(f.content)).toBe(true);
       expect(f.executable).toBe(true);
     }
@@ -75,7 +77,7 @@ describe('every script is valid shell, and a secret value is never written', () 
     for (const f of files) expect(f.content).not.toMatch(/hunter2/);
   });
   it('and a secret typed into the form never reaches a file', () => {
-    for (const t of ['ecs', 'container-apps', 'kubernetes'] as const) {
+    for (const t of ['ecs', 'azure-vm', 'container-apps', 'aks', 'kubernetes'] as const) {
       const c = on(t, (x) => { x.env = [{ key: 'API_TOKEN', value: 'hunter2', secret: true }]; });
       for (const f of gen(c).files) expect(f.content).not.toContain('hunter2');
     }
@@ -362,6 +364,155 @@ describe('Kubernetes', () => {
   });
 });
 
+describe('Azure VM', () => {
+  const files = (over?: (c: ContainerConfig) => void) => gen(on('azure-vm', over)).byPath;
+  it('writes the Terraform project, the start-up script, scripts, README and workflow', () => {
+    expect(Object.keys(files())).toEqual(expect.arrayContaining(['deploy.sh', 'destroy.sh', 'azvm/main.tf', 'azvm/variables.tf', 'azvm/outputs.tf', 'azvm/cloud-init.sh', 'azvm/README.md', '.github/workflows/deploy.yml']));
+    expect(shellSyntaxOk(files()['azvm/cloud-init.sh']!)).toBe(true);
+  });
+  it('validates names, size, disk and range', () => {
+    expect(errs(on('azure-vm', (c) => { c.appName = 'orders_api'; }))).toMatch(/single "-"/);
+    expect(errs(on('azure-vm', (c) => { c.azvm.size = 'B2s'; }))).toMatch(/size looks like/);
+    expect(errs(on('azure-vm', (c) => { c.azvm.diskGb = 10; }))).toMatch(/disk size/);
+    expect(errs(on('azure-vm', (c) => { c.azvm.allowedCidr = 'x'; }))).toMatch(/IPv4 range/);
+    expect(errs(on('azure-vm', (c) => { c.azvm.location = 'West Europe'; }))).toMatch(/location/);
+    expect(errs(on('azure-vm'))).toBe('');
+  });
+  it('is closed by default: no SSH, no password, no registry admin, vault by role, only the app port', () => {
+    const tf = files()['azvm/main.tf']!;
+    expect(balanced(tf)).toBe(true);
+    expect(tf).toContain('disable_password_authentication = true');
+    expect(tf).toContain('admin_enabled       = false');
+    expect(tf).toContain('enable_rbac_authorization  = true');
+    expect(tf).toMatch(/destination_port_range\s+= tostring\(var\.app_port\)/);
+    expect(tf).not.toMatch(/destination_port_range\s*=\s*"22"/);
+    expect(tf).toContain('role_definition_name = "AcrPull"');
+    expect(tf).toContain('role_definition_name = "Key Vault Secrets User"');
+    expect(tf).toContain('ignore_changes = [admin_ssh_key, tags]');
+    expect(files()['azvm/variables.tf']).toMatch(/variable "admin_ssh_public_key" \{[^}]*\}/);
+    expect(files()['azvm/variables.tf']).not.toMatch(/admin_ssh_public_key" \{[^}]*default/);
+  });
+  it('the start-up script is static: nothing for Terraform to interpolate, the registry and vault come from the VM tags', () => {
+    const ci = files()['azvm/cloud-init.sh']!;
+    expect(ci).not.toMatch(/(?<!\$)\$\{/);
+    expect(ci).toContain('vmtag acr');
+    expect(ci).toContain('vmtag vault');
+    expect(ci).toContain('vmtag image_tag');
+    expect(ci).toContain('/oauth2/exchange');
+    expect(ci).toContain('--password-stdin');
+    expect(files()['azvm/main.tf']).toContain('custom_data                     = filebase64("${path.module}/cloud-init.sh")');
+    expect(files()['azvm/main.tf']).toMatch(/acr\s+= azurerm_container_registry\.app\.login_server/);
+  });
+  it('secrets are read from Key Vault under a legal name, and never appear as a value', () => {
+    expect(vaultSecretName('API_TOKEN')).toBe('API-TOKEN');
+    const ci = files((c) => { c.env = [{ key: 'API_TOKEN', value: '', secret: true }, { key: 'GREETING', value: 'hi' }]; })['azvm/cloud-init.sh']!;
+    expect(ci).toContain('secrets/API-TOKEN?api-version=7.4');
+    expect(ci).toContain("printf '%s=%s\\n' 'API_TOKEN'");
+    expect(ci).toContain('GREETING=hi');
+    expect(azureCloudInit({ ...on('azure-vm'), env: [] })).not.toContain('vault.azure.net/secrets');
+  });
+  it('deploy.sh makes a throw-away key and deletes the private half at once; secrets go to the vault from a temp file', () => {
+    const d = files()['deploy.sh']!;
+    expect(d).toContain('ssh-keygen -q -t ed25519');
+    expect(d.indexOf('rm -f "$KEYDIR/k"')).toBeGreaterThan(d.indexOf('ssh-keygen'));
+    expect(d.indexOf('rm -f "$KEYDIR/k"')).toBeLessThan(d.indexOf('terraform -chdir=azvm apply'));
+    expect(d).toContain('az keyvault secret set --vault-name "$VAULT" --name "$KVNAME" --file "$TMP"');
+    expect(d).not.toMatch(/--value/);
+    expect(d.indexOf('-target=azurerm_container_registry.app')).toBeLessThan(d.indexOf('az acr build --registry'));
+    expect(d.indexOf('az acr build --registry')).toBeLessThan(d.indexOf('az vm run-command invoke'));
+    expect(d).not.toMatch(/need docker|docker push|docker build/);
+    expect(files()['destroy.sh']).toContain('terraform -chdir=azvm destroy');
+  });
+  it('the workflow signs in with OIDC, scans before pushing and restarts the VM', () => {
+    const w = files()['.github/workflows/deploy.yml']!;
+    expect(parse(w).permissions['id-token']).toBe('write');
+    expect(w.indexOf('trivy-action@')).toBeLessThan(w.indexOf('docker push'));
+    expect(w).toContain('az vm run-command invoke');
+  });
+  it('estimates the cost: VM, disk, public IP, registry', () => {
+    const cost = estimateAzVmCost(on('azure-vm'))!;
+    expect(cost.monthlyUsd).toBeCloseTo(0.0416 * 730 + 30 * 0.075 + 0.005 * 730 + 5, 1);
+    expect(cost.lines).toHaveLength(4);
+    expect(estimateAzVmCost(on('azure-vm', (c) => { c.azvm.size = 'Standard_Z9'; }))!.notes.join(' ')).toMatch(/not in the price table/);
+    expect(estimateAzVmCost(on('none'))).toBeUndefined();
+  });
+});
+
+describe('Azure Kubernetes Service', () => {
+  const files = (over?: (c: ContainerConfig) => void) => gen(on('aks', over)).byPath;
+  it('writes the cluster Terraform, the manifests and the Helm chart, but no generic deploy README or workflow', () => {
+    const f = files();
+    expect(Object.keys(f)).toEqual(expect.arrayContaining(['deploy.sh', 'destroy.sh', 'aks/main.tf', 'aks/variables.tf', 'aks/outputs.tf', 'aks/README.md', 'k8s/deployment.yaml', 'k8s/kustomization.yaml', 'helm/orders-api/Chart.yaml']));
+    expect(f['k8s/README.md']).toBeUndefined();
+    expect(f['.github/workflows/image.yml']).toBeUndefined();
+  });
+  it('validates the cluster settings and the Kubernetes settings it shares', () => {
+    expect(errs(on('aks', (c) => { c.appName = 'orders_api'; }))).toMatch(/cluster and DNS prefix/);
+    expect(errs(on('aks', (c) => { c.aks.minNodes = 4; c.aks.maxNodes = 2; }))).toMatch(/nodes need a minimum/);
+    expect(errs(on('aks', (c) => { c.aks.nodeSize = 'B2s'; }))).toMatch(/node size/);
+    expect(errs(on('aks', (c) => { c.k8s.namespace = 'Shop'; }))).toMatch(/namespace/);
+    expect(errs(on('aks', (c) => { c.k8s.ingressHost = 'localhost'; }))).toMatch(/ingress host/);
+    expect(errs(on('aks', (c) => { c.k8s.image = ''; }))).toBe(''); // the image is the registry's, not typed
+    expect(errs(on('aks'))).toBe('');
+  });
+  it('the manifests run the image deploy.sh builds, with the managed ingress class when there is a host', () => {
+    expect(aksAsK8s(on('aks')).k8s.image).toBe('orders-api:latest');
+    const f = files((c) => { c.k8s.ingressHost = 'orders.example.com'; c.aks.imageTag = 'v3'; });
+    expect(parse(f['k8s/deployment.yaml']!).spec.template.spec.containers[0].image).toBe('orders-api:v3');
+    expect(parse(f['k8s/ingress.yaml']!).spec.ingressClassName).toBe('webapprouting.kubernetes.azure.com');
+    expect(parse(files((c) => { c.k8s.ingressHost = 'a.example.com'; c.k8s.ingressClass = 'my-class'; })['k8s/ingress.yaml']!).spec.ingressClassName).toBe('my-class');
+  });
+  it('the cluster pulls with its own identity, has workload identity, autoscaling and monitoring, and the registry has no password', () => {
+    const tf = files()['aks/main.tf']!;
+    expect(balanced(tf)).toBe(true);
+    expect(tf).toContain('admin_enabled       = false');
+    expect(tf).toContain('role_definition_name             = "AcrPull"');
+    expect(tf).toContain('kubelet_identity[0].object_id');
+    expect(tf).toContain('workload_identity_enabled = true');
+    expect(tf).toContain('oidc_issuer_enabled       = true');
+    expect(tf).toContain('enable_auto_scaling = true');
+    expect(tf).toContain('oms_agent');
+    expect(tf).toContain('network_plugin_mode = "overlay"');
+  });
+  it('deploy.sh builds in Azure, uses a private kubeconfig, creates secrets by prompt, and runs the registry image', () => {
+    const d = files()['deploy.sh']!;
+    expect(d).toContain('az acr build --registry');
+    expect(d).toContain('KUBECONFIG="$(mktemp)"');
+    expect(d).toContain('create secret generic');
+    expect(d).toContain('read -r -s');
+    expect(d).toContain('sed "s#image: $APP:$TAG#image: $ACR.azurecr.io/$APP:$TAG#"');
+    expect(d.indexOf('terraform -chdir=aks apply')).toBeLessThan(d.indexOf('az acr build --registry'));
+    expect(d.indexOf('az acr build --registry')).toBeLessThan(d.indexOf('kubectl apply'));
+    expect(d).toContain('rollout status');
+    expect(d).not.toMatch(/docker (build|push|buildx)/);
+    expect(d).not.toContain('approuting');
+    expect(files((c) => { c.k8s.ingressHost = 'a.example.com'; })['deploy.sh']).toContain('az aks approuting enable');
+  });
+  it('the manifests are valid YAML and hardened like the plain Kubernetes target', () => {
+    const f = files();
+    const ctr = parse(f['k8s/deployment.yaml']!).spec.template.spec.containers[0];
+    expect(ctr.securityContext).toMatchObject({ allowPrivilegeEscalation: false, runAsNonRoot: true, capabilities: { drop: ['ALL'] } });
+    for (const r of parse(f['k8s/kustomization.yaml']!).resources as string[]) expect(f[`k8s/${r}`]).toBeDefined();
+  });
+  it('the Helm chart points at the registry image by value', () => {
+    expect(parse(files()['helm/orders-api/values.yaml']!).image).toEqual({ repository: 'orders-api', tag: 'latest' });
+    expect(files()['aks/README.md']).toContain('--set image.repository=<acr_name>.azurecr.io/orders-api');
+  });
+  it('estimates the cost: nodes, load balancer and outbound IP, registry', () => {
+    const cost = estimateAksCost(on('aks'))!;
+    expect(cost.monthlyUsd).toBeCloseTo(0.0416 * 730 + 0.03 * 730 + 5, 1);
+    expect(cost.lines.map((l) => l.label)).toEqual(expect.arrayContaining([expect.stringContaining('Free tier')]));
+    expect(estimateAksCost(on('aks', (c) => { c.aks.minNodes = 3; }))!.monthlyUsd).toBeGreaterThan(cost.monthlyUsd);
+    expect(estimateAksCost(on('none'))).toBeUndefined();
+  });
+  it('the cluster\'s own warnings replace the generic image-tag and secret ones', () => {
+    const w = gen(on('aks', (c) => { c.env = [{ key: 'T', value: '', secret: true }]; })).warnings.join(' ');
+    expect(w).toMatch(/AKS: the "latest" tag/);
+    expect(w).toMatch(/only base64-encoded/);
+    expect(w).not.toMatch(/Kubernetes: the image has no version tag/);
+  });
+});
+
 describe('security checks for the new targets', () => {
   const ids = (c: ContainerConfig, edit?: (files: { path: string; content: string }[]) => void) => {
     const r = gen(c); const files = r.files.map((f) => ({ ...f })); edit?.(files);
@@ -394,6 +545,21 @@ describe('security checks for the new targets', () => {
     expect(ids(on('kubernetes', (c) => { c.k8s.ingressHost = 'a.example.com'; }))).toContain('CT-024');
     expect(ids(on('kubernetes', (c) => { c.k8s.image = 'ghcr.io/acme/app'; }))).toContain('CT-016');
     expect(ids(on('kubernetes', (c) => { c.k8s.image = 'ghcr.io/acme/app:latest'; }))).toContain('CT-016');
+  });
+  it('Azure VM: SSH, password sign-in, registry admin user, vault access policies', () => {
+    expect(ids(on('azure-vm'), (f) => patch(f, 'azvm/main.tf', (s) => s + '\n  destination_port_range = "22"\n'))).toContain('CT-014');
+    expect(ids(on('azure-vm'), (f) => patch(f, 'azvm/main.tf', (s) => s.replace('disable_password_authentication = true', 'disable_password_authentication = false')))).toContain('CT-025');
+    expect(ids(on('azure-vm'), (f) => patch(f, 'azvm/main.tf', (s) => s.replace('admin_enabled       = false', 'admin_enabled       = true')))).toContain('CT-020');
+    expect(ids(on('azure-vm'), (f) => patch(f, 'azvm/main.tf', (s) => s.replace('enable_rbac_authorization  = true', 'enable_rbac_authorization  = false')))).toContain('CT-026');
+    expect(ids(on('azure-vm'))).toEqual(expect.arrayContaining(['CT-011', 'CT-016']));
+    expect(ids(on('azure-vm', (c) => { c.azvm.allowedCidr = '10.0.0.0/8'; c.azvm.imageTag = 'v1'; }))).not.toEqual(expect.arrayContaining(['CT-011']));
+  });
+  it('AKS: the Kubernetes checks apply to its manifests, registry admin user is caught, the latest tag is reported once', () => {
+    expect(ids(on('aks', (c) => { c.runAsNonRoot = false; }))).toContain('CT-002');
+    expect(ids(on('aks'), (f) => patch(f, 'k8s/deployment.yaml', (s) => s.replace('allowPrivilegeEscalation: false', 'allowPrivilegeEscalation: true')))).toContain('CT-023');
+    expect(ids(on('aks'), (f) => patch(f, 'aks/main.tf', (s) => s.replace('admin_enabled       = false', 'admin_enabled       = true')))).toContain('CT-020');
+    expect(ids(on('aks', (c) => { c.k8s.ingressHost = 'a.example.com'; }))).toContain('CT-024');
+    expect(ids(on('aks')).filter((i) => i === 'CT-016')).toHaveLength(1);
   });
   it('the old EC2 checks still fire and nothing else target-specific leaks into them', () => {
     const e = ids(on('ec2'));

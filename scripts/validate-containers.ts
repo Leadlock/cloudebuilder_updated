@@ -22,7 +22,7 @@ const make = (target: Parameters<typeof withDeployTarget>[1], edit: (c: Containe
   return c;
 };
 
-type Kind = 'terraform' | 'kubernetes';
+type Kind = 'terraform' | 'kubernetes' | 'both';
 const cases: Array<[string, Kind, string, ContainerConfig]> = [
   ['ecs-http', 'terraform', 'ecs', make('ecs')],
   ['ecs-https-autoscaling-github', 'terraform', 'ecs', make('ecs', (c) => { c.ecs.certificateArn = 'arn:aws:acm:us-east-1:123456789012:certificate/abc-123'; c.ecs.autoscaling = true; c.ecs.githubRepo = 'acme/orders'; c.ecs.cpu = 1024; c.ecs.memoryMb = 4096; })],
@@ -30,6 +30,10 @@ const cases: Array<[string, Kind, string, ContainerConfig]> = [
   ['aca-default', 'terraform', 'aca', make('container-apps')],
   ['aca-internal-restricted', 'terraform', 'aca', make('container-apps', (c) => { c.aca.allowedCidr = '203.0.113.0/24'; c.aca.minReplicas = 0; c.aca.cpu = 1.25; })],
   ['aca-no-env', 'terraform', 'aca', make('container-apps', (c) => { c.env = []; })],
+  ['azvm-default', 'terraform', 'azvm', make('azure-vm')],
+  ['azvm-restricted-no-env', 'terraform', 'azvm', make('azure-vm', (c) => { c.env = []; c.azvm.allowedCidr = '203.0.113.0/24'; c.azvm.size = 'Standard_D2s_v3'; c.azvm.githubRepo = 'acme/orders'; })],
+  ['aks-default', 'both', 'aks', make('aks')],
+  ['aks-ingress-autoscale', 'both', 'aks', make('aks', (c) => { c.k8s.namespace = 'shop'; c.k8s.ingressHost = 'orders.example.com'; c.k8s.autoscaling = true; c.aks.maxNodes = 5; })],
   ['k8s-full', 'kubernetes', 'k8s', make('kubernetes', (c) => { c.k8s.namespace = 'shop'; c.k8s.ingressHost = 'orders.example.com'; c.k8s.tlsSecret = 'orders-tls'; c.k8s.autoscaling = true; })],
   ['k8s-minimal', 'kubernetes', 'k8s', make('kubernetes', (c) => { c.env = []; c.k8s.replicas = 1; })],
   ['k8s-java', 'kubernetes', 'k8s', (() => { const c = withDeployTarget({ ...defaultConfig('java'), appName: 'svc' }, 'kubernetes'); c.k8s.image = 'ghcr.io/acme/svc:2'; return c; })()],
@@ -50,14 +54,15 @@ for (const [name, kind, dir, cfg] of cases) {
   const base = join(root, name);
   for (const f of res.files) { const p = join(base, f.path); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, f.content); }
 
-  if (kind === 'terraform') {
+  if (kind === 'terraform' || kind === 'both') {
     const cwd = join(base, dir);
     const init = run(tf, ['init', '-backend=false', '-input=false', '-no-color'], cwd);
     if (init.status !== 0) { fail(name, 'terraform init', init); continue; }
     const v = run(tf, ['validate', '-no-color'], cwd);
     if (v.status !== 0) { fail(name, 'terraform validate', v); continue; }
-    console.log(`${name}: valid (${res.files.length} files)`);
-  } else {
+    console.log(`${name}: terraform valid (${res.files.length} files)`);
+  }
+  if (kind === 'kubernetes' || kind === 'both') {
     const k = run('kubectl', ['kustomize', 'k8s'], base);
     if (k.status !== 0) { fail(name, 'kubectl kustomize', k); continue; }
     const chart = join(base, 'helm', cfg.appName);

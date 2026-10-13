@@ -87,6 +87,9 @@ function toMonthly(hourly: number): number {
 
 // ─── Azure Pricing Provider ───────────────────────────────────────────────────
 
+/** Built-in pay-as-you-go hourly price (Linux) of a VM size, or undefined when it is not in the table. */
+export const azureVmHourlyUsd = (size: string): number | undefined => VM_HOURLY_USD[size];
+
 export class AzurePricingProvider implements PricingProvider {
   readonly name = 'azure-static-list-price';
 

@@ -36,7 +36,8 @@ describe('choosing where to deploy', () => {
   it('offers every target, starting with no deployment files', async () => {
     render(<ContainerTemplatesPanel />);
     const select = screen.getByLabelText('Deploy to') as HTMLSelectElement;
-    expect([...select.options].map((o) => o.value)).toEqual(['none', 'ec2', 'ecs', 'container-apps', 'kubernetes']);
+    expect([...select.options].map((o) => o.value)).toEqual(['none', 'ec2', 'ecs', 'azure-vm', 'container-apps', 'aks', 'kubernetes']);
+    expect([...select.querySelectorAll('optgroup')].map((g) => g.label)).toEqual(['AWS', 'Azure', 'Any cluster']);
     expect(select.value).toBe('none');
     expect(tabs()).not.toContain('deploy.sh');
     await waitFor(() => expect(screen.getByText('Nothing saved yet.')).toBeTruthy());
@@ -92,6 +93,32 @@ describe('choosing where to deploy', () => {
     expect((screen.getByLabelText('Tasks') as HTMLInputElement).value).toBe('4');
     pick('none');
     expect(screen.queryByLabelText('Tasks')).toBeNull();
+  });
+
+  it('Azure VM and AKS: show their settings, files and estimates', () => {
+    render(<ContainerTemplatesPanel />);
+    pick('azure-vm');
+    expect(tabs()).toEqual(expect.arrayContaining(['azvm/main.tf', 'azvm/cloud-init.sh', 'deploy.sh']));
+    expect(screen.getByLabelText('VM size')).toBeTruthy();
+    expect(screen.getByText(/Estimated cost on Azure VM: \$/)).toBeTruthy();
+    pick('aks');
+    expect(tabs()).toEqual(expect.arrayContaining(['aks/main.tf', 'k8s/deployment.yaml', 'helm/my-app/Chart.yaml']));
+    expect(screen.getByLabelText('Node size')).toBeTruthy();
+    expect(screen.queryByLabelText('Image the cluster pulls')).toBeNull(); // the image is the registry's
+    expect(screen.getByText(/Estimated cost on Azure Kubernetes Service: \$/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Minimum nodes'), { target: { value: '9' } });
+    expect(screen.getByRole('alert').textContent).toMatch(/nodes need a minimum/);
+  });
+
+  it('a starter template can deploy to Azure instead of AWS', () => {
+    render(<ContainerTemplatesPanel />);
+    fireEvent.click(screen.getByText('Azure (Container Apps)'));
+    fireEvent.click(screen.getByText('Go service'));
+    expect((screen.getByLabelText('Deploy to') as HTMLSelectElement).value).toBe('container-apps');
+    expect((screen.getByLabelText('App name') as HTMLInputElement).value).toBe('go-api');
+    fireEvent.click(screen.getByText('AWS (EC2)'));
+    fireEvent.click(screen.getByText('Go service'));
+    expect((screen.getByLabelText('Deploy to') as HTMLSelectElement).value).toBe('ec2');
   });
 
   it('a starter template switches EC2 on in the selector', () => {

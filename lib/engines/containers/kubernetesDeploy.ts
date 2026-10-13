@@ -38,6 +38,7 @@ export const defaultK8s = (): K8sConfig => ({
 });
 
 const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const DNS_SUBDOMAIN = /^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/;
 const DNS_NAME = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
 const IMAGE = /^[a-z0-9][a-z0-9._-]*(?::[0-9]{1,5})?(?:\/[a-z0-9][a-z0-9._-]*)*(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?(?:@sha256:[a-f0-9]{64})?$/;
 
@@ -51,7 +52,7 @@ export function validateK8s(c: ContainerConfig): string[] {
   if (!Number.isInteger(k.replicas) || k.replicas < 1 || k.replicas > 50) out.push('Kubernetes: replicas must be 1 to 50.');
   if (!['ClusterIP', 'LoadBalancer'].includes(k.serviceType)) out.push('Kubernetes: choose a service type.');
   if (k.ingressHost !== '' && !DNS_NAME.test(k.ingressHost)) out.push('Kubernetes: the ingress host looks like app.example.com.');
-  if (k.ingressClass !== '' && !DNS_LABEL.test(k.ingressClass)) out.push('Kubernetes: ingress class may use only lowercase letters, digits and "-".');
+  if (k.ingressClass !== '' && !DNS_SUBDOMAIN.test(k.ingressClass)) out.push('Kubernetes: ingress class may use only lowercase letters, digits, "." and "-".');
   if (k.tlsSecret !== '' && !DNS_LABEL.test(k.tlsSecret)) out.push('Kubernetes: the TLS secret name may use only lowercase letters, digits and "-".');
   if (k.tlsSecret !== '' && k.ingressHost === '') out.push('Kubernetes: a TLS secret needs an ingress host.');
   if (k.autoscaling && (!Number.isInteger(k.minReplicas) || !Number.isInteger(k.maxReplicas) || k.minReplicas < 1 || k.maxReplicas < k.minReplicas || k.maxReplicas > 200)) {
@@ -652,12 +653,10 @@ kubectl -n ${k.namespace} describe deployment ${c.appName}
 `;
 }
 
-export function generateK8sFiles(c: ContainerConfig): Array<{ path: string; content: string; executable?: boolean }> {
-  if (!c.k8s.enabled) return [];
+/** The manifests, the Helm chart and the README, without the deploy scripts or workflow (other targets that run Kubernetes bring their own). */
+export function generateK8sManifestFiles(c: ContainerConfig): Array<{ path: string; content: string }> {
   const k = c.k8s;
   return [
-    { path: 'deploy.sh', content: deploySh(c), executable: true },
-    { path: 'destroy.sh', content: destroySh(c), executable: true },
     ...(k.namespace !== 'default' ? [{ path: 'k8s/namespace.yaml', content: namespaceYaml(c) }] : []),
     { path: 'k8s/deployment.yaml', content: deploymentYaml(c) },
     { path: 'k8s/service.yaml', content: serviceYaml(c) },
@@ -665,8 +664,18 @@ export function generateK8sFiles(c: ContainerConfig): Array<{ path: string; cont
     ...(k.autoscaling ? [{ path: 'k8s/hpa.yaml', content: hpaYaml(c) }] : []),
     ...(wantsPdb(c) ? [{ path: 'k8s/pdb.yaml', content: pdbYaml(c) }] : []),
     { path: 'k8s/kustomization.yaml', content: kustomizationYaml(c) },
-    { path: 'k8s/README.md', content: readme(c) },
     ...(k.helm ? helmChart(c) : []),
+  ];
+}
+
+export function generateK8sFiles(c: ContainerConfig): Array<{ path: string; content: string; executable?: boolean }> {
+  if (!c.k8s.enabled) return [];
+  const k = c.k8s;
+  return [
+    { path: 'deploy.sh', content: deploySh(c), executable: true },
+    { path: 'destroy.sh', content: destroySh(c), executable: true },
+    ...generateK8sManifestFiles(c),
+    { path: 'k8s/README.md', content: readme(c) },
     ...(k.githubActions && /^ghcr\.io\//.test(k.image) ? [{ path: '.github/workflows/image.yml', content: workflowYml(c) }] : []),
   ];
 }

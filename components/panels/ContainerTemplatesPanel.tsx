@@ -12,7 +12,7 @@ import { takeContainerHandoff } from './containerHandoff';
 import { nodeConfigFromContainer, CONTAINER_SERVICE_TYPE } from '@/lib/engines/containers/nodeConfig';
 import type { CanvasNode } from '@/types';
 import {
-  defaultConfig, deployTargets, DEPLOY_TARGET_LABEL, generateContainerFiles, STACK_LABEL, STARTER_TEMPLATES, VERSIONS, withDeployTarget,
+  defaultConfig, deployTargets, DEPLOY_TARGET_LABEL, TARGET_CLOUD, generateContainerFiles, STACK_LABEL, STARTER_TEMPLATES, VERSIONS, withDeployTarget,
   type ContainerConfig, type ContainerStack, type DeployTarget, type EnvVar,
 } from '@/lib/engines/containers/dockerTemplates';
 import { buildZip } from '@/lib/engines/containers/zip';
@@ -41,6 +41,7 @@ export default function ContainerTemplatesPanel() {
   const [loadedId, setLoadedId] = useState<string | null>(null);
   const [saveName, setSaveName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [starterCloud, setStarterCloud] = useState<'aws' | 'azure'>('aws');
   const [linkedNode, setLinkedNode] = useState<string | null>(null);
   const [canvasNote, setCanvasNote] = useState<string | null>(null);
 
@@ -98,11 +99,13 @@ export default function ContainerTemplatesPanel() {
   const result = useMemo(() => generateContainerFiles(cfg), [cfg]);
   const set = <K extends keyof ContainerConfig>(k: K, v: ContainerConfig[K]) => setCfg((c) => ({ ...c, [k]: v }));
   const pickStack = (s: ContainerStack) => setCfg((c) => ({
-    ...defaultConfig(s), appName: c.appName, env: c.env, runAsNonRoot: c.runAsNonRoot, restart: c.restart, postgres: c.postgres, redis: c.redis, mysql: c.mysql, mongodb: c.mongodb, rabbitmq: c.rabbitmq, proxy: c.proxy, proxyDomain: c.proxyDomain, ec2: c.ec2, ecs: c.ecs, aca: c.aca, k8s: c.k8s,
+    ...defaultConfig(s), appName: c.appName, env: c.env, runAsNonRoot: c.runAsNonRoot, restart: c.restart, azvm: c.azvm, aks: c.aks, postgres: c.postgres, redis: c.redis, mysql: c.mysql, mongodb: c.mongodb, rabbitmq: c.rabbitmq, proxy: c.proxy, proxyDomain: c.proxyDomain, ec2: c.ec2, ecs: c.ecs, aca: c.aca, k8s: c.k8s,
   }));
   const setEc2 = <K extends keyof ContainerConfig['ec2']>(k: K, v: ContainerConfig['ec2'][K]) => setCfg((c) => ({ ...c, ec2: { ...c.ec2, [k]: v } }));
   const setEcs = <K extends keyof ContainerConfig['ecs']>(k: K, v: ContainerConfig['ecs'][K]) => setCfg((c) => ({ ...c, ecs: { ...c.ecs, [k]: v } }));
   const setAca = <K extends keyof ContainerConfig['aca']>(k: K, v: ContainerConfig['aca'][K]) => setCfg((c) => ({ ...c, aca: { ...c.aca, [k]: v } }));
+  const setAzvm = <K extends keyof ContainerConfig['azvm']>(k: K, v: ContainerConfig['azvm'][K]) => setCfg((c) => ({ ...c, azvm: { ...c.azvm, [k]: v } }));
+  const setAks = <K extends keyof ContainerConfig['aks']>(k: K, v: ContainerConfig['aks'][K]) => setCfg((c) => ({ ...c, aks: { ...c.aks, [k]: v } }));
   const setK8s = <K extends keyof ContainerConfig['k8s']>(k: K, v: ContainerConfig['k8s'][K]) => setCfg((c) => ({ ...c, k8s: { ...c.k8s, [k]: v } }));
   const target = (deployTargets(cfg)[0] ?? 'none') as DeployTarget;
   const setTarget = (t: DeployTarget) => setCfg((c) => withDeployTarget(c, t));
@@ -140,10 +143,19 @@ export default function ContainerTemplatesPanel() {
 
         <div className={card}>
           <p className={clsx('text-sm font-semibold mb-1', isLight ? 'text-slate-900' : 'text-white')}>Start from a template</p>
-          <p className={clsx('text-xs mb-3', muted)}>Each one includes a small working app and the EC2 deployment, so <code>bash deploy.sh</code> runs it end to end. You can change everything below afterwards.</p>
+          <p className={clsx('text-xs mb-2', muted)}>Each one includes a small working app and a deployment, so <code>bash deploy.sh</code> runs it end to end. You can change everything below afterwards.</p>
+          <div className="flex items-center gap-2 mb-3 text-xs" role="group" aria-label="Cloud for the starter">
+            <span className={muted}>Deploys to</span>
+            {(['aws', 'azure'] as const).map((cl) => (
+              <button key={cl} type="button" aria-pressed={starterCloud === cl} onClick={() => setStarterCloud(cl)}
+                className={clsx('px-2.5 py-1 rounded-md border font-medium', starterCloud === cl ? (isLight ? 'bg-cyan-600 border-cyan-600 text-white' : 'bg-cyan-500/20 border-cyan-400 text-cyan-200') : (isLight ? 'bg-white border-slate-300 text-slate-700' : 'bg-slate-900 border-slate-700 text-slate-300'))}>
+                {cl === 'aws' ? 'AWS (EC2)' : 'Azure (Container Apps)'}
+              </button>
+            ))}
+          </div>
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {STARTER_TEMPLATES.map((t) => (
-              <button key={t.id} type="button" onClick={() => { setCfg(t.config()); setLoadedId(null); setSelected('README.md'); }}
+              <button key={t.id} type="button" onClick={() => { setCfg(t.config(starterCloud === 'azure' ? 'container-apps' : 'ec2')); setLoadedId(null); setSelected('README.md'); }}
                 className={clsx('rounded-xl border p-3 text-left', isLight ? 'bg-white border-slate-300 hover:bg-slate-50' : 'bg-slate-900 border-slate-700 hover:bg-slate-800')}>
                 <span className={clsx('block text-sm font-semibold', isLight ? 'text-slate-900' : 'text-white')}>{t.title}</span>
                 <span className={clsx('block text-[11px] mt-0.5', muted)}>{t.blurb}</span>
@@ -281,11 +293,18 @@ export default function ContainerTemplatesPanel() {
             <div className={clsx(card, 'space-y-3')}>
               <label className={label} htmlFor="ct-target">Deploy to</label>
               <select id="ct-target" className={input} value={target} onChange={(e) => setTarget(e.target.value as DeployTarget)}>
-                {(Object.keys(DEPLOY_TARGET_LABEL) as DeployTarget[]).map((t) => <option key={t} value={t}>{DEPLOY_TARGET_LABEL[t]}</option>)}
+                <option value="none">{DEPLOY_TARGET_LABEL.none}</option>
+                {([['aws', 'AWS'], ['azure', 'Azure'], ['any', 'Any cluster']] as const).map(([cloud, name]) => (
+                  <optgroup key={cloud} label={name}>
+                    {(Object.keys(DEPLOY_TARGET_LABEL) as DeployTarget[]).filter((t) => TARGET_CLOUD[t] === cloud).map((t) => <option key={t} value={t}>{DEPLOY_TARGET_LABEL[t]}</option>)}
+                  </optgroup>
+                ))}
               </select>
               {target === 'none' && <p className={clsx('text-xs', muted)}>Just the Dockerfile and compose files. Pick a place to also get <code>deploy.sh</code>, <code>destroy.sh</code>, the infrastructure code and a GitHub Actions workflow.</p>}
               {target === 'ec2' && <p className={clsx('text-xs', muted)}>One server. Adds <code>deploy.sh</code> (one command to create the server, push the image and start the app), <code>destroy.sh</code>, and the Terraform behind them. No SSH: you connect through Session Manager. Secrets are read from SSM Parameter Store, never written to Terraform.</p>}
               {target === 'ecs' && <p className={clsx('text-xs', muted)}>No servers to look after. Fargate runs your containers behind a load balancer, with rolling updates, automatic rollback and optional autoscaling. Secrets come from SSM Parameter Store.</p>}
+              {target === 'azure-vm' && <p className={clsx('text-xs', muted)}>One Azure VM running your container under systemd, with a container registry and a Key Vault for secrets. No SSH and no registry password: it uses a managed identity. The image is built inside Azure.</p>}
+              {target === 'aks' && <p className={clsx('text-xs', muted)}>An AKS cluster with its own container registry, plus the hardened Kubernetes manifests and Helm chart. The image is built inside Azure and pulled with the cluster&apos;s identity.</p>}
               {target === 'container-apps' && <p className={clsx('text-xs', muted)}>Azure runs your containers with HTTPS, scaling (down to zero if you like) and health probes. The image is built inside Azure, so you do not need Docker locally.</p>}
               {target === 'kubernetes' && <p className={clsx('text-xs', muted)}>Manifests (Kustomize) and an optional Helm chart for any cluster: EKS, AKS, GKE, k3s. Hardened pods, health probes, rolling updates, optional ingress and autoscaling.</p>}
               {target === 'ec2' && (
@@ -346,6 +365,40 @@ export default function ContainerTemplatesPanel() {
                     <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.aca.scanImage} onChange={(e) => setAca('scanImage', e.target.checked)} />Scan the image for vulnerabilities before pushing (Trivy)</label>
                     <div className="col-span-2"><label className={label} htmlFor="aca-gh">GitHub repository (optional, owner/name, used in the setup steps)</label><input id="aca-gh" className={input} placeholder="yourname/yourapp" value={cfg.aca.githubRepo} onChange={(e) => setAca('githubRepo', e.target.value.trim())} /></div>
                   </>)}
+                </div>
+              )}
+              {target === 'azure-vm' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className={label} htmlFor="azvm-loc">Azure region</label><input id="azvm-loc" className={input} value={cfg.azvm.location} onChange={(e) => setAzvm('location', e.target.value)} /></div>
+                  <div><label className={label} htmlFor="azvm-size">VM size</label><input id="azvm-size" className={input} value={cfg.azvm.size} onChange={(e) => setAzvm('size', e.target.value)} /></div>
+                  <div><label className={label} htmlFor="azvm-disk">Disk (GB)</label><input id="azvm-disk" type="number" className={input} value={cfg.azvm.diskGb} onChange={(e) => setAzvm('diskGb', Number(e.target.value))} /></div>
+                  <div><label className={label} htmlFor="azvm-tag">Image tag</label><input id="azvm-tag" className={input} value={cfg.azvm.imageTag} onChange={(e) => setAzvm('imageTag', e.target.value)} /></div>
+                  <div className="col-span-2"><label className={label} htmlFor="azvm-cidr">Who can connect to the app port</label><input id="azvm-cidr" className={input} value={cfg.azvm.allowedCidr} onChange={(e) => setAzvm('allowedCidr', e.target.value)} /></div>
+                  <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.azvm.githubActions} onChange={(e) => setAzvm('githubActions', e.target.checked)} />GitHub Actions workflow</label>
+                  {cfg.azvm.githubActions && (<>
+                    <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.azvm.scanImage} onChange={(e) => setAzvm('scanImage', e.target.checked)} />Scan the image for vulnerabilities before pushing (Trivy)</label>
+                    <div className="col-span-2"><label className={label} htmlFor="azvm-gh">GitHub repository (optional, owner/name, used in the setup steps)</label><input id="azvm-gh" className={input} placeholder="yourname/yourapp" value={cfg.azvm.githubRepo} onChange={(e) => setAzvm('githubRepo', e.target.value.trim())} /></div>
+                  </>)}
+                </div>
+              )}
+              {target === 'aks' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className={label} htmlFor="aks-loc">Azure region</label><input id="aks-loc" className={input} value={cfg.aks.location} onChange={(e) => setAks('location', e.target.value)} /></div>
+                  <div><label className={label} htmlFor="aks-size">Node size</label><input id="aks-size" className={input} value={cfg.aks.nodeSize} onChange={(e) => setAks('nodeSize', e.target.value)} /></div>
+                  <div><label className={label} htmlFor="aks-min">Minimum nodes</label><input id="aks-min" type="number" className={input} value={cfg.aks.minNodes} onChange={(e) => setAks('minNodes', Number(e.target.value))} /></div>
+                  <div><label className={label} htmlFor="aks-max">Maximum nodes</label><input id="aks-max" type="number" className={input} value={cfg.aks.maxNodes} onChange={(e) => setAks('maxNodes', Number(e.target.value))} /></div>
+                  <div><label className={label} htmlFor="aks-tag">Image tag</label><input id="aks-tag" className={input} value={cfg.aks.imageTag} onChange={(e) => setAks('imageTag', e.target.value)} /></div>
+                  <div><label className={label} htmlFor="aks-ns">Namespace</label><input id="aks-ns" className={input} value={cfg.k8s.namespace} onChange={(e) => setK8s('namespace', e.target.value)} /></div>
+                  <div><label className={label} htmlFor="aks-rep">Replicas</label><input id="aks-rep" type="number" className={input} value={cfg.k8s.replicas} onChange={(e) => setK8s('replicas', Number(e.target.value))} /></div>
+                  <div><label className={label} htmlFor="aks-svc">Service type</label>
+                    <select id="aks-svc" className={input} value={cfg.k8s.serviceType} onChange={(e) => setK8s('serviceType', e.target.value as ContainerConfig['k8s']['serviceType'])}><option>ClusterIP</option><option>LoadBalancer</option></select></div>
+                  <div className="col-span-2"><label className={label} htmlFor="aks-host">Ingress host (optional, turns on the managed ingress controller)</label><input id="aks-host" className={input} placeholder="app.example.com" value={cfg.k8s.ingressHost} onChange={(e) => setK8s('ingressHost', e.target.value.trim())} /></div>
+                  <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.k8s.autoscaling} onChange={(e) => setK8s('autoscaling', e.target.checked)} />Autoscale pods on CPU</label>
+                  {cfg.k8s.autoscaling && (<>
+                    <div><label className={label} htmlFor="aks-pmin">Minimum pods</label><input id="aks-pmin" type="number" className={input} value={cfg.k8s.minReplicas} onChange={(e) => setK8s('minReplicas', Number(e.target.value))} /></div>
+                    <div><label className={label} htmlFor="aks-pmax">Maximum pods</label><input id="aks-pmax" type="number" className={input} value={cfg.k8s.maxReplicas} onChange={(e) => setK8s('maxReplicas', Number(e.target.value))} /></div>
+                  </>)}
+                  <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.k8s.helm} onChange={(e) => setK8s('helm', e.target.checked)} />Also generate a Helm chart</label>
                 </div>
               )}
               {target === 'kubernetes' && (

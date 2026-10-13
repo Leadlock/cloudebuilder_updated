@@ -4,6 +4,7 @@
  * and a regression in a generator shows up here as well as in the form. Pure functions: nothing is sent anywhere.
  */
 import type { ContainerConfig, GeneratedFile } from './dockerTemplates';
+import { aksAsK8s } from './aksDeploy';
 
 export type FindingSeverity = 'high' | 'medium' | 'low';
 
@@ -112,6 +113,8 @@ export function checkContainer(config: ContainerConfig, files: GeneratedFile[]):
   // ── every deployment target ──
   const t = c.ec2.enabled ? { name: 'EC2', dir: 'ec2', cidr: c.ec2.allowedCidr, tag: c.ec2.imageTag, scan: c.ec2.scanImage, actions: c.ec2.githubActions, what: `Port ${c.port}`, tagFile: 'ec2/variables.tf' }
     : c.ecs.enabled ? { name: 'ECS', dir: 'ecs', cidr: c.ecs.allowedCidr, tag: c.ecs.imageTag, scan: c.ecs.scanImage, actions: c.ecs.githubActions, what: 'The load balancer', tagFile: 'ecs/variables.tf' }
+    : c.azvm.enabled ? { name: 'Azure VM', dir: 'azvm', cidr: c.azvm.allowedCidr, tag: c.azvm.imageTag, scan: c.azvm.scanImage, actions: c.azvm.githubActions, what: `Port ${c.port}`, tagFile: 'azvm/variables.tf' }
+    : c.aks.enabled ? { name: 'AKS', dir: 'aks', cidr: '10.0.0.0/8', tag: c.aks.imageTag, scan: true, actions: false, what: 'The app', tagFile: 'k8s/deployment.yaml' }
     : c.aca.enabled ? { name: 'Container Apps', dir: 'aca', cidr: c.aca.externalIngress ? c.aca.allowedCidr : '10.0.0.0/8', tag: c.aca.imageTag, scan: c.aca.scanImage, actions: c.aca.githubActions, what: 'The app', tagFile: 'aca/variables.tf' }
     : undefined;
   if (t) {
@@ -158,12 +161,14 @@ export function checkContainer(config: ContainerConfig, files: GeneratedFile[]):
     }
   }
 
-  // ── Azure Container Apps ──
+  // ── Azure (registry and VM) ──
+  for (const dir of ['aca', 'azvm', 'aks']) {
+    if (/admin_enabled\s*=\s*true/.test(get(`${dir}/main.tf`) ?? '')) {
+      add({ id: 'CT-020', severity: 'high', file: `${dir}/main.tf`, title: 'The container registry has its admin user on', detail: 'A shared password gives full push and pull access.', fix: 'Turn the admin user off and pull with a managed identity.' });
+    }
+  }
   if (c.aca.enabled) {
     const tf = get('aca/main.tf') ?? '';
-    if (/admin_enabled\s*=\s*true/.test(tf)) {
-      add({ id: 'CT-020', severity: 'high', file: 'aca/main.tf', title: 'The container registry has its admin user on', detail: 'A shared password gives full push and pull access.', fix: 'Turn the admin user off and pull with a managed identity.' });
-    }
     if (/allow_insecure_connections\s*=\s*true/.test(tf)) {
       add({ id: 'CT-021', severity: 'medium', file: 'aca/main.tf', title: 'The app accepts plain HTTP', detail: 'Traffic crosses the network unencrypted.', fix: 'Remove allow_insecure_connections.' });
     }
@@ -171,9 +176,23 @@ export function checkContainer(config: ContainerConfig, files: GeneratedFile[]):
       add({ id: 'CT-022', severity: 'low', file: 'aca/README.md', title: 'Secret values are kept in Terraform state', detail: 'Anyone who can read the state file can read the secrets.', fix: 'Keep the aca/ folder private or use an encrypted remote backend.' });
     }
   }
+  if (c.azvm.enabled) {
+    const tf = get('azvm/main.tf') ?? '';
+    if (/destination_port_range\s*=\s*"22"/.test(tf)) {
+      add({ id: 'CT-014', severity: 'high', file: 'azvm/main.tf', title: 'SSH is open', detail: 'Port 22 is a constant target for password guessing.', fix: 'Use az vm run-command instead.' });
+    }
+    if (/disable_password_authentication\s*=\s*false/.test(tf)) {
+      add({ id: 'CT-025', severity: 'high', file: 'azvm/main.tf', title: 'The VM accepts password sign-in', detail: 'Passwords can be guessed.', fix: 'Set disable_password_authentication = true and use a key (or no SSH at all).' });
+    }
+    if (tf && !/enable_rbac_authorization\s*=\s*true/.test(tf)) {
+      add({ id: 'CT-026', severity: 'medium', file: 'azvm/main.tf', title: 'The Key Vault uses access policies', detail: 'Role assignments are easier to audit and narrow than vault-wide access policies.', fix: 'Set enable_rbac_authorization = true.' });
+    }
+  }
 
   // ── Kubernetes ──
-  if (c.k8s.enabled) {
+  const kOn = c.k8s.enabled || c.aks.enabled;
+  const k8s = c.aks.enabled ? aksAsK8s(c).k8s : c.k8s;
+  if (kOn) {
     const dep = get('k8s/deployment.yaml') ?? '';
     if (dep && !/runAsNonRoot:\s*true/.test(dep)) {
       add({ id: 'CT-002', severity: 'high', file: 'k8s/deployment.yaml', title: 'The container runs as root', detail: 'If someone takes over the app, they have root inside the container, which makes escaping it far easier.', fix: 'Turn on "Run as non-root".' });
@@ -187,14 +206,14 @@ export function checkContainer(config: ContainerConfig, files: GeneratedFile[]):
     if (dep && !/resources:[\s\S]*limits:/.test(dep)) {
       add({ id: 'CT-009', severity: 'low', file: 'k8s/deployment.yaml', title: 'No memory or CPU limit', detail: 'One runaway pod can take the whole node down.', fix: 'Set Memory and CPUs under Server settings.' });
     }
-    if (c.k8s.ingressHost && !c.k8s.tlsSecret) {
+    if (k8s.ingressHost && !k8s.tlsSecret) {
       add({ id: 'CT-024', severity: 'medium', file: 'k8s/ingress.yaml', title: 'The ingress serves plain HTTP', detail: 'Traffic, cookies and tokens cross the network unencrypted.', fix: 'Add a TLS secret name (for example from cert-manager).' });
     }
-    const tag = c.k8s.image.split('/').pop() ?? '';
-    if (!tag.includes(':') && !tag.includes('@') || tag.endsWith(':latest')) {
+    const tag = k8s.image.split('/').pop() ?? '';
+    if (!c.aks.enabled && (!tag.includes(':') && !tag.includes('@') || tag.endsWith(':latest'))) {
       add({ id: 'CT-016', severity: 'low', file: 'k8s/deployment.yaml', title: 'The image has no version tag or uses :latest', detail: 'It is unclear which build is running, and you cannot roll back to a named one.', fix: 'Use a version tag such as the commit id.' });
     }
-    if (c.k8s.githubActions && !c.k8s.scanImage) {
+    if (k8s.githubActions && !k8s.scanImage) {
       add({ id: 'CT-015', severity: 'low', file: '.github/workflows/image.yml', title: 'Images are pushed without a vulnerability scan', detail: 'A known vulnerability in a base image or a library goes live unnoticed.', fix: 'Turn on "Scan the image for vulnerabilities".' });
     }
   }

@@ -25,12 +25,19 @@ import { defaultAca, acaWarnings, estimateAcaCost, generateAcaFiles, validateAca
 import { defaultK8s, k8sWarnings, generateK8sFiles, validateK8s, type K8sConfig } from './kubernetesDeploy';
 export type { EcsConfig } from './ecsDeploy';
 export type { AcaConfig } from './containerAppsDeploy';
+import { defaultAzVm, azVmWarnings, estimateAzVmCost, generateAzVmFiles, validateAzVm, type AzVmConfig } from './azureVmDeploy';
+import { defaultAks, aksWarnings, estimateAksCost, generateAksFiles, validateAks, type AksConfig } from './aksDeploy';
 export type { K8sConfig } from './kubernetesDeploy';
+export type { AzVmConfig } from './azureVmDeploy';
+export type { AksConfig } from './aksDeploy';
 
 /** Where the container can be deployed from the generated files. At most one is switched on at a time. */
-export type DeployTarget = 'none' | 'ec2' | 'ecs' | 'container-apps' | 'kubernetes';
+export type DeployTarget = 'none' | 'ec2' | 'ecs' | 'azure-vm' | 'container-apps' | 'aks' | 'kubernetes';
+/** Which cloud a target belongs to; Kubernetes runs on any. */
+export type TargetCloud = 'aws' | 'azure' | 'any';
+export const TARGET_CLOUD: Record<DeployTarget, TargetCloud | 'none'> = { none: 'none', ec2: 'aws', ecs: 'aws', 'azure-vm': 'azure', 'container-apps': 'azure', aks: 'azure', kubernetes: 'any' };
 export const DEPLOY_TARGET_LABEL: Record<DeployTarget, string> = {
-  none: 'No deployment files', ec2: 'AWS EC2 (one server)', ecs: 'AWS ECS Fargate (managed containers)', 'container-apps': 'Azure Container Apps', kubernetes: 'Kubernetes (manifests and Helm)',
+  none: 'No deployment files', ec2: 'AWS EC2 (one server)', ecs: 'AWS ECS Fargate (managed containers)', 'azure-vm': 'Azure VM (one server)', 'container-apps': 'Azure Container Apps (managed containers)', aks: 'Azure Kubernetes Service (AKS)', kubernetes: 'Any Kubernetes cluster (manifests and Helm)',
 };
 
 export interface EnvVar { key: string; value: string; secret?: boolean }
@@ -80,6 +87,10 @@ export interface ContainerConfig {
   aca: AcaConfig;
   /** Optional Kubernetes manifests and Helm chart. */
   k8s: K8sConfig;
+  /** Optional "deploy to an Azure VM" bundle. */
+  azvm: AzVmConfig;
+  /** Optional "deploy to AKS" bundle (uses the Kubernetes settings for the manifests). */
+  aks: AksConfig;
   /** Add a tiny working sample app next to the Dockerfile, so the template runs before you have your own code. */
   includeSample: boolean;
 }
@@ -102,7 +113,7 @@ export function defaultConfig(stack: ContainerStack = 'node'): ContainerConfig {
     version: VERSIONS[stack][0]!, env: [], healthPath: stack === 'java' ? '/actuator/health' : '/', runAsNonRoot: true,
     restart: 'unless-stopped', memoryLimit: '512m', cpuLimit: '1.0', postgres: false, redis: false, mysql: false, mongodb: false, rabbitmq: false, proxy: false, proxyDomain: 'localhost',
     packageManager: 'npm', buildCommand: 'npm run build', startCommand: stack === 'ruby' ? 'bundle exec puma -b tcp://0.0.0.0:3000' : 'npm start', nextStandalone: false,
-    pythonFramework: 'fastapi', pythonModule: 'main:app', javaBuildTool: 'maven', goPackage: '.', dotnetProject: 'App.csproj', dotnetAssembly: 'App', rubyFramework: 'rack', staticBuildDir: 'dist', staticSpaFallback: true, ec2: defaultEc2(), ecs: defaultEcs(), aca: defaultAca(), k8s: defaultK8s(), includeSample: false,
+    pythonFramework: 'fastapi', pythonModule: 'main:app', javaBuildTool: 'maven', goPackage: '.', dotnetProject: 'App.csproj', dotnetAssembly: 'App', rubyFramework: 'rack', staticBuildDir: 'dist', staticSpaFallback: true, ec2: defaultEc2(), ecs: defaultEcs(), aca: defaultAca(), k8s: defaultK8s(), azvm: defaultAzVm(), aks: defaultAks(), includeSample: false,
   };
 }
 
@@ -120,12 +131,12 @@ const CONTROL = /[\u0000-\u001f\u007f]/;
 
 /** The deployment targets that are switched on (validation allows at most one). */
 export function deployTargets(c: ContainerConfig): Exclude<DeployTarget, 'none'>[] {
-  return [c.ec2.enabled && 'ec2', c.ecs.enabled && 'ecs', c.aca.enabled && 'container-apps', c.k8s.enabled && 'kubernetes'].filter((t): t is Exclude<DeployTarget, 'none'> => !!t);
+  return [c.ec2.enabled && 'ec2', c.ecs.enabled && 'ecs', c.azvm.enabled && 'azure-vm', c.aca.enabled && 'container-apps', c.aks.enabled && 'aks', c.k8s.enabled && 'kubernetes'].filter((t): t is Exclude<DeployTarget, 'none'> => !!t);
 }
 
 /** Switch on exactly one target (or none), leaving each target's own settings as they were. */
 export function withDeployTarget(c: ContainerConfig, target: DeployTarget): ContainerConfig {
-  return { ...c, ec2: { ...c.ec2, enabled: target === 'ec2' }, ecs: { ...c.ecs, enabled: target === 'ecs' }, aca: { ...c.aca, enabled: target === 'container-apps' }, k8s: { ...c.k8s, enabled: target === 'kubernetes' } };
+  return { ...c, ec2: { ...c.ec2, enabled: target === 'ec2' }, ecs: { ...c.ecs, enabled: target === 'ecs' }, aca: { ...c.aca, enabled: target === 'container-apps' }, k8s: { ...c.k8s, enabled: target === 'kubernetes' }, azvm: { ...c.azvm, enabled: target === 'azure-vm' }, aks: { ...c.aks, enabled: target === 'aks' } };
 }
 
 export function validate(c: ContainerConfig): string[] {
@@ -165,7 +176,7 @@ export function validate(c: ContainerConfig): string[] {
   }
   const targets = deployTargets(c);
   if (targets.length > 1) e.push(`Choose one place to deploy to: ${targets.map((t) => DEPLOY_TARGET_LABEL[t]).join(' and ')} are both switched on, and each writes its own deploy.sh.`);
-  return [...e, ...validateEc2(c), ...validateEcs(c), ...validateAca(c), ...validateK8s(c)];
+  return [...e, ...validateEc2(c), ...validateEcs(c), ...validateAca(c), ...validateK8s(c), ...validateAzVm(c), ...validateAks(c)];
 }
 
 // ─── quoting ─────────────────────────────────────────────────────────────────
@@ -438,7 +449,7 @@ function dockerignore(c: ContainerConfig): string {
     dotnet: ['bin', 'obj', '.vs', '*.user'],
     ruby: ['log', 'tmp', '.bundle', 'vendor/bundle', 'node_modules', 'storage'],
   };
-  const deploy = c.ec2.enabled ? ['ec2', '.github', '.terraform'] : c.ecs.enabled ? ['ecs', '.github', '.terraform'] : c.aca.enabled ? ['aca', '.github', '.terraform'] : c.k8s.enabled ? ['k8s', 'helm', '.github', 'deploy.sh', 'destroy.sh'] : [];
+  const deploy = c.ec2.enabled ? ['ec2', '.github', '.terraform'] : c.ecs.enabled ? ['ecs', '.github', '.terraform'] : c.aca.enabled ? ['aca', '.github', '.terraform'] : c.azvm.enabled ? ['azvm', '.github', '.terraform'] : c.aks.enabled ? ['aks', 'k8s', 'helm', '.terraform', 'deploy.sh', 'destroy.sh'] : c.k8s.enabled ? ['k8s', 'helm', '.github', 'deploy.sh', 'destroy.sh'] : [];
   return `${[...common, ...(c.proxy ? ['Caddyfile'] : []), ...deploy, ...per[c.stack]].join('\n')}\n`;
 }
 
@@ -494,27 +505,29 @@ export function generateContainerFiles(config: ContainerConfig): GenerateResult 
     ...generateEcsFiles(c),
     ...generateAcaFiles(c),
     ...generateK8sFiles(c),
+    ...generateAzVmFiles(c),
+    ...generateAksFiles(c),
     ...sample.files,
   ];
-  return { ok: true, files, warnings: [...sample.warnings, ...(c.proxy && deployTargets(c).length > 0 ? ['The HTTPS proxy is part of docker-compose.yml only. The deployment target has its own way to serve HTTPS (a load balancer certificate, the ingress, or the platform).'] : []), ...ec2Warnings(c), ...ecsWarnings(c), ...acaWarnings(c), ...k8sWarnings(c)], findings: checkContainer(c, files), cost: estimateEc2Cost(c) ?? estimateEcsCost(c) ?? estimateAcaCost(c) };
+  return { ok: true, files, warnings: [...sample.warnings, ...(c.proxy && deployTargets(c).length > 0 ? ['The HTTPS proxy is part of docker-compose.yml only. The deployment target has its own way to serve HTTPS (a load balancer certificate, the ingress, or the platform).'] : []), ...ec2Warnings(c), ...ecsWarnings(c), ...acaWarnings(c), ...k8sWarnings(c), ...azVmWarnings(c), ...aksWarnings(c)], findings: checkContainer(c, files), cost: estimateEc2Cost(c) ?? estimateEcsCost(c) ?? estimateAcaCost(c) ?? estimateAzVmCost(c) ?? estimateAksCost(c) };
 }
 
 // ─── starter templates ───────────────────────────────────────────────────────
 
-export interface StarterTemplate { id: string; title: string; blurb: string; config: () => ContainerConfig }
+export interface StarterTemplate { id: string; title: string; blurb: string; /** The starter with a one-command deployment to the chosen target (EC2 when none is given). */ config: (target?: DeployTarget) => ContainerConfig }
 
-const starter = (stack: ContainerStack, appName: string, over: Partial<ContainerConfig> = {}): ContainerConfig => {
+const starter = (stack: ContainerStack, appName: string, over: Partial<ContainerConfig> = {}, target: DeployTarget = 'ec2'): ContainerConfig => {
   const d = defaultConfig(stack);
-  return { ...d, appName, includeSample: true, ec2: { ...d.ec2, enabled: true }, ...over };
+  return withDeployTarget({ ...d, appName, includeSample: true, ...over }, target);
 };
 
-/** Ready-made starting points: a stack, a working sample app and the EC2 deployment already switched on. */
+/** Ready-made starting points: a stack, a working sample app and a deployment (EC2 unless another target is given) already switched on. */
 export const STARTER_TEMPLATES: StarterTemplate[] = [
-  { id: 'node-web', title: 'Node.js web app', blurb: 'A small Node.js server with a health check, deployed to EC2.', config: () => starter('node', 'node-web') },
-  { id: 'fastapi-api', title: 'FastAPI service', blurb: 'A Python FastAPI API with /health, deployed to EC2.', config: () => starter('python', 'fastapi-api', { healthPath: '/health' }) },
-  { id: 'spring-boot', title: 'Spring Boot service', blurb: 'A minimal Spring Boot app with Actuator health, deployed to EC2.', config: () => starter('java', 'spring-boot', { memoryLimit: '768m' }) },
-  { id: 'go-api', title: 'Go service', blurb: 'A small Go HTTP service built into a tiny image, deployed to EC2.', config: () => starter('go', 'go-api') },
-  { id: 'dotnet-api', title: 'ASP.NET Core service', blurb: 'A minimal ASP.NET Core API with /health, deployed to EC2.', config: () => starter('dotnet', 'dotnet-api', { healthPath: '/health', memoryLimit: '768m' }) },
-  { id: 'ruby-rack', title: 'Ruby Rack service', blurb: 'A small Rack app served by Puma, deployed to EC2.', config: () => starter('ruby', 'ruby-rack') },
-  { id: 'static-site', title: 'Static website', blurb: 'A one-page website served by nginx, deployed to EC2.', config: () => starter('static', 'static-site') },
+  { id: 'node-web', title: 'Node.js web app', blurb: 'A small Node.js server with a health check.', config: (t) => starter('node', 'node-web', {}, t) },
+  { id: 'fastapi-api', title: 'FastAPI service', blurb: 'A Python FastAPI API with /health.', config: (t) => starter('python', 'fastapi-api', { healthPath: '/health' }, t) },
+  { id: 'spring-boot', title: 'Spring Boot service', blurb: 'A minimal Spring Boot app with Actuator health.', config: (t) => starter('java', 'spring-boot', { memoryLimit: '768m' }, t) },
+  { id: 'go-api', title: 'Go service', blurb: 'A small Go HTTP service built into a tiny image.', config: (t) => starter('go', 'go-api', {}, t) },
+  { id: 'dotnet-api', title: 'ASP.NET Core service', blurb: 'A minimal ASP.NET Core API with /health.', config: (t) => starter('dotnet', 'dotnet-api', { healthPath: '/health', memoryLimit: '768m' }, t) },
+  { id: 'ruby-rack', title: 'Ruby Rack service', blurb: 'A small Rack app served by Puma.', config: (t) => starter('ruby', 'ruby-rack', {}, t) },
+  { id: 'static-site', title: 'Static website', blurb: 'A one-page website served by nginx.', config: (t) => starter('static', 'static-site', {}, t) },
 ];
