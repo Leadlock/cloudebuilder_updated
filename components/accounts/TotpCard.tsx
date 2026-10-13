@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Smartphone, Loader2 } from 'lucide-react';
+import QRCode from 'qrcode';
 
 type Phase = 'off' | 'scan' | 'codes' | 'on';
 const INPUT = 'bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-xs placeholder-gray-500 focus:outline-none focus:border-amber-500';
@@ -26,6 +27,17 @@ export default function TotpCard() {
   const [turningOff, setTurningOff] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [qr, setQr] = useState<string | null>(null);
+
+  // Drawn here in the browser: the setup key never goes to a QR-code service.
+  useEffect(() => {
+    let cancelled = false;
+    if (!setup) { setQr(null); return; }
+    QRCode.toDataURL(setup.uri, { margin: 2, width: 200, errorCorrectionLevel: 'M', color: { dark: '#0f172a', light: '#ffffff' } })
+      .then((url) => { if (!cancelled) setQr(url); })
+      .catch(() => { if (!cancelled) setQr(null); });
+    return () => { cancelled = true; };
+  }, [setup]);
 
   const load = useCallback(async () => {
     try {
@@ -75,7 +87,14 @@ export default function TotpCard() {
 
       {phase === 'scan' && setup && (
         <div className="space-y-2 text-xs">
-          <p className="text-gray-300 leading-relaxed">In your authenticator app choose <strong>Add account → Enter a setup key</strong>, and type this key (time-based, 6 digits):</p>
+          <p className="text-gray-300 leading-relaxed">Open your authenticator app, choose <strong>Add account → Scan a QR code</strong>, and point the camera at this code:</p>
+          {qr && (
+            <div className="inline-block rounded-lg bg-white p-1" data-testid="totp-qr">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={qr} width={200} height={200} alt="QR code that adds CloudCraft to your authenticator app" />
+            </div>
+          )}
+          <p className="text-gray-300 leading-relaxed">{qr ? 'Cannot scan it? Choose' : 'Choose'} <strong>Add account → Enter a setup key</strong> instead, and type this key (time-based, 6 digits):</p>
           <code className="block font-mono text-gray-100 bg-gray-900/70 rounded-lg px-3 py-2 break-all select-all" data-testid="totp-secret">{setup.secret.match(/.{1,4}/g)?.join(' ')}</code>
           <p className="text-gray-500">On a phone you can also <a href={setup.uri} className="text-amber-300 underline">open the setup link</a>. It is shown once and CloudCraft cannot show it again.</p>
           <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (code) void enable(); }}>
