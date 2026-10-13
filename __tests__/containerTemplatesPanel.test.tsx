@@ -128,6 +128,68 @@ describe('choosing where to deploy', () => {
   });
 });
 
+describe('using an existing image', () => {
+  const chooseExisting = () => fireEvent.change(screen.getByLabelText('Where does the image come from?'), { target: { value: 'existing' } });
+
+  it('hides everything about building, asks for the image, and writes no Dockerfile', () => {
+    render(<ContainerTemplatesPanel />);
+    expect(screen.getByText('Stack')).toBeTruthy();
+    expect(tabs()).toContain('Dockerfile');
+    chooseExisting();
+    expect((screen.getByLabelText('Image') as HTMLInputElement).value).toBe('nginx:1.27');
+    expect(screen.queryByText('Stack')).toBeNull();
+    expect(screen.queryByLabelText('Version')).toBeNull();
+    expect(screen.queryByLabelText('Package manager')).toBeNull();
+    expect(screen.queryByLabelText('Include a sample app')).toBeNull();
+    expect(tabs()).not.toContain('Dockerfile');
+    expect(tabs()).toEqual(expect.arrayContaining(['docker-compose.yml', 'README.md']));
+    expect(screen.getByLabelText('App name')).toBeTruthy();   // what the service needs stays
+    expect(screen.getByLabelText('Port')).toBeTruthy();
+  });
+  it('a bad or private image stops the files with the reason; a good one brings them back', () => {
+    render(<ContainerTemplatesPanel />);
+    chooseExisting();
+    fireEvent.change(screen.getByLabelText('Image'), { target: { value: 'myreg.azurecr.io/app:1' } });
+    expect(screen.getByRole('alert').textContent).toMatch(/private AWS \(ECR\) or Azure \(ACR\) registry/);
+    expect(tabs()).toEqual([]);
+    fireEvent.change(screen.getByLabelText('Image'), { target: { value: 'ghcr.io/acme/app:2.0' } });
+    expect(tabs()).toContain('docker-compose.yml');
+  });
+  it('every target drops its build, tag and pipeline settings but keeps the rest', () => {
+    render(<ContainerTemplatesPanel />);
+    chooseExisting();
+    pick('ecs');
+    expect(screen.queryByLabelText('Image tag')).toBeNull();
+    expect(screen.queryByText('GitHub Actions workflow')).toBeNull();
+    expect(screen.getByLabelText('Tasks')).toBeTruthy();
+    expect(tabs()).toEqual(expect.arrayContaining(['ecs/main.tf', 'deploy.sh']));
+    expect(tabs()).not.toContain('.github/workflows/deploy.yml');
+    pick('kubernetes');
+    expect(screen.queryByLabelText('Image the cluster pulls')).toBeNull();
+    expect(tabs()).toContain('k8s/deployment.yaml');   // valid with no image typed there: the image above is the one
+    pick('aks');
+    expect(screen.queryByLabelText('Image tag')).toBeNull();
+    expect(tabs()).toContain('aks/main.tf');
+  });
+  it('going back to building brings the stack and the Dockerfile back', () => {
+    render(<ContainerTemplatesPanel />);
+    chooseExisting();
+    fireEvent.change(screen.getByLabelText('Where does the image come from?'), { target: { value: 'build' } });
+    expect(screen.getByText('Stack')).toBeTruthy();
+    expect(tabs()).toContain('Dockerfile');
+    expect((screen.getByLabelText('Where does the image come from?') as HTMLSelectElement).value).toBe('build');
+  });
+  it('Add to architecture puts the image on the node', () => {
+    mockProject = { nodes: [], edges: [] };
+    render(<ContainerTemplatesPanel />);
+    chooseExisting();
+    pick('azure-vm');
+    fireEvent.click(screen.getByText('Add to architecture'));
+    const call = mockDispatch.mock.calls.find((c) => c[0].type === 'UPDATE_CANVAS')![0];
+    expect(call.nodes.at(-1)).toMatchObject({ resourceType: 'azure_container_service', config: { image: 'nginx:1.27' } });
+  });
+});
+
 describe('the canvas', () => {
   it('a configuration sent from a node arrives in the form, and Update changes that node', () => {
     const cfg = withDeployTarget({ ...defaultConfig('python'), appName: 'from-canvas', port: 8123 }, 'ec2');

@@ -17,6 +17,7 @@ export type ContainerStack = 'node' | 'python' | 'java' | 'go' | 'dotnet' | 'rub
 
 import { generateSampleApp } from './sampleApps';
 import { checkContainer, type ContainerFinding } from './checks';
+import { imageIsFloating, validateExistingImage } from './existingImage';
 import { caddyfile, companionBlocks, companionDependencies, companionEnv, companionSecrets, companionVolumes, companionServices, PROXY_DOMAIN, dbName } from './companions';
 import { defaultEc2, ec2Warnings, estimateEc2Cost, type Ec2Cost, generateEc2Files, validateEc2, type Ec2Config } from './ec2Deploy';
 export type { Ec2Config } from './ec2Deploy';
@@ -93,7 +94,16 @@ export interface ContainerConfig {
   aks: AksConfig;
   /** Add a tiny working sample app next to the Dockerfile, so the template runs before you have your own code. */
   includeSample: boolean;
+  /**
+   * An image that already exists (a public one, for example nginx:1.27 or ghcr.io/you/app:1.0). When set, nothing is built: no Dockerfile, no
+   * registry and no build step, and every deployment target runs this image as it is. Empty means "build it from the source".
+   */
+  image: string;
 }
+
+/** Whether the deployment runs a ready-made image instead of building one. */
+export { usesExistingImage } from './existingImageUse';
+import { usesExistingImage } from './existingImageUse';
 
 export interface GeneratedFile { path: string; content: string; /** Set the executable bit when zipped (shell scripts). */ executable?: boolean }
 export type GenerateResult = { ok: true; files: GeneratedFile[]; warnings: string[]; findings: ContainerFinding[]; cost?: Ec2Cost } | { ok: false; errors: string[] };
@@ -113,7 +123,7 @@ export function defaultConfig(stack: ContainerStack = 'node'): ContainerConfig {
     version: VERSIONS[stack][0]!, env: [], healthPath: stack === 'java' ? '/actuator/health' : '/', runAsNonRoot: true,
     restart: 'unless-stopped', memoryLimit: '512m', cpuLimit: '1.0', postgres: false, redis: false, mysql: false, mongodb: false, rabbitmq: false, proxy: false, proxyDomain: 'localhost',
     packageManager: 'npm', buildCommand: 'npm run build', startCommand: stack === 'ruby' ? 'bundle exec puma -b tcp://0.0.0.0:3000' : 'npm start', nextStandalone: false,
-    pythonFramework: 'fastapi', pythonModule: 'main:app', javaBuildTool: 'maven', goPackage: '.', dotnetProject: 'App.csproj', dotnetAssembly: 'App', rubyFramework: 'rack', staticBuildDir: 'dist', staticSpaFallback: true, ec2: defaultEc2(), ecs: defaultEcs(), aca: defaultAca(), k8s: defaultK8s(), azvm: defaultAzVm(), aks: defaultAks(), includeSample: false,
+    pythonFramework: 'fastapi', pythonModule: 'main:app', javaBuildTool: 'maven', goPackage: '.', dotnetProject: 'App.csproj', dotnetAssembly: 'App', rubyFramework: 'rack', staticBuildDir: 'dist', staticSpaFallback: true, ec2: defaultEc2(), ecs: defaultEcs(), aca: defaultAca(), k8s: defaultK8s(), azvm: defaultAzVm(), aks: defaultAks(), includeSample: false, image: '',
   };
 }
 
@@ -141,15 +151,19 @@ export function withDeployTarget(c: ContainerConfig, target: DeployTarget): Cont
 
 export function validate(c: ContainerConfig): string[] {
   const e: string[] = [];
-  if (!(c.stack in VERSIONS)) e.push('Choose a stack.');
   if (!NAME.test(c.appName)) e.push('App name: lowercase letters, digits, "-" and "_" only, up to 63 characters.');
   if (!Number.isInteger(c.port) || c.port < 1 || c.port > 65535) e.push('Port must be a whole number from 1 to 65535.');
-  if (c.stack === 'static' && c.port < 1024) e.push('A static site runs without root, so its port must be 1024 or higher (for example 8080).');
-  if (VERSIONS[c.stack] && !VERSIONS[c.stack].includes(c.version)) e.push(`Version ${c.version} is not offered for this stack.`);
   if (!PATH.test(c.healthPath)) e.push('Health check path must start with "/" and use only letters, digits and "._~-/".');
   if (!['no', 'always', 'unless-stopped', 'on-failure'].includes(c.restart)) e.push('Unknown restart policy.');
   if (!MEM.test(c.memoryLimit)) e.push('Memory limit looks like 512m or 2g.');
   if (!CPU.test(c.cpuLimit) || Number(c.cpuLimit) <= 0) e.push('CPU limit looks like 0.5 or 2.');
+  if (c.proxy && !PROXY_DOMAIN.test(c.proxyDomain)) e.push('HTTPS proxy: the domain looks like app.example.com (or localhost).');
+  if (c.mysql && dbName(c).length > 32) e.push('MySQL: the app name becomes the database user, which MySQL limits to 32 characters.');
+  // What describes how to build the image does not matter when a ready-made one is used (and its fields are hidden).
+  if (!usesExistingImage(c)) {
+  if (!(c.stack in VERSIONS)) e.push('Choose a stack.');
+  if (c.stack === 'static' && c.port < 1024) e.push('A static site runs without root, so its port must be 1024 or higher (for example 8080).');
+  if (VERSIONS[c.stack] && !VERSIONS[c.stack].includes(c.version)) e.push(`Version ${c.version} is not offered for this stack.`);
   for (const [label, v] of [['Build command', c.buildCommand], ['Start command', c.startCommand]] as const) {
     if (v.length > 300 || CONTROL.test(v)) e.push(`${label} must be one line of at most 300 characters.`);
   }
@@ -161,10 +175,9 @@ export function validate(c: ContainerConfig): string[] {
   if (c.stack === 'dotnet' && !/^[A-Za-z_][A-Za-z0-9_.]*$/.test(c.dotnetAssembly)) e.push('.NET assembly name may use letters, digits, "_" and "." (for example "App").');
   if (c.stack === 'ruby' && !['rails', 'rack', 'other'].includes(c.rubyFramework)) e.push('Choose a Ruby framework.');
   if (c.stack === 'ruby' && c.rubyFramework === 'other' && !c.startCommand.trim()) e.push('Start command is required.');
-  if (c.proxy && !PROXY_DOMAIN.test(c.proxyDomain)) e.push('HTTPS proxy: the domain looks like app.example.com (or localhost).');
-  if (c.mysql && dbName(c).length > 32) e.push('MySQL: the app name becomes the database user, which MySQL limits to 32 characters.');
   if (c.stack === 'static' && !RELDIR.test(c.staticBuildDir)) e.push('Build output folder must be a relative folder name such as "dist" or "build".');
   if (c.stack === 'static' && c.staticBuildDir.split('/').includes('..')) e.push('Build output folder cannot go up a level.');
+  }
   const seen = new Set<string>();
   if (c.env.length > 50) e.push('At most 50 environment variables.');
   for (const v of c.env) {
@@ -174,6 +187,7 @@ export function validate(c: ContainerConfig): string[] {
     seen.add(v.key);
     if (v.value.length > 500 || CONTROL.test(v.value)) e.push(`${v.key}: the value must be one line of at most 500 characters.`);
   }
+  e.push(...validateExistingImage(c.image));
   const targets = deployTargets(c);
   if (targets.length > 1) e.push(`Choose one place to deploy to: ${targets.map((t) => DEPLOY_TARGET_LABEL[t]).join(' and ')} are both switched on, and each writes its own deploy.sh.`);
   return [...e, ...validateEc2(c), ...validateEcs(c), ...validateAca(c), ...validateK8s(c), ...validateAzVm(c), ...validateAks(c)];
@@ -415,12 +429,10 @@ function compose(c: ContainerConfig): string {
   const deps = companionDependencies(c);
   // Behind the proxy only the proxy is published; the app is reachable from it over the compose network.
   const exposure = c.proxy ? `    expose:\n      - "${c.port}"\n` : `    ports:\n      - "${c.port}:${c.port}"\n`;
-  return `# Run with: docker compose up --build
+  return `# Run with: docker compose ${usesExistingImage(c) ? 'up' : 'up --build'}
 services:
   ${c.appName}:
-    build: .
-    image: ${c.appName}:latest
-    restart: ${c.restart}
+${usesExistingImage(c) ? `    image: ${c.image}\n` : `    build: .\n    image: ${c.appName}:latest\n`}    restart: ${c.restart}
 ${exposure}${envLines.length ? `    environment:\n${envLines.map((l) => `      ${l}`).join('\n')}\n` : ''}${deps.length ? `    depends_on:\n${deps.map((d) => `      ${d}:\n        condition: service_healthy`).join('\n')}\n` : ''}    mem_limit: ${c.memoryLimit}
     cpus: ${c.cpuLimit}
     security_opt:
@@ -453,11 +465,17 @@ function dockerignore(c: ContainerConfig): string {
   return `${[...common, ...(c.proxy ? ['Caddyfile'] : []), ...deploy, ...per[c.stack]].join('\n')}\n`;
 }
 
+/** The README: for a ready-made image the "Before you build" parts do not apply, and the runtime is the image itself. */
 function readme(c: ContainerConfig): string {
+  const text = readmeFull(c);
+  return usesExistingImage(c) ? `${text.split('## Before you build')[0]!.trimEnd()}\n` : text;
+}
+
+function readmeFull(c: ContainerConfig): string {
   const secretNames = secrets(c).map((v) => v.key);
   return `# ${c.appName}
 
-Generated by CloudCraft Container Templates (${STACK_LABEL[c.stack]}).
+Generated by CloudCraft Container Templates (${usesExistingImage(c) ? 'a ready-made image' : STACK_LABEL[c.stack]}).
 
 ## Run locally
 
@@ -468,16 +486,15 @@ docker compose up --build
 
 The service listens on ${c.proxy ? `https://${c.proxyDomain}${c.healthPath} (through the Caddy proxy; the app itself is not published)` : `http://localhost:${c.port}${c.healthPath}`}.
 
-## Build and run the image alone
+## ${usesExistingImage(c) ? 'Run the image alone' : 'Build and run the image alone'}
 
 \`\`\`bash
-docker build -t ${c.appName} .
-docker run --rm -p ${c.port}:${c.port} --env-file .env ${c.appName}
+${usesExistingImage(c) ? '' : `docker build -t ${c.appName} .\n`}docker run --rm -p ${c.port}:${c.port} --env-file .env ${usesExistingImage(c) ? c.image : c.appName}
 \`\`\`
 
 ## What is configured
 
-- Runtime: ${c.stack === 'static' ? `nginx ${c.version}` : `${STACK_LABEL[c.stack]} ${c.version}`}
+- ${usesExistingImage(c) ? `Image: \`${c.image}\` (used as it is: nothing is built here)` : `Runtime: ${c.stack === 'static' ? `nginx ${c.version}` : `${STACK_LABEL[c.stack]} ${c.version}`}`}
 - Port: ${c.port}, health check: \`${c.healthPath}\`
 - Runs as ${c.runAsNonRoot ? 'a non-root user' : 'root (not recommended)'}
 - Limits: ${c.memoryLimit} memory, ${c.cpuLimit} CPU, restart \`${c.restart}\`
@@ -491,14 +508,14 @@ export function generateContainerFiles(config: ContainerConfig): GenerateResult 
   const errors = validate(config);
   if (errors.length > 0) return { ok: false, errors };
   const c = config;
-  const dockerfile = ({ node: nodeDockerfile, python: pythonDockerfile, java: javaDockerfile, go: goDockerfile, dotnet: dotnetDockerfile, ruby: rubyDockerfile, static: staticDockerfile } as const)[c.stack](c);
-  const sample = generateSampleApp(c);
+  const existing = usesExistingImage(c);
+  const dockerfile = existing ? '' : ({ node: nodeDockerfile, python: pythonDockerfile, java: javaDockerfile, go: goDockerfile, dotnet: dotnetDockerfile, ruby: rubyDockerfile, static: staticDockerfile } as const)[c.stack](c);
+  const sample = existing ? { files: [], warnings: [] } : generateSampleApp(c);
   const files: GeneratedFile[] = [
-    { path: 'Dockerfile', content: dockerfile },
-    { path: '.dockerignore', content: dockerignore(c) },
+    ...(existing ? [] : [{ path: 'Dockerfile', content: dockerfile }, { path: '.dockerignore', content: dockerignore(c) }]),
     { path: 'docker-compose.yml', content: compose(c) },
     { path: '.env.example', content: envExample(c) },
-    ...(c.stack === 'static' ? [{ path: 'nginx.conf', content: nginxConf(c) }] : []),
+    ...(c.stack === 'static' && !existing ? [{ path: 'nginx.conf', content: nginxConf(c) }] : []),
     ...(c.proxy ? [{ path: 'Caddyfile', content: caddyfile(c) }] : []),
     { path: 'README.md', content: readme(c) },
     ...generateEc2Files(c),
@@ -509,7 +526,7 @@ export function generateContainerFiles(config: ContainerConfig): GenerateResult 
     ...generateAksFiles(c),
     ...sample.files,
   ];
-  return { ok: true, files, warnings: [...sample.warnings, ...(c.proxy && deployTargets(c).length > 0 ? ['The HTTPS proxy is part of docker-compose.yml only. The deployment target has its own way to serve HTTPS (a load balancer certificate, the ingress, or the platform).'] : []), ...ec2Warnings(c), ...ecsWarnings(c), ...acaWarnings(c), ...k8sWarnings(c), ...azVmWarnings(c), ...aksWarnings(c)], findings: checkContainer(c, files), cost: estimateEc2Cost(c) ?? estimateEcsCost(c) ?? estimateAcaCost(c) ?? estimateAzVmCost(c) ?? estimateAksCost(c) };
+  return { ok: true, files, warnings: [...sample.warnings, ...(existing && imageIsFloating(c.image) ? ['The image has no version tag (or uses :latest). A version tag, or a digest, makes it clear what is running and allows a rollback.'] : []), ...(c.proxy && deployTargets(c).length > 0 ? ['The HTTPS proxy is part of docker-compose.yml only. The deployment target has its own way to serve HTTPS (a load balancer certificate, the ingress, or the platform).'] : []), ...ec2Warnings(c), ...ecsWarnings(c), ...acaWarnings(c), ...k8sWarnings(c), ...azVmWarnings(c), ...aksWarnings(c)], findings: checkContainer(c, files), cost: estimateEc2Cost(c) ?? estimateEcsCost(c) ?? estimateAcaCost(c) ?? estimateAzVmCost(c) ?? estimateAksCost(c) };
 }
 
 // ─── starter templates ───────────────────────────────────────────────────────

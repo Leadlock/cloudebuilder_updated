@@ -10,6 +10,7 @@
  */
 import { companionServices } from './companions';
 import type { ContainerConfig } from './dockerTemplates';
+import { usesExistingImage } from './existingImageUse';
 import { GITHUB_REPO, REGION, TAG, q, secretNames, validCidr, type DeployCost } from './ec2Deploy';
 
 export interface EcsConfig {
@@ -82,7 +83,7 @@ export function ecsWarnings(c: ContainerConfig): string[] {
   if (e.certificateArn === '') w.push('ECS: the load balancer serves plain HTTP. Add an ACM certificate ARN to serve HTTPS and redirect HTTP to it.');
   if (e.allowedCidr === '0.0.0.0/0') w.push('ECS: the load balancer is open to the whole internet. Narrow "who can connect" if the app is not public.');
   if (companionServices(c).length > 0) w.push('ECS: PostgreSQL and Redis are not started. Use RDS / ElastiCache and put the connection settings in the environment variables.');
-  if (e.imageTag === 'latest') w.push('ECS: the "latest" tag is used. A version tag (for example the commit id) makes it clear what is running and allows a rollback.');
+  if (!usesExistingImage(c) && e.imageTag === 'latest') w.push('ECS: the "latest" tag is used. A version tag (for example the commit id) makes it clear what is running and allows a rollback.');
   if (c.env.some((v) => v.secret)) w.push(`ECS: create each secret in SSM Parameter Store as a SecureString named /${c.appName}/<NAME> before the service can start (deploy.sh asks for them).`);
   return w;
 }
@@ -108,7 +109,7 @@ export function estimateEcsCost(c: ContainerConfig): DeployCost | undefined {
     { label: `Public IPv4 addresses (${tasks} task${tasks === 1 ? '' : 's'} + 2 for the load balancer)`, monthlyUsd: round2(0.005 * HOURS * (tasks + 2)) },
     { label: 'CloudWatch Logs (1 GB)', monthlyUsd: 0.5 },
   ];
-  const notes = ['Excludes data transfer out, ECR storage (about $0.10 per GB-month) and load balancer traffic beyond the minimum.'];
+  const notes = [`Excludes data transfer out, ${usesExistingImage(c) ? '' : 'ECR storage (about $0.10 per GB-month) and '}load balancer traffic beyond the minimum.`];
   if (e.autoscaling) notes.push(`Priced at the minimum of ${e.minCount} tasks; every extra task adds ${round2(per * HOURS)} a month while it runs.`);
   if (e.region !== 'us-east-1') notes.push(`Priced for us-east-1; ${e.region} is usually a little higher.`);
   return { monthlyUsd: round2(lines.reduce((t, l) => t + l.monthlyUsd, 0)), lines, notes };
@@ -168,7 +169,7 @@ ${secrets.map((k) => `    ${k} = "arn:aws:ssm:\${var.region}:\${data.aws_caller_
   }
 }
 
-# ── Image registry ──────────────────────────────────────────────────────────
+${usesExistingImage(c) ? '' : `# ── Image registry ──────────────────────────────────────────────────────────
 
 resource "aws_ecr_repository" "app" {
   name                 = var.app_name
@@ -202,7 +203,7 @@ resource "aws_ecr_lifecycle_policy" "app" {
   })
 }
 
-resource "aws_cloudwatch_log_group" "app" {
+`}resource "aws_cloudwatch_log_group" "app" {
   name              = "/ecs/\${var.app_name}"
   retention_in_days = 30
   tags              = local.tags
@@ -408,7 +409,7 @@ resource "aws_ecs_task_definition" "app" {
 
   container_definitions = jsonencode([{
     name      = var.app_name
-    image     = "\${aws_ecr_repository.app.repository_url}:\${var.image_tag}"
+    image     = ${usesExistingImage(c) ? hcl(c.image) : '"\${aws_ecr_repository.app.repository_url}:\${var.image_tag}"'}
     essential = true
     portMappings = [{
       containerPort = var.app_port
@@ -503,7 +504,7 @@ function variablesTf(c: ContainerConfig): string {
 }
 
 variable "app_name" {
-  description = "Name used for the repository, cluster, service and secret path."
+  description = "Name used for the ${usesExistingImage(c) ? '' : 'repository, '}cluster, service and secret path."
   type        = string
   default     = ${hcl(c.appName)}
 }
@@ -520,13 +521,13 @@ variable "health_path" {
   default     = ${hcl(c.healthPath)}
 }
 
-variable "image_tag" {
+${usesExistingImage(c) ? '' : `variable "image_tag" {
   description = "Image tag to run. deploy.sh sets it."
   type        = string
   default     = ${hcl(e.imageTag)}
 }
 
-variable "cpu" {
+`}variable "cpu" {
   description = "Fargate CPU units (256, 512, 1024, 2048, 4096)."
   type        = number
   default     = ${e.cpu}
@@ -577,7 +578,7 @@ variable "subnet_ids" {
   type        = list(string)
   default     = []
 }
-${e.githubRepo ? `
+${e.githubRepo && !usesExistingImage(c) ? `
 variable "github_repository" {
   description = "GitHub repository (owner/name) allowed to push images and deploy."
   type        = string
@@ -594,12 +595,12 @@ variable "create_github_oidc_provider" {
 
 function outputsTf(c: ContainerConfig): string {
   const scheme = c.ecs.certificateArn ? 'https' : 'http';
-  return `output "ecr_repository_url" {
+  return `${usesExistingImage(c) ? '' : `output "ecr_repository_url" {
   description = "Push the image here."
   value       = aws_ecr_repository.app.repository_url
 }
 
-output "cluster_name" {
+`}output "cluster_name" {
   value = aws_ecs_cluster.app.name
 }
 
@@ -615,7 +616,7 @@ output "logs" {
   description = "Follow the application logs."
   value       = "aws logs tail \${aws_cloudwatch_log_group.app.name} --follow --region \${var.region}"
 }
-${c.ecs.githubRepo ? `
+${c.ecs.githubRepo && !usesExistingImage(c) ? `
 output "github_role_arn" {
   description = "Save this in GitHub as the secret AWS_ROLE_TO_ARN."
   value       = aws_iam_role.github.arn
@@ -769,35 +770,37 @@ ${c.ecs.scanImage ? `
 
 function deploySh(c: ContainerConfig): string {
   const secrets = secretNames(c);
+  const ex = usesExistingImage(c);
   return `#!/usr/bin/env bash
 # One command to deploy ${c.appName} to AWS ECS Fargate: bash deploy.sh
-#   1. creates the image repository with Terraform (first run)
+${ex ? `#   1. stores any secret values in AWS (asks once, hidden), never in a file
+#   2. creates or updates the cluster, load balancer and service running ${c.image}, then waits until the app answers
+# Run it again after changing the settings. Add --yes to skip the Terraform confirmation.` : `#   1. creates the image repository with Terraform (first run)
 #   2. stores any secret values in AWS (asks once, hidden), never in a file
 #   3. builds the image for Fargate's CPU type and pushes it
 #   4. creates or updates the cluster, load balancer and service, then waits until the app answers
-# Run it again to release a new version (IMAGE_TAG=v2 bash deploy.sh uses another tag). Add --yes to skip the Terraform confirmation.
+# Run it again to release a new version (IMAGE_TAG=v2 bash deploy.sh uses another tag). Add --yes to skip the Terraform confirmation.`}
 set -euo pipefail
 cd "$(dirname "$0")"
 
 APP=${q(c.appName)}
 REGION=${q(c.ecs.region)}
-TAG="\${IMAGE_TAG:-${c.ecs.imageTag}}"
-SECRETS=(${secrets.map(q).join(' ')})
+${ex ? '' : `TAG="\${IMAGE_TAG:-${c.ecs.imageTag}}"\n`}SECRETS=(${secrets.map(q).join(' ')})
 APPROVE=""
 [ "\${1:-}" = "--yes" ] && APPROVE="-auto-approve"
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing tool: $1. $2"; exit 1; }; }
 need terraform "Install it from https://developer.hashicorp.com/terraform/install"
 need aws       "Install the AWS CLI from https://aws.amazon.com/cli/"
-need docker    "Install Docker Desktop from https://www.docker.com/products/docker-desktop"
-aws sts get-caller-identity >/dev/null 2>&1 || { echo "You are not signed in to AWS. Run: aws configure (or aws sso login)"; exit 1; }
-docker info >/dev/null 2>&1 || { echo "Docker is not running. Start Docker Desktop and try again."; exit 1; }
+${ex ? '' : `need docker    "Install Docker Desktop from https://www.docker.com/products/docker-desktop"
+`}aws sts get-caller-identity >/dev/null 2>&1 || { echo "You are not signed in to AWS. Run: aws configure (or aws sso login)"; exit 1; }
+${ex ? '' : `docker info >/dev/null 2>&1 || { echo "Docker is not running. Start Docker Desktop and try again."; exit 1; }
 
 echo "==> 1/4  Image repository (Terraform)"
 terraform -chdir=ecs init -input=false >/dev/null
 terraform -chdir=ecs apply -target=aws_ecr_repository.app -var "image_tag=$TAG" \${APPROVE:+-auto-approve}
 
-echo "==> 2/4  Secrets"
+`}echo "==> ${ex ? '1/2' : '2/4'}  Secrets"
 for NAME in \${SECRETS[@]+"\${SECRETS[@]}"}; do
   if aws ssm get-parameter --region "$REGION" --name "/$APP/$NAME" >/dev/null 2>&1; then
     echo "    $NAME: already stored"
@@ -812,15 +815,16 @@ for NAME in \${SECRETS[@]+"\${SECRETS[@]}"}; do
   fi
 done
 
-echo "==> 3/4  Build and push the image"
+${ex ? '' : `echo "==> 3/4  Build and push the image"
 REPO=$(terraform -chdir=ecs output -raw ecr_repository_url)
 aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "\${REPO%%/*}"
 # Fargate runs x86_64 here. Building for it explicitly makes this work from Apple Silicon Macs too.
 docker build --platform linux/amd64 -t "$REPO:$TAG" .
 docker push "$REPO:$TAG"
 
-echo "==> 4/4  Cluster, load balancer and service (Terraform)"
-terraform -chdir=ecs apply -var "image_tag=$TAG" \${APPROVE:+-auto-approve}
+`}echo "==> ${ex ? '2/2' : '4/4'}  Cluster, load balancer and service (Terraform)"
+${ex ? `terraform -chdir=ecs init -input=false >/dev/null
+terraform -chdir=ecs apply \${APPROVE:+-auto-approve}` : `terraform -chdir=ecs apply -var "image_tag=$TAG" \${APPROVE:+-auto-approve}`}
 CLUSTER=$(terraform -chdir=ecs output -raw cluster_name)
 SERVICE=$(terraform -chdir=ecs output -raw service_name)
 # An unchanged task definition (same tag, new image) still needs a push to the tasks.
@@ -847,7 +851,7 @@ fi
 function destroySh(c: ContainerConfig): string {
   const secrets = secretNames(c);
   return `#!/usr/bin/env bash
-# Removes everything deploy.sh created (service, load balancer, image repository with its images, roles): bash destroy.sh
+# Removes everything deploy.sh created (service, load balancer, ${usesExistingImage(c) ? '' : 'image repository with its images, '}roles): bash destroy.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -858,7 +862,7 @@ SECRETS=(${secrets.map(q).join(' ')})
 command -v terraform >/dev/null 2>&1 || { echo "Missing tool: terraform"; exit 1; }
 command -v aws >/dev/null 2>&1 || { echo "Missing tool: aws"; exit 1; }
 
-echo "This permanently deletes the service, the load balancer and the image repository of $APP."
+echo "This permanently deletes the service, the load balancer${usesExistingImage(c) ? "" : " and the image repository"} of $APP."
 read -r -p "Type the app name ($APP) to continue: " ANSWER
 [ "$ANSWER" = "$APP" ] || { echo "Cancelled."; exit 1; }
 
@@ -889,7 +893,7 @@ the folder that contains your app and these files:
 bash deploy.sh
 \`\`\`
 
-It creates the image repository, ${secrets.length ? 'asks for your secret values (hidden), ' : ''}builds and pushes your image, creates the cluster, load balancer and service, and prints
+It ${usesExistingImage(c) ? '' : 'creates the image repository, '}${secrets.length ? 'asks for your secret values (hidden), ' : ''}${usesExistingImage(c) ? `runs \`${c.image}\` as it is (nothing is built), ` : 'builds and pushes your image, '}creates the cluster, load balancer and service, and prints
 the address. To release a new version run it again (\`IMAGE_TAG=v2 bash deploy.sh\` to use another tag). To remove everything:
 
 \`\`\`bash
@@ -898,7 +902,7 @@ bash destroy.sh
 
 ## What gets created
 
-- An ECR repository, an ECS cluster and a Fargate service running ${e.autoscaling ? `${e.minCount} to ${e.maxCount}` : e.desiredCount} task${e.desiredCount === 1 && !e.autoscaling ? '' : 's'} (${e.cpu / 1024} vCPU, ${e.memoryMb / 1024} GB each).
+- ${usesExistingImage(c) ? 'An' : 'An ECR repository, an'} ECS cluster and a Fargate service running ${e.autoscaling ? `${e.minCount} to ${e.maxCount}` : e.desiredCount} task${e.desiredCount === 1 && !e.autoscaling ? '' : 's'} (${e.cpu / 1024} vCPU, ${e.memoryMb / 1024} GB each).
 - An Application Load Balancer that accepts ${e.certificateArn ? 'HTTPS (HTTP is redirected)' : 'HTTP'} from \`${e.allowedCidr}\` and sends it to the tasks. Tasks accept traffic only from the load balancer.
 - A role that lets ECS pull the image and read \`/${c.appName}/*\` in SSM Parameter Store, and an empty role for the app itself.
 - A failed deployment rolls back by itself (deployment circuit breaker). Logs go to CloudWatch (\`/ecs/${c.appName}\`, 30 days).
@@ -916,7 +920,7 @@ aws ecs describe-services --region ${e.region} --cluster ${c.appName} --services
 - **503 from the load balancer**: the health check path (\`${c.healthPath}\`) must return a 2xx or 3xx on port ${c.port}. New tasks get 60 seconds to start.
 - **"exec format error"**: the image was built for the wrong CPU type. \`deploy.sh\` builds for x86_64; if you push another way, add \`--platform linux/amd64\`.
 - **Cannot reach the address**: the load balancer accepts traffic only from \`${e.allowedCidr}\`.
-${e.githubActions ? `
+${e.githubActions && !usesExistingImage(c) ? `
 ## Optional: deploy automatically when you push to GitHub
 
 \`.github/workflows/deploy.yml\` builds, scans and pushes the image on every push to \`main\` and rolls the service to it.
@@ -946,9 +950,9 @@ export function generateEcsFiles(c: ContainerConfig): Array<{ path: string; cont
     { path: 'ecs/main.tf', content: mainTf(c) },
     { path: 'ecs/variables.tf', content: variablesTf(c) },
     { path: 'ecs/outputs.tf', content: outputsTf(c) },
-    ...(c.ecs.githubRepo ? [{ path: 'ecs/github_oidc.tf', content: githubOidcTf() }] : []),
+    ...(c.ecs.githubRepo && !usesExistingImage(c) ? [{ path: 'ecs/github_oidc.tf', content: githubOidcTf() }] : []),
     { path: 'ecs/.gitignore', content: '.terraform/\n*.tfstate\n*.tfstate.*\ncrash.log\n' },
     { path: 'ecs/README.md', content: readme(c) },
-    ...(c.ecs.githubActions ? [{ path: '.github/workflows/deploy.yml', content: workflowYml(c) }] : []),
+    ...(c.ecs.githubActions && !usesExistingImage(c) ? [{ path: '.github/workflows/deploy.yml', content: workflowYml(c) }] : []),
   ];
 }

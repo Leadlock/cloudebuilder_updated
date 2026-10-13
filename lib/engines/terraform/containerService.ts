@@ -26,7 +26,8 @@ export function containerServiceBlocks(name: string, cfg: Record<string, unknown
   name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
 }`);
 
-  out.push(`resource "aws_ecr_repository" "${name}" {
+  const existing = c.image !== '';
+  if (!existing) out.push(`resource "aws_ecr_repository" "${name}" {
   name                 = ${q(app)}
   image_tag_mutability = "MUTABLE"
 
@@ -70,7 +71,7 @@ resource "aws_iam_role_policy_attachment" "${name}_ssm" {
 }
 
 data "aws_iam_policy_document" "${name}_access" {
-  statement {
+${existing ? '' : `  statement {
     sid       = "EcrLogin"
     actions   = ["ecr:GetAuthorizationToken"]
     resources = ["*"]
@@ -80,7 +81,7 @@ data "aws_iam_policy_document" "${name}_access" {
     actions   = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability"]
     resources = [aws_ecr_repository.${name}.arn]
   }
-  statement {
+`}  statement {
     sid       = "ReadThisAppsSecrets"
     actions   = ["ssm:GetParameter", "ssm:GetParameters"]
     resources = ["arn:aws:ssm:\${var.aws_region}:\${data.aws_caller_identity.${name}.account_id}:parameter/${app}/*"]
@@ -88,7 +89,7 @@ data "aws_iam_policy_document" "${name}_access" {
 }
 
 resource "aws_iam_role_policy" "${name}" {
-  name   = ${q(`${app}-ecr-and-secrets`)}
+  name   = ${q(`${app}-${existing ? 'secrets' : 'ecr-and-secrets'}`)}
   role   = aws_iam_role.${name}.id
   policy = data.aws_iam_policy_document.${name}_access.json
 }

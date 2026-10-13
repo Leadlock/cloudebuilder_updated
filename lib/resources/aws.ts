@@ -226,6 +226,7 @@ export const awsResources: ResourceDefinition[] = [
       },
       { key: 'port', label: 'Port', type: 'number', defaultValue: 3000, min: 1, max: 65535, section: 'Container' },
       { key: 'healthPath', label: 'Health check path', type: 'text', defaultValue: '/', section: 'Container', placeholder: '/health' },
+      { key: 'image', label: 'Existing image', type: 'text', defaultValue: '', section: 'Container', placeholder: 'nginx:1.27', description: 'A public image to run as it is (nothing is built). Leave empty to build from source with Container Templates.' },
       { key: 'imageTag', label: 'Image tag', type: 'text', defaultValue: 'v1', section: 'Container', description: 'A version tag (for example the commit id) makes it clear what is running. "latest" works but hides it.' },
       { key: 'memoryLimit', label: 'Memory limit', type: 'text', defaultValue: '512m', section: 'Container', advanced: true, placeholder: '512m' },
       { key: 'cpuLimit', label: 'CPU limit', type: 'text', defaultValue: '1.0', section: 'Container', advanced: true, placeholder: '1.0' },

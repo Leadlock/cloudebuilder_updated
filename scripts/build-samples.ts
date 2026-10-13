@@ -3,7 +3,7 @@
  * companion service and the HTTPS proxy through docker compose and calls it over HTTPS. Needs Docker. Not part of `npm test`: it pulls base
  * images and takes several minutes. Run: npx tsx --tsconfig tsconfig.json scripts/build-samples.ts [dir] [stack ...]
  */
-import { mkdirSync, rmSync, writeFileSync } from 'fs';
+import fs, { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { spawnSync } from 'child_process';
 import { defaultConfig, generateContainerFiles, STACKS, type ContainerConfig, type ContainerStack } from '../lib/engines/containers/dockerTemplates';
@@ -72,8 +72,27 @@ async function everything(): Promise<void> {
   } finally { sh('docker', ['compose', 'down', '-v', '--remove-orphans'], dir, env); }
 }
 
+/** A ready-made image: no Dockerfile is written, compose pulls the image and it answers. */
+async function existingImage(): Promise<void> {
+  const c: ContainerConfig = { ...defaultConfig('static'), appName: 'cc-existing', image: 'nginx:1.27', port: 80, healthPath: '/' };
+  const dir = join(root, 'existing-image');
+  mkdirSync(dir, { recursive: true });
+  write(c, dir);
+  if (fs.existsSync(join(dir, 'Dockerfile'))) { failed++; console.log('existing-image: a Dockerfile was written'); return; }
+  // Published on another port so it cannot clash with the proxy test.
+  const compose = fs.readFileSync(join(dir, 'docker-compose.yml'), 'utf8').replace('"80:80"', '"18080:80"');
+  writeFileSync(join(dir, 'docker-compose.yml'), compose);
+  const up = sh('docker', ['compose', 'up', '-d'], dir);
+  try {
+    if (up.status !== 0) { failed++; console.log(`existing-image: compose up FAILED\n${tail(up)}`); return; }
+    if (!(await waitFor('http://127.0.0.1:18080/', 60))) { failed++; console.log(`existing-image: did not answer\n${tail(sh('docker', ['compose', 'logs', '--tail', '30'], dir))}`); return; }
+    console.log('existing-image: nginx:1.27 pulled and answering, with no Dockerfile written');
+  } finally { sh('docker', ['compose', 'down', '-v', '--remove-orphans'], dir); }
+}
+
 (async () => {
   for (const s of (only.length ? only : STACKS)) await sample(s);
+  if (only.length === 0) await existingImage();
   if (only.length === 0) await everything();
   process.exit(failed ? 1 : 0);
 })();

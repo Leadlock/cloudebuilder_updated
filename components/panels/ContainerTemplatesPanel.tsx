@@ -118,6 +118,7 @@ export default function ContainerTemplatesPanel() {
   const setAks = <K extends keyof ContainerConfig['aks']>(k: K, v: ContainerConfig['aks'][K]) => setCfg((c) => ({ ...c, aks: { ...c.aks, [k]: v } }));
   const setK8s = <K extends keyof ContainerConfig['k8s']>(k: K, v: ContainerConfig['k8s'][K]) => setCfg((c) => ({ ...c, k8s: { ...c.k8s, [k]: v } }));
   const target = (deployTargets(cfg)[0] ?? 'none') as DeployTarget;
+  const ex = cfg.image !== '';
   const setTarget = (t: DeployTarget) => setCfg((c) => withDeployTarget(c, t));
   const setEnv = (i: number, patch: Partial<EnvVar>) => setCfg((c) => ({ ...c, env: c.env.map((v, j) => (j === i ? { ...v, ...patch } : v)) }));
 
@@ -203,6 +204,23 @@ export default function ContainerTemplatesPanel() {
         <div className="grid gap-5 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
           {/* ── form ── */}
           <div className="space-y-4">
+            <div className={clsx(card, 'space-y-2')}>
+              <label className={label} htmlFor="ct-source">Where does the image come from?</label>
+              <select id="ct-source" className={input} value={ex ? 'existing' : 'build'} onChange={(e) => set('image', e.target.value === 'existing' ? (cfg.image || 'nginx:1.27') : '')}>
+                <option value="build">Build it from my source code</option>
+                <option value="existing">Use an image that already exists</option>
+              </select>
+              {ex ? (
+                <>
+                  <label className={label} htmlFor="ct-image">Image</label>
+                  <input id="ct-image" className={clsx(input, 'font-mono')} placeholder="nginx:1.27 or ghcr.io/yourname/yourapp:1.0" value={cfg.image} onChange={(e) => set('image', e.target.value.trim())} />
+                  <p className={clsx('text-[11px]', muted)}>A public image, named like Docker names it. Nothing is built: the server or container service pulls and runs it as it is. Images in a private AWS (ECR) or Azure (ACR) registry are not supported here.</p>
+                </>
+              ) : (
+                <p className={clsx('text-[11px]', muted)}>CloudCraft writes the Dockerfile, builds the image and, with a deployment target, pushes it to a registry it creates for you.</p>
+              )}
+            </div>
+            {!ex && (
             <div className={card}>
               <p className={label}>Stack</p>
               <div className="grid grid-cols-2 gap-2">
@@ -216,16 +234,20 @@ export default function ContainerTemplatesPanel() {
                 ))}
               </div>
             </div>
+            )}
 
             <div className={clsx(card, 'space-y-3')}>
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2"><label className={label} htmlFor="ct-name">App name</label><input id="ct-name" className={input} value={cfg.appName} onChange={(e) => set('appName', e.target.value)} /></div>
                 <div><label className={label} htmlFor="ct-port">Port</label><input id="ct-port" type="number" className={input} value={cfg.port} onChange={(e) => set('port', Number(e.target.value))} /></div>
+                {!ex && (
                 <div><label className={label} htmlFor="ct-version">{cfg.stack === 'static' ? 'nginx version' : 'Version'}</label>
                   <select id="ct-version" className={input} value={cfg.version} onChange={(e) => set('version', e.target.value)}>{VERSIONS[cfg.stack].map((v) => <option key={v}>{v}</option>)}</select></div>
+                )}
                 <div className="col-span-2"><label className={label} htmlFor="ct-health">Health check path</label><input id="ct-health" className={input} value={cfg.healthPath} onChange={(e) => set('healthPath', e.target.value)} /></div>
               </div>
 
+              {!ex && (<>
               {cfg.stack === 'node' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className={label} htmlFor="ct-pm">Package manager</label>
@@ -274,6 +296,7 @@ export default function ContainerTemplatesPanel() {
                   <label className="flex items-end gap-2 text-xs pb-2"><input type="checkbox" checked={cfg.staticSpaFallback} onChange={(e) => set('staticSpaFallback', e.target.checked)} />Single-page app routing</label>
                 </div>
               )}
+              </>)}
             </div>
 
             <div className={clsx(card, 'space-y-3')}>
@@ -289,14 +312,16 @@ export default function ContainerTemplatesPanel() {
                   <p className={clsx('text-[11px] mt-1', muted)}>A real domain gets a free Let&apos;s Encrypt certificate (its DNS must point at the machine). &quot;localhost&quot; gets a local one. Used by docker-compose.yml only.</p></div>
               )}
               <div className="flex flex-wrap gap-4 text-xs">
-                {cfg.stack !== 'static' && <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.runAsNonRoot} onChange={(e) => set('runAsNonRoot', e.target.checked)} />Run as non-root (recommended)</label>}
+                {!ex && cfg.stack !== 'static' && <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.runAsNonRoot} onChange={(e) => set('runAsNonRoot', e.target.checked)} />Run as non-root (recommended)</label>}
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.postgres} onChange={(e) => set('postgres', e.target.checked)} />Add PostgreSQL</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.redis} onChange={(e) => set('redis', e.target.checked)} />Add Redis</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.mysql} onChange={(e) => set('mysql', e.target.checked)} />Add MySQL</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.mongodb} onChange={(e) => set('mongodb', e.target.checked)} />Add MongoDB</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.rabbitmq} onChange={(e) => set('rabbitmq', e.target.checked)} />Add RabbitMQ</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.proxy} onChange={(e) => set('proxy', e.target.checked)} />HTTPS reverse proxy (Caddy)</label>
+                {!ex && (
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.includeSample} onChange={(e) => set('includeSample', e.target.checked)} />Include a sample app</label>
+                )}
               </div>
             </div>
 
@@ -323,8 +348,11 @@ export default function ContainerTemplatesPanel() {
                   <div><label className={label} htmlFor="ec2-type">Instance type</label><input id="ec2-type" className={input} value={cfg.ec2.instanceType} onChange={(e) => setEc2('instanceType', e.target.value)} /></div>
                   <div className="col-span-2"><label className={label} htmlFor="ec2-cidr">Who can connect to the app port</label><input id="ec2-cidr" className={input} value={cfg.ec2.allowedCidr} onChange={(e) => setEc2('allowedCidr', e.target.value)} /></div>
                   <div><label className={label} htmlFor="ec2-disk">Disk (GB)</label><input id="ec2-disk" type="number" className={input} value={cfg.ec2.volumeGb} onChange={(e) => setEc2('volumeGb', Number(e.target.value))} /></div>
+                  {!ex && (
                   <div><label className={label} htmlFor="ec2-tag">Image tag</label><input id="ec2-tag" className={input} value={cfg.ec2.imageTag} onChange={(e) => setEc2('imageTag', e.target.value)} /></div>
+                  )}
                   <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={cfg.ec2.elasticIp} onChange={(e) => setEc2('elasticIp', e.target.checked)} />Fixed public IP</label>
+                  {!ex && (<>
                   <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={cfg.ec2.githubActions} onChange={(e) => setEc2('githubActions', e.target.checked)} />GitHub Actions workflow</label>
                   {cfg.ec2.githubActions && <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.ec2.scanImage} onChange={(e) => setEc2('scanImage', e.target.checked)} />Scan the image for vulnerabilities before pushing (Trivy)</label>}
                   {cfg.ec2.githubActions && (
@@ -332,6 +360,7 @@ export default function ContainerTemplatesPanel() {
                       <input id="ec2-gh" className={input} placeholder="yourname/yourapp" value={cfg.ec2.githubRepo} onChange={(e) => setEc2('githubRepo', e.target.value.trim())} />
                       <p className={clsx('text-[11px] mt-1', muted)}>If set, Terraform also creates the AWS role the workflow signs in with, so you only paste one value into GitHub.</p></div>
                   )}
+                  </>)}
                 </div>
               )}
               {target === 'ecs' && (
@@ -351,11 +380,13 @@ export default function ContainerTemplatesPanel() {
                   </>)}
                   <div className="col-span-2"><label className={label} htmlFor="ecs-cidr">Who can connect to the load balancer</label><input id="ecs-cidr" className={input} value={cfg.ecs.allowedCidr} onChange={(e) => setEcs('allowedCidr', e.target.value)} /></div>
                   <div className="col-span-2"><label className={label} htmlFor="ecs-cert">ACM certificate ARN (optional, enables HTTPS)</label><input id="ecs-cert" className={input} placeholder="arn:aws:acm:us-east-1:123456789012:certificate/..." value={cfg.ecs.certificateArn} onChange={(e) => setEcs('certificateArn', e.target.value.trim())} /></div>
+                  {!ex && (<>
                   <div><label className={label} htmlFor="ecs-tag">Image tag</label><input id="ecs-tag" className={input} value={cfg.ecs.imageTag} onChange={(e) => setEcs('imageTag', e.target.value)} /></div>
                   <label className="flex items-end gap-2 text-xs pb-2"><input type="checkbox" checked={cfg.ecs.githubActions} onChange={(e) => setEcs('githubActions', e.target.checked)} />GitHub Actions workflow</label>
                   {cfg.ecs.githubActions && (<>
                     <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.ecs.scanImage} onChange={(e) => setEcs('scanImage', e.target.checked)} />Scan the image for vulnerabilities before pushing (Trivy)</label>
                     <div className="col-span-2"><label className={label} htmlFor="ecs-gh">GitHub repository (optional, owner/name)</label><input id="ecs-gh" className={input} placeholder="yourname/yourapp" value={cfg.ecs.githubRepo} onChange={(e) => setEcs('githubRepo', e.target.value.trim())} /></div>
+                  </>)}
                   </>)}
                 </div>
               )}
@@ -369,11 +400,13 @@ export default function ContainerTemplatesPanel() {
                   <div><label className={label} htmlFor="aca-conc">Requests per replica</label><input id="aca-conc" type="number" className={input} value={cfg.aca.concurrentRequests} onChange={(e) => setAca('concurrentRequests', Number(e.target.value))} /></div>
                   <label className="flex items-end gap-2 text-xs pb-2"><input type="checkbox" checked={cfg.aca.externalIngress} onChange={(e) => setAca('externalIngress', e.target.checked)} />Reachable from the internet</label>
                   {cfg.aca.externalIngress && <div className="col-span-2"><label className={label} htmlFor="aca-cidr">Who can connect</label><input id="aca-cidr" className={input} value={cfg.aca.allowedCidr} onChange={(e) => setAca('allowedCidr', e.target.value)} /></div>}
+                  {!ex && (<>
                   <div><label className={label} htmlFor="aca-tag">Image tag</label><input id="aca-tag" className={input} value={cfg.aca.imageTag} onChange={(e) => setAca('imageTag', e.target.value)} /></div>
                   <label className="flex items-end gap-2 text-xs pb-2"><input type="checkbox" checked={cfg.aca.githubActions} onChange={(e) => setAca('githubActions', e.target.checked)} />GitHub Actions workflow</label>
                   {cfg.aca.githubActions && (<>
                     <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.aca.scanImage} onChange={(e) => setAca('scanImage', e.target.checked)} />Scan the image for vulnerabilities before pushing (Trivy)</label>
                     <div className="col-span-2"><label className={label} htmlFor="aca-gh">GitHub repository (optional, owner/name, used in the setup steps)</label><input id="aca-gh" className={input} placeholder="yourname/yourapp" value={cfg.aca.githubRepo} onChange={(e) => setAca('githubRepo', e.target.value.trim())} /></div>
+                  </>)}
                   </>)}
                 </div>
               )}
@@ -382,12 +415,16 @@ export default function ContainerTemplatesPanel() {
                   <div><label className={label} htmlFor="azvm-loc">Azure region</label><input id="azvm-loc" className={input} value={cfg.azvm.location} onChange={(e) => setAzvm('location', e.target.value)} /></div>
                   <div><label className={label} htmlFor="azvm-size">VM size</label><input id="azvm-size" className={input} value={cfg.azvm.size} onChange={(e) => setAzvm('size', e.target.value)} /></div>
                   <div><label className={label} htmlFor="azvm-disk">Disk (GB)</label><input id="azvm-disk" type="number" className={input} value={cfg.azvm.diskGb} onChange={(e) => setAzvm('diskGb', Number(e.target.value))} /></div>
+                  {!ex && (
                   <div><label className={label} htmlFor="azvm-tag">Image tag</label><input id="azvm-tag" className={input} value={cfg.azvm.imageTag} onChange={(e) => setAzvm('imageTag', e.target.value)} /></div>
+                  )}
                   <div className="col-span-2"><label className={label} htmlFor="azvm-cidr">Who can connect to the app port</label><input id="azvm-cidr" className={input} value={cfg.azvm.allowedCidr} onChange={(e) => setAzvm('allowedCidr', e.target.value)} /></div>
+                  {!ex && (<>
                   <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.azvm.githubActions} onChange={(e) => setAzvm('githubActions', e.target.checked)} />GitHub Actions workflow</label>
                   {cfg.azvm.githubActions && (<>
                     <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.azvm.scanImage} onChange={(e) => setAzvm('scanImage', e.target.checked)} />Scan the image for vulnerabilities before pushing (Trivy)</label>
                     <div className="col-span-2"><label className={label} htmlFor="azvm-gh">GitHub repository (optional, owner/name, used in the setup steps)</label><input id="azvm-gh" className={input} placeholder="yourname/yourapp" value={cfg.azvm.githubRepo} onChange={(e) => setAzvm('githubRepo', e.target.value.trim())} /></div>
+                  </>)}
                   </>)}
                 </div>
               )}
@@ -397,7 +434,9 @@ export default function ContainerTemplatesPanel() {
                   <div><label className={label} htmlFor="aks-size">Node size</label><input id="aks-size" className={input} value={cfg.aks.nodeSize} onChange={(e) => setAks('nodeSize', e.target.value)} /></div>
                   <div><label className={label} htmlFor="aks-min">Minimum nodes</label><input id="aks-min" type="number" className={input} value={cfg.aks.minNodes} onChange={(e) => setAks('minNodes', Number(e.target.value))} /></div>
                   <div><label className={label} htmlFor="aks-max">Maximum nodes</label><input id="aks-max" type="number" className={input} value={cfg.aks.maxNodes} onChange={(e) => setAks('maxNodes', Number(e.target.value))} /></div>
+                  {!ex && (
                   <div><label className={label} htmlFor="aks-tag">Image tag</label><input id="aks-tag" className={input} value={cfg.aks.imageTag} onChange={(e) => setAks('imageTag', e.target.value)} /></div>
+                  )}
                   <div><label className={label} htmlFor="aks-ns">Namespace</label><input id="aks-ns" className={input} value={cfg.k8s.namespace} onChange={(e) => setK8s('namespace', e.target.value)} /></div>
                   <div><label className={label} htmlFor="aks-rep">Replicas</label><input id="aks-rep" type="number" className={input} value={cfg.k8s.replicas} onChange={(e) => setK8s('replicas', Number(e.target.value))} /></div>
                   <div><label className={label} htmlFor="aks-svc">Service type</label>
@@ -413,7 +452,9 @@ export default function ContainerTemplatesPanel() {
               )}
               {target === 'kubernetes' && (
                 <div className="grid grid-cols-2 gap-3">
+                  {!ex && (
                   <div className="col-span-2"><label className={label} htmlFor="k8s-image">Image the cluster pulls</label><input id="k8s-image" className={input} placeholder="ghcr.io/yourname/yourapp:1.0" value={cfg.k8s.image} onChange={(e) => setK8s('image', e.target.value.trim())} /></div>
+                  )}
                   <div><label className={label} htmlFor="k8s-ns">Namespace</label><input id="k8s-ns" className={input} value={cfg.k8s.namespace} onChange={(e) => setK8s('namespace', e.target.value)} /></div>
                   <div><label className={label} htmlFor="k8s-rep">Replicas</label><input id="k8s-rep" type="number" className={input} value={cfg.k8s.replicas} onChange={(e) => setK8s('replicas', Number(e.target.value))} /></div>
                   <div><label className={label} htmlFor="k8s-svc">Service type</label>
@@ -429,8 +470,10 @@ export default function ContainerTemplatesPanel() {
                     <div><label className={label} htmlFor="k8s-max">Maximum replicas</label><input id="k8s-max" type="number" className={input} value={cfg.k8s.maxReplicas} onChange={(e) => setK8s('maxReplicas', Number(e.target.value))} /></div>
                   </>)}
                   <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.k8s.helm} onChange={(e) => setK8s('helm', e.target.checked)} />Also generate a Helm chart</label>
+                  {!ex && (<>
                   <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.k8s.githubActions} onChange={(e) => setK8s('githubActions', e.target.checked)} />GitHub Actions workflow that builds and pushes the image (ghcr.io images)</label>
                   {cfg.k8s.githubActions && <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.k8s.scanImage} onChange={(e) => setK8s('scanImage', e.target.checked)} />Scan the image for vulnerabilities before pushing (Trivy)</label>}
+                  </>)}
                 </div>
               )}
             </div>

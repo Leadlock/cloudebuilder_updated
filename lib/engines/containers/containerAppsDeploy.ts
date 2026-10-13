@@ -9,6 +9,7 @@
  */
 import { companionServices } from './companions';
 import type { ContainerConfig } from './dockerTemplates';
+import { usesExistingImage } from './existingImageUse';
 import { GITHUB_REPO, TAG, q, secretNames, validCidr, type DeployCost } from './ec2Deploy';
 import { vaultSecretName } from './azureVmDeploy';
 
@@ -64,7 +65,7 @@ export function acaWarnings(c: ContainerConfig): string[] {
   if (a.externalIngress && a.allowedCidr === '0.0.0.0/0') w.push('Container Apps: the app is open to the whole internet (over HTTPS). Narrow "who can connect" if it is not public.');
   if (a.minReplicas === 0) w.push('Container Apps: with 0 minimum replicas the first request after an idle period waits for a cold start.');
   if (companionServices(c).length > 0) w.push('Container Apps: PostgreSQL and Redis are not started. Use Azure Database for PostgreSQL / Azure Cache for Redis and put the connection settings in the environment variables.');
-  if (a.imageTag === 'latest') w.push('Container Apps: the "latest" tag is used. A version tag (for example the commit id) makes it clear what is running and allows a rollback.');
+  if (!usesExistingImage(c) && a.imageTag === 'latest') w.push('Container Apps: the "latest" tag is used. A version tag (for example the commit id) makes it clear what is running and allows a rollback.');
   if (c.env.some((v) => v.secret)) w.push('Container Apps: deploy.sh stores each secret in Key Vault (asks once, hidden); the app reads it through its managed identity. After you change a secret, restart the app so it picks up the new value.');
   return w;
 }
@@ -89,7 +90,7 @@ export function estimateAcaCost(c: ContainerConfig): DeployCost | undefined {
   const mem = Math.max(0, memGib * replicaSeconds - FREE_GIB_SECONDS) * GIB_SECOND;
   const lines = [
     { label: `${a.minReplicas > 0 ? a.minReplicas : '0 to 1'} replica${a.minReplicas === 1 ? '' : 's'} (${a.cpu} vCPU, ${memGib} GiB) after the monthly free grant`, monthlyUsd: round2(vcpu + mem) },
-    { label: 'Container Registry (Basic)', monthlyUsd: 5.0 },
+    ...(usesExistingImage(c) ? [] : [{ label: 'Container Registry (Basic)', monthlyUsd: 5.0 }]),
     { label: 'Log Analytics (about 1 GB)', monthlyUsd: 0 },
   ];
   const notes = ['Excludes data transfer out and requests beyond the free 2 million a month. Log Analytics gives 5 GB a month free.'];
@@ -134,7 +135,7 @@ locals {
     App       = var.app_name
   }
   # Registry names are global, letters and digits only: a short stable suffix keeps this one unique.
-  acr_name = substr("acr$\{replace(replace(var.app_name, "-", ""), "_", "")}$\{substr(md5("$\{data.azurerm_client_config.current.subscription_id}$\{var.app_name}"), 0, 6)}", 0, 50)${secrets.length ? `
+${usesExistingImage(c) ? '' : `  acr_name = substr("acr$\{replace(replace(var.app_name, "-", ""), "_", "")}$\{substr(md5("$\{data.azurerm_client_config.current.subscription_id}$\{var.app_name}"), 0, 6)}", 0, 50)`}${secrets.length ? `
   vault_name = "kv$\{substr(replace(replace(var.app_name, "-", ""), "_", ""), 0, 12)}$\{substr(md5("$\{data.azurerm_client_config.current.subscription_id}$\{var.app_name}"), 0, 6)}"` : ''}
 }
 
@@ -153,7 +154,7 @@ resource "azurerm_log_analytics_workspace" "app" {
   tags                = local.tags
 }
 
-# No admin user: the app pulls with its managed identity, which can only read images.
+${usesExistingImage(c) ? '' : `# No admin user: the app pulls with its managed identity, which can only read images.
 resource "azurerm_container_registry" "app" {
   name                = local.acr_name
   location            = azurerm_resource_group.app.location
@@ -163,20 +164,20 @@ resource "azurerm_container_registry" "app" {
   tags                = local.tags
 }
 
-resource "azurerm_user_assigned_identity" "app" {
+`}resource "azurerm_user_assigned_identity" "app" {
   name                = "id-$\{var.app_name}"
   location            = azurerm_resource_group.app.location
   resource_group_name = azurerm_resource_group.app.name
   tags                = local.tags
 }
 
-resource "azurerm_role_assignment" "acr_pull" {
+${usesExistingImage(c) ? '' : `resource "azurerm_role_assignment" "acr_pull" {
   scope                = azurerm_container_registry.app.id
   role_definition_name = "AcrPull"
   principal_id         = azurerm_user_assigned_identity.app.principal_id
 }
 
-${secrets.length ? `# Secrets live here. deploy.sh stores them; the app's identity can only read them.
+`}${secrets.length ? `# Secrets live here. deploy.sh stores them; the app's identity can only read them.
 resource "azurerm_key_vault" "app" {
   name                       = local.vault_name
   location                   = azurerm_resource_group.app.location
@@ -222,11 +223,11 @@ resource "azurerm_container_app" "app" {
     identity_ids = [azurerm_user_assigned_identity.app.id]
   }
 
-  registry {
+${usesExistingImage(c) ? '' : `  registry {
     server   = azurerm_container_registry.app.login_server
     identity = azurerm_user_assigned_identity.app.id
   }
-${secrets.map((k) => `
+`}${secrets.map((k) => `
   secret {
     name                = ${hcl(secretName(k))}
     key_vault_secret_id = "$\{azurerm_key_vault.app.vault_uri}secrets/${vaultSecretName(k)}"
@@ -239,7 +240,7 @@ ${secrets.map((k) => `
 
     container {
       name   = var.app_name
-      image  = "$\{azurerm_container_registry.app.login_server}/$\{var.app_name}:$\{var.image_tag}"
+      image  = ${usesExistingImage(c) ? hcl(c.image) : '"${azurerm_container_registry.app.login_server}/${var.app_name}:${var.image_tag}"'}
       cpu    = var.cpu
       memory = "$\{var.cpu * 2}Gi"
 ${plain.map((v) => `
@@ -300,7 +301,7 @@ ${a.allowedCidr !== '0.0.0.0/0' ? `
     }
   }
 
-  depends_on = [azurerm_role_assignment.acr_pull${secrets.length ? ', azurerm_role_assignment.vault_read' : ''}]
+  depends_on = [${[...(usesExistingImage(c) ? [] : ['azurerm_role_assignment.acr_pull']), ...(secrets.length ? ['azurerm_role_assignment.vault_read'] : [])].join(', ')}]
 }
 `;
 }
@@ -331,13 +332,13 @@ variable "health_path" {
   default     = ${hcl(c.healthPath)}
 }
 
-variable "image_tag" {
+${usesExistingImage(c) ? '' : `variable "image_tag" {
   description = "Image tag to run. deploy.sh sets it."
   type        = string
   default     = ${hcl(a.imageTag)}
 }
 
-variable "cpu" {
+`}variable "cpu" {
   description = "vCPU per replica (memory is twice this in GiB)."
   type        = number
   default     = ${a.cpu}
@@ -376,12 +377,12 @@ variable "allowed_cidr" {
 
 function outputsTf(c: ContainerConfig): string {
   const secrets = secretNames(c);
-  return `output "acr_name" {
+  return `${usesExistingImage(c) ? '' : `output "acr_name" {
   description = "The container registry that holds the image."
   value       = azurerm_container_registry.app.name
 }
 
-output "resource_group" {
+`}output "resource_group" {
   value = azurerm_resource_group.app.name
 }
 ${secrets.length ? `
@@ -468,18 +469,21 @@ ${a.scanImage ? `
 
 function deploySh(c: ContainerConfig): string {
   const secrets = secretNames(c);
+  const ex = usesExistingImage(c);
   return `#!/usr/bin/env bash
 # One command to deploy ${c.appName} to Azure Container Apps: bash deploy.sh
-#   1. creates the resource group, container registry and Key Vault with Terraform (first run)
+${ex ? `#   1. creates the resource group${secrets.length ? ' and Key Vault' : ''} with Terraform (first run)
+#   2. stores any secret values in Key Vault (asks once, hidden), never in a file or in Terraform's state
+#   3. creates or updates the Container Apps environment and the app running ${c.image}, then waits until it answers
+# Run it again after changing the settings. Add --yes to skip the Terraform confirmation.` : `#   1. creates the resource group, container registry and Key Vault with Terraform (first run)
 #   2. stores any secret values in Key Vault (asks once, hidden), never in a file or in Terraform's state
 #   3. builds the image inside Azure (az acr build), so Docker is not needed on this machine
 #   4. creates or updates the Container Apps environment and the app, then waits until it answers
-# Run it again to release a new version (IMAGE_TAG=v2 bash deploy.sh uses another tag). Add --yes to skip the Terraform confirmation.
+# Run it again to release a new version (IMAGE_TAG=v2 bash deploy.sh uses another tag). Add --yes to skip the Terraform confirmation.`}
 set -euo pipefail
 cd "$(dirname "$0")"
 
-TAG="\${IMAGE_TAG:-${c.aca.imageTag}}"
-SECRETS=(${secrets.map((k) => q(k)).join(' ')})
+${ex ? '' : `TAG="\${IMAGE_TAG:-${c.aca.imageTag}}"\n`}SECRETS=(${secrets.map((k) => q(k)).join(' ')})
 APPROVE=""
 [ "\${1:-}" = "--yes" ] && APPROVE="-auto-approve"
 
@@ -489,16 +493,16 @@ need az        "Install the Azure CLI from https://learn.microsoft.com/cli/azure
 az account show >/dev/null 2>&1 || { echo "You are not signed in to Azure. Run: az login"; exit 1; }
 echo "Subscription: $(az account show --query name -o tsv)"
 
-echo "==> 1/4  Resource group, container registry and Key Vault (Terraform)"
+echo "==> 1/${ex ? 3 : 4}  Resource group${ex ? '' : ', container registry'}${secrets.length ? ' and Key Vault' : ''} (Terraform)"
 az provider register --namespace Microsoft.App --wait >/dev/null
 az provider register --namespace Microsoft.OperationalInsights --wait >/dev/null
 az provider register --namespace Microsoft.KeyVault --wait >/dev/null
 terraform -chdir=aca init -input=false >/dev/null
-terraform -chdir=aca apply -var "image_tag=$TAG" \\
-  -target=azurerm_resource_group.app -target=azurerm_container_registry.app -target=azurerm_user_assigned_identity.app -target=azurerm_role_assignment.acr_pull${secrets.length ? ' -target=azurerm_key_vault.app -target=azurerm_role_assignment.deployer_secrets -target=azurerm_role_assignment.vault_read' : ''} \\
+terraform -chdir=aca apply${ex ? '' : ' -var "image_tag=$TAG"'} \\
+  -target=azurerm_resource_group.app${ex ? '' : ' -target=azurerm_container_registry.app'} -target=azurerm_user_assigned_identity.app${ex ? '' : ' -target=azurerm_role_assignment.acr_pull'}${secrets.length ? ' -target=azurerm_key_vault.app -target=azurerm_role_assignment.deployer_secrets -target=azurerm_role_assignment.vault_read' : ''} \\
   \${APPROVE:+-auto-approve}
 
-echo "==> 2/4  Secrets"
+echo "==> 2/${ex ? 3 : 4}  Secrets"
 if [ \${#SECRETS[@]} -gt 0 ]; then
   VAULT=$(terraform -chdir=aca output -raw vault_name)
   for NAME in "\${SECRETS[@]}"; do
@@ -524,13 +528,13 @@ else
   echo "    none"
 fi
 
-echo "==> 3/4  Build the image in Azure"
+${ex ? '' : `echo "==> 3/4  Build the image in Azure"
 ACR=$(terraform -chdir=aca output -raw acr_name)
 APP=${q(c.appName)}
 az acr build --registry "$ACR" --image "$APP:$TAG" --platform linux/amd64 .
 
-echo "==> 4/4  Environment and app (Terraform)"
-terraform -chdir=aca apply -var "image_tag=$TAG" \${APPROVE:+-auto-approve}
+`}echo "==> ${ex ? '3/3' : '4/4'}  Environment and app (Terraform)"
+terraform -chdir=aca apply${ex ? '' : ' -var "image_tag=$TAG"'} \${APPROVE:+-auto-approve}
 
 URL=$(terraform -chdir=aca output -raw app_url)
 WAIT="\${DEPLOY_WAIT_SECONDS:-600}"
@@ -553,7 +557,7 @@ fi
 function destroySh(c: ContainerConfig): string {
   const secrets = secretNames(c);
   return `#!/usr/bin/env bash
-# Removes everything deploy.sh created (the whole resource group: app, environment, registry with its images, logs): bash destroy.sh
+# Removes everything deploy.sh created (the whole resource group: app, environment, ${usesExistingImage(c) ? '' : 'registry with its images, '}logs): bash destroy.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -580,20 +584,20 @@ function readme(c: ContainerConfig): string {
 
 ## Quick start
 
-You need Terraform and the Azure CLI installed and to be signed in (\`az login\`). Docker is **not** needed: the image is built inside Azure. From the folder that contains your app and these files:
+You need Terraform and the Azure CLI installed and to be signed in (\`az login\`). Docker is **not** needed${usesExistingImage(c) ? '' : ': the image is built inside Azure'}. From the folder that contains your app and these files:
 
 \`\`\`bash
 bash deploy.sh
 \`\`\`
 
-It creates the resource group, container registry${secrets.length ? ' and Key Vault' : ''}, ${secrets.length ? 'asks for your secret values (hidden) and stores them in Key Vault, ' : ''}builds the image in Azure, creates the environment and the app, and prints the address. To release a new version run it again (\`IMAGE_TAG=v2 bash deploy.sh\` to use another tag). To remove everything: \`bash destroy.sh\`.
+It creates the resource group${usesExistingImage(c) ? '' : ', container registry'}${secrets.length ? ' and Key Vault' : ''}, ${secrets.length ? 'asks for your secret values (hidden) and stores them in Key Vault, ' : ''}${usesExistingImage(c) ? `runs \`${c.image}\` as it is (nothing is built), ` : 'builds the image in Azure, '}creates the environment and the app, and prints the address. ${usesExistingImage(c) ? 'To change anything edit the settings and run it again.' : 'To release a new version run it again (\`IMAGE_TAG=v2 bash deploy.sh\` to use another tag).'} To remove everything: \`bash destroy.sh\`.
 
 ## What gets created
 
-- A resource group \`rg-${c.appName}\` in \`${a.location}\` with a container registry (Basic, no admin user), a Log Analytics workspace and a Container Apps environment.
+- A resource group \`rg-${c.appName}\` in \`${a.location}\` with ${usesExistingImage(c) ? 'a' : 'a container registry (Basic, no admin user), a'} Log Analytics workspace and a Container Apps environment.
 - The app: ${a.minReplicas}${a.maxReplicas !== a.minReplicas ? ` to ${a.maxReplicas}` : ''} replica${a.maxReplicas === 1 ? '' : 's'} of ${a.cpu} vCPU and ${a.cpu * 2} GiB, scaling out at ${a.concurrentRequests} concurrent requests per replica${a.minReplicas === 0 ? ' and to zero when idle' : ''}.
 - ${a.externalIngress ? `HTTPS ingress${a.allowedCidr === '0.0.0.0/0' ? ' open to everyone' : ` restricted to \`${a.allowedCidr}\``}` : 'Internal ingress only (reachable from inside the environment)'}, with startup, liveness and readiness probes on \`${c.healthPath}\`.
-- A managed identity that can only pull images (AcrPull) from the registry.
+${usesExistingImage(c) ? (secrets.length ? '- A managed identity that can only read the secrets in the vault.' : '') : '- A managed identity that can only pull images (AcrPull) from the registry.'}
 ${secrets.length ? `- Secrets (${secrets.join(', ')}) are stored in a Key Vault (as ${secrets.map((k) => `\`${vaultSecretName(k)}\``).join(', ')}) and read by the app through its managed identity (a Container Apps Key Vault reference). They are never written to Terraform, its state or any file. After you change a secret in the vault, restart the app (\`az containerapp revision restart\`) so it picks up the new value.\n` : ''}
 ## Logs and status
 
@@ -608,7 +612,7 @@ az containerapp revision list --name ${c.appName} --resource-group rg-${c.appNam
 - **The first start is slow**: a new environment takes a few minutes. After that, a revision starts in about a minute.
 - **The app restarts**: read the logs. The health check path \`${c.healthPath}\` must answer on port ${c.port}.
 - **"exec format error"**: the image was built for the wrong CPU type. \`az acr build --platform linux/amd64\` is used by \`deploy.sh\`.
-${a.githubActions ? `
+${a.githubActions && !usesExistingImage(c) ? `
 ## Optional: deploy automatically when you push to GitHub
 
 \`.github/workflows/deploy.yml\` builds, scans and pushes the image on every push to \`main\` and updates the app. It signs in to Azure without a stored password (OIDC). One-time setup${a.githubRepo ? ` for \`${a.githubRepo}\`` : ''}:
@@ -642,6 +646,6 @@ export function generateAcaFiles(c: ContainerConfig): Array<{ path: string; cont
     { path: 'aca/outputs.tf', content: outputsTf(c) },
     { path: 'aca/.gitignore', content: '.terraform/\n*.tfstate\n*.tfstate.*\ncrash.log\n' },
     { path: 'aca/README.md', content: readme(c) },
-    ...(c.aca.githubActions ? [{ path: '.github/workflows/deploy.yml', content: workflowYml(c) }] : []),
+    ...(c.aca.githubActions && !usesExistingImage(c) ? [{ path: '.github/workflows/deploy.yml', content: workflowYml(c) }] : []),
   ];
 }

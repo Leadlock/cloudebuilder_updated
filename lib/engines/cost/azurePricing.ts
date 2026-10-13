@@ -814,7 +814,8 @@ export class AzurePricingProvider implements PricingProvider {
     const vm = toMonthly(hourly);
     const diskGb = Number(config['diskGb'] ?? 30);
     const disk = diskGb * 0.075;
-    const registry = 5;
+    // A ready-made image needs no registry of our own.
+    const registry = typeof config['image'] === 'string' && config['image'].trim() !== '' ? 0 : 5;
     return {
       resourceId: resource.id,
       resourceLabel: resource.label,
@@ -826,7 +827,7 @@ export class AzurePricingProvider implements PricingProvider {
       breakdown: [
         { label: `VM ${size} (pay as you go, Linux)`, monthlyUsd: vm },
         { label: `Standard SSD ${diskGb} GB`, monthlyUsd: disk },
-        { label: 'Container Registry (Basic)', monthlyUsd: registry },
+        ...(registry > 0 ? [{ label: 'Container Registry (Basic)', monthlyUsd: registry }] : []),
       ],
       assumptions: ['Pay-as-you-go pricing, Linux', 'No data transfer or Key Vault operation charges included', `Region: ${region}`],
       pricingSource: 'azure-vm-payg-list-price',

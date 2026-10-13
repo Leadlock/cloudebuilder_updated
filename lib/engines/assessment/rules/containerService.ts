@@ -12,7 +12,12 @@
 import type { RuleDefinition } from '../types';
 import { REVIEWED, configEvaluator, rule, PUBLIC_CIDRS } from '../ruleHelpers';
 
+import { imageIsFloating } from '@/lib/engines/containers/existingImage';
+
 const V = '1.0.0';
+/** A ready-made image is set on the node: nothing is built, so what a build would control is not applicable. */
+const readyMade = (c: Record<string, unknown>): boolean => typeof c['image'] === 'string' && c['image'].trim() !== '';
+const NOT_BUILT = { status: 'NOT_APPLICABLE' as const, observation: 'A ready-made image runs as published: nothing is built, so there is no Dockerfile or build pipeline to check.' };
 type Cloud = 'aws' | 'azure';
 const CLOUDS = {
   aws: { prefix: 'AWS', type: 'aws_container_service', service: 'Container service (Docker on EC2)', tf: 'TF-AWS', waSec: 'AWS-WA-security', waOps: 'AWS-WA-operational_excellence' },
@@ -41,7 +46,8 @@ const buildRules = (cloud: Cloud): RuleDefinition[] => {
     references: [P.waSec, TF],
     soc1: ['SOC1-LA-01'],
     remediation: { recommendation: 'Run the container as a non-root user (the Dockerfile from Container Templates does this when "Run as non-root" is on).', manualSteps: ['Turn on "Run as non-root user".', 'Rebuild and push the image.', 'Check the app does not write outside its own folders.'] },
-    evaluate: configEvaluator(['runAsNonRoot'], { runAsNonRoot: 'Enabled / Yes' }, (c) => c.runAsNonRoot === false
+    evaluate: configEvaluator(['runAsNonRoot'], { runAsNonRoot: 'Enabled / Yes' }, (c) => readyMade(c) ? NOT_BUILT
+      : c.runAsNonRoot === false
       ? { status: 'FAIL', observation: 'The container runs as root.' }
       : { status: 'PASS', observation: 'The container runs as a non-root user.' }),
   }),
@@ -81,7 +87,8 @@ const buildRules = (cloud: Cloud): RuleDefinition[] => {
     references: [P.waSec, TF],
     soc1: ['SOC1-OP-02'],
     remediation: { recommendation: 'Turn on the Trivy scan in the generated GitHub Actions workflow.', manualSteps: ['Turn on "Scan the image for vulnerabilities".', 'Regenerate the workflow in Container Templates.'] },
-    evaluate: configEvaluator(['scanImage'], { scanImage: 'Enabled / Yes' }, (c) => c.scanImage === false
+    evaluate: configEvaluator(['scanImage'], { scanImage: 'Enabled / Yes' }, (c) => readyMade(c) ? NOT_BUILT
+      : c.scanImage === false
       ? { status: 'FAIL', observation: 'The image is not scanned before it is pushed.' }
       : { status: 'PASS', observation: 'The image is scanned (Trivy) before it is pushed.' }),
   }),
@@ -102,7 +109,11 @@ const buildRules = (cloud: Cloud): RuleDefinition[] => {
       description: 'Manual: set a version tag.', patch: () => ({}),
       architectureImpact: 'The instance runs a named build.', costImpact: 'NONE',
     },
-    evaluate: configEvaluator(['imageTag'], { imageTag: 'A version tag' }, (c) => c.imageTag === 'latest'
+    evaluate: configEvaluator(['imageTag'], { imageTag: 'A version tag' }, (c) => readyMade(c)
+      ? (imageIsFloating(String(c['image']))
+        ? { status: 'FAIL', observation: `The image ${String(c['image'])} has no version tag (or is "latest").` }
+        : { status: 'PASS', observation: `The image ${String(c['image'])} is pinned to a version.` })
+      : c.imageTag === 'latest'
       ? { status: 'FAIL', observation: 'The image tag is "latest".' }
       : { status: 'PASS', observation: `The image tag is ${String(c.imageTag)}.` }),
   }),

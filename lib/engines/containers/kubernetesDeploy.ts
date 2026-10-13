@@ -8,6 +8,7 @@
  */
 import { companionServices } from './companions';
 import type { ContainerConfig, ContainerStack } from './dockerTemplates';
+import { usesExistingImage } from './existingImageUse';
 import { q, secretNames } from './ec2Deploy';
 
 export interface K8sConfig {
@@ -47,7 +48,11 @@ const DNS_SUBDOMAIN = /^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/;
 const DNS_NAME = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
 const IMAGE = /^[a-z0-9][a-z0-9._-]*(?::[0-9]{1,5})?(?:\/[a-z0-9][a-z0-9._-]*)*(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?(?:@sha256:[a-f0-9]{64})?$/;
 
-export function validateK8s(c: ContainerConfig): string[] {
+/** A ready-made image chosen in the form is the image the cluster pulls. */
+const withImage = (c: ContainerConfig): ContainerConfig => (usesExistingImage(c) ? { ...c, k8s: { ...c.k8s, image: c.image } } : c);
+
+export function validateK8s(c0: ContainerConfig): string[] {
+  const c = withImage(c0);
   const k = c.k8s;
   if (!k.enabled) return [];
   const out: string[] = [];
@@ -66,7 +71,8 @@ export function validateK8s(c: ContainerConfig): string[] {
   return out;
 }
 
-export function k8sWarnings(c: ContainerConfig): string[] {
+export function k8sWarnings(c0: ContainerConfig): string[] {
+  const c = withImage(c0);
   const k = c.k8s;
   if (!k.enabled) return [];
   const w: string[] = [];
@@ -606,12 +612,15 @@ spec:
 function deploySh(c: ContainerConfig): string {
   const k = c.k8s;
   const secrets = secretNames(c);
+  const ex = usesExistingImage(c);
   return `#!/usr/bin/env bash
 # One command to deploy ${c.appName} to the Kubernetes cluster kubectl is pointed at: bash deploy.sh
-#   1. builds the image for amd64 and arm64 and pushes it to ${splitImage(k.image).repository.split('/')[0]} (skip with SKIP_BUILD=1 if the image is already there)
+${ex ? `#   1. stores any secret values in the cluster (asks once, hidden), never in a file
+#   2. applies the manifests in k8s/ (the cluster pulls ${k.image}) and waits for the rollout
+# Run it again after changing the settings. Add --yes to skip the confirmation.` : `#   1. builds the image for amd64 and arm64 and pushes it to ${splitImage(k.image).repository.split('/')[0]} (skip with SKIP_BUILD=1 if the image is already there)
 #   2. stores any secret values in the cluster (asks once, hidden), never in a file
 #   3. applies the manifests in k8s/ and waits for the rollout
-# Run it again to release a new version. Add --yes to skip the confirmation.
+# Run it again to release a new version. Add --yes to skip the confirmation.`}
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -631,7 +640,7 @@ if [ "\${1:-}" != "--yes" ]; then
   [ "$OK" = "y" ] || [ "$OK" = "Y" ] || { echo "Cancelled."; exit 1; }
 fi
 
-if [ -z "\${SKIP_BUILD:-}" ]; then
+${ex ? '' : `if [ -z "\${SKIP_BUILD:-}" ]; then
   echo "==> 1/3  Build and push the image"
   need docker "Install Docker Desktop from https://www.docker.com/products/docker-desktop"
   docker info >/dev/null 2>&1 || { echo "Docker is not running."; exit 1; }
@@ -641,7 +650,7 @@ else
   echo "==> 1/3  Skipped the build (SKIP_BUILD is set)"
 fi
 
-echo "==> 2/3  Namespace and secrets"
+`}echo "==> ${ex ? '1/2' : '2/3'}  Namespace and secrets"
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 if [ \${#SECRETS[@]} -gt 0 ]; then
   if kubectl -n "$NAMESPACE" get secret "$APP-secrets" >/dev/null 2>&1; then
@@ -659,7 +668,7 @@ if [ \${#SECRETS[@]} -gt 0 ]; then
   fi
 fi
 
-echo "==> 3/3  Apply and wait"
+echo "==> ${ex ? '2/2' : '3/3'}  Apply and wait"
 kubectl apply -k k8s
 kubectl -n "$NAMESPACE" rollout status deployment/"$APP" --timeout=300s
 echo "Done. ${k.ingressHost ? `Open ${k.tlsSecret ? 'https' : 'http'}://${k.ingressHost}` : k.serviceType === 'LoadBalancer' ? 'Find the address with: kubectl -n "$NAMESPACE" get service "$APP"' : 'Try it with: kubectl -n "$NAMESPACE" port-forward service/"$APP" 8080:80'}"
@@ -740,13 +749,13 @@ function readme(c: ContainerConfig): string {
 
 ## Quick start
 
-You need \`kubectl\` pointed at your cluster (\`kubectl config current-context\` shows which), Docker, and to be logged in to the registry of \`${k.image}\` (\`docker login\`). Then, from the folder that contains your app and these files:
+You need \`kubectl\` pointed at your cluster (\`kubectl config current-context\` shows which)${usesExistingImage(c) ? '' : `, Docker, and to be logged in to the registry of \`${k.image}\` (\`docker login\`)`}. Then, from the folder that contains your app and these files:
 
 \`\`\`bash
 bash deploy.sh
 \`\`\`
 
-It builds and pushes the image, ${secrets.length ? 'asks for your secret values (hidden) and stores them in the cluster, ' : ''}applies \`k8s/\` and waits for the rollout. Run it again to release a new version. To remove everything: \`bash destroy.sh\`.
+It ${usesExistingImage(c) ? '' : 'builds and pushes the image, '}${secrets.length ? 'asks for your secret values (hidden) and stores them in the cluster, ' : ''}applies \`k8s/\` (the cluster pulls \`${k.image}\`${usesExistingImage(c) ? ' as it is: nothing is built' : ''}) and waits for the rollout. ${usesExistingImage(c) ? 'Run it again after changing the settings.' : 'Run it again to release a new version.'} To remove everything: \`bash destroy.sh\`.
 
 ## What gets created (namespace \`${k.namespace}\`)
 
@@ -782,7 +791,8 @@ kubectl -n ${k.namespace} describe deployment ${c.appName}
 }
 
 /** The manifests, the Helm chart and the README, without the deploy scripts or workflow (other targets that run Kubernetes bring their own). */
-export function generateK8sManifestFiles(c: ContainerConfig): Array<{ path: string; content: string }> {
+export function generateK8sManifestFiles(c0: ContainerConfig): Array<{ path: string; content: string }> {
+  const c = withImage(c0);
   const k = c.k8s;
   return [
     ...(k.namespace !== 'default' ? [{ path: 'k8s/namespace.yaml', content: namespaceYaml(c) }] : []),
@@ -797,14 +807,15 @@ export function generateK8sManifestFiles(c: ContainerConfig): Array<{ path: stri
   ];
 }
 
-export function generateK8sFiles(c: ContainerConfig): Array<{ path: string; content: string; executable?: boolean }> {
-  if (!c.k8s.enabled) return [];
+export function generateK8sFiles(c0: ContainerConfig): Array<{ path: string; content: string; executable?: boolean }> {
+  if (!c0.k8s.enabled) return [];
+  const c = withImage(c0);
   const k = c.k8s;
   return [
     { path: 'deploy.sh', content: deploySh(c), executable: true },
     { path: 'destroy.sh', content: destroySh(c), executable: true },
     ...generateK8sManifestFiles(c),
     { path: 'k8s/README.md', content: readme(c) },
-    ...(k.githubActions && /^ghcr\.io\//.test(k.image) ? [{ path: '.github/workflows/image.yml', content: workflowYml(c) }] : []),
+    ...(k.githubActions && !usesExistingImage(c) && /^ghcr\.io\//.test(k.image) ? [{ path: '.github/workflows/image.yml', content: workflowYml(c) }] : []),
   ];
 }

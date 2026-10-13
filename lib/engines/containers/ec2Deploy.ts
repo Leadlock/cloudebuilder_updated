@@ -18,6 +18,7 @@
  */
 import { companionServices } from './companions';
 import type { ContainerConfig } from './dockerTemplates';
+import { usesExistingImage } from './existingImageUse';
 import { ec2HourlyUsd } from '@/lib/engines/cost/awsPricing';
 
 export interface Ec2Config {
@@ -70,7 +71,7 @@ export function ec2Warnings(c: ContainerConfig): string[] {
   const w: string[] = [];
   if (e.allowedCidr === '0.0.0.0/0') w.push(`EC2: port ${c.port} will be open to the whole internet. Narrow "who can connect" if the app is not public.`);
   if (companionServices(c).length > 0) w.push('EC2: PostgreSQL and Redis are not started on the instance. Use RDS / ElastiCache and put the connection settings in the environment variables.');
-  if (e.imageTag === 'latest') w.push('EC2: the "latest" tag is used. It works, but a version tag (for example the commit id) makes it clear what is running.');
+  if (!usesExistingImage(c) && e.imageTag === 'latest') w.push('EC2: the "latest" tag is used. It works, but a version tag (for example the commit id) makes it clear what is running.');
   if (c.env.some((v) => v.secret)) w.push(`EC2: create each secret in SSM Parameter Store as a SecureString named /${c.appName}/<NAME> before the service can start.`);
   return w;
 }
@@ -156,7 +157,7 @@ locals {
   subnet_id = var.subnet_id == "" ? sort(data.aws_subnets.in_vpc[0].ids)[0] : var.subnet_id
 }
 
-# ── Image registry ──────────────────────────────────────────────────────────
+${usesExistingImage(c) ? '' : `# ── Image registry ──────────────────────────────────────────────────────────
 
 resource "aws_ecr_repository" "app" {
   name                 = var.app_name
@@ -190,7 +191,7 @@ resource "aws_ecr_lifecycle_policy" "app" {
   })
 }
 
-# ── Instance role: Session Manager, pull this image, read this app's secrets ──
+`}# ── Instance role: Session Manager, ${usesExistingImage(c) ? 'read' : 'pull this image, read'} this app's secrets ──
 
 data "aws_iam_policy_document" "assume" {
   statement {
@@ -214,7 +215,7 @@ resource "aws_iam_role_policy_attachment" "ssm" {
 }
 
 data "aws_iam_policy_document" "app" {
-  statement {
+${usesExistingImage(c) ? '' : `  statement {
     sid       = "EcrLogin"
     actions   = ["ecr:GetAuthorizationToken"]
     resources = ["*"]
@@ -224,7 +225,7 @@ data "aws_iam_policy_document" "app" {
     actions   = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability"]
     resources = [aws_ecr_repository.app.arn]
   }
-  statement {
+`}  statement {
     sid       = "ReadThisAppsSecrets"
     actions   = ["ssm:GetParameter", "ssm:GetParameters"]
     resources = ["arn:aws:ssm:\${var.region}:\${data.aws_caller_identity.current.account_id}:parameter/\${var.app_name}/*"]
@@ -232,7 +233,7 @@ data "aws_iam_policy_document" "app" {
 }
 
 resource "aws_iam_role_policy" "app" {
-  name   = "\${var.app_name}-ecr-and-secrets"
+  name   = "\${var.app_name}-${usesExistingImage(c) ? 'secrets' : 'ecr-and-secrets'}"
   role   = aws_iam_role.app.id
   policy = data.aws_iam_policy_document.app.json
 }
@@ -312,7 +313,7 @@ function variablesTf(c: ContainerConfig): string {
 }
 
 variable "app_name" {
-  description = "Name used for the instance, repository, role and secret path."
+  description = "Name used for the instance, ${usesExistingImage(c) ? '' : 'repository, '}role and secret path."
   type        = string
   default     = "${c.appName}"
 }
@@ -350,7 +351,7 @@ variable "subnet_id" {
   type        = string
   default     = ""
 }
-${c.ec2.githubRepo ? `
+${c.ec2.githubRepo && !usesExistingImage(c) ? `
 variable "github_repository" {
   description = "GitHub repository (owner/name) allowed to push images and restart the service."
   type        = string
@@ -367,12 +368,12 @@ variable "create_github_oidc_provider" {
 
 function outputsTf(c: ContainerConfig): string {
   const ip = c.ec2.elasticIp ? 'aws_eip.app.public_ip' : 'aws_instance.app.public_ip';
-  return `output "ecr_repository_url" {
+  return `${usesExistingImage(c) ? '' : `output "ecr_repository_url" {
   description = "Push the image here."
   value       = aws_ecr_repository.app.repository_url
 }
 
-output "instance_id" {
+`}output "instance_id" {
   value = aws_instance.app.id
 }
 
@@ -388,7 +389,7 @@ output "connect" {
   description = "Open a shell on the server (no SSH needed)."
   value       = "aws ssm start-session --target \${aws_instance.app.id} --region \${var.region}"
 }
-${c.ec2.githubRepo ? `
+${c.ec2.githubRepo && !usesExistingImage(c) ? `
 output "github_role_arn" {
   description = "Save this in GitHub as the secret AWS_ROLE_TO_ARN."
   value       = aws_iam_role.github.arn
@@ -416,11 +417,12 @@ set -euo pipefail
 
 TOKEN=$(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 120")
 REGION=$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region)
-ACCOUNT=$(aws sts get-caller-identity --query Account --output text --region "$REGION")
+${usesExistingImage(c) ? `IMAGE=${q(c.image)}
+` : `ACCOUNT=$(aws sts get-caller-identity --query Account --output text --region "$REGION")
 IMAGE="$ACCOUNT.dkr.ecr.$REGION.amazonaws.com/${app}:${c.ec2.imageTag}"
 
 aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ACCOUNT.dkr.ecr.$REGION.amazonaws.com"
-docker pull "$IMAGE"
+`}docker pull "$IMAGE"
 
 ENV_FILE=/run/${app}.env
 umask 077
@@ -445,7 +447,7 @@ Requires=docker.service
 [Service]
 ExecStart=/usr/local/bin/${app}-run
 ExecStop=/usr/bin/docker stop ${app}
-# If the image is not pushed yet, or a secret is missing, try again in 30 seconds.
+# If the image ${usesExistingImage(c) ? 'cannot be pulled yet' : 'is not pushed yet'}, or a secret is missing, try again in 30 seconds.
 Restart=always
 RestartSec=30
 
@@ -612,35 +614,36 @@ export const q = (v: string) => `'${v}'`; // every value here is validated to co
 
 function deploySh(c: ContainerConfig): string {
   const secrets = secretNames(c);
+  const ex = usesExistingImage(c);
+  const total = ex ? 3 : 4;
   return `#!/usr/bin/env bash
 # One command to deploy ${c.appName} to EC2: bash deploy.sh
-#   1. creates the server and image repository with Terraform (first run), asking you to confirm
+#   1. creates the server${ex ? '' : ' and image repository'} with Terraform (first run), asking you to confirm
 #   2. stores any secret values in AWS (asks once, hidden), never in a file
-#   3. builds the image for the server's CPU type and pushes it
-#   4. restarts the app and waits until it answers
+${ex ? `#   3. starts the app (the server pulls ${c.image}) and waits until it answers` : `#   3. builds the image for the server's CPU type and pushes it
+#   4. restarts the app and waits until it answers`}
 # Run it again to release a new version. Add --yes to skip the Terraform confirmation.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 APP=${q(c.appName)}
 REGION=${q(c.ec2.region)}
-TAG=${q(c.ec2.imageTag)}
-SECRETS=(${secrets.map(q).join(' ')})
+${ex ? '' : `TAG=${q(c.ec2.imageTag)}\n`}SECRETS=(${secrets.map(q).join(' ')})
 APPROVE=""
 [ "\${1:-}" = "--yes" ] && APPROVE="-auto-approve"
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing tool: $1. $2"; exit 1; }; }
 need terraform "Install it from https://developer.hashicorp.com/terraform/install"
 need aws       "Install the AWS CLI from https://aws.amazon.com/cli/"
-need docker    "Install Docker Desktop from https://www.docker.com/products/docker-desktop"
-aws sts get-caller-identity >/dev/null 2>&1 || { echo "You are not signed in to AWS. Run: aws configure (or aws sso login)"; exit 1; }
-docker info >/dev/null 2>&1 || { echo "Docker is not running. Start Docker Desktop and try again."; exit 1; }
-
-echo "==> 1/4  Server and image repository (Terraform)"
+${ex ? '' : `need docker    "Install Docker Desktop from https://www.docker.com/products/docker-desktop"
+`}aws sts get-caller-identity >/dev/null 2>&1 || { echo "You are not signed in to AWS. Run: aws configure (or aws sso login)"; exit 1; }
+${ex ? '' : `docker info >/dev/null 2>&1 || { echo "Docker is not running. Start Docker Desktop and try again."; exit 1; }
+`}
+echo "==> 1/${total}  Server${ex ? '' : ' and image repository'} (Terraform)"
 terraform -chdir=ec2 init -input=false >/dev/null
 terraform -chdir=ec2 apply \${APPROVE:+-auto-approve}
 
-echo "==> 2/4  Secrets"
+echo "==> 2/${total}  Secrets"
 for NAME in \${SECRETS[@]+"\${SECRETS[@]}"}; do
   if aws ssm get-parameter --region "$REGION" --name "/$APP/$NAME" >/dev/null 2>&1; then
     echo "    $NAME: already stored"
@@ -655,14 +658,14 @@ for NAME in \${SECRETS[@]+"\${SECRETS[@]}"}; do
   fi
 done
 
-echo "==> 3/4  Build and push the image"
+${ex ? '' : `echo "==> 3/4  Build and push the image"
 REPO=$(terraform -chdir=ec2 output -raw ecr_repository_url)
 aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "\${REPO%%/*}"
 # The server is x86_64. Building for it explicitly makes this work from Apple Silicon Macs too.
 docker build --platform linux/amd64 -t "$REPO:$TAG" .
 docker push "$REPO:$TAG"
 
-echo "==> 4/4  Start the app"
+`}echo "==> ${total}/${total}  Start the app"
 INSTANCE_ID=$(terraform -chdir=ec2 output -raw instance_id)
 if aws ssm send-command --region "$REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript \\
      --parameters "commands=[\\"systemctl restart $APP.service\\"]" >/dev/null 2>&1; then
@@ -692,7 +695,7 @@ fi
 function destroySh(c: ContainerConfig): string {
   const secrets = secretNames(c);
   return `#!/usr/bin/env bash
-# Removes everything deploy.sh created (server, image repository with its images, roles): bash destroy.sh
+# Removes everything deploy.sh created (server, ${usesExistingImage(c) ? '' : 'image repository with its images, '}roles): bash destroy.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -703,7 +706,7 @@ SECRETS=(${secrets.map(q).join(' ')})
 command -v terraform >/dev/null 2>&1 || { echo "Missing tool: terraform"; exit 1; }
 command -v aws >/dev/null 2>&1 || { echo "Missing tool: aws"; exit 1; }
 
-echo "This permanently deletes the server and the image repository of $APP."
+echo "This permanently deletes the server${usesExistingImage(c) ? "" : " and the image repository"} of $APP."
 read -r -p "Type the app name ($APP) to continue: " ANSWER
 [ "$ANSWER" = "$APP" ] || { echo "Cancelled."; exit 1; }
 
@@ -736,7 +739,7 @@ the folder that contains your app and these files:
 bash deploy.sh
 \`\`\`
 
-That is all. It creates the server, ${secrets.length ? 'asks for your secret values (hidden), ' : ''}builds and pushes your image, starts the app and prints
+That is all. It creates the server, ${secrets.length ? 'asks for your secret values (hidden), ' : ''}${usesExistingImage(c) ? `starts ${c.image} (nothing is built)` : 'builds and pushes your image, starts the app'} and prints
 its address. Terraform shows what it will create and asks you to type \`yes\` first (add \`--yes\` to skip that).
 
 To release a new version, run \`bash deploy.sh\` again. To remove everything and stop paying for it:
@@ -747,8 +750,8 @@ bash destroy.sh
 
 ## What gets created
 
-- An ECR repository (where your image is stored) and one EC2 server (Amazon Linux 2023) running your image under systemd.
-- A role for the server that can only pull this image and read this app's secrets, and a security group that opens only port ${c.port}
+- ${usesExistingImage(c) ? `One EC2 server (Amazon Linux 2023) that pulls \`${c.image}\` and runs it under systemd.` : 'An ECR repository (where your image is stored) and one EC2 server (Amazon Linux 2023) running your image under systemd.'}
+- A role for the server that can only ${usesExistingImage(c) ? 'read' : 'pull this image and read'} this app's secrets, and a security group that opens only port ${c.port}
   to \`${c.ec2.allowedCidr}\`. There is no SSH.
 ${secrets.length ? `- Secrets (${secrets.join(', ')}) are stored in AWS SSM Parameter Store as \`/${c.appName}/<NAME>\` and read by the server when it starts.
   They are never written to Terraform, to its state or to any file.
@@ -769,7 +772,7 @@ sudo docker ps                                    # the running container
 - **The address does not answer for a few minutes**: a new server installs Docker first. The app starts by itself once the image and secrets exist.
 - **The address never answers**: the port is open only to \`${c.ec2.allowedCidr}\`. If that is not your network, change \`allowed_cidr\` in \`ec2/variables.tf\` and run \`bash deploy.sh\` again.
 - **"exec format error" in the logs**: the image was built for the wrong CPU type. \`deploy.sh\` builds for the server's type; if you push another way, add \`--platform linux/amd64\`.
-${c.ec2.githubActions ? `
+${c.ec2.githubActions && !usesExistingImage(c) ? `
 ## Optional: deploy automatically when you push to GitHub
 
 \`.github/workflows/deploy.yml\` builds and pushes the image on every push to \`main\` and restarts the app.
@@ -789,7 +792,7 @@ and generate again. Terraform then creates the role and prints its ARN. Without 
 - This is a single server: HTTP only, no load balancer, and no automatic replacement if it fails. For HTTPS or several servers,
   put an Application Load Balancer in front or move to ECS.
 - Terraform keeps its record of what it built in \`ec2/terraform.tfstate\`. Keep that folder; \`bash destroy.sh\` needs it.
-- Costs: the server, its disk and the public IPv4 address bill every hour, and ECR bills for storage.
+- Costs: the server, its disk and the public IPv4 address bill every hour, ${usesExistingImage(c) ? '' : 'and ECR bills for storage.'}
 `;
 }
 
@@ -801,10 +804,10 @@ export function generateEc2Files(c: ContainerConfig): Array<{ path: string; cont
     { path: 'ec2/main.tf', content: mainTf(c) },
     { path: 'ec2/variables.tf', content: variablesTf(c) },
     { path: 'ec2/outputs.tf', content: outputsTf(c) },
-    ...(c.ec2.githubRepo ? [{ path: 'ec2/github_oidc.tf', content: githubOidcTf() }] : []),
+    ...(c.ec2.githubRepo && !usesExistingImage(c) ? [{ path: 'ec2/github_oidc.tf', content: githubOidcTf() }] : []),
     { path: 'ec2/user_data.sh', content: userDataSh(c) },
     { path: 'ec2/.gitignore', content: '.terraform/\n*.tfstate\n*.tfstate.*\ncrash.log\n' },
     { path: 'ec2/README.md', content: ec2Readme(c) },
-    ...(c.ec2.githubActions ? [{ path: '.github/workflows/deploy.yml', content: workflowYml(c) }] : []),
+    ...(c.ec2.githubActions && !usesExistingImage(c) ? [{ path: '.github/workflows/deploy.yml', content: workflowYml(c) }] : []),
   ];
 }

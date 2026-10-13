@@ -109,7 +109,7 @@ ${hc('["CMD", "rabbitmq-diagnostics", "-q", "ping"]')}` : '',
       - caddy_config:/config
     depends_on:
       ${c.appName}:
-        condition: service_healthy
+        condition: ${c.image !== '' ? 'service_started' : 'service_healthy'}
     cap_drop:
       - ALL
     cap_add:

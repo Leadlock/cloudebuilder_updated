@@ -5,6 +5,7 @@
  */
 import type { ContainerConfig, GeneratedFile } from './dockerTemplates';
 import { aksAsK8s } from './aksDeploy';
+import { imageIsFloating } from './existingImage';
 
 export type FindingSeverity = 'high' | 'medium' | 'low';
 
@@ -48,6 +49,7 @@ export function checkContainer(config: ContainerConfig, files: GeneratedFile[]):
   const add = (f: ContainerFinding) => out.push(f);
 
   // ── image ──
+  if (dockerfile !== '') {
   const stages = new Set([...dockerfile.matchAll(/^FROM\s+\S+\s+AS\s+(\S+)/gim)].map((m) => m[1]!.toLowerCase()));
   for (const m of dockerfile.matchAll(/^FROM\s+(?:--platform=\S+\s+)?(\S+)/gm)) {
     const ref = m[1]!;
@@ -76,6 +78,8 @@ export function checkContainer(config: ContainerConfig, files: GeneratedFile[]):
   if (!/^\.env\s*$/m.test(dockerignore)) {
     add({ id: 'CT-005', severity: 'medium', file: '.dockerignore', title: '.env files can be copied into the image',
       detail: 'COPY . . would put a local .env (with real secrets) inside the image, and anyone who can pull the image can read it.', fix: 'List .env in .dockerignore.' });
+  }
+
   }
 
   // ── configuration ──
@@ -117,16 +121,25 @@ export function checkContainer(config: ContainerConfig, files: GeneratedFile[]):
     : c.aks.enabled ? { name: 'AKS', dir: 'aks', cidr: '10.0.0.0/8', tag: c.aks.imageTag, scan: true, actions: false, what: 'The app', tagFile: 'k8s/deployment.yaml' }
     : c.aca.enabled ? { name: 'Container Apps', dir: 'aca', cidr: c.aca.externalIngress ? c.aca.allowedCidr : '10.0.0.0/8', tag: c.aca.imageTag, scan: c.aca.scanImage, actions: c.aca.githubActions, what: 'The app', tagFile: 'aca/variables.tf' }
     : undefined;
+  const existing = c.image !== '';
+  if (existing) {
+    if (imageIsFloating(c.image)) {
+      add({ id: 'CT-027', severity: 'low', file: 'docker-compose.yml', title: `The image ${c.image} has no version tag`,
+        detail: 'Without a tag (or with :latest) the image that runs changes whenever its publisher pushes, and you cannot roll back to a named version.', fix: 'Use a version tag such as nginx:1.27, or a digest (name@sha256:...).' });
+    }
+    add({ id: 'CT-028', severity: 'low', file: 'docker-compose.yml', title: 'A ready-made image runs exactly as published',
+      detail: 'CloudCraft does not build it, so it does not scan it and cannot tell what is inside.', fix: 'Pick an image from a publisher you trust, pin its version, and scan it with your own tooling (for example Trivy) before deploying.' });
+  }
   if (t) {
     if (t.cidr === '0.0.0.0/0') {
       add({ id: 'CT-011', severity: 'medium', file: `${t.dir}/variables.tf`, title: `${t.what} is open to the whole internet`,
         detail: 'Fine for a public website, risky for an internal tool or an API with no login.', fix: 'Set "Who can connect" to your office or VPN range.' });
     }
-    if (t.actions && !t.scan) {
+    if (!existing && t.actions && !t.scan) {
       add({ id: 'CT-015', severity: 'low', file: '.github/workflows/deploy.yml', title: 'Images are pushed without a vulnerability scan',
         detail: 'A known vulnerability in a base image or a library goes live unnoticed.', fix: 'Turn on "Scan the image for vulnerabilities".' });
     }
-    if (t.tag === 'latest') {
+    if (!existing && t.tag === 'latest') {
       add({ id: 'CT-016', severity: 'low', file: t.tagFile, title: 'The deployed image tag is "latest"', detail: 'It is unclear which build is running, and you cannot roll back to a named one.', fix: 'Deploy a version tag such as the commit id.' });
     }
   }
@@ -210,10 +223,10 @@ export function checkContainer(config: ContainerConfig, files: GeneratedFile[]):
       add({ id: 'CT-024', severity: 'medium', file: 'k8s/ingress.yaml', title: 'The ingress serves plain HTTP', detail: 'Traffic, cookies and tokens cross the network unencrypted.', fix: 'Add a TLS secret name (for example from cert-manager).' });
     }
     const tag = k8s.image.split('/').pop() ?? '';
-    if (!c.aks.enabled && (!tag.includes(':') && !tag.includes('@') || tag.endsWith(':latest'))) {
+    if (!c.aks.enabled && !existing && (!tag.includes(':') && !tag.includes('@') || tag.endsWith(':latest'))) {
       add({ id: 'CT-016', severity: 'low', file: 'k8s/deployment.yaml', title: 'The image has no version tag or uses :latest', detail: 'It is unclear which build is running, and you cannot roll back to a named one.', fix: 'Use a version tag such as the commit id.' });
     }
-    if (k8s.githubActions && !k8s.scanImage) {
+    if (!existing && k8s.githubActions && !k8s.scanImage) {
       add({ id: 'CT-015', severity: 'low', file: '.github/workflows/image.yml', title: 'Images are pushed without a vulnerability scan', detail: 'A known vulnerability in a base image or a library goes live unnoticed.', fix: 'Turn on "Scan the image for vulnerabilities".' });
     }
   }

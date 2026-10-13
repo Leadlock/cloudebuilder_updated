@@ -24,6 +24,7 @@ export function azureContainerServiceBlocks(name: string, cfg: Record<string, un
   const c = containerConfigFromAzureNode(cfg);
   const app = c.appName;
   const v = c.azvm;
+  const existing = c.image !== '';
   const out: string[] = [];
 
   out.push(`data "azurerm_client_config" "${name}" {}
@@ -33,7 +34,7 @@ locals {
   ${name}_suffix = substr(md5("$\{data.azurerm_client_config.${name}.subscription_id}${app}"), 0, 6)
 }
 
-# No admin user: the VM pulls with its managed identity, which can only read images.
+${existing ? '' : `# No admin user: the VM pulls with its managed identity, which can only read images.
 resource "azurerm_container_registry" "${name}" {
   name                = substr("acr$\{local.${name}_slug}$\{local.${name}_suffix}", 0, 50)
   resource_group_name = ${rgName}
@@ -45,7 +46,7 @@ resource "azurerm_container_registry" "${name}" {
   }
 }
 
-resource "azurerm_key_vault" "${name}" {
+`}resource "azurerm_key_vault" "${name}" {
   name                       = "kv$\{substr(local.${name}_slug, 0, 12)}$\{local.${name}_suffix}"
   resource_group_name        = ${rgName}
   location                   = ${rgLoc}
@@ -68,12 +69,12 @@ resource "azurerm_user_assigned_identity" "${name}" {
   }
 }
 
-resource "azurerm_role_assignment" "${name}_acr_pull" {
+${existing ? '' : `resource "azurerm_role_assignment" "${name}_acr_pull" {
   scope                = azurerm_container_registry.${name}.id
   role_definition_name = "AcrPull"
   principal_id         = azurerm_user_assigned_identity.${name}.principal_id
 }
-
+`}
 resource "azurerm_role_assignment" "${name}_vault_read" {
   scope                = azurerm_key_vault.${name}.id
   role_definition_name = "Key Vault Secrets User"
@@ -169,12 +170,12 @@ ${heredoc(azureCloudInit(c))}EOT
   # The start-up script reads these from the VM itself (instance metadata), so the script never has to change.
   tags = {
     ManagedBy = "CloudCraft"
-    acr       = azurerm_container_registry.${name}.login_server
-    vault     = azurerm_key_vault.${name}.name
-    image_tag = ${q(v.imageTag)}
+${existing ? '' : `    acr       = azurerm_container_registry.${name}.login_server
+`}    vault     = azurerm_key_vault.${name}.name${existing ? '' : `
+    image_tag = ${q(v.imageTag)}`}
   }
 
-  depends_on = [azurerm_role_assignment.${name}_acr_pull, azurerm_role_assignment.${name}_vault_read]
+  depends_on = [${existing ? '' : `azurerm_role_assignment.${name}_acr_pull, `}azurerm_role_assignment.${name}_vault_read]
 }`);
   return out;
 }

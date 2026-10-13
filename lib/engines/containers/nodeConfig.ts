@@ -7,6 +7,7 @@
  */
 import { defaultConfig, STACKS, validate, withDeployTarget, type ContainerConfig, type DeployTarget } from './dockerTemplates';
 import { parseStoredConfig, stripSecrets } from './stored';
+import { validateExistingImage } from './existingImage';
 
 export const CONTAINER_SERVICE_TYPE = 'aws_container_service';
 export const AZURE_CONTAINER_SERVICE_TYPE = 'azure_container_service';
@@ -51,6 +52,7 @@ export function defaultNodeConfig(): NodeConfig {
     name: 'my-container-service', stack: d.stack, port: d.port, healthPath: d.healthPath, runAsNonRoot: d.runAsNonRoot,
     memoryLimit: d.memoryLimit, cpuLimit: d.cpuLimit, restart: d.restart,
     instanceType: 't3.small', storageGb: 20, allowedCidr: '10.0.0.0/16', imageTag: 'v1', elasticIp: false, scanImage: true,
+    image: '',
     containerConfig: '',
   };
 }
@@ -61,7 +63,7 @@ export function nodeConfigFromContainer(c: ContainerConfig): NodeConfig {
     name: c.appName, stack: c.stack, port: c.port, healthPath: c.healthPath, runAsNonRoot: c.runAsNonRoot,
     memoryLimit: c.memoryLimit, cpuLimit: c.cpuLimit, restart: c.restart,
     instanceType: c.ec2.instanceType, storageGb: c.ec2.volumeGb, allowedCidr: c.ec2.allowedCidr, imageTag: c.ec2.imageTag,
-    elasticIp: c.ec2.elasticIp, scanImage: c.ec2.scanImage,
+    elasticIp: c.ec2.elasticIp, scanImage: c.ec2.scanImage, image: c.image,
     containerConfig: encodeContainerConfig(c),
   };
 }
@@ -75,6 +77,7 @@ export function containerConfigFromNode(node: NodeConfig): ContainerConfig {
   const withStack = stack === base.stack ? base : { ...defaultConfig(stack), env: base.env };
   return withDeployTarget({
     ...withStack,
+    image: typeof node['image'] === 'string' ? node['image'].trim() : withStack.image,
     appName: str(node['name'], withStack.appName),
     port: num(node['port'], withStack.port),
     healthPath: str(node['healthPath'], withStack.healthPath),
@@ -109,6 +112,7 @@ export function defaultAzureNodeConfig(): NodeConfig {
     name: 'my-container-service', stack: d.stack, port: d.port, healthPath: d.healthPath, runAsNonRoot: d.runAsNonRoot,
     memoryLimit: d.memoryLimit, cpuLimit: d.cpuLimit, restart: d.restart,
     vmSize: 'Standard_B2s', diskGb: 30, allowedCidr: '10.0.0.0/16', imageTag: 'v1', scanImage: true,
+    image: '',
     containerConfig: '',
   };
 }
@@ -117,7 +121,7 @@ export function azureNodeConfigFromContainer(c: ContainerConfig): NodeConfig {
   return {
     name: c.appName, stack: c.stack, port: c.port, healthPath: c.healthPath, runAsNonRoot: c.runAsNonRoot,
     memoryLimit: c.memoryLimit, cpuLimit: c.cpuLimit, restart: c.restart,
-    vmSize: c.azvm.size, diskGb: c.azvm.diskGb, allowedCidr: c.azvm.allowedCidr, imageTag: c.azvm.imageTag, scanImage: c.azvm.scanImage,
+    vmSize: c.azvm.size, diskGb: c.azvm.diskGb, allowedCidr: c.azvm.allowedCidr, imageTag: c.azvm.imageTag, scanImage: c.azvm.scanImage, image: c.image,
     containerConfig: encodeContainerConfig(c),
   };
 }
@@ -139,6 +143,7 @@ export function containerConfigFromAzureNode(node: NodeConfig): ContainerConfig 
   const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
   return withDeployTarget({
     ...base,
+    image: typeof node['image'] === 'string' ? node['image'].trim() : base.image,
     appName: str(node['name'], base.appName),
     port: num(node['port'], base.port),
     healthPath: str(node['healthPath'], base.healthPath),
@@ -166,6 +171,8 @@ export function acaNodeConfigFromContainer(c: ContainerConfig, existing: NodeCon
     ...existing,
     name: c.appName, cpu: String(c.aca.cpu), minReplicas: c.aca.minReplicas, maxReplicas: c.aca.maxReplicas,
     targetPort: c.port, externalIngress: c.aca.externalIngress,
+    // A ready-made image goes straight onto the node; otherwise the image stays what it was (a registry address only a deploy can know).
+    ...(c.image !== '' ? { image: c.image } : {}),
     containerConfig: encodeContainerConfig(c),
   };
 }
@@ -174,8 +181,11 @@ export function acaNodeConfigFromContainer(c: ContainerConfig, existing: NodeCon
 export function containerConfigFromAcaNode(node: NodeConfig): ContainerConfig {
   const { base } = storedOrDefault(node);
   const cpu = Number(node['cpu']);
+  const nodeImage = typeof node['image'] === 'string' ? node['image'].trim() : '';
   return withDeployTarget({
     ...base,
+    // The resource's default is a placeholder meaning "not chosen": that is not an image.
+    image: nodeImage !== '' && !/REPLACE-WITH/i.test(nodeImage) && validateExistingImage(nodeImage).length === 0 ? nodeImage : '',
     appName: str(node['name'], base.appName),
     port: num(node['targetPort'], base.port),
     aca: {

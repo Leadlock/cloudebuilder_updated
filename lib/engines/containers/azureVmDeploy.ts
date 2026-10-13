@@ -11,6 +11,7 @@
  *  - the start-up script is a static file: everything it needs (registry, vault, image tag) is read from the VM's own tags.
  */
 import type { ContainerConfig } from './dockerTemplates';
+import { usesExistingImage } from './existingImageUse';
 import { azureVmHourlyUsd } from '@/lib/engines/cost/azurePricing';
 import { GITHUB_REPO, TAG, q, secretNames, validCidr, type DeployCost } from './ec2Deploy';
 import { companionServices } from './companions';
@@ -57,7 +58,7 @@ export function azVmWarnings(c: ContainerConfig): string[] {
   const w: string[] = [];
   if (v.allowedCidr === '0.0.0.0/0') w.push(`Azure VM: port ${c.port} will be open to the whole internet. Narrow "who can connect" if the app is not public.`);
   if (companionServices(c).length > 0) w.push('Azure VM: PostgreSQL, MySQL, MongoDB, Redis and RabbitMQ are not started on the VM. Use the managed Azure services and put the connection settings in the environment variables.');
-  if (v.imageTag === 'latest') w.push('Azure VM: the "latest" tag is used. A version tag (for example the commit id) makes it clear what is running.');
+  if (!usesExistingImage(c) && v.imageTag === 'latest') w.push('Azure VM: the "latest" tag is used. A version tag (for example the commit id) makes it clear what is running.');
   if (c.env.some((x) => x.secret)) w.push('Azure VM: deploy.sh stores each secret in Key Vault (asks once, hidden); the VM reads it when the container starts.');
   return w;
 }
@@ -77,7 +78,7 @@ export function estimateAzVmCost(c: ContainerConfig): DeployCost | undefined {
     { label: `VM ${v.size}`, monthlyUsd: round2((hourly ?? 0) * HOURS) },
     { label: `Disk ${v.diskGb} GB (Standard SSD)`, monthlyUsd: round2(v.diskGb * DISK_PER_GB) },
     { label: 'Public IP address (Standard, static)', monthlyUsd: round2(0.005 * HOURS) },
-    { label: 'Container Registry (Basic)', monthlyUsd: 5 },
+    ...(usesExistingImage(c) ? [] : [{ label: 'Container Registry (Basic)', monthlyUsd: 5 }]),
   ];
   const notes = ['Excludes data transfer out and Key Vault operations (the first 10,000 a month cost about $0.03).'];
   if (hourly === undefined) notes.push(`${v.size} is not in the price table, so its price is left out of the total.`);
@@ -121,8 +122,8 @@ locals {
   }
   slug       = replace(replace(var.app_name, "-", ""), "_", "")
   suffix     = substr(md5("$\{data.azurerm_client_config.current.subscription_id}$\{var.app_name}"), 0, 6)
-  acr_name   = substr("acr$\{local.slug}$\{local.suffix}", 0, 50)
-  vault_name = "kv$\{substr(local.slug, 0, 12)}$\{local.suffix}"
+${usesExistingImage(c) ? '' : `  acr_name   = substr("acr$\{local.slug}$\{local.suffix}", 0, 50)
+`}  vault_name = "kv$\{substr(local.slug, 0, 12)}$\{local.suffix}"
 }
 
 resource "azurerm_resource_group" "app" {
@@ -131,9 +132,9 @@ resource "azurerm_resource_group" "app" {
   tags     = local.tags
 }
 
-# ── Registry and secrets ─────────────────────────────────────────────────────
+# ── ${usesExistingImage(c) ? 'Secrets' : 'Registry and secrets'} ──────────────────────────────────────────────────────
 
-# No admin user: the VM pulls with its managed identity, which can only read images.
+${usesExistingImage(c) ? '' : `# No admin user: the VM pulls with its managed identity, which can only read images.
 resource "azurerm_container_registry" "app" {
   name                = local.acr_name
   location            = azurerm_resource_group.app.location
@@ -143,7 +144,7 @@ resource "azurerm_container_registry" "app" {
   tags                = local.tags
 }
 
-resource "azurerm_key_vault" "app" {
+`}resource "azurerm_key_vault" "app" {
   name                       = local.vault_name
   location                   = azurerm_resource_group.app.location
   resource_group_name        = azurerm_resource_group.app.name
@@ -169,13 +170,13 @@ resource "azurerm_user_assigned_identity" "app" {
   tags                = local.tags
 }
 
-resource "azurerm_role_assignment" "acr_pull" {
+${usesExistingImage(c) ? '' : `resource "azurerm_role_assignment" "acr_pull" {
   scope                = azurerm_container_registry.app.id
   role_definition_name = "AcrPull"
   principal_id         = azurerm_user_assigned_identity.app.principal_id
 }
 
-resource "azurerm_role_assignment" "vault_read" {
+`}resource "azurerm_role_assignment" "vault_read" {
   scope                = azurerm_key_vault.app.id
   role_definition_name = "Key Vault Secrets User"
   principal_id         = azurerm_user_assigned_identity.app.principal_id
@@ -285,16 +286,16 @@ resource "azurerm_linux_virtual_machine" "app" {
 
   # The start-up script reads these from the VM itself (instance metadata), so the script never has to change.
   tags = merge(local.tags, {
-    acr       = azurerm_container_registry.app.login_server
-    vault     = azurerm_key_vault.app.name
-    image_tag = var.image_tag
+${usesExistingImage(c) ? '' : `    acr       = azurerm_container_registry.app.login_server
+`}    vault     = azurerm_key_vault.app.name${usesExistingImage(c) ? '' : `
+    image_tag = var.image_tag`}
   })
 
   lifecycle {
     ignore_changes = [admin_ssh_key, tags]
   }
 
-  depends_on = [azurerm_role_assignment.acr_pull, azurerm_role_assignment.vault_read]
+  depends_on = [${usesExistingImage(c) ? '' : 'azurerm_role_assignment.acr_pull, '}azurerm_role_assignment.vault_read]
 }
 `;
 }
@@ -335,13 +336,13 @@ variable "allowed_cidr" {
   default     = ${hcl(v.allowedCidr)}
 }
 
-variable "image_tag" {
+${usesExistingImage(c) ? '' : `variable "image_tag" {
   description = "Image tag to run. deploy.sh sets it."
   type        = string
   default     = ${hcl(v.imageTag)}
 }
 
-variable "admin_ssh_public_key" {
+`}variable "admin_ssh_public_key" {
   description = "Public key Azure requires on a Linux VM. deploy.sh creates a throw-away pair and deletes the private key."
   type        = string
 }
@@ -349,12 +350,12 @@ variable "admin_ssh_public_key" {
 }
 
 function outputsTf(c: ContainerConfig): string {
-  return `output "acr_name" {
+  return `${usesExistingImage(c) ? '' : `output "acr_name" {
   description = "The container registry that holds the image."
   value       = azurerm_container_registry.app.name
 }
 
-output "vault_name" {
+`}output "vault_name" {
   description = "Key Vault that holds the secrets (deploy.sh stores them here)."
   value       = azurerm_key_vault.app.name
 }
@@ -407,7 +408,9 @@ IMDS=http://169.254.169.254/metadata
 vmtag() { curl -fsS -H Metadata:true "$IMDS/instance/compute/tagsList?api-version=2021-02-01" | python3 -c 'import sys, json; print({t["name"]: t["value"] for t in json.load(sys.stdin)}.get(sys.argv[1], ""))' "$1"; }
 token() { curl -fsS -H Metadata:true "$IMDS/identity/oauth2/token?api-version=2018-02-01&resource=$1" | python3 -c 'import sys, json; print(json.load(sys.stdin)["access_token"])'; }
 
-ACR=$(vmtag acr)
+${usesExistingImage(c) ? `VAULT=$(vmtag vault)
+IMAGE=${q(c.image)}
+` : `ACR=$(vmtag acr)
 VAULT=$(vmtag vault)
 TAG=$(vmtag image_tag)
 [ -n "$ACR" ] && [ -n "$TAG" ] || { echo "The VM tags acr and image_tag are missing."; exit 1; }
@@ -417,7 +420,7 @@ IMAGE="$ACR/${app}:$TAG"
 AAD=$(token https://management.azure.com/)
 REFRESH=$(curl -fsS -X POST "https://$ACR/oauth2/exchange" -d "grant_type=access_token&service=$ACR&access_token=$AAD" | python3 -c 'import sys, json; print(json.load(sys.stdin)["refresh_token"])')
 echo "$REFRESH" | docker login "$ACR" --username 00000000-0000-0000-0000-000000000000 --password-stdin
-docker pull "$IMAGE"
+`}docker pull "$IMAGE"
 
 ENV_FILE=/run/${app}.env
 umask 077
@@ -443,7 +446,7 @@ Requires=docker.service
 [Service]
 ExecStart=/usr/local/bin/${app}-run
 ExecStop=/usr/bin/docker stop ${app}
-# If the image is not pushed yet, or a secret is missing, try again in 30 seconds.
+# If the image ${usesExistingImage(c) ? 'cannot be pulled yet' : 'is not pushed yet'}, or a secret is missing, try again in 30 seconds.
 Restart=always
 RestartSec=30
 
@@ -519,19 +522,22 @@ ${v.scanImage ? `
 
 function deploySh(c: ContainerConfig): string {
   const secrets = secretNames(c);
+  const ex = usesExistingImage(c);
   return `#!/usr/bin/env bash
 # One command to deploy ${c.appName} to an Azure VM: bash deploy.sh
-#   1. creates the resource group, registry and Key Vault with Terraform (first run), asking you to confirm
+${ex ? `#   1. creates the resource group and Key Vault with Terraform (first run), asking you to confirm
+#   2. stores any secret values in Key Vault (asks once, hidden), never in a file
+#   3. creates or updates the VM (it pulls ${c.image}), restarts the app and waits until it answers
+# Run it again after changing the settings. Add --yes to skip the Terraform confirmation.` : `#   1. creates the resource group, registry and Key Vault with Terraform (first run), asking you to confirm
 #   2. stores any secret values in Key Vault (asks once, hidden), never in a file
 #   3. builds the image inside Azure (az acr build), so Docker is not needed on this machine
 #   4. creates or updates the VM, restarts the app and waits until it answers
-# Run it again to release a new version (IMAGE_TAG=v2 bash deploy.sh uses another tag). Add --yes to skip the Terraform confirmation.
+# Run it again to release a new version (IMAGE_TAG=v2 bash deploy.sh uses another tag). Add --yes to skip the Terraform confirmation.`}
 set -euo pipefail
 cd "$(dirname "$0")"
 
 APP=${q(c.appName)}
-TAG="\${IMAGE_TAG:-${c.azvm.imageTag}}"
-SECRETS=(${secrets.map(q).join(' ')})
+${ex ? '' : `TAG="\${IMAGE_TAG:-${c.azvm.imageTag}}"\n`}SECRETS=(${secrets.map(q).join(' ')})
 APPROVE=""
 [ "\${1:-}" = "--yes" ] && APPROVE="-auto-approve"
 
@@ -554,13 +560,13 @@ az provider register --namespace Microsoft.Compute --wait >/dev/null
 az provider register --namespace Microsoft.ContainerRegistry --wait >/dev/null
 az provider register --namespace Microsoft.KeyVault --wait >/dev/null
 
-echo "==> 1/4  Registry and Key Vault (Terraform)"
+echo "==> 1/${ex ? 3 : 4}  ${ex ? '' : 'Registry and '}Key Vault (Terraform)"
 terraform -chdir=azvm init -input=false >/dev/null
-terraform -chdir=azvm apply -var "image_tag=$TAG" \\
-  -target=azurerm_resource_group.app -target=azurerm_container_registry.app -target=azurerm_key_vault.app -target=azurerm_role_assignment.deployer_secrets \\
+terraform -chdir=azvm apply${ex ? '' : ' -var "image_tag=$TAG"'} \\
+  -target=azurerm_resource_group.app${ex ? '' : ' -target=azurerm_container_registry.app'} -target=azurerm_key_vault.app -target=azurerm_role_assignment.deployer_secrets \\
   \${APPROVE:+-auto-approve}
 
-echo "==> 2/4  Secrets"
+echo "==> 2/${ex ? 3 : 4}  Secrets"
 VAULT=$(terraform -chdir=azvm output -raw vault_name)
 for NAME in \${SECRETS[@]+"\${SECRETS[@]}"}; do
   KVNAME=$(echo "$NAME" | tr '_' '-')
@@ -582,16 +588,17 @@ for NAME in \${SECRETS[@]+"\${SECRETS[@]}"}; do
   fi
 done
 
-echo "==> 3/4  Build the image in Azure"
+${ex ? '' : `echo "==> 3/4  Build the image in Azure"
 ACR=$(terraform -chdir=azvm output -raw acr_name)
 az acr build --registry "$ACR" --image "$APP:$TAG" --platform linux/amd64 .
 
-echo "==> 4/4  Virtual machine (Terraform)"
-terraform -chdir=azvm apply -var "image_tag=$TAG" \${APPROVE:+-auto-approve}
+`}echo "==> ${ex ? '3/3' : '4/4'}  Virtual machine (Terraform)"
+terraform -chdir=azvm apply${ex ? '' : ' -var "image_tag=$TAG"'} \${APPROVE:+-auto-approve}
 RG=$(terraform -chdir=azvm output -raw resource_group)
 VM=$(terraform -chdir=azvm output -raw vm_name)
-# Tags are ignored by Terraform after creation so that a release does not touch the VM: set the tag here, then restart the app.
+${ex ? '' : `# Tags are ignored by Terraform after creation so that a release does not touch the VM: set the tag here, then restart the app.
 az vm update --resource-group "$RG" --name "$VM" --set "tags.image_tag=$TAG" >/dev/null
+`}
 if az vm run-command invoke --resource-group "$RG" --name "$VM" --command-id RunShellScript --scripts "systemctl restart $APP.service" >/dev/null 2>&1; then
   echo "    Restart sent."
 else
@@ -647,18 +654,18 @@ function readme(c: ContainerConfig): string {
 
 ## Quick start
 
-You need Terraform and the Azure CLI installed and to be signed in (\`az login\`). Docker is **not** needed: the image is built inside Azure. From the folder that contains your app and these files:
+You need Terraform and the Azure CLI installed and to be signed in (\`az login\`). Docker is **not** needed${usesExistingImage(c) ? '' : ': the image is built inside Azure'}. From the folder that contains your app and these files:
 
 \`\`\`bash
 bash deploy.sh
 \`\`\`
 
-It creates the resource group, container registry and Key Vault, ${secrets.length ? 'asks for your secret values (hidden) and stores them in Key Vault, ' : ''}builds the image in Azure, creates the VM, starts the app and prints its address. To release a new version run it again (\`IMAGE_TAG=v2 bash deploy.sh\` to use another tag). To remove everything: \`bash destroy.sh\`.
+It creates the resource group${usesExistingImage(c) ? '' : ', container registry'} and Key Vault, ${secrets.length ? 'asks for your secret values (hidden) and stores them in Key Vault, ' : ''}${usesExistingImage(c) ? `creates the VM, which pulls \`${c.image}\` as it is (nothing is built), ` : 'builds the image in Azure, creates the VM, '}starts the app and prints its address. ${usesExistingImage(c) ? 'To change anything edit the settings and run it again.' : 'To release a new version run it again (\`IMAGE_TAG=v2 bash deploy.sh\` to use another tag).'} To remove everything: \`bash destroy.sh\`.
 
 ## What gets created
 
 - A resource group \`rg-${c.appName}\` in \`${v.location}\` with a virtual network, a network security group that opens only port ${c.port} to \`${v.allowedCidr}\`, a static public IP and one Ubuntu 22.04 VM (\`${v.size}\`, ${v.diskGb} GB) running your image under systemd. **No SSH**: manage it with \`az vm run-command\`.
-- A container registry (Basic, no admin user) and a Key Vault. The VM has a managed identity that can only pull images from this registry and read secrets from this vault.
+- ${usesExistingImage(c) ? 'A Key Vault. The VM has a managed identity that can only read secrets from this vault.' : 'A container registry (Basic, no admin user) and a Key Vault. The VM has a managed identity that can only pull images from this registry and read secrets from this vault.'}
 ${secrets.length ? `- Secrets (${secrets.join(', ')}) are stored in Key Vault (as ${secrets.map((k) => `\`${vaultSecretName(k)}\``).join(', ')}) and read by the VM when the container starts. They are never written to Terraform, its state or any file.\n` : ''}
 ## Look inside the VM
 
@@ -673,7 +680,7 @@ az vm run-command invoke --resource-group rg-${c.appName} --name vm-${c.appName}
 - **"Could not store a secret"**: your account needs the role *Key Vault Secrets Officer* on the vault; Terraform assigns it to whoever ran \`deploy.sh\`, and it can take a minute to apply.
 - **"SkuNotAvailable"**: the VM size is not offered in that region for your subscription. Change \`vm_size\` in \`azvm/variables.tf\` or pick another region.
 - **The address never answers**: the port is open only to \`${v.allowedCidr}\`.
-${v.githubActions ? `
+${v.githubActions && !usesExistingImage(c) ? `
 ## Optional: deploy automatically when you push to GitHub
 
 \`.github/workflows/deploy.yml\` builds, scans and pushes the image on every push to \`main\` and restarts the app. It signs in to Azure without a stored password (OIDC). One-time setup${v.githubRepo ? ` for \`${v.githubRepo}\`` : ''}:
@@ -709,6 +716,6 @@ export function generateAzVmFiles(c: ContainerConfig): Array<{ path: string; con
     { path: 'azvm/cloud-init.sh', content: azureCloudInit(c) },
     { path: 'azvm/.gitignore', content: '.terraform/\n*.tfstate\n*.tfstate.*\ncrash.log\n' },
     { path: 'azvm/README.md', content: readme(c) },
-    ...(c.azvm.githubActions ? [{ path: '.github/workflows/deploy.yml', content: workflowYml(c) }] : []),
+    ...(c.azvm.githubActions && !usesExistingImage(c) ? [{ path: '.github/workflows/deploy.yml', content: workflowYml(c) }] : []),
   ];
 }
