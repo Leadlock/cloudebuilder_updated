@@ -215,7 +215,8 @@ COPY --from=build /app/public ./public
 FROM node:${c.version}-alpine AS deps
 WORKDIR /app
 ${corepack}COPY package.json ${lock}* ./
-RUN ${install}
+# node_modules may not exist for a project with no dependencies; the next stage copies the folder.
+RUN ${install} && mkdir -p node_modules
 
 FROM node:${c.version}-alpine AS build
 WORKDIR /app
@@ -305,6 +306,7 @@ ${healthcheck(c, 'wget')}ENTRYPOINT ["/app/app"]
 function dotnetDockerfile(c: ContainerConfig): string {
   return `# syntax=docker/dockerfile:1
 # ${c.appName}: ASP.NET Core ${c.version}
+# The runtime image already has a user and group called "app" (uid 1654), so this one is called appuser, with the same uid 1001 as the other stacks.
 FROM mcr.microsoft.com/dotnet/sdk:${c.version}-alpine AS build
 WORKDIR /src
 COPY . .
@@ -314,7 +316,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:${c.version}-alpine AS runtime
 WORKDIR /app
 ENV ASPNETCORE_URLS=http://+:${c.port} DOTNET_RUNNING_IN_CONTAINER=true DOTNET_EnableDiagnostics=0
 COPY --from=build /out ./
-${userBlock(c, true)}EXPOSE ${c.port}
+${c.runAsNonRoot ? 'RUN addgroup --system --gid 1001 appuser && adduser --system --uid 1001 --ingroup appuser appuser\nUSER appuser\n' : userBlock(c, true)}EXPOSE ${c.port}
 ${healthcheck(c, 'wget')}ENTRYPOINT ["dotnet", "${c.dotnetAssembly}.dll"]
 `;
 }

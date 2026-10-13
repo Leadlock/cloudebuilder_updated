@@ -26,7 +26,7 @@ describe('stacks', () => {
       expect(errs(c)).toBe('');
       const { by } = gen(c);
       expect(by['Dockerfile']).toMatch(/^HEALTHCHECK /m);
-      if (s !== 'static') expect(by['Dockerfile']).toMatch(/^USER app$/m);
+      if (s !== 'static') expect(by['Dockerfile']).toMatch(/^USER app(user)?$/m);
       expect(parse(by['docker-compose.yml']!).services['orders-api']).toBeTruthy();
     }
   });
@@ -98,6 +98,15 @@ describe('stacks', () => {
       expect(by['config.ru']).toContain('run lambda');
       expect(generateContainerFiles(cfg('ruby', { includeSample: true, rubyFramework: 'rails' }))).toMatchObject({ ok: true, warnings: [expect.stringContaining('available for Rack')] });
     });
+  });
+
+  it('found by building for real: a Node project with no dependencies still builds, and .NET does not clash with the image\'s own "app" user', () => {
+    expect(gen(cfg('node')).by['Dockerfile']).toContain('RUN npm ci && mkdir -p node_modules');
+    expect(gen(cfg('node', { packageManager: 'pnpm' })).by['Dockerfile']).toContain('pnpm install --frozen-lockfile && mkdir -p node_modules');
+    const d = gen(cfg('dotnet')).by['Dockerfile']!;
+    expect(d).toContain('adduser --system --uid 1001 --ingroup appuser appuser');
+    expect(d).toMatch(/^USER appuser$/m);
+    expect(d).not.toMatch(/addgroup --system --gid 1001 app &&/);
   });
 
   it('the new stacks run as the same numeric user on Kubernetes (the Dockerfile user is 1001)', () => {
