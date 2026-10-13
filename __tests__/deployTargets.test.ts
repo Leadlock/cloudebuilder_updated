@@ -198,13 +198,41 @@ describe('Azure Container Apps', () => {
     expect(tf).toContain('role_definition_name = "AcrPull"');
     expect(tf).toContain('identity = azurerm_user_assigned_identity.app.id');
   });
-  it('secrets are sensitive variables with no default, wired to the app by secret name', () => {
+  it('secrets are Key Vault references read through the app\'s managed identity, never a value or a Terraform variable', () => {
     const f = files();
-    expect(f['aca/variables.tf']).toMatch(/variable "secret_api_token" \{[^}]*sensitive\s+= true/);
-    expect(f['aca/variables.tf']).not.toMatch(/secret_api_token" \{[^}]*default/);
-    expect(f['aca/main.tf']).toContain('name  = "api-token"');
-    expect(f['aca/main.tf']).toContain('secret_name = "api-token"');
-    expect(f['deploy.sh']).toContain('TF_VAR_secret_');
+    const tf = f['aca/main.tf']!;
+    expect(tf).toContain('resource "azurerm_key_vault" "app"');
+    expect(tf).toContain('enable_rbac_authorization  = true');
+    expect(tf).toContain('role_definition_name = "Key Vault Secrets User"');
+    expect(tf).toContain('role_definition_name = "Key Vault Secrets Officer"');
+    expect(tf).toMatch(/secret \{\s+name\s+= "api-token"\s+key_vault_secret_id = "\$\{azurerm_key_vault\.app\.vault_uri\}secrets\/API-TOKEN"\s+identity\s+= azurerm_user_assigned_identity\.app\.id\s+\}/);
+    expect(tf).not.toMatch(/secret \{[^}]*\bvalue\s*=/);
+    expect(tf).toContain('secret_name = "api-token"');
+    expect(tf).toContain('azurerm_role_assignment.vault_read');
+    expect(f['aca/variables.tf']).not.toMatch(/secret_|sensitive/);
+    expect(f['aca/outputs.tf']).toContain('output "vault_name"');
+    expect(f['deploy.sh']).not.toContain('TF_VAR_secret_');
+    expect(f['destroy.sh']).not.toContain('unused');
+    expect(f['aca/README.md']).toContain('Key Vault reference');
+    expect(f['aca/README.md']).not.toMatch(/also in Terraform's state/);
+  });
+  it('without secrets there is no vault at all', () => {
+    const f = files((c) => { c.env = [{ key: 'LOG_LEVEL', value: 'info' }]; });
+    expect(f['aca/main.tf']).not.toContain('azurerm_key_vault');
+    expect(f['aca/outputs.tf']).not.toContain('vault_name');
+    expect(f['deploy.sh']).not.toContain('azurerm_role_assignment.vault_read');
+    expect(balanced(f['aca/main.tf']!)).toBe(true);
+  });
+  it('deploy.sh creates the vault first, stores secrets from a temp file with a retry for role propagation, then builds and applies', () => {
+    const d = files()['deploy.sh']!;
+    expect(shellSyntaxOk(d)).toBe(true);
+    expect(d).toContain('-target=azurerm_key_vault.app');
+    expect(d).toContain('az keyvault secret set --vault-name "$VAULT" --name "$KVNAME" --file "$TMP"');
+    expect(d).not.toMatch(/--value/);
+    expect(d).toContain('for TRY in 1 2 3 4 5 6 7 8');
+    expect(d.indexOf('-target=azurerm_key_vault.app')).toBeLessThan(d.indexOf('az keyvault secret set'));
+    expect(d.indexOf('az keyvault secret set')).toBeLessThan(d.indexOf('az acr build --registry'));
+    expect(d.indexOf('az acr build --registry')).toBeLessThan(d.lastIndexOf('terraform -chdir=aca apply'));
   });
   it('plain values are escaped so nothing can start an interpolation', () => {
     const tf = files((c) => { c.env = [{ key: 'GREETING', value: '${x} "q"' }]; })['aca/main.tf']!;
@@ -227,10 +255,11 @@ describe('Azure Container Apps', () => {
     expect(d).not.toMatch(/need docker|docker push|docker build/);
     expect(d.indexOf('-target=azurerm_container_registry.app')).toBeLessThan(d.indexOf('az acr build --registry'));
   });
-  it('destroy needs a value for each secret variable but never the real one', () => {
-    const d = files()['destroy.sh']!;
-    expect(d).toContain('=unused');
-    expect(d).toContain('terraform -chdir=aca destroy');
+  it('destroy needs no secret values at all, and purges the vault with the group', () => {
+    const f = files();
+    expect(f['destroy.sh']).not.toContain('TF_VAR');
+    expect(f['destroy.sh']).toContain('terraform -chdir=aca destroy');
+    expect(f['aca/main.tf']).toContain('purge_soft_delete_on_destroy    = true');
   });
   it('the workflow parses, signs in with OIDC and scans before pushing', () => {
     const w = files()['.github/workflows/deploy.yml']!;
@@ -535,7 +564,8 @@ describe('security checks for the new targets', () => {
   it('Container Apps: registry admin user, plain HTTP, secrets in state', () => {
     expect(ids(on('container-apps'), (f) => patch(f, 'aca/main.tf', (s) => s.replace('admin_enabled       = false', 'admin_enabled       = true')))).toContain('CT-020');
     expect(ids(on('container-apps'), (f) => patch(f, 'aca/main.tf', (s) => s + '\nallow_insecure_connections = true'))).toContain('CT-021');
-    expect(ids(on('container-apps'))).toContain('CT-022');
+    expect(ids(on('container-apps'))).not.toContain('CT-022');
+    expect(ids(on('container-apps'), (f) => patch(f, 'aca/main.tf', (s) => s.replace(/key_vault_secret_id = "[^"]*"/, 'value = "x"')))).toContain('CT-022');
   });
   it('Kubernetes: root, privilege escalation, host access, no limits, plain-HTTP ingress, untagged image', () => {
     expect(ids(on('kubernetes', (c) => { c.runAsNonRoot = false; }))).toContain('CT-002');

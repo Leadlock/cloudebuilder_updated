@@ -169,11 +169,11 @@ export function checkContainer(config: ContainerConfig, files: GeneratedFile[]):
   }
   if (c.aca.enabled) {
     const tf = get('aca/main.tf') ?? '';
+    if (c.env.some((v) => v.secret) && /secret \{[^}]*\bvalue\s*=/.test(tf)) {
+      add({ id: 'CT-022', severity: 'medium', file: 'aca/main.tf', title: 'A secret is given to Terraform as a value', detail: 'The value ends up in Terraform state, readable by anyone who can read the state file.', fix: 'Reference the secret in Key Vault (key_vault_secret_id) instead.' });
+    }
     if (/allow_insecure_connections\s*=\s*true/.test(tf)) {
       add({ id: 'CT-021', severity: 'medium', file: 'aca/main.tf', title: 'The app accepts plain HTTP', detail: 'Traffic crosses the network unencrypted.', fix: 'Remove allow_insecure_connections.' });
-    }
-    if (c.env.some((v) => v.secret)) {
-      add({ id: 'CT-022', severity: 'low', file: 'aca/README.md', title: 'Secret values are kept in Terraform state', detail: 'Anyone who can read the state file can read the secrets.', fix: 'Keep the aca/ folder private or use an encrypted remote backend.' });
     }
   }
   if (c.azvm.enabled) {

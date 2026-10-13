@@ -4,12 +4,13 @@
  * deploy.sh / destroy.sh and a GitHub Actions workflow.
  *
  * Safe by default: the registry has no admin user (the app pulls with a managed identity that holds only AcrPull), ingress is HTTPS only,
- * and images are built inside Azure (az acr build), so Docker is not needed on your machine. Secret values are passed to Terraform as
- * sensitive variables and are stored in its state: keep the state somewhere private (the README says how to move it to an encrypted backend).
+ * and images are built inside Azure (az acr build), so Docker is not needed on your machine. Secrets live in Key Vault: deploy.sh stores them
+ * there (never in a file or in Terraform's state), and the app reads them through its managed identity (Container Apps "Key Vault reference").
  */
 import { companionServices } from './companions';
 import type { ContainerConfig } from './dockerTemplates';
 import { GITHUB_REPO, TAG, q, secretNames, validCidr, type DeployCost } from './ec2Deploy';
+import { vaultSecretName } from './azureVmDeploy';
 
 export interface AcaConfig {
   enabled: boolean;
@@ -64,7 +65,7 @@ export function acaWarnings(c: ContainerConfig): string[] {
   if (a.minReplicas === 0) w.push('Container Apps: with 0 minimum replicas the first request after an idle period waits for a cold start.');
   if (companionServices(c).length > 0) w.push('Container Apps: PostgreSQL and Redis are not started. Use Azure Database for PostgreSQL / Azure Cache for Redis and put the connection settings in the environment variables.');
   if (a.imageTag === 'latest') w.push('Container Apps: the "latest" tag is used. A version tag (for example the commit id) makes it clear what is running and allows a rollback.');
-  if (c.env.some((v) => v.secret)) w.push('Container Apps: secret values are kept in Terraform state. Keep the aca/ folder private, or move the state to an encrypted remote backend.');
+  if (c.env.some((v) => v.secret)) w.push('Container Apps: deploy.sh stores each secret in Key Vault (asks once, hidden); the app reads it through its managed identity. After you change a secret, restart the app so it picks up the new value.');
   return w;
 }
 
@@ -100,7 +101,6 @@ export function estimateAcaCost(c: ContainerConfig): DeployCost | undefined {
 
 const hcl = (s: string) => JSON.stringify(s).replace(/\$\{/g, () => '$${').replace(/%\{/g, () => '%%{');
 const secretName = (key: string) => key.toLowerCase().replace(/_/g, '-');
-const varName = (key: string) => `secret_${key.toLowerCase()}`;
 
 function mainTf(c: ContainerConfig): string {
   const a = c.aca;
@@ -117,7 +117,13 @@ function mainTf(c: ContainerConfig): string {
 }
 
 provider "azurerm" {
-  features {}
+  features {${secrets.length ? `
+    key_vault {
+      # So destroy.sh leaves nothing behind that would block creating the same vault again.
+      purge_soft_delete_on_destroy    = true
+      recover_soft_deleted_key_vaults = true
+    }
+  ` : ''}}
 }
 
 data "azurerm_client_config" "current" {}
@@ -128,7 +134,8 @@ locals {
     App       = var.app_name
   }
   # Registry names are global, letters and digits only: a short stable suffix keeps this one unique.
-  acr_name = substr("acr$\{replace(replace(var.app_name, "-", ""), "_", "")}$\{substr(md5("$\{data.azurerm_client_config.current.subscription_id}$\{var.app_name}"), 0, 6)}", 0, 50)
+  acr_name = substr("acr$\{replace(replace(var.app_name, "-", ""), "_", "")}$\{substr(md5("$\{data.azurerm_client_config.current.subscription_id}$\{var.app_name}"), 0, 6)}", 0, 50)${secrets.length ? `
+  vault_name = "kv$\{substr(replace(replace(var.app_name, "-", ""), "_", ""), 0, 12)}$\{substr(md5("$\{data.azurerm_client_config.current.subscription_id}$\{var.app_name}"), 0, 6)}"` : ''}
 }
 
 resource "azurerm_resource_group" "app" {
@@ -169,7 +176,33 @@ resource "azurerm_role_assignment" "acr_pull" {
   principal_id         = azurerm_user_assigned_identity.app.principal_id
 }
 
-resource "azurerm_container_app_environment" "app" {
+${secrets.length ? `# Secrets live here. deploy.sh stores them; the app's identity can only read them.
+resource "azurerm_key_vault" "app" {
+  name                       = local.vault_name
+  location                   = azurerm_resource_group.app.location
+  resource_group_name        = azurerm_resource_group.app.name
+  tenant_id                  = data.azurerm_client_config.current.tenant_id
+  sku_name                   = "standard"
+  enable_rbac_authorization  = true
+  soft_delete_retention_days = 7
+  purge_protection_enabled   = false
+  tags                       = local.tags
+}
+
+# Whoever runs deploy.sh can store secrets.
+resource "azurerm_role_assignment" "deployer_secrets" {
+  scope                = azurerm_key_vault.app.id
+  role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
+
+resource "azurerm_role_assignment" "vault_read" {
+  scope                = azurerm_key_vault.app.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.app.principal_id
+}
+
+` : ''}resource "azurerm_container_app_environment" "app" {
   name                       = "cae-$\{var.app_name}"
   location                   = azurerm_resource_group.app.location
   resource_group_name        = azurerm_resource_group.app.name
@@ -195,8 +228,9 @@ resource "azurerm_container_app" "app" {
   }
 ${secrets.map((k) => `
   secret {
-    name  = ${hcl(secretName(k))}
-    value = var.${varName(k)}
+    name                = ${hcl(secretName(k))}
+    key_vault_secret_id = "$\{azurerm_key_vault.app.vault_uri}secrets/${vaultSecretName(k)}"
+    identity            = azurerm_user_assigned_identity.app.id
   }`).join('\n')}
 
   template {
@@ -266,14 +300,13 @@ ${a.allowedCidr !== '0.0.0.0/0' ? `
     }
   }
 
-  depends_on = [azurerm_role_assignment.acr_pull]
+  depends_on = [azurerm_role_assignment.acr_pull${secrets.length ? ', azurerm_role_assignment.vault_read' : ''}]
 }
 `;
 }
 
 function variablesTf(c: ContainerConfig): string {
   const a = c.aca;
-  const secrets = secretNames(c);
   return `variable "location" {
   description = "Azure region to deploy to."
   type        = string
@@ -338,16 +371,11 @@ variable "allowed_cidr" {
   type        = string
   default     = ${hcl(a.allowedCidr)}
 }
-` : ''}${secrets.map((k) => `
-variable "${varName(k)}" {
-  description = "Value of ${k}. deploy.sh asks for it; or export TF_VAR_${varName(k)}."
-  type        = string
-  sensitive   = true
-}
-`).join('')}`;
+` : ''}`;
 }
 
 function outputsTf(c: ContainerConfig): string {
+  const secrets = secretNames(c);
   return `output "acr_name" {
   description = "The container registry that holds the image."
   value       = azurerm_container_registry.app.name
@@ -356,7 +384,12 @@ function outputsTf(c: ContainerConfig): string {
 output "resource_group" {
   value = azurerm_resource_group.app.name
 }
-
+${secrets.length ? `
+output "vault_name" {
+  description = "Key Vault that holds the secrets (deploy.sh stores them here)."
+  value       = azurerm_key_vault.app.name
+}
+` : ''}
 output "app_name" {
   value = azurerm_container_app.app.name
 }
@@ -437,9 +470,10 @@ function deploySh(c: ContainerConfig): string {
   const secrets = secretNames(c);
   return `#!/usr/bin/env bash
 # One command to deploy ${c.appName} to Azure Container Apps: bash deploy.sh
-#   1. creates the resource group and container registry with Terraform (first run)
-#   2. builds the image inside Azure (az acr build), so Docker is not needed on this machine
-#   3. creates or updates the Container Apps environment and the app, then waits until it answers
+#   1. creates the resource group, container registry and Key Vault with Terraform (first run)
+#   2. stores any secret values in Key Vault (asks once, hidden), never in a file or in Terraform's state
+#   3. builds the image inside Azure (az acr build), so Docker is not needed on this machine
+#   4. creates or updates the Container Apps environment and the app, then waits until it answers
 # Run it again to release a new version (IMAGE_TAG=v2 bash deploy.sh uses another tag). Add --yes to skip the Terraform confirmation.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -455,30 +489,47 @@ need az        "Install the Azure CLI from https://learn.microsoft.com/cli/azure
 az account show >/dev/null 2>&1 || { echo "You are not signed in to Azure. Run: az login"; exit 1; }
 echo "Subscription: $(az account show --query name -o tsv)"
 
-# Secret values go to Terraform as environment variables for this run only. Set TF_VAR_secret_<name> yourself to skip the questions.
-for NAME in \${SECRETS[@]+"\${SECRETS[@]}"}; do
-  VAR="TF_VAR_secret_$(echo "$NAME" | tr 'A-Z' 'a-z')"
-  if [ -z "\${!VAR:-}" ]; then
-    read -r -s -p "Value for $NAME (hidden): " VALUE; echo
-    [ -n "$VALUE" ] || { echo "$NAME cannot be empty."; exit 1; }
-    export "$VAR=$VALUE"; unset VALUE
-  fi
-done
-
-echo "==> 1/3  Resource group and container registry (Terraform)"
+echo "==> 1/4  Resource group, container registry and Key Vault (Terraform)"
 az provider register --namespace Microsoft.App --wait >/dev/null
 az provider register --namespace Microsoft.OperationalInsights --wait >/dev/null
+az provider register --namespace Microsoft.KeyVault --wait >/dev/null
 terraform -chdir=aca init -input=false >/dev/null
 terraform -chdir=aca apply -var "image_tag=$TAG" \\
-  -target=azurerm_resource_group.app -target=azurerm_container_registry.app -target=azurerm_user_assigned_identity.app -target=azurerm_role_assignment.acr_pull \\
+  -target=azurerm_resource_group.app -target=azurerm_container_registry.app -target=azurerm_user_assigned_identity.app -target=azurerm_role_assignment.acr_pull${secrets.length ? ' -target=azurerm_key_vault.app -target=azurerm_role_assignment.deployer_secrets -target=azurerm_role_assignment.vault_read' : ''} \\
   \${APPROVE:+-auto-approve}
 
-echo "==> 2/3  Build the image in Azure"
+echo "==> 2/4  Secrets"
+if [ \${#SECRETS[@]} -gt 0 ]; then
+  VAULT=$(terraform -chdir=aca output -raw vault_name)
+  for NAME in "\${SECRETS[@]}"; do
+    KVNAME=$(echo "$NAME" | tr '_' '-')
+    if az keyvault secret show --vault-name "$VAULT" --name "$KVNAME" >/dev/null 2>&1; then
+      echo "    $NAME: already stored"
+    else
+      read -r -s -p "    Value for $NAME (hidden): " VALUE; echo
+      [ -n "$VALUE" ] || { echo "    $NAME cannot be empty."; exit 1; }
+      TMP=$(mktemp); chmod 600 "$TMP"
+      printf '%s' "$VALUE" > "$TMP"
+      # A new role assignment can take a minute to take effect.
+      for TRY in 1 2 3 4 5 6 7 8; do
+        if az keyvault secret set --vault-name "$VAULT" --name "$KVNAME" --file "$TMP" >/dev/null 2>&1; then break; fi
+        [ "$TRY" = 8 ] && { rm -f "$TMP"; echo "    Could not store $NAME. Your account needs 'Key Vault Secrets Officer' on $VAULT."; exit 1; }
+        sleep 15
+      done
+      rm -f "$TMP"; unset VALUE
+      echo "    $NAME: stored"
+    fi
+  done
+else
+  echo "    none"
+fi
+
+echo "==> 3/4  Build the image in Azure"
 ACR=$(terraform -chdir=aca output -raw acr_name)
 APP=${q(c.appName)}
 az acr build --registry "$ACR" --image "$APP:$TAG" --platform linux/amd64 .
 
-echo "==> 3/3  Environment and app (Terraform)"
+echo "==> 4/4  Environment and app (Terraform)"
 terraform -chdir=aca apply -var "image_tag=$TAG" \${APPROVE:+-auto-approve}
 
 URL=$(terraform -chdir=aca output -raw app_url)
@@ -507,7 +558,6 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 APP=${q(c.appName)}
-SECRETS=(${secrets.map((k) => q(k)).join(' ')})
 
 command -v terraform >/dev/null 2>&1 || { echo "Missing tool: terraform"; exit 1; }
 command -v az >/dev/null 2>&1 || { echo "Missing tool: az"; exit 1; }
@@ -516,11 +566,6 @@ az account show >/dev/null 2>&1 || { echo "You are not signed in to Azure. Run: 
 echo "This permanently deletes the resource group rg-$APP and everything in it."
 read -r -p "Type the app name ($APP) to continue: " ANSWER
 [ "$ANSWER" = "$APP" ] || { echo "Cancelled."; exit 1; }
-
-# Destroy needs a value for each secret variable, but not the real one.
-for NAME in \${SECRETS[@]+"\${SECRETS[@]}"}; do
-  export "TF_VAR_secret_$(echo "$NAME" | tr 'A-Z' 'a-z')=unused"
-done
 
 terraform -chdir=aca init -input=false >/dev/null
 terraform -chdir=aca destroy -auto-approve
@@ -541,7 +586,7 @@ You need Terraform and the Azure CLI installed and to be signed in (\`az login\`
 bash deploy.sh
 \`\`\`
 
-It creates the resource group and container registry, ${secrets.length ? 'asks for your secret values (hidden), ' : ''}builds the image in Azure, creates the environment and the app, and prints the address. To release a new version run it again (\`IMAGE_TAG=v2 bash deploy.sh\` to use another tag). To remove everything: \`bash destroy.sh\`.
+It creates the resource group, container registry${secrets.length ? ' and Key Vault' : ''}, ${secrets.length ? 'asks for your secret values (hidden) and stores them in Key Vault, ' : ''}builds the image in Azure, creates the environment and the app, and prints the address. To release a new version run it again (\`IMAGE_TAG=v2 bash deploy.sh\` to use another tag). To remove everything: \`bash destroy.sh\`.
 
 ## What gets created
 
@@ -549,7 +594,7 @@ It creates the resource group and container registry, ${secrets.length ? 'asks f
 - The app: ${a.minReplicas}${a.maxReplicas !== a.minReplicas ? ` to ${a.maxReplicas}` : ''} replica${a.maxReplicas === 1 ? '' : 's'} of ${a.cpu} vCPU and ${a.cpu * 2} GiB, scaling out at ${a.concurrentRequests} concurrent requests per replica${a.minReplicas === 0 ? ' and to zero when idle' : ''}.
 - ${a.externalIngress ? `HTTPS ingress${a.allowedCidr === '0.0.0.0/0' ? ' open to everyone' : ` restricted to \`${a.allowedCidr}\``}` : 'Internal ingress only (reachable from inside the environment)'}, with startup, liveness and readiness probes on \`${c.healthPath}\`.
 - A managed identity that can only pull images (AcrPull) from the registry.
-${secrets.length ? `- Secrets (${secrets.join(', ')}) are given to Terraform as sensitive variables and stored as Container Apps secrets. **They are also in Terraform's state file** (\`aca/terraform.tfstate\`): keep that folder private, or use an encrypted remote backend (an \`azurerm\` backend on a storage account).\n` : ''}
+${secrets.length ? `- Secrets (${secrets.join(', ')}) are stored in a Key Vault (as ${secrets.map((k) => `\`${vaultSecretName(k)}\``).join(', ')}) and read by the app through its managed identity (a Container Apps Key Vault reference). They are never written to Terraform, its state or any file. After you change a secret in the vault, restart the app (\`az containerapp revision restart\`) so it picks up the new value.\n` : ''}
 ## Logs and status
 
 \`\`\`bash
