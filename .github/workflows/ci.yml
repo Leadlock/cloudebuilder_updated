@@ -21,6 +21,8 @@ permissions:
 
 env:
   NEXT_TELEMETRY_DISABLED: "1"
+  # The type check and the production build outgrew Node's default heap on the runner ("JavaScript heap out of memory").
+  NODE_OPTIONS: "--max-old-space-size=6144"
 
 jobs:
   checks:
