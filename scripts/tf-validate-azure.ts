@@ -36,7 +36,7 @@ function kitchenSink(): { nodes: any[]; edges: any[] } {
   const nodes = [
     n('vnet', 'azure_vnet', { addressSpace: '10.0.0.0/16' }),
     n('fw-subnet', 'azure_subnet', { addressPrefix: '10.0.1.0/24' }, 'vnet'), n('web-subnet', 'azure_subnet', { addressPrefix: '10.0.2.0/24' }, 'vnet'), n('app-subnet', 'azure_subnet', { addressPrefix: '10.0.4.0/23' }, 'vnet'),
-    n('bastion-subnet', 'azure_subnet', { addressPrefix: '10.0.6.0/24' }, 'vnet'),
+    n('bastion-subnet', 'azure_subnet', { addressPrefix: '10.0.6.0/24' }, 'vnet'), n('vm-subnet', 'azure_subnet', { addressPrefix: '10.0.7.0/24' }, 'vnet'),
     n('fw', 'azure_firewall', { sku: 'Premium', zones: '1,2,3', dnsProxy: true }, 'fw-subnet'), n('rt', 'azure_route_table', {}, 'vnet'),
     n('agw', 'azure_app_gateway', { sku: 'WAF_v2', wafEnabled: true, zones: '1,2' }, 'web-subnet'), n('nsg-web', 'azure_nsg', { allowHttps: true }, 'vnet'), n('nsg-app', 'azure_nsg', { allowHttp: true, sourceCidr: '10.0.0.0/8' }, 'vnet'),
     n('nsg-bastion', 'azure_nsg', { allowHttps: true }, 'vnet'), n('bastion', 'azure_bastion', {}, 'bastion-subnet'),
@@ -45,6 +45,7 @@ function kitchenSink(): { nodes: any[]; edges: any[] } {
     n('mon', 'azure_monitor'), n('eh', 'azure_event_hubs', { sku: 'Premium', capacity: 2, hubNames: 'events, audit', retentionDays: 30, zoneRedundant: true }),
     n('eg', 'azure_event_grid', { inputSchema: 'CloudEventSchemaV1_0' }), n('apim', 'azure_api_management', { sku: 'Premium', capacity: 2, zones: '1,2,3' }), n('apim2', 'azure_api_management', { sku: 'Consumption' }),
     n('func', 'azure_functions'),
+    n('ctr', 'azure_container_service', { name: 'orders-api', allowedCidr: '10.0.0.0/8', imageTag: 'v2' }, 'app-subnet'),
   ];
   const e = (a: string, b: string) => ({ id: `${a}-${b}`, source: a, target: b });
   return { nodes, edges: [e('nsg-web', 'web-subnet'), e('nsg-app', 'app-subnet'), e('nsg-bastion', 'bastion-subnet'), e('rt', 'app-subnet'), e('rt', 'fw'), e('aca', 'mon'), e('apim', 'func')] };

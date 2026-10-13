@@ -1,7 +1,8 @@
 /**
- * Assessment rules for the "Container service" canvas node (aws_container_service): a Docker container on one EC2 instance.
+ * Assessment rules for the "Container service" canvas node: a Docker container on one EC2 instance (aws_container_service, AWS-CTR-*) or one
+ * Azure VM (azure_container_service, AZ-CTR-*). The two sets are the same four checks.
  *
- * AWS-CTR-001 and -003 have no Auto-Fix: what they check lives in the Dockerfile and the workflow, which Container Templates generates, so a change
+ * -CTR-001 and -003 have no Auto-Fix: what they check lives in the Dockerfile and the workflow, which Container Templates generates, so a change
  * to the setting alone would not change what Terraform creates. Fix them in Container Templates.
  *
  * They read the same plain settings the resource definition shows (lib/resources/aws.ts) and Container Templates uses, so a finding here
@@ -12,25 +13,32 @@ import type { RuleDefinition } from '../types';
 import { REVIEWED, configEvaluator, rule, PUBLIC_CIDRS } from '../ruleHelpers';
 
 const V = '1.0.0';
-const TF = 'TF-AWS';
-const common = { version: V, lastReviewed: REVIEWED, provider: 'aws' as const, service: 'Container service (Docker on EC2)', scope: 'resource' as const, resourceTypes: ['aws_container_service'] };
+type Cloud = 'aws' | 'azure';
+const CLOUDS = {
+  aws: { prefix: 'AWS', type: 'aws_container_service', service: 'Container service (Docker on EC2)', tf: 'TF-AWS', waSec: 'AWS-WA-security', waOps: 'AWS-WA-operational_excellence' },
+  azure: { prefix: 'AZ', type: 'azure_container_service', service: 'Container service (Docker on an Azure VM)', tf: 'TF-AZURERM', waSec: 'AZ-WA-security', waOps: 'AZ-WA-operational_excellence' },
+} as const;
 const WA = {
   sec: (practice: string) => ({ pillar: 'security' as const, practice }),
 };
 /** Ports of databases and caches: a container service listening on one of these is almost certainly not meant for the internet. */
 const DATA_PORTS = new Set([1433, 3306, 5432, 5984, 6379, 9200, 11211, 27017]);
 
-export const containerServiceRules: RuleDefinition[] = [
+const buildRules = (cloud: Cloud): RuleDefinition[] => {
+  const P = CLOUDS[cloud];
+  const common = { version: V, lastReviewed: REVIEWED, provider: cloud, service: P.service, scope: 'resource' as const, resourceTypes: [P.type] };
+  const TF = P.tf;
+  return [
   rule({
     ...common,
-    id: 'AWS-CTR-001',
+    id: `${P.prefix}-CTR-001`,
     domain: 'SECURITY', category: 'Workload hardening', severity: 'MEDIUM', priority: 'RECOMMENDED_IMPROVEMENT',
     title: 'The container runs as the root user',
     description: 'The container process runs as root inside the container.',
     rationale: 'CIS Docker Benchmark 4.1: run containers as a non-root user. A compromised app then has root inside the container, which makes escaping it easier.',
     risk: 'A flaw in the app gives the attacker root in the container.', impact: 'Easier container escape and wider damage from an app compromise.',
-    wellArchitected: WA.sec('SEC 3 — Manage permissions'),
-    references: ['AWS-WA-security', TF],
+    wellArchitected: WA.sec(cloud === 'aws' ? 'SEC 3 — Manage permissions' : 'SE:05 — Identity and access management'),
+    references: [P.waSec, TF],
     soc1: ['SOC1-LA-01'],
     remediation: { recommendation: 'Run the container as a non-root user (the Dockerfile from Container Templates does this when "Run as non-root" is on).', manualSteps: ['Turn on "Run as non-root user".', 'Rebuild and push the image.', 'Check the app does not write outside its own folders.'] },
     evaluate: configEvaluator(['runAsNonRoot'], { runAsNonRoot: 'Enabled / Yes' }, (c) => c.runAsNonRoot === false
@@ -39,16 +47,16 @@ export const containerServiceRules: RuleDefinition[] = [
   }),
   rule({
     ...common,
-    id: 'AWS-CTR-002',
+    id: `${P.prefix}-CTR-002`,
     domain: 'SECURITY', category: 'Network exposure', severity: 'MEDIUM', priority: 'RECOMMENDED_IMPROVEMENT',
     title: 'The container port is open to the whole internet',
     description: 'The security group lets any address connect to the app port.',
     rationale: 'Open to everyone is right for a public website and wrong for an internal tool or an API with no login. Raised to HIGH when the port is a database or cache port.',
     risk: 'The app is reachable by anyone.', impact: 'Larger attack surface and exposure of anything the app serves.',
-    wellArchitected: WA.sec('SEC 5 — Protect network resources'),
-    references: ['AWS-WA-security', TF],
+    wellArchitected: WA.sec(cloud === 'aws' ? 'SEC 5 — Protect network resources' : 'SE:06 — Network controls'),
+    references: [P.waSec, TF],
     soc1: ['SOC1-LA-01'],
-    remediation: { recommendation: 'Limit "Who can connect" to your own network or a load balancer, or put the service behind an Application Load Balancer with a WAF.', manualSteps: ['Set the allowed range to your office, VPN or VPC range.'] },
+    remediation: { recommendation: 'Limit "Who can connect" to your own network or a load balancer, or put the service behind ' + (cloud === 'aws' ? 'an Application Load Balancer' : 'an Application Gateway') + ' with a WAF.', manualSteps: ['Set the allowed range to your office, VPN or VPC range.'] },
     autoFix: {
       safety: 'MANUAL_ONLY', safetyReason: 'Only you know who is supposed to reach the app; narrowing it blindly could cut off real users.',
       description: 'Manual: set the range that may connect.', patch: () => ({}),
@@ -63,14 +71,14 @@ export const containerServiceRules: RuleDefinition[] = [
   }),
   rule({
     ...common,
-    id: 'AWS-CTR-003',
+    id: `${P.prefix}-CTR-003`,
     domain: 'SECURITY', category: 'Workload hardening', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
     title: 'Images are pushed without a vulnerability scan',
     description: 'The deploy workflow does not scan the image before it is pushed.',
     rationale: 'A known vulnerability in a base image or library goes live unnoticed. ECR scans on push, but only after the image is stored; the workflow scan stops it first.',
     risk: 'Vulnerable images are deployed.', impact: 'Known exploits reach production.',
-    wellArchitected: WA.sec('SEC 6 — Protect compute resources'),
-    references: ['AWS-WA-security', TF],
+    wellArchitected: WA.sec(cloud === 'aws' ? 'SEC 6 — Protect compute resources' : 'SE:08 — Hardening resources'),
+    references: [P.waSec, TF],
     soc1: ['SOC1-OP-02'],
     remediation: { recommendation: 'Turn on the Trivy scan in the generated GitHub Actions workflow.', manualSteps: ['Turn on "Scan the image for vulnerabilities".', 'Regenerate the workflow in Container Templates.'] },
     evaluate: configEvaluator(['scanImage'], { scanImage: 'Enabled / Yes' }, (c) => c.scanImage === false
@@ -79,14 +87,14 @@ export const containerServiceRules: RuleDefinition[] = [
   }),
   rule({
     ...common,
-    id: 'AWS-CTR-004',
+    id: `${P.prefix}-CTR-004`,
     domain: 'OPERATIONAL_EXCELLENCE', category: 'Operations', severity: 'LOW', priority: 'OPTIONAL_OPTIMIZATION',
     title: 'The deployed image tag is "latest"',
     description: 'The instance runs whatever image carries the tag "latest" at the time it starts.',
     rationale: 'A floating tag makes it unclear which build is running and prevents a rollback to a named version.',
     risk: 'An unknown build is running; a bad push is live at the next restart.', impact: 'Slower incident response and no clean rollback.',
-    wellArchitected: { pillar: 'operational_excellence' as const, practice: 'Perform operations as code' },
-    references: ['AWS-WA-operational_excellence', TF],
+    wellArchitected: { pillar: 'operational_excellence' as const, practice: cloud === 'aws' ? 'Perform operations as code' : 'OE:05 — Prepare for infrastructure as code' },
+    references: [P.waOps, TF],
     soc1: ['SOC1-OP-02'],
     remediation: { recommendation: 'Deploy a version tag, for example the commit id.', manualSteps: ['Set an image tag such as v1 or the commit id.', 'Push the image with that tag.'] },
     autoFix: {
@@ -98,4 +106,8 @@ export const containerServiceRules: RuleDefinition[] = [
       ? { status: 'FAIL', observation: 'The image tag is "latest".' }
       : { status: 'PASS', observation: `The image tag is ${String(c.imageTag)}.` }),
   }),
-];
+  ];
+};
+
+export const containerServiceRules: RuleDefinition[] = buildRules('aws');
+export const azureContainerServiceRules: RuleDefinition[] = buildRules('azure');

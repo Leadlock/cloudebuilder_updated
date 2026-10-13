@@ -10,6 +10,7 @@
  */
 import { placeholderProblems } from './placeholderChecks';
 import { containerServiceBlocks } from './containerService';
+import { azureContainerServiceBlocks } from './azureContainerService';
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
 import { assertSafeHcl, escapeHclString, hclSafeId, sanitizeResourcesForHcl } from './hclSafety';
 import { PRIVATE_LINK_TARGETS } from '@/lib/engines/assessment/privateAccess';
@@ -2626,6 +2627,15 @@ locals {
           }
           break;
         }
+        case 'azure_container_service': {
+          const subnet = resolver.resolveParent(r.id, 'azure_subnet', connections, resources) || (allAzureSubnets.length > 0 ? allAzureSubnets[0] : undefined);
+          const isSubnetImported = subnet && Boolean(this._cfg(subnet).imported || this._cfg(subnet).importState === 'imported');
+          const subnetRef = subnet ? `${isSubnetImported ? 'data.' : ''}azurerm_subnet.${resolver.tfNameOf(subnet.id) ?? 'main'}.id` : null;
+          if (!subnetRef) warnings.push(`Container service "${r.label}" is not placed in any subnet — its network interface cannot be generated and this resource's Terraform will fail to apply.`);
+          blocks.push(...azureContainerServiceBlocks(name, cfg, rgName, rgLoc, subnetRef));
+          resourceMap[r.id] = `azurerm_linux_virtual_machine.${name}`;
+          break;
+        }
         case 'azure_blob':
         case 'azure_storage': {
           if (isImported) {
@@ -4385,7 +4395,7 @@ ${required.join('\n')}
     const hasAzure = providers.includes('azure');
     const hasRds   = input.resources.some((r) => r.resourceType === 'aws_rds');
     const hasSql   = input.resources.some((r) => r.resourceType === 'azure_sql' || r.resourceType === 'azure_postgres' || r.resourceType === 'azure_mysql');
-    const isVmLike = (r: DbArchitectureResource) => r.resourceType === 'azure_vm' || r.resourceType === 'azure_vmss';
+    const isVmLike = (r: DbArchitectureResource) => r.resourceType === 'azure_vm' || r.resourceType === 'azure_vmss' || r.resourceType === 'azure_container_service';
     const hasVm    = input.resources.some(isVmLike);
     const parseCfg = (r: DbArchitectureResource): Record<string, unknown> => {
       try { return JSON.parse(r.configJson) as Record<string, unknown>; } catch { return {}; }

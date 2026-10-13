@@ -23,6 +23,7 @@ import { PRIVATE_LINK_TARGETS } from '@/lib/engines/assessment/privateAccess';
  * never disagree about whether the same edge is valid.
  */
 const isEc2Like = (t: string) => t === 'aws_ec2' || t === 'aws_container_service';
+const isAzureVmLike = (t: string) => t === 'azure_vm' || t === 'azure_container_service';
 
 export function isCrossCloudConnectionSupported(sourceType: string, targetType: string): boolean {
   const sType = sourceType;
@@ -93,8 +94,8 @@ export class RelationshipEngine {
 
     // Nested compute
     if (
-      (isEc2Like(childType) || childType === 'azure_vm') &&
-      (isEc2Like(parentType) || parentType === 'azure_vm')
+      (isEc2Like(childType) || isAzureVmLike(childType)) &&
+      (isEc2Like(parentType) || isAzureVmLike(parentType))
     ) {
       return {
         isAllowed: false,
@@ -135,7 +136,7 @@ export class RelationshipEngine {
 
     // Compute directly in VPC/VNet/ResourceGroup
     if (
-      (isEc2Like(childType) || childType === 'azure_vm' || childType === 'aws_auto_scaling' || childType === 'azure_vmss') &&
+      (isEc2Like(childType) || isAzureVmLike(childType) || childType === 'aws_auto_scaling' || childType === 'azure_vmss') &&
       (parentType === 'aws_vpc' || parentType === 'azure_vnet' || parentType === 'azure_resource_group')
     ) {
       return {
@@ -642,7 +643,7 @@ export class RelationshipEngine {
       }
 
       // Invalid: Storage/Database initiating connection to Compute
-      if ((sType === 'azure_event_hubs' || sType === 'azure_event_grid' || sType === 'azure_sql' || sType === 'azure_storage' || sType === 'azure_redis' || sType === 'azure_postgres' || sType === 'azure_mysql' || sType === 'azure_service_bus' || sType === 'azure_acr') && (tType === 'azure_vm' || tType === 'azure_vmss' || tType === 'azure_functions' || tType === 'azure_app_service' || tType === 'azure_aks')) {
+      if ((sType === 'azure_event_hubs' || sType === 'azure_event_grid' || sType === 'azure_sql' || sType === 'azure_storage' || sType === 'azure_redis' || sType === 'azure_postgres' || sType === 'azure_mysql' || sType === 'azure_service_bus' || sType === 'azure_acr') && (isAzureVmLike(tType) || tType === 'azure_vmss' || tType === 'azure_functions' || tType === 'azure_app_service' || tType === 'azure_aks')) {
         return {
           isValid: false,
           relationshipType: 'NETWORK_FLOW',
@@ -703,7 +704,7 @@ export class RelationshipEngine {
       }
 
       // Valid: App Gateway / LB -> VM / VMSS / AKS
-      if ((sType === 'azure_app_gateway' || sType === 'azure_lb') && (tType === 'azure_vm' || tType === 'azure_vmss' || tType === 'azure_aks')) {
+      if ((sType === 'azure_app_gateway' || sType === 'azure_lb') && (isAzureVmLike(tType) || tType === 'azure_vmss' || tType === 'azure_aks')) {
         return {
           isValid: true,
           relationshipType: 'LOAD_BALANCES',
@@ -715,7 +716,7 @@ export class RelationshipEngine {
       }
 
       // Valid: VM / VMSS -> Azure SQL
-      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_sql') {
+      if ((isAzureVmLike(sType) || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_sql') {
         return {
           isValid: true,
           relationshipType: 'CONNECTS_TO',
@@ -727,7 +728,7 @@ export class RelationshipEngine {
       }
 
       // Valid: VM / VMSS -> Azure Redis
-      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_redis') {
+      if ((isAzureVmLike(sType) || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_redis') {
         return {
           isValid: true,
           relationshipType: 'CONNECTS_TO',
@@ -739,7 +740,7 @@ export class RelationshipEngine {
       }
 
       // Valid: VM / VMSS -> Storage Account
-      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service') && tType === 'azure_storage') {
+      if ((isAzureVmLike(sType) || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service') && tType === 'azure_storage') {
         return {
           isValid: true,
           relationshipType: 'STORES_IN',
@@ -751,7 +752,7 @@ export class RelationshipEngine {
       }
 
       // Valid: VM / VMSS / Functions / App Service / AKS -> Cosmos DB (the Cosmos DB API over HTTPS)
-      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_cosmos_db') {
+      if ((isAzureVmLike(sType) || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_cosmos_db') {
         return {
           isValid: true,
           relationshipType: 'CONNECTS_TO',
@@ -782,21 +783,21 @@ export class RelationshipEngine {
       }
 
       // Valid: compute -> PostgreSQL / MySQL flexible server
-      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && (tType === 'azure_postgres' || tType === 'azure_mysql')) {
+      if ((isAzureVmLike(sType) || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && (tType === 'azure_postgres' || tType === 'azure_mysql')) {
         const pg = tType === 'azure_postgres';
         return { isValid: true, relationshipType: 'DATABASE_CONNECTION', networkScope: 'private', protocol: pg ? 'PostgreSQL / TCP' : 'MySQL / TCP', port: pg ? 5432 : 3306, label: pg ? 'PostgreSQL / 5432' : 'MySQL / 3306' };
       }
 
       // Valid: compute -> Service Bus (AMQP over TLS)
-      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_service_bus') {
+      if ((isAzureVmLike(sType) || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_service_bus') {
         return { isValid: true, relationshipType: 'CONNECTS_TO', networkScope: 'private', protocol: 'AMQP over TLS', port: 5671, label: 'Service Bus / 5671' };
       }
 
       // Valid: compute -> Event Hubs (AMQP over TLS) and Event Grid (publishing over HTTPS)
-      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_event_hubs') {
+      if ((isAzureVmLike(sType) || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_event_hubs') {
         return { isValid: true, relationshipType: 'CONNECTS_TO', networkScope: 'private', protocol: 'AMQP over TLS', port: 5671, label: 'Event Hubs / 5671' };
       }
-      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_event_grid') {
+      if ((isAzureVmLike(sType) || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_event_grid') {
         return { isValid: true, relationshipType: 'WRITES_TO', networkScope: 'private', protocol: 'HTTPS', port: 443, label: 'Publish events / 443' };
       }
 
@@ -804,7 +805,7 @@ export class RelationshipEngine {
       if ((sType === 'azure_front_door' || sType === 'azure_app_gateway') && tType === 'azure_api_management') {
         return { isValid: true, relationshipType: 'ROUTES_TO', networkScope: 'public', protocol: 'HTTPS', port: 443, label: 'API traffic / 443' };
       }
-      if (sType === 'azure_api_management' && (tType === 'azure_vm' || tType === 'azure_vmss' || tType === 'azure_functions' || tType === 'azure_app_service' || tType === 'azure_aks')) {
+      if (sType === 'azure_api_management' && (isAzureVmLike(tType) || tType === 'azure_vmss' || tType === 'azure_functions' || tType === 'azure_app_service' || tType === 'azure_aks')) {
         return { isValid: true, relationshipType: 'ROUTES_TO', networkScope: 'private', protocol: 'HTTPS', port: 443, label: 'Backend API / 443' };
       }
 
@@ -814,7 +815,7 @@ export class RelationshipEngine {
       }
 
       // Valid: compute pulls images from the Container Registry
-      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_acr') {
+      if ((isAzureVmLike(sType) || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service' || sType === 'azure_aks') && tType === 'azure_acr') {
         return { isValid: true, relationshipType: 'READS_FROM', networkScope: 'private', protocol: 'HTTPS', port: 443, label: 'Image pull / 443' };
       }
 
@@ -834,7 +835,7 @@ export class RelationshipEngine {
       }
 
       // Valid: Key Vault access
-      if ((sType === 'azure_vm' || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service') && tType === 'azure_key_vault') {
+      if ((isAzureVmLike(sType) || sType === 'azure_vmss' || sType === 'azure_functions' || sType === 'azure_app_service') && tType === 'azure_key_vault') {
         return {
           isValid: true,
           relationshipType: 'AUTHENTICATES_WITH',

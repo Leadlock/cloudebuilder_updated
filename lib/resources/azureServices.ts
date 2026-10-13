@@ -6,6 +6,7 @@
  * generator are all declared here, so they stay in step (see __tests__/ruleSchemaConsistency.test.ts).
  */
 import type { ResourceDefinition } from '@/types';
+import { defaultAzureNodeConfig } from '@/lib/engines/containers/nodeConfig';
 
 const tags = { key: 'tags', label: 'Tags', type: 'keyvalue' as const, defaultValue: {}, section: 'Tags' };
 
@@ -420,6 +421,51 @@ export const azureServiceResources: ResourceDefinition[] = [
       { key: 'estimatedMillionRequestsPerMonth', label: 'Estimated Requests (millions per month)', type: 'number', defaultValue: 1, min: 0, max: 10000000, section: 'Cost Estimation', description: 'Used only to estimate cost: the first 2 million requests a month are free.' },
       { key: 'estimatedActivePercent', label: 'Estimated Time Handling Requests (%)', type: 'number', defaultValue: 25, min: 0, max: 100, section: 'Cost Estimation', description: 'Used only to estimate cost: replicas are billed at a low idle rate when they are not handling requests.' },
       tags,
+    ],
+  },
+  {
+    type: 'azure_container_service',
+    label: 'Container service',
+    service: 'Docker on an Azure VM',
+    description: 'A Docker container run on one Azure VM, with its own container registry and Key Vault, built and deployed with the files from Container Templates.',
+    provider: 'azure',
+    category: 'compute',
+    icon: 'VM',
+    color: '#0078D4',
+    bgColor: '#FEF3C7',
+    borderColor: '#D97706',
+    monthlyBaseCost: 36.5,
+    defaultConfig: defaultAzureNodeConfig(),
+    configSchema: [
+      { key: 'name', label: 'App name', type: 'text', defaultValue: 'my-container-service', required: true, description: 'Lower-case letters, digits and single hyphens. Also names the registry and vault.' },
+      {
+        key: 'stack', label: 'Stack', type: 'select', defaultValue: 'node', section: 'Container',
+        options: [{ label: 'Node.js', value: 'node' }, { label: 'Python', value: 'python' }, { label: 'Java (Spring Boot)', value: 'java' }, { label: 'Go', value: 'go' }, { label: '.NET (ASP.NET Core)', value: 'dotnet' }, { label: 'Ruby (Rails / Rack)', value: 'ruby' }, { label: 'Static site (nginx)', value: 'static' }],
+      },
+      { key: 'port', label: 'Port', type: 'number', defaultValue: 3000, min: 1, max: 65535, section: 'Container' },
+      { key: 'healthPath', label: 'Health check path', type: 'text', defaultValue: '/', section: 'Container', placeholder: '/health' },
+      { key: 'imageTag', label: 'Image tag', type: 'text', defaultValue: 'v1', section: 'Container', description: 'A version tag (for example the commit id) makes it clear what is running. "latest" works but hides it.' },
+      { key: 'memoryLimit', label: 'Memory limit', type: 'text', defaultValue: '512m', section: 'Container', advanced: true, placeholder: '512m' },
+      { key: 'cpuLimit', label: 'CPU limit', type: 'text', defaultValue: '1.0', section: 'Container', advanced: true, placeholder: '1.0' },
+      {
+        key: 'restart', label: 'Restart policy', type: 'select', defaultValue: 'unless-stopped', section: 'Container', advanced: true,
+        options: [{ label: 'Unless stopped', value: 'unless-stopped' }, { label: 'Always', value: 'always' }, { label: 'On failure', value: 'on-failure' }, { label: 'Never', value: 'no' }],
+      },
+      { key: 'runAsNonRoot', label: 'Run as non-root user', type: 'boolean', defaultValue: true, section: 'Security' },
+      { key: 'scanImage', label: 'Scan the image for vulnerabilities (Trivy)', type: 'boolean', defaultValue: true, section: 'Security' },
+      { key: 'allowedCidr', label: 'Who can connect to the port', type: 'cidr', defaultValue: '10.0.0.0/16', section: 'Security', description: '0.0.0.0/0 means the whole internet.' },
+      {
+        key: 'vmSize', label: 'VM size', type: 'select', defaultValue: 'Standard_B2s', section: 'Compute / Capacity',
+        options: [
+          { label: 'Standard_B1s (1 vCPU, 1GB)', value: 'Standard_B1s' },
+          { label: 'Standard_B2s (2 vCPU, 4GB)', value: 'Standard_B2s' },
+          { label: 'Standard_B2ms (2 vCPU, 8GB)', value: 'Standard_B2ms' },
+          { label: 'Standard_B4ms (4 vCPU, 16GB)', value: 'Standard_B4ms' },
+          { label: 'Standard_D2s_v3 (2 vCPU, 8GB)', value: 'Standard_D2s_v3' },
+          { label: 'Standard_D4s_v3 (4 vCPU, 16GB)', value: 'Standard_D4s_v3' },
+        ],
+      },
+      { key: 'diskGb', label: 'Disk (GB)', type: 'number', defaultValue: 30, min: 30, max: 1024, section: 'Storage' },
     ],
   },
 ];

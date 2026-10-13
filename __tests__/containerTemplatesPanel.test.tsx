@@ -141,7 +141,7 @@ describe('the canvas', () => {
     expect(call).toMatchObject({ nodeId: 'n1', label: 'from-canvas', config: { name: 'from-canvas', port: 8123, stack: 'python' } });
   });
 
-  it('Add to architecture creates a Container service node, or says to open a project first', () => {
+  it('Add to architecture creates the resource that matches the target, or says why it cannot', () => {
     const { rerender } = render(<ContainerTemplatesPanel />);
     fireEvent.click(screen.getByText('Add to architecture'));
     expect(screen.getByRole('status').textContent).toMatch(/Open or create a project/);
@@ -149,9 +149,23 @@ describe('the canvas', () => {
     mockProject = { nodes: [], edges: [] };
     rerender(<ContainerTemplatesPanel />);
     fireEvent.click(screen.getByText('Add to architecture'));
-    const call = mockDispatch.mock.calls.find((c) => c[0].type === 'UPDATE_CANVAS')![0];
-    expect(call.nodes).toHaveLength(1);
-    expect(call.nodes[0]).toMatchObject({ resourceType: 'aws_container_service', provider: 'aws', label: 'my-app' });
+    expect(screen.getByRole('status').textContent).toMatch(/Pick where to deploy/);
+    const added = (target: string) => {
+      mockDispatch.mockReset();
+      pick(target);
+      fireEvent.click(screen.getByText(/Add to architecture|Update the canvas node/));
+      return mockDispatch.mock.calls.find((c) => c[0].type === 'UPDATE_CANVAS')?.[0].nodes.at(-1);
+    };
+    expect(added('ec2')).toMatchObject({ resourceType: 'aws_container_service', provider: 'aws', label: 'my-app' });
+    mockProject = { nodes: [], edges: [] }; rerender(<ContainerTemplatesPanel />);
+    expect(added('azure-vm')).toMatchObject({ resourceType: 'azure_container_service', provider: 'azure', config: { vmSize: 'Standard_B2s', allowedCidr: '0.0.0.0/0' } }); // what the form says, which the checks then flag
+    mockProject = { nodes: [], edges: [] }; rerender(<ContainerTemplatesPanel />);
+    expect(added('container-apps')).toMatchObject({ resourceType: 'azure_container_apps', provider: 'azure', config: { name: 'my-app', targetPort: 3000, minReplicas: 1, cpu: '0.5' } });
+    for (const t of ['ecs', 'aks']) {
+      mockProject = { nodes: [], edges: [] }; rerender(<ContainerTemplatesPanel />);
+      expect(added(t)).toBeUndefined();
+    }
+    expect(screen.getByRole('status').textContent).toMatch(/no single canvas resource|Fix the errors/);
   });
 });
 

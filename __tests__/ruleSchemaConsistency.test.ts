@@ -22,6 +22,8 @@ import type { CanvasNode } from '@/types';
 /** `type.setting` → why changing it cannot change the Terraform today. */
 const KNOWN_TERRAFORM_GAPS: Record<string, string> = {
   'aws_container_service.runAsNonRoot': 'AWS-CTR-001: a property of the Dockerfile (Container Templates), not of the instance Terraform creates.',
+  'azure_container_service.runAsNonRoot': 'AZ-CTR-001: a property of the Dockerfile (Container Templates), not of the VM Terraform creates.',
+  'azure_container_service.scanImage': 'AZ-CTR-003: a property of the GitHub Actions workflow (Container Templates), not of the VM Terraform creates.',
   'aws_container_service.scanImage': 'AWS-CTR-003: a property of the GitHub Actions workflow (Container Templates), not of the instance Terraform creates.',
   'aws_ebs.snapshotSchedule': 'AWS-EBS-002: the generator does not emit AWS Backup or Data Lifecycle Manager resources, so the rule is manual-only.',
   'aws_s3.loggingEnabled': 'AWS-S3-003: the generator does not emit aws_s3_bucket_logging (it needs a target log bucket), so the rule is manual-only.',

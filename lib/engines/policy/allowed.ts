@@ -19,6 +19,7 @@ export const INSTANCE_SIZE_FIELD: Record<string, { key: string; label: string }>
   aws_rds: { key: 'instanceClass', label: 'instance class' },
   aws_elasticache: { key: 'nodeType', label: 'node type' },
   azure_vm: { key: 'size', label: 'VM size' },
+  azure_container_service: { key: 'vmSize', label: 'VM size' },
   azure_vmss: { key: 'sku', label: 'VM size' },
 };
 

@@ -9,7 +9,8 @@ import clsx from 'clsx';
 import { Copy, Download, Package, Plus, Trash2, AlertTriangle, Check, ShieldCheck, Save } from 'lucide-react';
 import { useApp, useActiveProject } from '@/context/AppContext';
 import { takeContainerHandoff } from './containerHandoff';
-import { nodeConfigFromContainer, CONTAINER_SERVICE_TYPE } from '@/lib/engines/containers/nodeConfig';
+import { nodeConfigFromContainerFor, nodeTypeForTarget } from '@/lib/engines/containers/nodeConfig';
+import { getResourceDefinition } from '@/lib/resources';
 import type { CanvasNode } from '@/types';
 import {
   defaultConfig, deployTargets, DEPLOY_TARGET_LABEL, TARGET_CLOUD, generateContainerFiles, STACK_LABEL, STARTER_TEMPLATES, VERSIONS, withDeployTarget,
@@ -20,6 +21,7 @@ import { FARGATE_CPU, fargateMemoryOptions } from '@/lib/engines/containers/ecsD
 import { ACA_CPU } from '@/lib/engines/containers/containerAppsDeploy';
 
 const STACKS = Object.keys(STACK_LABEL) as ContainerStack[];
+const newNodeId = () => `node-${Date.now()}`;
 
 interface Saved { id: string; name: string; config: ContainerConfig; updatedAt: string }
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -56,15 +58,23 @@ export default function ContainerTemplatesPanel() {
     if (!project) { setCanvasNote('Open or create a project first, then come back.'); return; }
     const res = generateContainerFiles(cfg);
     if (!res.ok) { setCanvasNote('Fix the errors above first.'); return; }
-    const config = nodeConfigFromContainer({ ...cfg, ec2: { ...cfg.ec2, enabled: true } });
-    if (linked) {
-      dispatch({ type: 'UPDATE_NODE_CONFIG', nodeId: linked.id, config: { ...linked.config, ...config }, label: cfg.appName });
+    const type = nodeTypeForTarget(target);
+    if (!type) {
+      setCanvasNote(target === 'none' ? 'Pick where to deploy (EC2, Azure VM or Container Apps) to add a matching resource.' : `${DEPLOY_TARGET_LABEL[target]} has no single canvas resource: draw it with the cluster resources (ECS, AKS, EKS) instead.`);
+      return;
+    }
+    const def = getResourceDefinition(type);
+    if (linked && linked.resourceType === type) {
+      dispatch({ type: 'UPDATE_NODE_CONFIG', nodeId: linked.id, config: { ...linked.config, ...nodeConfigFromContainerFor(type, cfg, linked.config) }, label: cfg.appName });
       setCanvasNote(`Updated "${cfg.appName}" on the canvas.`);
       return;
     }
-    const id = `node-${Date.now()}`;
+    const id = newNodeId();
     const maxY = project.nodes.reduce((m, n) => Math.max(m, n.position.y + (n.height ?? 100)), 0);
-    const node: CanvasNode = { id, type: 'cloudNode', resourceType: CONTAINER_SERVICE_TYPE, provider: 'aws', label: cfg.appName, position: { x: 80, y: maxY + 60 }, config, width: 180, height: 100 };
+    const node: CanvasNode = {
+      id, type: 'cloudNode', resourceType: type, provider: type.startsWith('azure_') ? 'azure' : 'aws', label: cfg.appName, position: { x: 80, y: maxY + 60 },
+      config: { ...(def?.defaultConfig ?? {}), ...nodeConfigFromContainerFor(type, cfg) }, width: 180, height: 100,
+    };
     dispatch({ type: 'UPDATE_CANVAS', nodes: [...project.nodes, node], edges: project.edges, bumpCanvasKey: true });
     setLinkedNode(id);
     setCanvasNote(`Added "${cfg.appName}" to the architecture. Drag it into a subnet to place it in your network.`);

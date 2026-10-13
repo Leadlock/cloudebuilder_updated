@@ -128,6 +128,7 @@ export class AzurePricingProvider implements PricingProvider {
       case 'azure_event_grid':      return this._eventGrid(resource, config, region, mult);
       case 'azure_api_management':  return this._apiManagement(resource, config, region, mult);
       case 'azure_container_apps':  return this._containerApps(resource, config, region, mult);
+      case 'azure_container_service': return this._containerService(resource, config, region, mult);
       case 'azure_public_ip':       return this._publicIp(resource, config, region, mult);
       case 'azure_resource_group':
       case 'azure_vnet':
@@ -801,6 +802,38 @@ export class AzurePricingProvider implements PricingProvider {
    * requests at $0.40 per million after the first 2 million. A replica that is always running is assumed idle outside the stated share of time.
    * The monthly free grants (180,000 vCPU-seconds, 360,000 GiB-seconds) are shared by the whole subscription and are not deducted here.
    */
+  /** A container service is one VM with its disk (the registry is added: it is part of what the node creates). */
+  private _containerService(
+    resource: DbArchitectureResource,
+    config: Record<string, unknown>,
+    region: string,
+    mult: number,
+  ): CostLineItem {
+    const size = (config['vmSize'] as string) ?? 'Standard_B2s';
+    const hourly = (VM_HOURLY_USD[size] ?? VM_HOURLY_USD['Standard_B2s']!) * mult;
+    const vm = toMonthly(hourly);
+    const diskGb = Number(config['diskGb'] ?? 30);
+    const disk = diskGb * 0.075;
+    const registry = 5;
+    return {
+      resourceId: resource.id,
+      resourceLabel: resource.label,
+      resourceType: resource.resourceType,
+      provider: 'azure',
+      region,
+      hourlyUsd: hourly,
+      monthlyUsd: vm + disk + registry,
+      breakdown: [
+        { label: `VM ${size} (pay as you go, Linux)`, monthlyUsd: vm },
+        { label: `Standard SSD ${diskGb} GB`, monthlyUsd: disk },
+        { label: 'Container Registry (Basic)', monthlyUsd: registry },
+      ],
+      assumptions: ['Pay-as-you-go pricing, Linux', 'No data transfer or Key Vault operation charges included', `Region: ${region}`],
+      pricingSource: 'azure-vm-payg-list-price',
+      confidence: 'estimate',
+    };
+  }
+
   private _containerApps(resource: DbArchitectureResource, config: Record<string, unknown>, region: string, mult: number): CostLineItem {
     const cpu = Number(config['cpu'] ?? 0.5) || 0.5;
     const memGib = cpu * 2;

@@ -67,7 +67,7 @@ const coreAzureResources: ResourceDefinition[] = [
     borderColor: '#047857',
     monthlyBaseCost: 0,
     isContainer: true,
-    allowedChildren: ['azure_vm', 'azure_vmss', 'azure_lb', 'azure_app_gateway', 'azure_sql', 'azure_redis', 'azure_functions', 'azure_aks', 'azure_nic', 'azure_postgres', 'azure_mysql', 'azure_private_endpoint', 'azure_firewall', 'azure_container_apps'],
+    allowedChildren: ['azure_vm', 'azure_vmss', 'azure_lb', 'azure_app_gateway', 'azure_sql', 'azure_redis', 'azure_functions', 'azure_aks', 'azure_nic', 'azure_postgres', 'azure_mysql', 'azure_private_endpoint', 'azure_firewall', 'azure_container_apps', 'azure_container_service'],
     defaultWidth: 340,
     defaultHeight: 240,
     defaultConfig: { addressPrefix: '10.0.1.0/24', name: 'my-subnet' },

@@ -211,3 +211,145 @@ describe('relationships and policy', () => {
     expect(v.map((x) => x.ruleId)).toContain('POLICY-INSTANCE-TYPE');
   });
 });
+
+// ─── Azure ───────────────────────────────────────────────────────────────────
+
+import {
+  AZURE_CONTAINER_SERVICE_TYPE, CONTAINER_APPS_TYPE, CONTAINER_NODE_TYPES, acaNodeConfigFromContainer, azureNodeConfigFromContainer, containerConfigForNode,
+  containerConfigFromAcaNode, containerConfigFromAzureNode, defaultAzureNodeConfig, nodeConfigFromContainerFor, nodeProblemsFor, nodeTypeForTarget,
+} from '@/lib/engines/containers/nodeConfig';
+import { azurePricingProvider } from '@/lib/engines/cost/azurePricing';
+import { withDeployTarget } from '@/lib/engines/containers/dockerTemplates';
+
+const AZ = AZURE_CONTAINER_SERVICE_TYPE;
+function azNode(type: string, over: Record<string, unknown> = {}, extra: Partial<CanvasNode> = {}): CanvasNode {
+  const def = getResourceDefinition(type)!;
+  const id = extra.id ?? `n-${type}-${++seq}`;
+  return { id, type: 'cloudNode', resourceType: type, provider: 'azure', label: extra.label ?? `${def.label} ${seq}`, position: { x: 0, y: 0 }, config: { ...def.defaultConfig, ...over }, ...extra } as CanvasNode;
+}
+
+describe('Azure container service: definition and mapping', () => {
+  const def = getResourceDefinition(AZ)!;
+  it('is an Azure compute resource that fits in a subnet, private by default, with a version tag', () => {
+    expect(def.provider).toBe('azure');
+    expect(def.category).toBe('compute');
+    expect(getResourceDefinition('azure_subnet')!.allowedChildren).toContain(AZ);
+    expect(def.defaultConfig).toEqual(defaultAzureNodeConfig());
+    expect(def.defaultConfig['allowedCidr']).toBe('10.0.0.0/16');
+    expect(def.defaultConfig['imageTag']).not.toBe('latest');
+    for (const f of def.configSchema) if (f.options) expect(f.options.map((o) => o.value)).toContain(def.defaultConfig[f.key]);
+    expect(nodeProblemsFor(AZ, def.defaultConfig)).toEqual([]);
+  });
+  it('is not offered to the AI architect', () => {
+    expect(CATALOG_TYPES).not.toContain(AZ);
+    expect(ARCHITECT_SYSTEM_PROMPT).not.toContain(AZ);
+  });
+  it('every deployment target maps to the canvas resource that can represent it, or to none', () => {
+    expect(nodeTypeForTarget('ec2')).toBe('aws_container_service');
+    expect(nodeTypeForTarget('azure-vm')).toBe(AZ);
+    expect(nodeTypeForTarget('container-apps')).toBe(CONTAINER_APPS_TYPE);
+    for (const t of ['none', 'ecs', 'aks', 'kubernetes'] as const) expect(nodeTypeForTarget(t)).toBeNull();
+    expect(CONTAINER_NODE_TYPES).toEqual(['aws_container_service', AZ, CONTAINER_APPS_TYPE]);
+  });
+  it('round-trips the form for an Azure VM node, and the plain fields win', () => {
+    const c = withDeployTarget({ ...defaultConfig('go'), appName: 'orders-api', port: 8080, env: [{ key: 'API_TOKEN', value: 'nope', secret: true }] }, 'azure-vm');
+    c.azvm = { ...c.azvm, size: 'Standard_D2s_v3', diskGb: 64, allowedCidr: '10.1.0.0/16', imageTag: 'v7' };
+    const n = azureNodeConfigFromContainer(c);
+    expect(JSON.stringify(n)).not.toContain('nope');
+    const back = containerConfigFromAzureNode(n);
+    expect(back).toMatchObject({ stack: 'go', appName: 'orders-api', port: 8080 });
+    expect(back.azvm).toMatchObject({ enabled: true, size: 'Standard_D2s_v3', diskGb: 64, allowedCidr: '10.1.0.0/16', imageTag: 'v7' });
+    expect(back.env).toEqual([{ key: 'API_TOKEN', value: '', secret: true }]);
+    expect(containerConfigFromAzureNode({ ...n, vmSize: 'Standard_B4ms', port: 9000 })).toMatchObject({ port: 9000, azvm: { size: 'Standard_B4ms' } });
+    expect(containerConfigFromAzureNode({ name: 'site' }).azvm.allowedCidr).toBe('10.0.0.0/16');
+    const other = { ...defaultConfig('node'), appName: 'a' }; other.ecs = { ...other.ecs, enabled: true };
+    expect(containerConfigFromAzureNode(azureNodeConfigFromContainer(other))).toMatchObject({ azvm: { enabled: true }, ecs: { enabled: false } });
+  });
+  it('Container Apps: the form fills the node and the node fills the form, and the image is left alone', () => {
+    const c = withDeployTarget({ ...defaultConfig('python'), appName: 'orders-api', port: 8000 }, 'container-apps');
+    c.aca = { ...c.aca, cpu: 1, minReplicas: 0, maxReplicas: 8, externalIngress: false };
+    const n = acaNodeConfigFromContainer(c, { image: 'myreg.azurecr.io/orders:1', targetPort: 1 });
+    expect(n).toMatchObject({ name: 'orders-api', cpu: '1', minReplicas: 0, maxReplicas: 8, targetPort: 8000, externalIngress: false, image: 'myreg.azurecr.io/orders:1' });
+    const back = containerConfigFromAcaNode(n);
+    expect(back).toMatchObject({ stack: 'python', appName: 'orders-api', port: 8000, aca: { enabled: true, cpu: 1, minReplicas: 0, maxReplicas: 8, externalIngress: false } });
+    // a node that never saw the form (the resource that existed before) still opens in it, from its own settings
+    const plain = containerConfigFromAcaNode({ name: 'old-app', cpu: '0.25', targetPort: 80, minReplicas: 2, maxReplicas: 3, externalIngress: true });
+    expect(plain).toMatchObject({ appName: 'old-app', port: 80, aca: { cpu: 0.25, minReplicas: 2, maxReplicas: 3 } });
+    expect(containerConfigForNode(CONTAINER_APPS_TYPE, { name: 'x' }).aca.enabled).toBe(true);
+    expect(nodeConfigFromContainerFor('aws_container_service', withDeployTarget(defaultConfig('node'), 'ec2'))).toHaveProperty('instanceType');
+  });
+});
+
+describe('Azure container service: cost, review, policy, relationships', () => {
+  const price = (c: Record<string, unknown>) => azurePricingProvider.estimateResource({ id: 'r', label: 'r', resourceType: AZ, provider: 'azure' } as never, { ...defaultAzureNodeConfig(), ...c }, 'eastus')!;
+  it('prices the VM, its disk and the registry', () => {
+    const p = price({ vmSize: 'Standard_B2s', diskGb: 30 });
+    expect(p.monthlyUsd).toBeCloseTo(0.0416 * 730 + 30 * 0.075 + 5, 1);
+    expect(p.breakdown).toHaveLength(3);
+    expect(price({ vmSize: 'Standard_D4s_v3' }).monthlyUsd).toBeGreaterThan(p.monthlyUsd);
+  });
+  const statusOf = (n: CanvasNode, id: string) => runAssessment({ nodes: [n], edges: [] }).evaluations.find((e) => e.ruleId === id && e.resourceIds[0] === n.id)?.status;
+  it('the same four rules as the AWS node, under AZ-CTR', () => {
+    const n = azNode(AZ);
+    for (const id of ['AZ-CTR-001', 'AZ-CTR-002', 'AZ-CTR-003', 'AZ-CTR-004']) expect(statusOf(n, id)).toBe('PASS');
+    expect(statusOf(azNode(AZ, { runAsNonRoot: false }), 'AZ-CTR-001')).toBe('FAIL');
+    expect(statusOf(azNode(AZ, { allowedCidr: '0.0.0.0/0' }), 'AZ-CTR-002')).toBe('FAIL');
+    expect(statusOf(azNode(AZ, { scanImage: false }), 'AZ-CTR-003')).toBe('FAIL');
+    expect(statusOf(azNode(AZ, { imageTag: 'latest' }), 'AZ-CTR-004')).toBe('FAIL');
+    const open = azNode(AZ, { allowedCidr: '0.0.0.0/0', port: 27017 });
+    expect(runAssessment({ nodes: [open], edges: [] }).findings.find((f) => f.findingId === findingIdFor('AZ-CTR-002', open.id))?.severity).toBe('HIGH');
+  });
+  it('the AWS and Azure rules do not fire on each other\'s resource', () => {
+    const aws = runAssessment({ nodes: [node(T)], edges: [] }).evaluations.map((e) => e.ruleId);
+    const az = runAssessment({ nodes: [azNode(AZ)], edges: [] }).evaluations.map((e) => e.ruleId);
+    expect(aws.some((i) => i.startsWith('AZ-CTR'))).toBe(false);
+    expect(az.some((i) => i.startsWith('AWS-CTR'))).toBe(false);
+  });
+  it('the organization VM-size policy applies to it', () => {
+    const n = azNode(AZ, { vmSize: 'Standard_D4s_v3' });
+    const v = evaluateOrgPolicy([{ id: n.id, label: n.label, resourceType: AZ, config: n.config }], { ...EMPTY_POLICY_RULES, allowedInstanceTypes: ['Standard_B*'] });
+    expect(v.map((x) => x.ruleId)).toContain('POLICY-INSTANCE-TYPE');
+  });
+  it('a gateway can send traffic to it and it can reach a database, like an Azure VM', () => {
+    const gw = azNode('azure_app_gateway'); const app = azNode(AZ); const sql = azNode('azure_sql');
+    expect(relationshipEngine.validateConnection(gw, app, [gw, app]).isValid).toBe(true);
+    expect(relationshipEngine.validateConnection(app, sql, [app, sql]).isValid).toBe(true);
+  });
+});
+
+describe('Azure container service: Terraform', () => {
+  const rg = () => azNode('azure_resource_group', { location: 'westeurope' }, { id: 'rg' });
+  const vnet = () => azNode('azure_vnet', { addressSpace: '10.0.0.0/16' }, { id: 'vnet', groupId: 'rg' });
+  const sub = () => azNode('azure_subnet', { addressPrefix: '10.0.1.0/24' }, { id: 'sub', groupId: 'vnet' });
+  const tf = (over: Record<string, unknown> = {}) => generateCanonicalTerraform([rg(), vnet(), sub(), azNode(AZ, { name: 'orders-api', ...over }, { groupId: 'sub' })], []);
+
+  it('creates the VM, registry, vault, identity, role assignments and an NSG for the app port, in the subnet', () => {
+    const out = tf();
+    for (const r of ['azurerm_linux_virtual_machine', 'azurerm_container_registry', 'azurerm_key_vault', 'azurerm_user_assigned_identity', 'azurerm_role_assignment', 'azurerm_network_security_group', 'azurerm_network_interface']) expect(out).toContain(`resource "${r}"`);
+    expect(out).toMatch(/subnet_id\s+= azurerm_subnet\.\w+\.id/);
+    expect(out).toContain('source_address_prefix      = "10.0.0.0/16"');
+    expect(out).toContain('var.admin_ssh_public_key');
+    expect(out).toContain('variable "admin_ssh_public_key"');
+  });
+  it('is closed by default: no password, no SSH rule, no registry admin, vault by role', () => {
+    const out = tf();
+    expect(out).toContain('disable_password_authentication = true');
+    expect(out).not.toMatch(/destination_port_range\s*=\s*"22"/);
+    expect(out).toContain('admin_enabled       = false');
+    expect(out).toContain('enable_rbac_authorization  = true');
+    expect(out).toContain('role_definition_name = "AcrPull"');
+  });
+  it('the start-up script cannot start a Terraform interpolation, and reads the registry and vault from the VM tags', () => {
+    const out = tf();
+    const start = out.indexOf('base64encode(<<-EOT');
+    const body = out.slice(start, out.indexOf('\nEOT\n', start));
+    expect(body).not.toMatch(/(?<!\$)\$\{/);
+    expect(body).toContain('vmtag acr');
+    expect(out).toMatch(/acr\s+= azurerm_container_registry\.\w+\.login_server/);
+  });
+  it('an invalid node is left out with a comment, never half-generated', () => {
+    const out = tf({ name: 'Bad Name!' });
+    expect(out).toContain('was not generated');
+    expect(out).not.toContain('resource "azurerm_container_registry"');
+  });
+});
