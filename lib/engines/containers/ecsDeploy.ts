@@ -8,6 +8,7 @@
  *  - the execution role can read this app's parameters only; the task itself has an empty role;
  *  - images are scanned on push, and a failing deployment rolls back (circuit breaker).
  */
+import { companionServices } from './companions';
 import type { ContainerConfig } from './dockerTemplates';
 import { GITHUB_REPO, REGION, TAG, q, secretNames, validCidr, type DeployCost } from './ec2Deploy';
 
@@ -80,7 +81,7 @@ export function ecsWarnings(c: ContainerConfig): string[] {
   const w: string[] = [];
   if (e.certificateArn === '') w.push('ECS: the load balancer serves plain HTTP. Add an ACM certificate ARN to serve HTTPS and redirect HTTP to it.');
   if (e.allowedCidr === '0.0.0.0/0') w.push('ECS: the load balancer is open to the whole internet. Narrow "who can connect" if the app is not public.');
-  if (c.postgres || c.redis) w.push('ECS: PostgreSQL and Redis are not started. Use RDS / ElastiCache and put the connection settings in the environment variables.');
+  if (companionServices(c).length > 0) w.push('ECS: PostgreSQL and Redis are not started. Use RDS / ElastiCache and put the connection settings in the environment variables.');
   if (e.imageTag === 'latest') w.push('ECS: the "latest" tag is used. A version tag (for example the commit id) makes it clear what is running and allows a rollback.');
   if (c.env.some((v) => v.secret)) w.push(`ECS: create each secret in SSM Parameter Store as a SecureString named /${c.appName}/<NAME> before the service can start (deploy.sh asks for them).`);
   return w;

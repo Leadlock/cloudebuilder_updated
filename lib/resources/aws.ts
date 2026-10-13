@@ -222,7 +222,7 @@ export const awsResources: ResourceDefinition[] = [
       { key: 'name', label: 'App name', type: 'text', defaultValue: 'my-container-service', required: true, description: 'Lower-case letters, digits and hyphens. Also names the image repository.' },
       {
         key: 'stack', label: 'Stack', type: 'select', defaultValue: 'node', section: 'Container',
-        options: [{ label: 'Node.js', value: 'node' }, { label: 'Python', value: 'python' }, { label: 'Java (Spring Boot)', value: 'java' }, { label: 'Static site (nginx)', value: 'static' }],
+        options: [{ label: 'Node.js', value: 'node' }, { label: 'Python', value: 'python' }, { label: 'Java (Spring Boot)', value: 'java' }, { label: 'Go', value: 'go' }, { label: '.NET (ASP.NET Core)', value: 'dotnet' }, { label: 'Ruby (Rails / Rack)', value: 'ruby' }, { label: 'Static site (nginx)', value: 'static' }],
       },
       { key: 'port', label: 'Port', type: 'number', defaultValue: 3000, min: 1, max: 65535, section: 'Container' },
       { key: 'healthPath', label: 'Health check path', type: 'text', defaultValue: '/', section: 'Container', placeholder: '/health' },

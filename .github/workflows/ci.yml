@@ -3,6 +3,7 @@
 #   checks             type check, lint (errors fail it, warnings do not), and the whole test suite (no database or cloud needed)
 #   build              the production build, which catches what the type check cannot (route files, client/server mix-ups)
 #   terraform-validate generates Terraform for every verified Azure pattern and runs `terraform validate` on it
+#   docker-samples     builds and runs the sample app of every Container Templates stack, and a compose stack with every companion service
 #
 # To make a red run block merging: GitHub repository Settings, Branches, add a rule for main that requires these three checks.
 name: ci
@@ -81,3 +82,17 @@ jobs:
         env:
           TERRAFORM_BIN: terraform
         run: npx tsx --tsconfig tsconfig.json scripts/validate-containers.ts "$RUNNER_TEMP/validate-containers"
+
+  # Builds every stack's sample app with Docker, runs it and calls its health check; then starts one stack with every companion service and the HTTPS proxy.
+  docker-samples:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Build and run every sample
+        run: npx tsx --tsconfig tsconfig.json scripts/build-samples.ts "$RUNNER_TEMP/build-samples"

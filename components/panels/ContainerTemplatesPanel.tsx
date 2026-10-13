@@ -98,7 +98,7 @@ export default function ContainerTemplatesPanel() {
   const result = useMemo(() => generateContainerFiles(cfg), [cfg]);
   const set = <K extends keyof ContainerConfig>(k: K, v: ContainerConfig[K]) => setCfg((c) => ({ ...c, [k]: v }));
   const pickStack = (s: ContainerStack) => setCfg((c) => ({
-    ...defaultConfig(s), appName: c.appName, env: c.env, runAsNonRoot: c.runAsNonRoot, restart: c.restart, postgres: c.postgres, redis: c.redis, ec2: c.ec2, ecs: c.ecs, aca: c.aca, k8s: c.k8s,
+    ...defaultConfig(s), appName: c.appName, env: c.env, runAsNonRoot: c.runAsNonRoot, restart: c.restart, postgres: c.postgres, redis: c.redis, mysql: c.mysql, mongodb: c.mongodb, rabbitmq: c.rabbitmq, proxy: c.proxy, proxyDomain: c.proxyDomain, ec2: c.ec2, ecs: c.ecs, aca: c.aca, k8s: c.k8s,
   }));
   const setEc2 = <K extends keyof ContainerConfig['ec2']>(k: K, v: ContainerConfig['ec2'][K]) => setCfg((c) => ({ ...c, ec2: { ...c.ec2, [k]: v } }));
   const setEcs = <K extends keyof ContainerConfig['ecs']>(k: K, v: ContainerConfig['ecs'][K]) => setCfg((c) => ({ ...c, ecs: { ...c.ecs, [k]: v } }));
@@ -227,6 +227,24 @@ export default function ContainerTemplatesPanel() {
                 <div><label className={label} htmlFor="ct-jt">Build tool</label>
                   <select id="ct-jt" className={input} value={cfg.javaBuildTool} onChange={(e) => set('javaBuildTool', e.target.value as ContainerConfig['javaBuildTool'])}><option value="maven">Maven</option><option value="gradle">Gradle</option></select></div>
               )}
+              {cfg.stack === 'go' && (
+                <div><label className={label} htmlFor="ct-gopkg">Main package</label><input id="ct-gopkg" className={input} placeholder="." value={cfg.goPackage} onChange={(e) => set('goPackage', e.target.value.trim())} />
+                  <p className={clsx('text-[11px] mt-1', muted)}>&quot;.&quot; or a folder such as ./cmd/server. The program should listen on the PORT variable.</p></div>
+              )}
+              {cfg.stack === 'dotnet' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2"><label className={label} htmlFor="ct-csproj">Project file</label><input id="ct-csproj" className={input} placeholder="src/App/App.csproj" value={cfg.dotnetProject} onChange={(e) => set('dotnetProject', e.target.value.trim())} /></div>
+                  <div className="col-span-2"><label className={label} htmlFor="ct-asm">Assembly name</label><input id="ct-asm" className={input} value={cfg.dotnetAssembly} onChange={(e) => set('dotnetAssembly', e.target.value.trim())} />
+                    <p className={clsx('text-[11px] mt-1', muted)}>The .dll that is run: the project&apos;s AssemblyName.</p></div>
+                </div>
+              )}
+              {cfg.stack === 'ruby' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className={label} htmlFor="ct-rb">Framework</label>
+                    <select id="ct-rb" className={input} value={cfg.rubyFramework} onChange={(e) => set('rubyFramework', e.target.value as ContainerConfig['rubyFramework'])}><option value="rack">Rack / Sinatra (config.ru)</option><option value="rails">Rails</option><option value="other">Other</option></select></div>
+                  {cfg.rubyFramework === 'other' && <div><label className={label} htmlFor="ct-rbstart">Start command</label><input id="ct-rbstart" className={input} value={cfg.startCommand} onChange={(e) => set('startCommand', e.target.value)} /></div>}
+                </div>
+              )}
               {cfg.stack === 'static' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2"><label className={label} htmlFor="ct-sbuild">Build command</label><input id="ct-sbuild" className={input} value={cfg.buildCommand} onChange={(e) => set('buildCommand', e.target.value)} /></div>
@@ -244,10 +262,18 @@ export default function ContainerTemplatesPanel() {
                 <div><label className={label} htmlFor="ct-restart">Restart</label>
                   <select id="ct-restart" className={input} value={cfg.restart} onChange={(e) => set('restart', e.target.value as ContainerConfig['restart'])}><option>unless-stopped</option><option>always</option><option>on-failure</option><option>no</option></select></div>
               </div>
+              {cfg.proxy && (
+                <div><label className={label} htmlFor="ct-domain">Domain for HTTPS</label><input id="ct-domain" className={input} placeholder="app.example.com or localhost" value={cfg.proxyDomain} onChange={(e) => set('proxyDomain', e.target.value.trim())} />
+                  <p className={clsx('text-[11px] mt-1', muted)}>A real domain gets a free Let&apos;s Encrypt certificate (its DNS must point at the machine). &quot;localhost&quot; gets a local one. Used by docker-compose.yml only.</p></div>
+              )}
               <div className="flex flex-wrap gap-4 text-xs">
                 {cfg.stack !== 'static' && <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.runAsNonRoot} onChange={(e) => set('runAsNonRoot', e.target.checked)} />Run as non-root (recommended)</label>}
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.postgres} onChange={(e) => set('postgres', e.target.checked)} />Add PostgreSQL</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.redis} onChange={(e) => set('redis', e.target.checked)} />Add Redis</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.mysql} onChange={(e) => set('mysql', e.target.checked)} />Add MySQL</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.mongodb} onChange={(e) => set('mongodb', e.target.checked)} />Add MongoDB</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.rabbitmq} onChange={(e) => set('rabbitmq', e.target.checked)} />Add RabbitMQ</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.proxy} onChange={(e) => set('proxy', e.target.checked)} />HTTPS reverse proxy (Caddy)</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.includeSample} onChange={(e) => set('includeSample', e.target.checked)} />Include a sample app</label>
               </div>
             </div>

@@ -13,10 +13,11 @@
  *  - Images run as a non-root user unless the form explicitly turns that off.
  */
 
-export type ContainerStack = 'node' | 'python' | 'java' | 'static';
+export type ContainerStack = 'node' | 'python' | 'java' | 'go' | 'dotnet' | 'ruby' | 'static';
 
 import { generateSampleApp } from './sampleApps';
 import { checkContainer, type ContainerFinding } from './checks';
+import { caddyfile, companionBlocks, companionDependencies, companionEnv, companionSecrets, companionVolumes, companionServices, PROXY_DOMAIN, dbName } from './companions';
 import { defaultEc2, ec2Warnings, estimateEc2Cost, type Ec2Cost, generateEc2Files, validateEc2, type Ec2Config } from './ec2Deploy';
 export type { Ec2Config } from './ec2Deploy';
 import { defaultEcs, ecsWarnings, estimateEcsCost, generateEcsFiles, validateEcs, type EcsConfig } from './ecsDeploy';
@@ -49,6 +50,12 @@ export interface ContainerConfig {
   cpuLimit: string;
   postgres: boolean;
   redis: boolean;
+  mysql: boolean;
+  mongodb: boolean;
+  rabbitmq: boolean;
+  /** A Caddy reverse proxy in docker-compose.yml that serves HTTPS on proxyDomain and forwards to the app. */
+  proxy: boolean;
+  proxyDomain: string;
   /** stack options */
   packageManager: 'npm' | 'yarn' | 'pnpm';
   buildCommand: string;
@@ -57,6 +64,12 @@ export interface ContainerConfig {
   pythonFramework: 'fastapi' | 'django' | 'flask' | 'other';
   pythonModule: string;
   javaBuildTool: 'maven' | 'gradle';
+  /** Go: the package to build, relative to the module root ("." or "./cmd/server"). */
+  goPackage: string;
+  /** .NET: the project file to publish, and the name of the assembly it produces (the .dll that is run). */
+  dotnetProject: string;
+  dotnetAssembly: string;
+  rubyFramework: 'rails' | 'rack' | 'other';
   staticBuildDir: string;
   staticSpaFallback: boolean;
   /** Optional "deploy to EC2" bundle (Terraform + start-up script + CI workflow). */
@@ -75,19 +88,21 @@ export interface GeneratedFile { path: string; content: string; /** Set the exec
 export type GenerateResult = { ok: true; files: GeneratedFile[]; warnings: string[]; findings: ContainerFinding[]; cost?: Ec2Cost } | { ok: false; errors: string[] };
 
 export const STACK_LABEL: Record<ContainerStack, string> = {
-  node: 'Node.js / Next.js', python: 'Python (FastAPI / Django / Flask)', java: 'Java (Spring Boot)', static: 'Static site (nginx)',
+  node: 'Node.js / Next.js', python: 'Python (FastAPI / Django / Flask)', java: 'Java (Spring Boot)', go: 'Go', dotnet: '.NET (ASP.NET Core)', ruby: 'Ruby (Rails / Rack)', static: 'Static site (nginx)',
 };
+export const STACKS = Object.keys(STACK_LABEL) as ContainerStack[];
 export const VERSIONS: Record<ContainerStack, string[]> = {
-  node: ['22', '20', '18'], python: ['3.13', '3.12', '3.11', '3.10'], java: ['21', '17'], static: ['1.27'],
+  node: ['22', '20', '18'], python: ['3.13', '3.12', '3.11', '3.10'], java: ['21', '17'], go: ['1.23', '1.22'], dotnet: ['9.0', '8.0'], ruby: ['3.3', '3.2'], static: ['1.27'],
 };
+const DEFAULT_PORT: Record<ContainerStack, number> = { node: 3000, python: 8000, java: 8080, go: 8080, dotnet: 8080, ruby: 3000, static: 8080 };
 
 export function defaultConfig(stack: ContainerStack = 'node'): ContainerConfig {
   return {
-    stack, appName: 'my-app', port: stack === 'static' ? 8080 : stack === 'java' ? 8080 : stack === 'python' ? 8000 : 3000,
+    stack, appName: 'my-app', port: DEFAULT_PORT[stack],
     version: VERSIONS[stack][0]!, env: [], healthPath: stack === 'java' ? '/actuator/health' : '/', runAsNonRoot: true,
-    restart: 'unless-stopped', memoryLimit: '512m', cpuLimit: '1.0', postgres: false, redis: false,
-    packageManager: 'npm', buildCommand: 'npm run build', startCommand: 'npm start', nextStandalone: false,
-    pythonFramework: 'fastapi', pythonModule: 'main:app', javaBuildTool: 'maven', staticBuildDir: 'dist', staticSpaFallback: true, ec2: defaultEc2(), ecs: defaultEcs(), aca: defaultAca(), k8s: defaultK8s(), includeSample: false,
+    restart: 'unless-stopped', memoryLimit: '512m', cpuLimit: '1.0', postgres: false, redis: false, mysql: false, mongodb: false, rabbitmq: false, proxy: false, proxyDomain: 'localhost',
+    packageManager: 'npm', buildCommand: 'npm run build', startCommand: stack === 'ruby' ? 'bundle exec puma -b tcp://0.0.0.0:3000' : 'npm start', nextStandalone: false,
+    pythonFramework: 'fastapi', pythonModule: 'main:app', javaBuildTool: 'maven', goPackage: '.', dotnetProject: 'App.csproj', dotnetAssembly: 'App', rubyFramework: 'rack', staticBuildDir: 'dist', staticSpaFallback: true, ec2: defaultEc2(), ecs: defaultEcs(), aca: defaultAca(), k8s: defaultK8s(), includeSample: false,
   };
 }
 
@@ -130,6 +145,13 @@ export function validate(c: ContainerConfig): string[] {
   if (c.stack === 'node' && !c.startCommand.trim()) e.push('Start command is required.');
   if (c.stack === 'python' && c.pythonFramework !== 'django' && !MODULE.test(c.pythonModule)) e.push('Python module looks like "main:app".');
   if (c.stack === 'python' && c.pythonFramework === 'django' && !/^[A-Za-z_][A-Za-z0-9_.]*$/.test(c.pythonModule.split(':')[0] ?? '')) e.push('Django project name must be a Python module name, e.g. "config".');
+  if (c.stack === 'go' && (!/^(?:\.|\.\/[A-Za-z0-9_][A-Za-z0-9_./-]*)$/.test(c.goPackage) || c.goPackage.split('/').includes('..'))) e.push('Go package looks like "." or "./cmd/server".');
+  if (c.stack === 'dotnet' && (!/^[A-Za-z0-9_][A-Za-z0-9_./-]*\.csproj$/.test(c.dotnetProject) || c.dotnetProject.split('/').includes('..'))) e.push('.NET project file looks like "App.csproj" or "src/App/App.csproj".');
+  if (c.stack === 'dotnet' && !/^[A-Za-z_][A-Za-z0-9_.]*$/.test(c.dotnetAssembly)) e.push('.NET assembly name may use letters, digits, "_" and "." (for example "App").');
+  if (c.stack === 'ruby' && !['rails', 'rack', 'other'].includes(c.rubyFramework)) e.push('Choose a Ruby framework.');
+  if (c.stack === 'ruby' && c.rubyFramework === 'other' && !c.startCommand.trim()) e.push('Start command is required.');
+  if (c.proxy && !PROXY_DOMAIN.test(c.proxyDomain)) e.push('HTTPS proxy: the domain looks like app.example.com (or localhost).');
+  if (c.mysql && dbName(c).length > 32) e.push('MySQL: the app name becomes the database user, which MySQL limits to 32 characters.');
   if (c.stack === 'static' && !RELDIR.test(c.staticBuildDir)) e.push('Build output folder must be a relative folder name such as "dist" or "build".');
   if (c.stack === 'static' && c.staticBuildDir.split('/').includes('..')) e.push('Build output folder cannot go up a level.');
   const seen = new Set<string>();
@@ -164,10 +186,11 @@ function userBlock(c: ContainerConfig, alpine: boolean): string {
     : 'RUN groupadd --system --gid 1001 app && useradd --system --uid 1001 --gid app --no-create-home app\nUSER app\n';
 }
 
-function healthcheck(c: ContainerConfig, tool: 'wget' | 'curl' | 'node' | 'python'): string {
+function healthcheck(c: ContainerConfig, tool: 'wget' | 'curl' | 'node' | 'python' | 'ruby'): string {
   const url = `http://127.0.0.1:${c.port}${c.healthPath}`;
   const cmd = tool === 'wget' ? `wget -q --spider ${url} || exit 1`
     : tool === 'curl' ? `curl -fsS ${url} > /dev/null || exit 1`
+      : tool === 'ruby' ? `ruby -rnet/http -e "exit(Net::HTTP.get_response(URI('${url}')).code.to_i < 400 ? 0 : 1)" || exit 1`
       : tool === 'node' ? `node -e "fetch('${url}').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"`
         : `python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('${url}').status<400 else 1)"`;
   return `HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ${cmd}\n`;
@@ -259,6 +282,68 @@ ${healthcheck(c, 'wget')}ENTRYPOINT ["java", "-jar", "/app/app.jar"]
 `;
 }
 
+function goDockerfile(c: ContainerConfig): string {
+  return `# syntax=docker/dockerfile:1
+# ${c.appName}: Go ${c.version}, static binary
+FROM golang:${c.version}-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum* ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/app ${c.goPackage}
+
+FROM alpine:3.20 AS runtime
+WORKDIR /app
+RUN apk add --no-cache ca-certificates tzdata
+ENV PORT=${c.port}
+COPY --from=build /out/app ./app
+${userBlock(c, true)}EXPOSE ${c.port}
+${healthcheck(c, 'wget')}ENTRYPOINT ["/app/app"]
+`;
+}
+
+function dotnetDockerfile(c: ContainerConfig): string {
+  return `# syntax=docker/dockerfile:1
+# ${c.appName}: ASP.NET Core ${c.version}
+FROM mcr.microsoft.com/dotnet/sdk:${c.version}-alpine AS build
+WORKDIR /src
+COPY . .
+RUN dotnet publish ${c.dotnetProject} -c Release -o /out /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:${c.version}-alpine AS runtime
+WORKDIR /app
+ENV ASPNETCORE_URLS=http://+:${c.port} DOTNET_RUNNING_IN_CONTAINER=true DOTNET_EnableDiagnostics=0
+COPY --from=build /out ./
+${userBlock(c, true)}EXPOSE ${c.port}
+${healthcheck(c, 'wget')}ENTRYPOINT ["dotnet", "${c.dotnetAssembly}.dll"]
+`;
+}
+
+function rubyDockerfile(c: ContainerConfig): string {
+  const cmd = c.rubyFramework === 'rails' ? `bin/rails server -b 0.0.0.0 -p ${c.port}`
+    : c.rubyFramework === 'rack' ? `bundle exec rackup config.ru -o 0.0.0.0 -p ${c.port}`
+      : c.startCommand;
+  const rails = c.rubyFramework === 'rails';
+  return `# syntax=docker/dockerfile:1
+# ${c.appName}: Ruby ${c.version}, ${c.rubyFramework === 'other' ? 'custom start command' : c.rubyFramework}
+FROM ruby:${c.version}-slim AS build
+WORKDIR /app
+ENV BUNDLE_WITHOUT="development:test" BUNDLE_PATH=/usr/local/bundle
+RUN apt-get update -qq && apt-get install -y --no-install-recommends build-essential git libyaml-dev pkg-config && rm -rf /var/lib/apt/lists/*
+COPY Gemfile Gemfile.lock* ./
+RUN bundle install --jobs 4 && rm -rf /usr/local/bundle/cache
+COPY . .
+${rails ? 'RUN SECRET_KEY_BASE_DUMMY=1 bin/rails assets:precompile\n' : ''}
+FROM ruby:${c.version}-slim AS runtime
+WORKDIR /app
+ENV BUNDLE_WITHOUT="development:test" BUNDLE_PATH=/usr/local/bundle RACK_ENV=production${rails ? ' RAILS_ENV=production RAILS_LOG_TO_STDOUT=1 RAILS_SERVE_STATIC_FILES=1' : ''} PORT=${c.port}
+COPY --from=build /usr/local/bundle /usr/local/bundle
+COPY --from=build /app /app
+${userBlock(c, false)}EXPOSE ${c.port}
+${healthcheck(c, 'ruby')}${shCmd(cmd)}
+`;
+}
+
 function staticDockerfile(c: ContainerConfig): string {
   return `# syntax=docker/dockerfile:1
 # ${c.appName}: static site served by nginx ${c.version}
@@ -308,54 +393,26 @@ function nginxConf(c: ContainerConfig): string {
 function compose(c: ContainerConfig): string {
   const plainVars = plain(c);
   const secretVars = secrets(c);
-  const dbName = c.appName.replace(/-/g, '_');
-  const dbEnv = c.postgres ? [`DATABASE_URL: "postgres://${dbName}:\${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${dbName}"`] : [];
-  const redisEnv = c.redis ? ['REDIS_URL: "redis://redis:6379"'] : [];
   const envLines = [
     // Compose treats $ as interpolation, so a literal $ in a value is doubled.
     ...plainVars.map((v) => `${v.key}: ${yq(v.value.replace(/\$/g, '$$$$'))}`),
     ...secretVars.map((v) => `${v.key}: "\${${v.key}:?set ${v.key}}"`),
-    ...dbEnv, ...redisEnv,
+    ...companionEnv(c),
   ];
-  const deps = [c.postgres && 'postgres', c.redis && 'redis'].filter(Boolean) as string[];
-  const db = c.appName.replace(/-/g, '_');
+  const deps = companionDependencies(c);
+  // Behind the proxy only the proxy is published; the app is reachable from it over the compose network.
+  const exposure = c.proxy ? `    expose:\n      - "${c.port}"\n` : `    ports:\n      - "${c.port}:${c.port}"\n`;
   return `# Run with: docker compose up --build
 services:
   ${c.appName}:
     build: .
     image: ${c.appName}:latest
     restart: ${c.restart}
-    ports:
-      - "${c.port}:${c.port}"
-${envLines.length ? `    environment:\n${envLines.map((l) => `      ${l}`).join('\n')}\n` : ''}${deps.length ? `    depends_on:\n${deps.map((d) => `      ${d}:\n        condition: service_healthy`).join('\n')}\n` : ''}    mem_limit: ${c.memoryLimit}
+${exposure}${envLines.length ? `    environment:\n${envLines.map((l) => `      ${l}`).join('\n')}\n` : ''}${deps.length ? `    depends_on:\n${deps.map((d) => `      ${d}:\n        condition: service_healthy`).join('\n')}\n` : ''}    mem_limit: ${c.memoryLimit}
     cpus: ${c.cpuLimit}
     security_opt:
       - no-new-privileges:true
-${c.postgres ? `
-  postgres:
-    image: postgres:16-alpine
-    restart: ${c.restart}
-    environment:
-      POSTGRES_DB: ${db}
-      POSTGRES_USER: ${db}
-      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${db} -d ${db}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-` : ''}${c.redis ? `
-  redis:
-    image: redis:7-alpine
-    restart: ${c.restart}
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-` : ''}${c.postgres ? '\nvolumes:\n  pgdata:\n' : ''}`;
+${companionBlocks(c)}${companionVolumes(c)}`;
 }
 
 function envExample(c: ContainerConfig): string {
@@ -363,7 +420,7 @@ function envExample(c: ContainerConfig): string {
     '# Copy to .env and fill in. Never commit .env.',
     ...plain(c).map((v) => `${v.key}=${v.value}`),
     ...secrets(c).map((v) => `${v.key}=`),
-    ...(c.postgres ? ['POSTGRES_PASSWORD='] : []),
+    ...companionSecrets(c).map((n) => `${n}=`),
   ];
   return `${lines.join('\n')}\n`;
 }
@@ -375,9 +432,12 @@ function dockerignore(c: ContainerConfig): string {
     static: ['node_modules', 'dist', 'build', 'coverage'],
     python: ['__pycache__', '*.pyc', '.venv', 'venv', '.pytest_cache', '.mypy_cache'],
     java: ['target', 'build', '.gradle', '.mvn/wrapper/maven-wrapper.jar'],
+    go: ['bin', '*.test', '*.out'],
+    dotnet: ['bin', 'obj', '.vs', '*.user'],
+    ruby: ['log', 'tmp', '.bundle', 'vendor/bundle', 'node_modules', 'storage'],
   };
   const deploy = c.ec2.enabled ? ['ec2', '.github', '.terraform'] : c.ecs.enabled ? ['ecs', '.github', '.terraform'] : c.aca.enabled ? ['aca', '.github', '.terraform'] : c.k8s.enabled ? ['k8s', 'helm', '.github', 'deploy.sh', 'destroy.sh'] : [];
-  return `${[...common, ...deploy, ...per[c.stack]].join('\n')}\n`;
+  return `${[...common, ...(c.proxy ? ['Caddyfile'] : []), ...deploy, ...per[c.stack]].join('\n')}\n`;
 }
 
 function readme(c: ContainerConfig): string {
@@ -393,7 +453,7 @@ cp .env.example .env   # fill in the blank values${secretNames.length ? ` (${sec
 docker compose up --build
 \`\`\`
 
-The service listens on http://localhost:${c.port}${c.healthPath}.
+The service listens on ${c.proxy ? `https://${c.proxyDomain}${c.healthPath} (through the Caddy proxy; the app itself is not published)` : `http://localhost:${c.port}${c.healthPath}`}.
 
 ## Build and run the image alone
 
@@ -408,8 +468,8 @@ docker run --rm -p ${c.port}:${c.port} --env-file .env ${c.appName}
 - Port: ${c.port}, health check: \`${c.healthPath}\`
 - Runs as ${c.runAsNonRoot ? 'a non-root user' : 'root (not recommended)'}
 - Limits: ${c.memoryLimit} memory, ${c.cpuLimit} CPU, restart \`${c.restart}\`
-${c.postgres ? '- PostgreSQL 16 (set POSTGRES_PASSWORD in .env)\n' : ''}${c.redis ? '- Redis 7\n' : ''}
-${c.stack === 'node' ? `## Before you build\n\nYour project needs a ${c.packageManager === 'npm' ? 'package-lock.json' : c.packageManager === 'yarn' ? 'yarn.lock' : 'pnpm-lock.yaml'}.${c.nextStandalone ? ' Set \`output: "standalone"\` in next.config.' : ''}\n` : ''}${c.stack === 'python' ? '## Before you build\n\nYour project needs a requirements.txt' + (c.pythonFramework === 'fastapi' ? ' that includes uvicorn.' : c.pythonFramework === 'other' ? '.' : ' that includes gunicorn.') + '\n' : ''}${c.stack === 'java' ? `## Before you build\n\nYour project needs a Spring Boot ${c.javaBuildTool === 'maven' ? 'pom.xml' : 'build.gradle with the bootJar task'}. The health check path needs Spring Actuator (\`spring-boot-starter-actuator\`).\n` : ''}`;
+${c.postgres ? '- PostgreSQL 16 (set POSTGRES_PASSWORD in .env; the app gets DATABASE_URL)\n' : ''}${c.redis ? '- Redis 7 (the app gets REDIS_URL)\n' : ''}${c.mysql ? '- MySQL 8.4 (set MYSQL_PASSWORD in .env; the app gets MYSQL_URL)\n' : ''}${c.mongodb ? '- MongoDB 7 (set MONGODB_PASSWORD in .env; the app gets MONGODB_URL)\n' : ''}${c.rabbitmq ? '- RabbitMQ 3.13 (set RABBITMQ_PASSWORD in .env; the app gets RABBITMQ_URL)\n' : ''}${c.proxy ? `- Caddy reverse proxy: HTTPS on ports 80 and 443 for \`${c.proxyDomain}\`${c.proxyDomain === 'localhost' ? ' (a local certificate; run `docker compose exec proxy caddy trust` to stop the browser warning)' : ' (a free Let\'s Encrypt certificate: the domain must point at this machine and ports 80 and 443 must be open)'}\n` : ''}${companionServices(c).length || c.proxy ? '\nUse passwords without special characters (or URL-encode them): they are placed inside connection URLs. The databases are not published to the host.\n' : ''}
+${c.stack === 'node' ? `## Before you build\n\nYour project needs a ${c.packageManager === 'npm' ? 'package-lock.json' : c.packageManager === 'yarn' ? 'yarn.lock' : 'pnpm-lock.yaml'}.${c.nextStandalone ? ' Set \`output: "standalone"\` in next.config.' : ''}\n` : ''}${c.stack === 'python' ? '## Before you build\n\nYour project needs a requirements.txt' + (c.pythonFramework === 'fastapi' ? ' that includes uvicorn.' : c.pythonFramework === 'other' ? '.' : ' that includes gunicorn.') + '\n' : ''}${c.stack === 'go' ? `## Before you build\n\nYour project needs a go.mod (and go.sum). \`${c.goPackage}\` must be the main package; the program must listen on the PORT environment variable (${c.port}).\n` : ''}${c.stack === 'dotnet' ? `## Before you build\n\nYour project needs \`${c.dotnetProject}\`, and its assembly must be named \`${c.dotnetAssembly}\` (set <AssemblyName> in the project file). ASP.NET Core listens on port ${c.port} through ASPNETCORE_URLS.\n` : ''}${c.stack === 'ruby' ? `## Before you build\n\nYour project needs a Gemfile (and Gemfile.lock)${c.rubyFramework === 'rack' ? ', a config.ru, and a web server gem such as puma' : c.rubyFramework === 'rails' ? '. Rails 7.1+ answers a health check on /up: set the health check path to it' : ''}.\n` : ''}${c.stack === 'java' ? `## Before you build\n\nYour project needs a Spring Boot ${c.javaBuildTool === 'maven' ? 'pom.xml' : 'build.gradle with the bootJar task'}. The health check path needs Spring Actuator (\`spring-boot-starter-actuator\`).\n` : ''}`;
 }
 
 // ─── entry point ─────────────────────────────────────────────────────────────
@@ -418,7 +478,7 @@ export function generateContainerFiles(config: ContainerConfig): GenerateResult 
   const errors = validate(config);
   if (errors.length > 0) return { ok: false, errors };
   const c = config;
-  const dockerfile = c.stack === 'node' ? nodeDockerfile(c) : c.stack === 'python' ? pythonDockerfile(c) : c.stack === 'java' ? javaDockerfile(c) : staticDockerfile(c);
+  const dockerfile = ({ node: nodeDockerfile, python: pythonDockerfile, java: javaDockerfile, go: goDockerfile, dotnet: dotnetDockerfile, ruby: rubyDockerfile, static: staticDockerfile } as const)[c.stack](c);
   const sample = generateSampleApp(c);
   const files: GeneratedFile[] = [
     { path: 'Dockerfile', content: dockerfile },
@@ -426,6 +486,7 @@ export function generateContainerFiles(config: ContainerConfig): GenerateResult 
     { path: 'docker-compose.yml', content: compose(c) },
     { path: '.env.example', content: envExample(c) },
     ...(c.stack === 'static' ? [{ path: 'nginx.conf', content: nginxConf(c) }] : []),
+    ...(c.proxy ? [{ path: 'Caddyfile', content: caddyfile(c) }] : []),
     { path: 'README.md', content: readme(c) },
     ...generateEc2Files(c),
     ...generateEcsFiles(c),
@@ -433,7 +494,7 @@ export function generateContainerFiles(config: ContainerConfig): GenerateResult 
     ...generateK8sFiles(c),
     ...sample.files,
   ];
-  return { ok: true, files, warnings: [...sample.warnings, ...ec2Warnings(c), ...ecsWarnings(c), ...acaWarnings(c), ...k8sWarnings(c)], findings: checkContainer(c, files), cost: estimateEc2Cost(c) ?? estimateEcsCost(c) ?? estimateAcaCost(c) };
+  return { ok: true, files, warnings: [...sample.warnings, ...(c.proxy && deployTargets(c).length > 0 ? ['The HTTPS proxy is part of docker-compose.yml only. The deployment target has its own way to serve HTTPS (a load balancer certificate, the ingress, or the platform).'] : []), ...ec2Warnings(c), ...ecsWarnings(c), ...acaWarnings(c), ...k8sWarnings(c)], findings: checkContainer(c, files), cost: estimateEc2Cost(c) ?? estimateEcsCost(c) ?? estimateAcaCost(c) };
 }
 
 // ─── starter templates ───────────────────────────────────────────────────────
@@ -450,5 +511,8 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
   { id: 'node-web', title: 'Node.js web app', blurb: 'A small Node.js server with a health check, deployed to EC2.', config: () => starter('node', 'node-web') },
   { id: 'fastapi-api', title: 'FastAPI service', blurb: 'A Python FastAPI API with /health, deployed to EC2.', config: () => starter('python', 'fastapi-api', { healthPath: '/health' }) },
   { id: 'spring-boot', title: 'Spring Boot service', blurb: 'A minimal Spring Boot app with Actuator health, deployed to EC2.', config: () => starter('java', 'spring-boot', { memoryLimit: '768m' }) },
+  { id: 'go-api', title: 'Go service', blurb: 'A small Go HTTP service built into a tiny image, deployed to EC2.', config: () => starter('go', 'go-api') },
+  { id: 'dotnet-api', title: 'ASP.NET Core service', blurb: 'A minimal ASP.NET Core API with /health, deployed to EC2.', config: () => starter('dotnet', 'dotnet-api', { healthPath: '/health', memoryLimit: '768m' }) },
+  { id: 'ruby-rack', title: 'Ruby Rack service', blurb: 'A small Rack app served by Puma, deployed to EC2.', config: () => starter('ruby', 'ruby-rack') },
   { id: 'static-site', title: 'Static website', blurb: 'A one-page website served by nginx, deployed to EC2.', config: () => starter('static', 'static-site') },
 ];

@@ -6,6 +6,7 @@
  * all Linux capabilities dropped and the runtime's default seccomp profile, no service account token is mounted, secrets come from a
  * Kubernetes Secret created by deploy.sh (never from a file), and a PodDisruptionBudget keeps one replica up during node maintenance.
  */
+import { companionServices } from './companions';
 import type { ContainerConfig, ContainerStack } from './dockerTemplates';
 import { q, secretNames } from './ec2Deploy';
 
@@ -66,7 +67,7 @@ export function k8sWarnings(c: ContainerConfig): string[] {
   if (k.ingressHost === '' && k.serviceType === 'ClusterIP') w.push('Kubernetes: the app is reachable only inside the cluster (ClusterIP and no ingress host). Use `kubectl port-forward`, or set an ingress host or a LoadBalancer service.');
   if (k.ingressHost !== '' && k.tlsSecret === '') w.push('Kubernetes: the ingress serves plain HTTP. Add a TLS secret name (for example from cert-manager) to serve HTTPS.');
   if (/(:latest|^[^:@]+)$/.test(k.image.split('/').pop() ?? '')) w.push('Kubernetes: the image has no version tag or uses :latest. A version tag makes it clear what is running and allows a rollback.');
-  if (c.postgres || c.redis) w.push('Kubernetes: PostgreSQL and Redis are not deployed. Use your cloud\'s managed services (or a Helm chart for them) and put the connection settings in the environment variables.');
+  if (companionServices(c).length > 0) w.push('Kubernetes: PostgreSQL and Redis are not deployed. Use your cloud\'s managed services (or a Helm chart for them) and put the connection settings in the environment variables.');
   if (c.env.some((v) => v.secret)) w.push(`Kubernetes: deploy.sh asks for each secret and stores it in a Secret named ${c.appName}-secrets in the cluster.`);
   return w;
 }

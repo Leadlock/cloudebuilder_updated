@@ -92,7 +92,7 @@ export function checkContainer(config: ContainerConfig, files: GeneratedFile[]):
         detail: 'privileged mode, host networking and the Docker socket each let a compromised container take over the machine.', fix: 'Remove them; publish only the port the app needs.' });
     }
     for (const [name, text] of composeServices(compose)) {
-      if (name !== c.appName && /^\s+ports:/m.test(text)) {
+      if (name !== c.appName && name !== 'proxy' && /^\s+ports:/m.test(text)) {
         add({ id: 'CT-008', severity: 'high', file: 'docker-compose.yml', title: `${name} is published on the host's network`,
           detail: 'A database or cache has no business being reachable from outside; the app talks to it over the compose network.', fix: `Remove "ports" from ${name}.` });
       }

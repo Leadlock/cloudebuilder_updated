@@ -3,7 +3,7 @@
  * "Include a sample app" adds the files below next to the Dockerfile, and `docker build` / `bash deploy.sh` produce a running service
  * that answers on "/" and on the health check path.
  *
- * Kept deliberately small: Node uses only the standard library, Python pins two packages, Java is a minimal Spring Boot project,
+ * Kept deliberately small: Go and .NET use only their standard libraries, Ruby is a three-gem Rack app, Node uses only the standard library, Python pins two packages, Java is a minimal Spring Boot project,
  * the static site is one HTML page. Every value taken from the form (name, port) was validated before it gets here.
  */
 import type { ContainerConfig, GeneratedFile } from './dockerTemplates';
@@ -183,7 +183,79 @@ function staticSample(c: ContainerConfig): SampleResult {
   };
 }
 
+function goSample(c: ContainerConfig): SampleResult {
+  if (c.goPackage !== '.') return { files: [], warnings: ['Sample app: it is a single main package at the project root. Set the Go package to "." to use it.'] };
+  const main = `package main
+
+import (
+	"encoding/json"
+	"log"
+	"net/http"
+	"os"
+	"time"
+)
+
+func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "${c.port}"
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"app": ${JSON.stringify(c.appName)}, "message": "Hello from CloudCraft", "path": r.URL.Path, "time": time.Now().UTC().Format(time.RFC3339),
+		})
+	})
+	log.Println("listening on " + port)
+	log.Fatal(http.ListenAndServe(":"+port, mux))
+}
+`;
+  return { files: [{ path: 'go.mod', content: `module example.com/${c.appName.replace(/_/g, '-')}\n\ngo ${c.version}\n` }, { path: 'main.go', content: main }], warnings: [] };
+}
+
+function dotnetSample(c: ContainerConfig): SampleResult {
+  const dir = c.dotnetProject.includes('/') ? c.dotnetProject.slice(0, c.dotnetProject.lastIndexOf('/') + 1) : '';
+  const csproj = `<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net${c.version}</TargetFramework>
+    <AssemblyName>${c.dotnetAssembly}</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+</Project>
+`;
+  const program = `var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+
+app.MapGet("/", (HttpRequest request) => Results.Json(new { app = ${JSON.stringify(c.appName)}, message = "Hello from CloudCraft", path = request.Path.Value, time = DateTime.UtcNow }));
+app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+
+app.Run();
+`;
+  return { files: [{ path: c.dotnetProject, content: csproj }, { path: `${dir}Program.cs`, content: program }], warnings: c.healthPath === '/' ? [] : c.healthPath === '/health' ? [] : [`Sample app: it answers on "/" and "/health". Your health check path is ${c.healthPath}.`] };
+}
+
+function rubySample(c: ContainerConfig): SampleResult {
+  if (c.rubyFramework !== 'rack') return { files: [], warnings: ['Sample app: available for Rack. Choose Rack to use it.'] };
+  const gemfile = `source "https://rubygems.org"
+
+gem "rack", "~> 3.1"
+gem "rackup", "~> 2.2"
+gem "puma", "~> 6.4"
+`;
+  const ru = `require "json"
+
+run lambda { |env|
+  body = JSON.generate(app: ${JSON.stringify(c.appName)}, message: "Hello from CloudCraft", path: env["PATH_INFO"], time: Time.now.utc.iso8601)
+  [200, { "content-type" => "application/json" }, [body]]
+}
+`;
+  return { files: [{ path: 'Gemfile', content: gemfile }, { path: 'config.ru', content: ru }], warnings: [] };
+}
+
 export function generateSampleApp(c: ContainerConfig): SampleResult {
   if (!c.includeSample) return { files: [], warnings: [] };
-  return c.stack === 'node' ? nodeSample(c) : c.stack === 'python' ? pythonSample(c) : c.stack === 'java' ? javaSample(c) : staticSample(c);
+  return ({ node: nodeSample, python: pythonSample, java: javaSample, go: goSample, dotnet: dotnetSample, ruby: rubySample, static: staticSample } as const)[c.stack](c);
 }

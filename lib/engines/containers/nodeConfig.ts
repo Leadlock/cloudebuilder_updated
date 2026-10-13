@@ -5,7 +5,7 @@
  * state (encoded, see encodeContainerConfig) in `containerConfig` so "Open in Container Templates" gets back exactly what was added (secret values are never in it).
  * The plain fields win when they differ from the JSON, because they are what the properties panel edits.
  */
-import { defaultConfig, validate, withDeployTarget, type ContainerConfig } from './dockerTemplates';
+import { defaultConfig, STACKS, validate, withDeployTarget, type ContainerConfig } from './dockerTemplates';
 import { parseStoredConfig, stripSecrets } from './stored';
 
 export const CONTAINER_SERVICE_TYPE = 'aws_container_service';
@@ -60,8 +60,8 @@ export function nodeConfigFromContainer(c: ContainerConfig): NodeConfig {
 export function containerConfigFromNode(node: NodeConfig): ContainerConfig {
   const dn = defaultNodeConfig();
   const stored = typeof node['containerConfig'] === 'string' && node['containerConfig'] ? decodeContainerConfig(node['containerConfig'] as string) : null;
-  const base = stored ?? defaultConfig((['node', 'python', 'java', 'static'] as const).find((s) => s === node['stack']) ?? 'node');
-  const stack = (['node', 'python', 'java', 'static'] as const).find((s) => s === node['stack']) ?? base.stack;
+  const base = stored ?? defaultConfig(STACKS.find((s) => s === node['stack']) ?? 'node');
+  const stack = STACKS.find((s) => s === node['stack']) ?? base.stack;
   const withStack = stack === base.stack ? base : { ...defaultConfig(stack), env: base.env };
   return withDeployTarget({
     ...withStack,

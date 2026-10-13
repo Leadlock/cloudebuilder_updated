@@ -252,8 +252,8 @@ describe('starter templates', () => {
     expect(warnings.filter((w) => w.startsWith('Sample app'))).toEqual([]);
     expect(files['ec2/variables.tf']).toContain(`"${c.appName}"`);
   });
-  test('the four templates cover the four stacks with distinct names', () => {
-    expect(new Set(STARTER_TEMPLATES.map((t) => t.config().stack))).toEqual(new Set(['node', 'python', 'java', 'static']));
-    expect(new Set(STARTER_TEMPLATES.map((t) => t.config().appName)).size).toBe(4);
+  test('the templates cover every stack with distinct names', () => {
+    expect(new Set(STARTER_TEMPLATES.map((t) => t.config().stack))).toEqual(new Set(['node', 'python', 'java', 'go', 'dotnet', 'ruby', 'static']));
+    expect(new Set(STARTER_TEMPLATES.map((t) => t.config().appName)).size).toBe(STARTER_TEMPLATES.length);
   });
 });

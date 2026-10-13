@@ -7,6 +7,7 @@
  * and images are built inside Azure (az acr build), so Docker is not needed on your machine. Secret values are passed to Terraform as
  * sensitive variables and are stored in its state: keep the state somewhere private (the README says how to move it to an encrypted backend).
  */
+import { companionServices } from './companions';
 import type { ContainerConfig } from './dockerTemplates';
 import { GITHUB_REPO, TAG, q, secretNames, validCidr, type DeployCost } from './ec2Deploy';
 
@@ -61,7 +62,7 @@ export function acaWarnings(c: ContainerConfig): string[] {
   const w: string[] = [];
   if (a.externalIngress && a.allowedCidr === '0.0.0.0/0') w.push('Container Apps: the app is open to the whole internet (over HTTPS). Narrow "who can connect" if it is not public.');
   if (a.minReplicas === 0) w.push('Container Apps: with 0 minimum replicas the first request after an idle period waits for a cold start.');
-  if (c.postgres || c.redis) w.push('Container Apps: PostgreSQL and Redis are not started. Use Azure Database for PostgreSQL / Azure Cache for Redis and put the connection settings in the environment variables.');
+  if (companionServices(c).length > 0) w.push('Container Apps: PostgreSQL and Redis are not started. Use Azure Database for PostgreSQL / Azure Cache for Redis and put the connection settings in the environment variables.');
   if (a.imageTag === 'latest') w.push('Container Apps: the "latest" tag is used. A version tag (for example the commit id) makes it clear what is running and allows a rollback.');
   if (c.env.some((v) => v.secret)) w.push('Container Apps: secret values are kept in Terraform state. Keep the aca/ folder private, or move the state to an encrypted remote backend.');
   return w;

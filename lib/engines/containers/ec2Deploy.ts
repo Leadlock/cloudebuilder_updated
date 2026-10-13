@@ -16,6 +16,7 @@
  *  - Secret values never enter Terraform, its state or user_data: the instance reads them from SSM Parameter Store
  *    (SecureString) at /<app>/<NAME> when the service starts. The role can read only that path.
  */
+import { companionServices } from './companions';
 import type { ContainerConfig } from './dockerTemplates';
 import { ec2HourlyUsd } from '@/lib/engines/cost/awsPricing';
 
@@ -68,7 +69,7 @@ export function ec2Warnings(c: ContainerConfig): string[] {
   if (!e.enabled) return [];
   const w: string[] = [];
   if (e.allowedCidr === '0.0.0.0/0') w.push(`EC2: port ${c.port} will be open to the whole internet. Narrow "who can connect" if the app is not public.`);
-  if (c.postgres || c.redis) w.push('EC2: PostgreSQL and Redis are not started on the instance. Use RDS / ElastiCache and put the connection settings in the environment variables.');
+  if (companionServices(c).length > 0) w.push('EC2: PostgreSQL and Redis are not started on the instance. Use RDS / ElastiCache and put the connection settings in the environment variables.');
   if (e.imageTag === 'latest') w.push('EC2: the "latest" tag is used. It works, but a version tag (for example the commit id) makes it clear what is running.');
   if (c.env.some((v) => v.secret)) w.push(`EC2: create each secret in SSM Parameter Store as a SecureString named /${c.appName}/<NAME> before the service can start.`);
   return w;
