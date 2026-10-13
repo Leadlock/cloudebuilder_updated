@@ -75,3 +75,7 @@ jobs:
         env:
           TERRAFORM_BIN: terraform
         run: npx tsx --tsconfig tsconfig.json scripts/tf-validate-aws.ts "$RUNNER_TEMP/tf-validate-aws"
+      - name: Validate the generated container deployments (ECS, Container Apps, Kubernetes)
+        env:
+          TERRAFORM_BIN: terraform
+        run: npx tsx --tsconfig tsconfig.json scripts/validate-containers.ts "$RUNNER_TEMP/validate-containers"

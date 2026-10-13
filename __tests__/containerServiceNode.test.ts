@@ -4,7 +4,7 @@
  */
 import { getResourceDefinition } from '@/lib/resources';
 import { defaultConfig, generateContainerFiles } from '@/lib/engines/containers/dockerTemplates';
-import { containerConfigFromNode, defaultNodeConfig, nodeConfigFromContainer, nodeProblems } from '@/lib/engines/containers/nodeConfig';
+import { containerConfigFromNode, defaultNodeConfig, encodeContainerConfig, nodeConfigFromContainer, nodeProblems } from '@/lib/engines/containers/nodeConfig';
 import { awsPricingProvider } from '@/lib/engines/cost/awsPricing';
 import { generateCanonicalTerraform } from '@/lib/engines/assessment/autofix';
 import { runAssessment, findingIdFor } from '@/lib/engines/assessment/AssessmentEngine';
@@ -66,6 +66,20 @@ describe('form <-> node', () => {
     expect(back.port).toBe(4000);
     expect(back.ec2.instanceType).toBe('t3.large');
     expect(back.stack).toBe('java');
+  });
+  it('the stored form survives the escaping every design string gets before Terraform (quotes, backslashes, ${})', () => {
+    const c = { ...defaultConfig('node'), appName: 'a', env: [{ key: 'X', value: 'q"uote \\ back ${y} %{z} ünï' }] };
+    const blob = nodeConfigFromContainer(c)['containerConfig'] as string;
+    expect(blob).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(containerConfigFromNode({ containerConfig: blob }).env).toEqual(c.env);
+    expect(containerConfigFromNode({ containerConfig: 'not base64 !!' })).toEqual(containerConfigFromNode({}));
+  });
+  it('a form that had another deployment target switched on still gives a valid EC2 node', () => {
+    const c = { ...defaultConfig('node'), appName: 'a' };
+    c.ecs = { ...c.ecs, enabled: true };
+    const back = containerConfigFromNode(nodeConfigFromContainer(c));
+    expect([back.ec2.enabled, back.ecs.enabled, back.aca.enabled, back.k8s.enabled]).toEqual([true, false, false, false]);
+    expect(nodeProblems(nodeConfigFromContainer(c))).toEqual([]);
   });
   it('a node with only some fields fills the rest from safe defaults', () => {
     const c = containerConfigFromNode({ name: 'site' });
@@ -153,6 +167,13 @@ describe('Terraform', () => {
     expect(body).not.toMatch(/(?<!\$)\$\{/);
     expect(body).not.toMatch(/%\{/);
     expect((out.match(/<<-EOT/g) ?? []).length).toBe(1);
+  });
+  it('escapes an interpolation even if one reaches the script (a plain env value with ${x})', () => {
+    const cfg = { name: 'orders-api', containerConfig: encodeContainerConfig({ ...defaultConfig('node'), appName: 'orders-api', env: [{ key: 'GREETING', value: 'hi ${HOME} %{x}' }] }) };
+    const out = generateCanonicalTerraform([node(T, cfg)], []);
+    const body = out.slice(out.indexOf('<<-EOT'), out.indexOf('EOT\n', out.indexOf('<<-EOT') + 6));
+    expect(body).toContain('GREETING=hi $${HOME} %%{x}');
+    expect(body).not.toMatch(/(?<!\$)\$\{/);
   });
   it('uses the connected security group instead of making one, and adds a fixed IP only when asked', () => {
     const sg = node('aws_sg', {}, { id: 'mysg', groupId: 'vpc' });

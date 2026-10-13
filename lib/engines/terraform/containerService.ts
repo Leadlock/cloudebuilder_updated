@@ -10,7 +10,7 @@ import { containerConfigFromNode, nodeProblems } from '../containers/nodeConfig'
 import { userDataSh } from '../containers/ec2Deploy';
 
 /** Text that goes inside a Terraform heredoc: nothing in it may start an interpolation or a directive. */
-const heredoc = (s: string) => s.replace(/\$\{/g, '$${').replace(/%\{/g, '%%{');
+const heredoc = (s: string) => s.replace(/\$\{/g, () => '$${').replace(/%\{/g, () => '%%{');
 const q = (v: string) => JSON.stringify(v);
 
 export function containerServiceBlocks(name: string, cfg: Record<string, unknown>, subnetRef: string | null, sgRef: string | null): string[] {

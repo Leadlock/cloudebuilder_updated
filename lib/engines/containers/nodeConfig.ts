@@ -2,13 +2,31 @@
  * The "Container service" node on the canvas, and how it relates to the Container Templates form.
  *
  * The node keeps the settings every engine needs (cost, review, Terraform) as plain fields in its configuration, plus the whole form
- * state as JSON in `containerConfig` so "Open in Container Templates" gets back exactly what was added (secret values are never in it).
+ * state (encoded, see encodeContainerConfig) in `containerConfig` so "Open in Container Templates" gets back exactly what was added (secret values are never in it).
  * The plain fields win when they differ from the JSON, because they are what the properties panel edits.
  */
-import { defaultConfig, validate, type ContainerConfig } from './dockerTemplates';
+import { defaultConfig, validate, withDeployTarget, type ContainerConfig } from './dockerTemplates';
 import { parseStoredConfig, stripSecrets } from './stored';
 
 export const CONTAINER_SERVICE_TYPE = 'aws_container_service';
+
+/**
+ * The form state is kept on the node as URL-safe base64, not JSON text: every string in a design is escaped before it reaches Terraform
+ * (quotes, backslashes and "${" are rewritten), which would corrupt JSON and silently drop its environment variables. Base64 has none of those.
+ */
+export function encodeContainerConfig(c: ContainerConfig): string {
+  let bin = '';
+  new TextEncoder().encode(JSON.stringify(stripSecrets(c))).forEach((b) => { bin += String.fromCharCode(b); });
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodeContainerConfig(text: string): ContainerConfig | null {
+  if (!/^[A-Za-z0-9_-]+$/.test(text)) return null;
+  try {
+    const bin = atob(text.replace(/-/g, '+').replace(/_/g, '/'));
+    return parseStoredConfig(new TextDecoder().decode(Uint8Array.from(bin, (ch) => ch.charCodeAt(0))));
+  } catch { return null; }
+}
 
 export type NodeConfig = Record<string, unknown>;
 
@@ -34,18 +52,18 @@ export function nodeConfigFromContainer(c: ContainerConfig): NodeConfig {
     memoryLimit: c.memoryLimit, cpuLimit: c.cpuLimit, restart: c.restart,
     instanceType: c.ec2.instanceType, storageGb: c.ec2.volumeGb, allowedCidr: c.ec2.allowedCidr, imageTag: c.ec2.imageTag,
     elasticIp: c.ec2.elasticIp, scanImage: c.ec2.scanImage,
-    containerConfig: JSON.stringify(stripSecrets(c)),
+    containerConfig: encodeContainerConfig(c),
   };
 }
 
 /** The form state for a node: the stored JSON (if any and valid) with the node's plain fields applied on top. Always EC2-enabled. */
 export function containerConfigFromNode(node: NodeConfig): ContainerConfig {
   const dn = defaultNodeConfig();
-  const stored = typeof node['containerConfig'] === 'string' && node['containerConfig'] ? parseStoredConfig(node['containerConfig'] as string) : null;
+  const stored = typeof node['containerConfig'] === 'string' && node['containerConfig'] ? decodeContainerConfig(node['containerConfig'] as string) : null;
   const base = stored ?? defaultConfig((['node', 'python', 'java', 'static'] as const).find((s) => s === node['stack']) ?? 'node');
   const stack = (['node', 'python', 'java', 'static'] as const).find((s) => s === node['stack']) ?? base.stack;
   const withStack = stack === base.stack ? base : { ...defaultConfig(stack), env: base.env };
-  return {
+  return withDeployTarget({
     ...withStack,
     appName: str(node['name'], withStack.appName),
     port: num(node['port'], withStack.port),
@@ -64,7 +82,7 @@ export function containerConfigFromNode(node: NodeConfig): ContainerConfig {
       elasticIp: bool(node['elasticIp'], withStack.ec2.elasticIp),
       scanImage: bool(node['scanImage'], withStack.ec2.scanImage),
     },
-  };
+  }, 'ec2'); // the canvas node is always the EC2 deployment, whatever target the form had
 }
 
 /** Why the node cannot produce a deployment yet (empty when it can). */

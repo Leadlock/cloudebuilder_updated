@@ -109,12 +109,27 @@ export function checkContainer(config: ContainerConfig, files: GeneratedFile[]):
     }
   }
 
-  // ── EC2 ──
-  if (c.ec2.enabled) {
-    if (c.ec2.allowedCidr === '0.0.0.0/0') {
-      add({ id: 'CT-011', severity: 'medium', file: 'ec2/variables.tf', title: `Port ${c.port} is open to the whole internet`,
+  // ── every deployment target ──
+  const t = c.ec2.enabled ? { name: 'EC2', dir: 'ec2', cidr: c.ec2.allowedCidr, tag: c.ec2.imageTag, scan: c.ec2.scanImage, actions: c.ec2.githubActions, what: `Port ${c.port}`, tagFile: 'ec2/variables.tf' }
+    : c.ecs.enabled ? { name: 'ECS', dir: 'ecs', cidr: c.ecs.allowedCidr, tag: c.ecs.imageTag, scan: c.ecs.scanImage, actions: c.ecs.githubActions, what: 'The load balancer', tagFile: 'ecs/variables.tf' }
+    : c.aca.enabled ? { name: 'Container Apps', dir: 'aca', cidr: c.aca.externalIngress ? c.aca.allowedCidr : '10.0.0.0/8', tag: c.aca.imageTag, scan: c.aca.scanImage, actions: c.aca.githubActions, what: 'The app', tagFile: 'aca/variables.tf' }
+    : undefined;
+  if (t) {
+    if (t.cidr === '0.0.0.0/0') {
+      add({ id: 'CT-011', severity: 'medium', file: `${t.dir}/variables.tf`, title: `${t.what} is open to the whole internet`,
         detail: 'Fine for a public website, risky for an internal tool or an API with no login.', fix: 'Set "Who can connect" to your office or VPN range.' });
     }
+    if (t.actions && !t.scan) {
+      add({ id: 'CT-015', severity: 'low', file: '.github/workflows/deploy.yml', title: 'Images are pushed without a vulnerability scan',
+        detail: 'A known vulnerability in a base image or a library goes live unnoticed.', fix: 'Turn on "Scan the image for vulnerabilities".' });
+    }
+    if (t.tag === 'latest') {
+      add({ id: 'CT-016', severity: 'low', file: t.tagFile, title: 'The deployed image tag is "latest"', detail: 'It is unclear which build is running, and you cannot roll back to a named one.', fix: 'Deploy a version tag such as the commit id.' });
+    }
+  }
+
+  // ── EC2 ──
+  if (c.ec2.enabled) {
     const tf = get('ec2/main.tf') ?? '';
     if (tf && !/http_tokens\s*=\s*"required"/.test(tf)) {
       add({ id: 'CT-012', severity: 'high', file: 'ec2/main.tf', title: 'The instance still allows IMDSv1', detail: 'IMDSv1 lets a server-side request forgery steal the instance role credentials.', fix: 'Set http_tokens = "required".' });
@@ -125,12 +140,62 @@ export function checkContainer(config: ContainerConfig, files: GeneratedFile[]):
     if (/from_port\s*=\s*22\b/.test(tf)) {
       add({ id: 'CT-014', severity: 'high', file: 'ec2/main.tf', title: 'SSH is open', detail: 'Port 22 is a constant target for password guessing.', fix: 'Use Session Manager instead.' });
     }
-    if (c.ec2.githubActions && !c.ec2.scanImage) {
-      add({ id: 'CT-015', severity: 'low', file: '.github/workflows/deploy.yml', title: 'Images are pushed without a vulnerability scan',
-        detail: 'A known vulnerability in a base image or a library goes live unnoticed.', fix: 'Turn on "Scan the image for vulnerabilities".' });
+  }
+
+  // ── ECS Fargate ──
+  if (c.ecs.enabled) {
+    const tf = get('ecs/main.tf') ?? '';
+    if (!c.ecs.certificateArn) {
+      add({ id: 'CT-017', severity: 'medium', file: 'ecs/variables.tf', title: 'The load balancer serves plain HTTP',
+        detail: 'Traffic, cookies and tokens cross the internet unencrypted.', fix: 'Add an ACM certificate ARN so it serves HTTPS and redirects HTTP.' });
     }
-    if (c.ec2.imageTag === 'latest') {
-      add({ id: 'CT-016', severity: 'low', file: 'ec2/variables.tf', title: 'The deployed image tag is "latest"', detail: 'It is unclear which build is running, and you cannot roll back to a named one.', fix: 'Deploy a version tag such as the commit id.' });
+    const taskSg = /resource "aws_security_group" "task" \{[\s\S]*?\n\}/.exec(tf)?.[0] ?? '';
+    if (taskSg && !/security_groups\s*=\s*\[aws_security_group\.alb\.id\]/.test(taskSg) || /ingress \{[^}]*cidr_blocks\s*=\s*\["0\.0\.0\.0\/0"\]/.test(taskSg)) {
+      add({ id: 'CT-018', severity: 'high', file: 'ecs/main.tf', title: 'The tasks accept traffic from anywhere', detail: 'They should be reachable only through the load balancer.', fix: 'Allow the app port only from the load balancer\'s security group.' });
+    }
+    if (tf && !/deployment_circuit_breaker/.test(tf)) {
+      add({ id: 'CT-019', severity: 'low', file: 'ecs/main.tf', title: 'A failing deployment does not roll back', detail: 'A bad release keeps replacing healthy tasks.', fix: 'Enable the deployment circuit breaker with rollback.' });
+    }
+  }
+
+  // ── Azure Container Apps ──
+  if (c.aca.enabled) {
+    const tf = get('aca/main.tf') ?? '';
+    if (/admin_enabled\s*=\s*true/.test(tf)) {
+      add({ id: 'CT-020', severity: 'high', file: 'aca/main.tf', title: 'The container registry has its admin user on', detail: 'A shared password gives full push and pull access.', fix: 'Turn the admin user off and pull with a managed identity.' });
+    }
+    if (/allow_insecure_connections\s*=\s*true/.test(tf)) {
+      add({ id: 'CT-021', severity: 'medium', file: 'aca/main.tf', title: 'The app accepts plain HTTP', detail: 'Traffic crosses the network unencrypted.', fix: 'Remove allow_insecure_connections.' });
+    }
+    if (c.env.some((v) => v.secret)) {
+      add({ id: 'CT-022', severity: 'low', file: 'aca/README.md', title: 'Secret values are kept in Terraform state', detail: 'Anyone who can read the state file can read the secrets.', fix: 'Keep the aca/ folder private or use an encrypted remote backend.' });
+    }
+  }
+
+  // ── Kubernetes ──
+  if (c.k8s.enabled) {
+    const dep = get('k8s/deployment.yaml') ?? '';
+    if (dep && !/runAsNonRoot:\s*true/.test(dep)) {
+      add({ id: 'CT-002', severity: 'high', file: 'k8s/deployment.yaml', title: 'The container runs as root', detail: 'If someone takes over the app, they have root inside the container, which makes escaping it far easier.', fix: 'Turn on "Run as non-root".' });
+    }
+    if (dep && !/allowPrivilegeEscalation:\s*false/.test(dep)) {
+      add({ id: 'CT-023', severity: 'medium', file: 'k8s/deployment.yaml', title: 'The container may gain more privileges than its parent', detail: 'A setuid program inside the container could become root.', fix: 'Set allowPrivilegeEscalation: false.' });
+    }
+    if (dep && /privileged:\s*true|hostNetwork:\s*true|hostPID:\s*true/.test(dep)) {
+      add({ id: 'CT-007', severity: 'high', file: 'k8s/deployment.yaml', title: 'The pod is given control of the host', detail: 'privileged mode and host namespaces let a compromised container take over the node.', fix: 'Remove them.' });
+    }
+    if (dep && !/resources:[\s\S]*limits:/.test(dep)) {
+      add({ id: 'CT-009', severity: 'low', file: 'k8s/deployment.yaml', title: 'No memory or CPU limit', detail: 'One runaway pod can take the whole node down.', fix: 'Set Memory and CPUs under Server settings.' });
+    }
+    if (c.k8s.ingressHost && !c.k8s.tlsSecret) {
+      add({ id: 'CT-024', severity: 'medium', file: 'k8s/ingress.yaml', title: 'The ingress serves plain HTTP', detail: 'Traffic, cookies and tokens cross the network unencrypted.', fix: 'Add a TLS secret name (for example from cert-manager).' });
+    }
+    const tag = c.k8s.image.split('/').pop() ?? '';
+    if (!tag.includes(':') && !tag.includes('@') || tag.endsWith(':latest')) {
+      add({ id: 'CT-016', severity: 'low', file: 'k8s/deployment.yaml', title: 'The image has no version tag or uses :latest', detail: 'It is unclear which build is running, and you cannot roll back to a named one.', fix: 'Use a version tag such as the commit id.' });
+    }
+    if (c.k8s.githubActions && !c.k8s.scanImage) {
+      add({ id: 'CT-015', severity: 'low', file: '.github/workflows/image.yml', title: 'Images are pushed without a vulnerability scan', detail: 'A known vulnerability in a base image or a library goes live unnoticed.', fix: 'Turn on "Scan the image for vulnerabilities".' });
     }
   }
 

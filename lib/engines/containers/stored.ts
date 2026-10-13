@@ -21,7 +21,8 @@ export function parseStoredConfig(json: string): ContainerConfig | null {
   try { raw = JSON.parse(json); } catch { return null; }
   if (!isObject(raw) || typeof raw['stack'] !== 'string' || !(raw['stack'] in STACK_LABEL)) return null;
   const base = defaultConfig(raw['stack'] as ContainerStack);
-  const merged = { ...base, ...raw, ec2: { ...base.ec2, ...(isObject(raw['ec2']) ? raw['ec2'] : {}) } } as ContainerConfig;
+  const nested = (k: 'ec2' | 'ecs' | 'aca' | 'k8s') => ({ ...base[k], ...(isObject(raw[k]) ? (raw[k] as object) : {}) });
+  const merged = { ...base, ...raw, ec2: nested('ec2'), ecs: nested('ecs'), aca: nested('aca'), k8s: nested('k8s') } as ContainerConfig;
   if (!Array.isArray(merged.env)) merged.env = [];
   return validate(merged).length === 0 ? stripSecrets(merged) : null;
 }

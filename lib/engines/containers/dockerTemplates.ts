@@ -19,6 +19,18 @@ import { generateSampleApp } from './sampleApps';
 import { checkContainer, type ContainerFinding } from './checks';
 import { defaultEc2, ec2Warnings, estimateEc2Cost, type Ec2Cost, generateEc2Files, validateEc2, type Ec2Config } from './ec2Deploy';
 export type { Ec2Config } from './ec2Deploy';
+import { defaultEcs, ecsWarnings, estimateEcsCost, generateEcsFiles, validateEcs, type EcsConfig } from './ecsDeploy';
+import { defaultAca, acaWarnings, estimateAcaCost, generateAcaFiles, validateAca, type AcaConfig } from './containerAppsDeploy';
+import { defaultK8s, k8sWarnings, generateK8sFiles, validateK8s, type K8sConfig } from './kubernetesDeploy';
+export type { EcsConfig } from './ecsDeploy';
+export type { AcaConfig } from './containerAppsDeploy';
+export type { K8sConfig } from './kubernetesDeploy';
+
+/** Where the container can be deployed from the generated files. At most one is switched on at a time. */
+export type DeployTarget = 'none' | 'ec2' | 'ecs' | 'container-apps' | 'kubernetes';
+export const DEPLOY_TARGET_LABEL: Record<DeployTarget, string> = {
+  none: 'No deployment files', ec2: 'AWS EC2 (one server)', ecs: 'AWS ECS Fargate (managed containers)', 'container-apps': 'Azure Container Apps', kubernetes: 'Kubernetes (manifests and Helm)',
+};
 
 export interface EnvVar { key: string; value: string; secret?: boolean }
 
@@ -49,6 +61,12 @@ export interface ContainerConfig {
   staticSpaFallback: boolean;
   /** Optional "deploy to EC2" bundle (Terraform + start-up script + CI workflow). */
   ec2: Ec2Config;
+  /** Optional "deploy to ECS Fargate" bundle. */
+  ecs: EcsConfig;
+  /** Optional "deploy to Azure Container Apps" bundle. */
+  aca: AcaConfig;
+  /** Optional Kubernetes manifests and Helm chart. */
+  k8s: K8sConfig;
   /** Add a tiny working sample app next to the Dockerfile, so the template runs before you have your own code. */
   includeSample: boolean;
 }
@@ -69,7 +87,7 @@ export function defaultConfig(stack: ContainerStack = 'node'): ContainerConfig {
     version: VERSIONS[stack][0]!, env: [], healthPath: stack === 'java' ? '/actuator/health' : '/', runAsNonRoot: true,
     restart: 'unless-stopped', memoryLimit: '512m', cpuLimit: '1.0', postgres: false, redis: false,
     packageManager: 'npm', buildCommand: 'npm run build', startCommand: 'npm start', nextStandalone: false,
-    pythonFramework: 'fastapi', pythonModule: 'main:app', javaBuildTool: 'maven', staticBuildDir: 'dist', staticSpaFallback: true, ec2: defaultEc2(), includeSample: false,
+    pythonFramework: 'fastapi', pythonModule: 'main:app', javaBuildTool: 'maven', staticBuildDir: 'dist', staticSpaFallback: true, ec2: defaultEc2(), ecs: defaultEcs(), aca: defaultAca(), k8s: defaultK8s(), includeSample: false,
   };
 }
 
@@ -84,6 +102,16 @@ const CPU = /^(?:[0-9]{1,2})(?:\.[0-9]{1,2})?$/;
 const MODULE = /^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*$/;
 const RESERVED_ENV = new Set(['PATH', 'HOME', 'USER', 'SHELL', 'LD_PRELOAD', 'LD_LIBRARY_PATH']);
 const CONTROL = /[\u0000-\u001f\u007f]/;
+
+/** The deployment targets that are switched on (validation allows at most one). */
+export function deployTargets(c: ContainerConfig): Exclude<DeployTarget, 'none'>[] {
+  return [c.ec2.enabled && 'ec2', c.ecs.enabled && 'ecs', c.aca.enabled && 'container-apps', c.k8s.enabled && 'kubernetes'].filter((t): t is Exclude<DeployTarget, 'none'> => !!t);
+}
+
+/** Switch on exactly one target (or none), leaving each target's own settings as they were. */
+export function withDeployTarget(c: ContainerConfig, target: DeployTarget): ContainerConfig {
+  return { ...c, ec2: { ...c.ec2, enabled: target === 'ec2' }, ecs: { ...c.ecs, enabled: target === 'ecs' }, aca: { ...c.aca, enabled: target === 'container-apps' }, k8s: { ...c.k8s, enabled: target === 'kubernetes' } };
+}
 
 export function validate(c: ContainerConfig): string[] {
   const e: string[] = [];
@@ -113,7 +141,9 @@ export function validate(c: ContainerConfig): string[] {
     seen.add(v.key);
     if (v.value.length > 500 || CONTROL.test(v.value)) e.push(`${v.key}: the value must be one line of at most 500 characters.`);
   }
-  return [...e, ...validateEc2(c)];
+  const targets = deployTargets(c);
+  if (targets.length > 1) e.push(`Choose one place to deploy to: ${targets.map((t) => DEPLOY_TARGET_LABEL[t]).join(' and ')} are both switched on, and each writes its own deploy.sh.`);
+  return [...e, ...validateEc2(c), ...validateEcs(c), ...validateAca(c), ...validateK8s(c)];
 }
 
 // ─── quoting ─────────────────────────────────────────────────────────────────
@@ -346,7 +376,7 @@ function dockerignore(c: ContainerConfig): string {
     python: ['__pycache__', '*.pyc', '.venv', 'venv', '.pytest_cache', '.mypy_cache'],
     java: ['target', 'build', '.gradle', '.mvn/wrapper/maven-wrapper.jar'],
   };
-  const deploy = c.ec2.enabled ? ['ec2', '.github', '.terraform'] : [];
+  const deploy = c.ec2.enabled ? ['ec2', '.github', '.terraform'] : c.ecs.enabled ? ['ecs', '.github', '.terraform'] : c.aca.enabled ? ['aca', '.github', '.terraform'] : c.k8s.enabled ? ['k8s', 'helm', '.github', 'deploy.sh', 'destroy.sh'] : [];
   return `${[...common, ...deploy, ...per[c.stack]].join('\n')}\n`;
 }
 
@@ -398,9 +428,12 @@ export function generateContainerFiles(config: ContainerConfig): GenerateResult 
     ...(c.stack === 'static' ? [{ path: 'nginx.conf', content: nginxConf(c) }] : []),
     { path: 'README.md', content: readme(c) },
     ...generateEc2Files(c),
+    ...generateEcsFiles(c),
+    ...generateAcaFiles(c),
+    ...generateK8sFiles(c),
     ...sample.files,
   ];
-  return { ok: true, files, warnings: [...sample.warnings, ...ec2Warnings(c)], findings: checkContainer(c, files), cost: estimateEc2Cost(c) };
+  return { ok: true, files, warnings: [...sample.warnings, ...ec2Warnings(c), ...ecsWarnings(c), ...acaWarnings(c), ...k8sWarnings(c)], findings: checkContainer(c, files), cost: estimateEc2Cost(c) ?? estimateEcsCost(c) ?? estimateAcaCost(c) };
 }
 
 // ─── starter templates ───────────────────────────────────────────────────────

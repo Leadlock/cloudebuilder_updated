@@ -40,12 +40,12 @@ export const defaultEc2 = (): Ec2Config => ({
   enabled: false, region: 'us-east-1', instanceType: 't3.small', allowedCidr: '0.0.0.0/0', volumeGb: 20, imageTag: 'latest', elasticIp: false, githubActions: true, githubRepo: '', scanImage: true,
 });
 
-const REGION = /^[a-z]{2}(?:-[a-z]+)+-\d$/;
+export const REGION = /^[a-z]{2}(?:-[a-z]+)+-\d$/;
 const INSTANCE_TYPE = /^[a-z][a-z0-9]{0,6}\.[a-z0-9]{1,12}$/;
-const TAG = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
-const GITHUB_REPO = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
+export const TAG = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
+export const GITHUB_REPO = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
 
-function validCidr(v: string): boolean {
+export function validCidr(v: string): boolean {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(v);
   return !!m && m.slice(1, 5).every((o) => Number(o) <= 255) && Number(m[5]) <= 32;
 }
@@ -77,6 +77,8 @@ export function ec2Warnings(c: ContainerConfig): string[] {
 // ─── monthly cost ────────────────────────────────────────────────────────────
 
 export interface Ec2CostLine { label: string; monthlyUsd: number }
+/** What a deploy target costs a month at list price; shared by every target. */
+export type DeployCost = Ec2Cost;
 export interface Ec2Cost { monthlyUsd: number; lines: Ec2CostLine[]; notes: string[] }
 
 const HOURS = 730;
@@ -100,7 +102,7 @@ export function estimateEc2Cost(c: ContainerConfig): Ec2Cost | undefined {
 }
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-const secretNames = (c: ContainerConfig) => c.env.filter((v) => v.secret).map((v) => v.key);
+export const secretNames = (c: ContainerConfig) => c.env.filter((v) => v.secret).map((v) => v.key);
 
 // ─── Terraform ───────────────────────────────────────────────────────────────
 
@@ -605,7 +607,7 @@ resource "aws_iam_role_policy" "github" {
 
 // ─── one-command scripts ─────────────────────────────────────────────────────
 
-const q = (v: string) => `'${v}'`; // every value here is validated to contain no quote
+export const q = (v: string) => `'${v}'`; // every value here is validated to contain no quote
 
 function deploySh(c: ContainerConfig): string {
   const secrets = secretNames(c);
