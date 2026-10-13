@@ -82,3 +82,19 @@ describe('the AWS plugin not starting is a busy computer, not a bad design', () 
     expect(explainTerraformError('Terraform rejected the generated configuration (nothing was changed): Error: Reference to undeclared resource')!.kind).toBe('invalid-configuration');
   });
 });
+
+describe('Terraform that could not be downloaded', () => {
+  const msg = 'The `terraform` CLI is not installed or not on PATH and could not be downloaded: Could not reach releases.hashicorp.com: getaddrinfo ENOTFOUND. Install it from https://developer.hashicorp.com/terraform/install and ensure it is reachable from this process.';
+  it('says the automatic download failed and why, and what to do about a blocked network', () => {
+    const e = explainTerraformError(msg)!;
+    expect(e.kind).toBe('not-installed');
+    expect(e.title).toBe('Terraform could not be set up on the server');
+    expect(e.summary).toContain('downloads Terraform by itself');
+    expect(e.summary).toContain('getaddrinfo ENOTFOUND');
+    const steps = e.steps.join(' ');
+    for (const part of ['releases.hashicorp.com', 'CLOUDCRAFT_TERRAFORM_MIRROR', 'TERRAFORM_BINARY_PATH']) expect(steps).toContain(part);
+  });
+  it('keeps the old wording when no download was involved', () => {
+    expect(explainTerraformError('The `terraform` CLI is not installed or not on PATH.')!.title).toBe('Terraform is not installed on the server');
+  });
+});

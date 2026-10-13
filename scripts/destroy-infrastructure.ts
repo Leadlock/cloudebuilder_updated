@@ -17,20 +17,9 @@ import { orgRepository } from '../lib/repositories/orgRepository';
 import { projectRepository, environmentRepository } from '../lib/repositories/projectRepository';
 import { architectureRepository } from '../lib/repositories/architectureRepository';
 import { mockProjects } from '../lib/mockData';
+import { ensureTerraform } from '../lib/terraform/execution/binary';
 import fs from 'fs';
 import path from 'path';
-
-function getTerraformBinary(): string {
-  if (process.env.TERRAFORM_BINARY_PATH && fs.existsSync(process.env.TERRAFORM_BINARY_PATH)) {
-    return process.env.TERRAFORM_BINARY_PATH;
-  }
-  const userHome = process.env.USERPROFILE || process.env.HOME || '';
-  if (userHome) {
-    const candidate = path.join(userHome, 'bin', process.platform === 'win32' ? 'terraform.exe' : 'terraform');
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return 'terraform';
-}
 
 function runCommandStream(binary: string, args: string[], cwd: string, env: Record<string, string>): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -114,7 +103,7 @@ async function main() {
 
   // 3. Prepare workspace with remote backend
   const workDir = await mkdtemp(join(tmpdir(), 'cloudcraft-destroy-'));
-  const tfBinary = getTerraformBinary();
+  const tfBinary = await ensureTerraform({ log: (l) => console.log(l) });
 
   try {
     for (const f of tfResult.files) {

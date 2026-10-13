@@ -42,6 +42,9 @@ jobs:
         run: npx eslint . --quiet
       - name: Tests
         run: npm test
+      # The real download: fetches the pinned Terraform from HashiCorp, checks it against the checksum in the code and runs it.
+      - name: Terraform downloads and verifies itself
+        run: npx tsx --tsconfig tsconfig.json scripts/install-terraform.ts --managed
 
   build:
     runs-on: ubuntu-latest

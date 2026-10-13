@@ -21,6 +21,7 @@
     "db:reset": "docker compose down -v && docker compose up -d && prisma db init",
     "credentials:rotate": "tsx --env-file=.env --tsconfig tsconfig.json scripts/rotate-credentials.ts",
     "credentials:new-key": "tsx --tsconfig tsconfig.json scripts/new-encryption-key.ts",
+    "terraform:install": "tsx --tsconfig tsconfig.json scripts/install-terraform.ts",
     "worker:discovery": "tsx workers/discoveryWorker.ts",
     "worker:terraform-apply": "tsx workers/terraformApplyWorker.ts",
     "terraform:destroy": "tsx scripts/destroy-infrastructure.ts",

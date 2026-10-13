@@ -1,39 +1,27 @@
 /**
  * Thin wrapper around spawning the real `terraform` binary.
  *
- * Operational prerequisite: the `terraform` CLI must be installed and on
- * PATH wherever this runs (the Next.js server process for `plan`, and the
- * worker process for `apply` — see workers/terraformApplyWorker.ts). This
- * is a real external dependency CloudCraft does not bundle or install
- * itself, the same way the AWS Pricing API integration requires a
- * separately-provisioned IAM credential — see .env.example.
+ * Nothing to install: when no Terraform is found, runTerraform downloads the pinned release, checks it against the checksum built into
+ * binary.ts and keeps it for next time (the Next.js server for `plan`, and the worker for `apply`, share the same copy).
  */
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import os from 'os';
+import { ensureTerraform, locateTerraform, TerraformDownloadError } from './binary';
 
 const execFileAsync = promisify(execFile);
 
 import fs from 'fs';
 import path from 'path';
 
+/** The Terraform to run right now (see binary.ts); the name `terraform` when none exists yet, in which case runTerraform downloads one first. */
 function getTerraformBinary(): string {
-  if (process.env.TERRAFORM_BINARY_PATH && fs.existsSync(process.env.TERRAFORM_BINARY_PATH)) {
-    return process.env.TERRAFORM_BINARY_PATH;
-  }
-  const userHome = process.env.USERPROFILE || process.env.HOME || '';
-  if (userHome) {
-    const candidate = path.join(userHome, 'bin', process.platform === 'win32' ? 'terraform.exe' : 'terraform');
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return 'terraform';
+  return locateTerraform()?.path ?? 'terraform';
 }
 
 export class TerraformNotInstalledError extends Error {
-  constructor() {
-    super('The `terraform` CLI is not installed or not on PATH. Install it from https://developer.hashicorp.com/terraform/install and ensure it is reachable from this process.');
+  constructor(reason?: string) {
+    super(`The \`terraform\` CLI is not installed or not on PATH${reason ? ` and could not be downloaded: ${reason}` : ''}. Install it from https://developer.hashicorp.com/terraform/install and ensure it is reachable from this process.`);
     this.name = 'TerraformNotInstalledError';
   }
 }
@@ -119,6 +107,11 @@ export async function runTerraform(args: string[], options: TerraformRunOptions)
   const { cwd, env, timeoutMs = 300_000, allowExitCodes = [0], pluginCache = true } = options;
 
   const run = async (): Promise<TerraformRunResult> => {
+    // Nothing installed: fetch the pinned release (once; later runs find it). The person is told what is happening while they wait.
+    if (!locateTerraform()) {
+      try { await ensureTerraform({ log: (line) => { try { options.onOutput?.(`${line}\n`); } catch { /* listener errors never break a run */ } } }); }
+      catch (e) { throw new TerraformNotInstalledError(e instanceof TerraformDownloadError ? e.message : e instanceof Error ? e.message : String(e)); }
+    }
     const fullEnv = buildEnv(args, env, pluginCache);
     if (options.onOutput) return runStreaming(args, { ...options, timeoutMs, allowExitCodes }, fullEnv);
     try {

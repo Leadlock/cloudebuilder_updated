@@ -10,6 +10,7 @@ import { spawn, spawnSync, type ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
+import { ensureTerraform } from '../lib/terraform/execution/binary';
 import { LinePrefixer, RestartPolicy, devHostArgs, selectDevProcesses, tsxArgs, type DevProcessSpec } from '../lib/dev/devProcesses';
 
 // npm runs scripts with the app folder as the working directory.
@@ -81,3 +82,7 @@ if (!hasEnvFile && specs.some((s) => !s.essential)) {
 }
 console.log(`[dev] Starting: ${specs.map((s) => s.name).join(', ')}  (Ctrl+C stops all)`);
 for (const spec of specs) start(spec, new RestartPolicy());
+
+// Terraform comes with CloudCraft: fetch it in the background now, so the first deploy does not wait for the download. A failure here is not
+// fatal; the first plan tries again and says why if it cannot.
+void ensureTerraform({ log: (l) => console.log(`[terraform] ${l}`) }).catch((e: unknown) => console.warn(`[terraform] ${e instanceof Error ? e.message : String(e)}`));

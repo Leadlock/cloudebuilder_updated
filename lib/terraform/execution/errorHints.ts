@@ -32,10 +32,17 @@ export function explainTerraformError(raw: string | null | undefined): Terraform
   if (!message) return null;
 
   if (/CLI is not installed|not on PATH/i.test(message)) {
+    const why = /could not be downloaded: (.+?)\. Install it from/i.exec(message)?.[1];
     return {
-      kind: 'not-installed', title: 'Terraform is not installed on the server',
-      summary: 'CloudCraft runs the Terraform program to plan, apply and destroy, and could not find it.',
-      steps: ['Install Terraform from developer.hashicorp.com/terraform/install on the machine running the server.', 'Make sure it is on the PATH, or set TERRAFORM_BINARY_PATH to its full path, then try again.'],
+      kind: 'not-installed', title: why ? 'Terraform could not be set up on the server' : 'Terraform is not installed on the server',
+      summary: why
+        ? `CloudCraft downloads Terraform by itself the first time it needs it, and that did not work: ${why}`
+        : 'CloudCraft runs the Terraform program to plan, apply and destroy, and could not find it.',
+      steps: [
+        ...(why ? ['Check that the server can reach releases.hashicorp.com (a firewall or proxy may be blocking it), then try again.', 'On a network with no internet access, point CLOUDCRAFT_TERRAFORM_MIRROR at an internal copy of the same release files.'] : []),
+        'Or install Terraform yourself from developer.hashicorp.com/terraform/install on the machine running the server.',
+        'Make sure it is on the PATH, or set TERRAFORM_BINARY_PATH to its full path, then try again.',
+      ],
     };
   }
 
