@@ -239,7 +239,8 @@ export function createDefaultDraftProject(
 
 // ─── Reducer ──────────────────────────────────────────────────────────────────
 
-function reducer(state: AppState, action: Action): AppState {
+/** Exported for tests. */
+export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_VIEW':
       return { ...state, activeView: action.view, mobileSidebarOpen: false };
@@ -781,11 +782,10 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, projects };
     }
 
-    // ── SET_REGION: update region for current environment and active project ──
+    // ── SET_REGION: update region for current environment and active project (or for the unsaved draft) ──
     case 'SET_REGION': {
-      if (!state.activeProjectId) return state;
-      const projects = state.projects.map((p) => {
-        if (p.id !== state.activeProjectId) return p;
+      const isDraft = !state.activeProjectId || state.activeProjectId === 'draft-project';
+      const withRegion = (p: Project): Project => {
         const currentEnv = p.environments[state.activeEnvironment];
         const updatedNodes = p.nodes.map((n) => ({ ...n, region: action.region }));
         const envs: Record<Environment, EnvironmentState> = {
@@ -797,13 +797,12 @@ function reducer(state: AppState, action: Action): AppState {
           },
         };
         const updated = computeProject(p, updatedNodes, p.edges);
-        return {
-          ...updated,
-          region: action.region,
-          environments: envs,
-        };
-      });
-      return { ...state, projects };
+        return { ...updated, region: action.region, environments: envs };
+      };
+      // The draft is what the top bar shows before a project is saved, so a region chosen there has to land on the draft too.
+      const draftProject = isDraft ? withRegion(state.draftProject) : state.draftProject;
+      const projects = isDraft ? state.projects : state.projects.map((p) => (p.id === state.activeProjectId ? withRegion(p) : p));
+      return { ...state, draftProject, projects, autoSaveStatus: 'unsaved', architectureVersion: state.architectureVersion + 1 };
     }
 
     // ── SET_ENVIRONMENT_CANVAS: update canvas for specific env from backend ──
@@ -962,7 +961,8 @@ function reducer(state: AppState, action: Action): AppState {
 // mockProjects is still used as a last-resort fallback if the API load
 // itself fails after login (see the getProjects().catch() below).
 
-const initialState: AppState = {
+/** Exported for tests. */
+export const initialState: AppState = {
   projects: [],
   activeProjectId: null,
   draftProject: createDefaultDraftProject('aws', 10000),

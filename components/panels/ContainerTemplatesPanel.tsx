@@ -4,7 +4,7 @@
  * .dockerignore, README, nginx.conf) and download them as one zip or copy a single file. Nothing is sent to a server: the files are
  * produced in the browser by lib/engines/containers/dockerTemplates.ts, so what you see is what you download.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { Copy, Download, Package, Plus, Trash2, AlertTriangle, Check, ShieldCheck, Save } from 'lucide-react';
 import { useApp, useActiveProject } from '@/context/AppContext';
@@ -17,6 +17,7 @@ import {
   type ContainerConfig, type ContainerStack, type DeployTarget, type EnvVar,
 } from '@/lib/engines/containers/dockerTemplates';
 import { buildZip } from '@/lib/engines/containers/zip';
+import { withProjectRegion } from '@/lib/engines/containers/projectRegion';
 import { FARGATE_CPU, fargateMemoryOptions } from '@/lib/engines/containers/ecsDeploy';
 import { ACA_CPU } from '@/lib/engines/containers/containerAppsDeploy';
 import { SOFTWARE } from '@/lib/engines/servers/software';
@@ -58,7 +59,16 @@ export default function ContainerTemplatesPanel() {
   const { state, dispatch } = useApp();
   const project = useActiveProject();
   const isLight = state.theme === 'light';
-  const [cfg, setCfg] = useState<ContainerConfig>(() => defaultConfig('node'));
+  // The region chosen for the project fills the matching cloud's region here, now and whenever it changes.
+  const projectRegion = project ? (project.environments?.[state.activeEnvironment]?.region ?? project.region) : undefined;
+  const projectProvider = project?.provider;
+  const [cfg, setCfg] = useState<ContainerConfig>(() => withProjectRegion(defaultConfig('node'), projectProvider, projectRegion));
+  const lastRegion = useRef(projectRegion);
+  useEffect(() => {
+    if (lastRegion.current === projectRegion) return;
+    lastRegion.current = projectRegion;
+    setCfg((c) => withProjectRegion(c, projectProvider, projectRegion));
+  }, [projectRegion, projectProvider]);
   const [selected, setSelected] = useState('Dockerfile');
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState<Saved[] | null>(null);
@@ -67,6 +77,12 @@ export default function ContainerTemplatesPanel() {
   const [saveName, setSaveName] = useState('');
   const [busy, setBusy] = useState(false);
   const [starterCloud, setStarterCloud] = useState<'aws' | 'azure'>('aws');
+  /** The cloud chip also moves a form that already has a deployment: without this the files and the cost below kept showing the old target. */
+  function chooseStarterCloud(cl: 'aws' | 'azure') {
+    setStarterCloud(cl);
+    setCfg((c) => (deployTargets(c).length > 0 ? withDeployTarget(c, cl === 'azure' ? 'container-apps' : 'ec2') : c));
+    setSelected('README.md');
+  }
   const [linkedNode, setLinkedNode] = useState<string | null>(null);
   const [canvasNote, setCanvasNote] = useState<string | null>(null);
 
@@ -181,7 +197,7 @@ export default function ContainerTemplatesPanel() {
           <div className="flex items-center gap-2 mb-3 text-xs" role="group" aria-label="Cloud for the starter">
             <span className={muted}>Deploys to</span>
             {(['aws', 'azure'] as const).map((cl) => (
-              <button key={cl} type="button" aria-pressed={starterCloud === cl} onClick={() => setStarterCloud(cl)}
+              <button key={cl} type="button" aria-pressed={starterCloud === cl} onClick={() => chooseStarterCloud(cl)}
                 className={clsx('px-2.5 py-1 rounded-md border font-medium', starterCloud === cl ? (isLight ? 'bg-cyan-600 border-cyan-600 text-white' : 'bg-cyan-500/20 border-cyan-400 text-cyan-200') : (isLight ? 'bg-white border-slate-300 text-slate-700' : 'bg-slate-900 border-slate-700 text-slate-300'))}>
                 {cl === 'aws' ? 'AWS (EC2)' : 'Azure (Container Apps)'}
               </button>
@@ -189,7 +205,7 @@ export default function ContainerTemplatesPanel() {
           </div>
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {STARTER_TEMPLATES.map((t) => (
-              <button key={t.id} type="button" onClick={() => { setCfg(t.config(starterCloud === 'azure' ? 'container-apps' : 'ec2')); setLoadedId(null); setSelected('README.md'); }}
+              <button key={t.id} type="button" onClick={() => { setCfg(withProjectRegion(t.config(starterCloud === 'azure' ? 'container-apps' : 'ec2'), projectProvider, projectRegion)); setLoadedId(null); setSelected('README.md'); }}
                 className={clsx('rounded-xl border p-3 text-left', isLight ? 'bg-white border-slate-300 hover:bg-slate-50' : 'bg-slate-900 border-slate-700 hover:bg-slate-800')}>
                 <span className={clsx('block text-sm font-semibold', isLight ? 'text-slate-900' : 'text-white')}>{t.title}</span>
                 <span className={clsx('block text-[11px] mt-0.5', muted)}>{t.blurb}</span>
