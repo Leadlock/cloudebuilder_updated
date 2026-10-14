@@ -59,7 +59,9 @@ describe('Cognito MFA Flow', () => {
     const body = await res.json();
     expect(body.success).toBe(false);
     expect(body.requiresMfa).toBe(true);
-    expect(body.challengeName).toBe('SOFTWARE_TOKEN_MFA');
+    expect(body.method).toBe('app');
+    expect(body.challengeName).toBeUndefined();
+    expect(body.challengeParameters).toBeUndefined();
     expect(body.session).toBe('sess-12345');
     expect(body.email).toBe('alex@example.com');
   });
@@ -88,7 +90,7 @@ describe('Cognito MFA Flow', () => {
       body: JSON.stringify({
         email: 'alex@example.com',
         session: 'sess-12345',
-        challengeName: 'SOFTWARE_TOKEN_MFA',
+        method: 'app',
         code: '123456',
       }),
     });
@@ -113,7 +115,7 @@ describe('Cognito MFA Flow', () => {
       body: JSON.stringify({
         email: 'alex@example.com',
         session: 'sess-12345',
-        challengeName: 'SOFTWARE_TOKEN_MFA',
+        method: 'app',
         code: '000000',
       }),
     });
@@ -149,7 +151,7 @@ describe('Cognito MFA Flow', () => {
       body: JSON.stringify({
         email: 'alex@example.com',
         session: 'sess-setup-updated',
-        challengeName: 'MFA_SETUP',
+        method: 'setup',
         code: '530736',
       }),
     });

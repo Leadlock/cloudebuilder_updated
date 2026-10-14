@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { badRequest, unauthorized, internalError, apiError, parseBody } from '@/lib/api/response';
 import { AuthService } from '@/lib/api/authService';
 import { CognitoService } from '@/lib/auth/cognitoService';
+import { fromPublicMethod, toPublicMethod, VERIFICATION_METHODS, type VerificationMethod } from '@/lib/auth/challengeMethods';
 import { clearLoginFailures, limitAuthAttempt, loginLocked, recordLoginFailure } from '@/lib/api/authRateLimit';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
 const MfaVerifySchema = z.object({
   email: z.string().email(),
   session: z.string().min(1),
-  challengeName: z.string().min(1),
+  method: z.enum(VERIFICATION_METHODS as [VerificationMethod, ...VerificationMethod[]]),
   code: z.string().min(1),
 });
 
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
     const parsed = await parseBody(req, MfaVerifySchema);
     if (!parsed.ok) return parsed.response;
 
-    const { email, session, challengeName, code } = parsed.data;
+    const { email, session, method, code } = parsed.data;
 
     // Rate limits: per client address, and per (address, email) for failed attempts
     const limited = await limitAuthAttempt(req, 'login', email) ?? await loginLocked(req, email);
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
       const cognitoRes = await CognitoService.respondToMfaChallenge({
         email,
         session,
-        challengeName,
+        challengeName: fromPublicMethod(method),
         code,
       });
 
@@ -37,9 +38,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           success: false,
           requiresMfa: true,
-          challengeName: cognitoRes.challengeName,
+          method: toPublicMethod(cognitoRes.challengeName),
           session: cognitoRes.session,
-          challengeParameters: cognitoRes.challengeParameters,
           email: cognitoRes.email,
           message: 'Additional verification step required.',
         }, { status: 200 });

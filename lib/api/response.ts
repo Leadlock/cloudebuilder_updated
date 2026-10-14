@@ -2,6 +2,7 @@
  * Consistent API response envelope used by all REST routes.
  * Provides a uniform shape regardless of success or failure.
  */
+import { hideVendorNames, hideVendorNamesDeep } from './vendorNames';
 import { NextRequest, NextResponse } from 'next/server';
 import type { ZodError } from 'zod';
 
@@ -40,7 +41,7 @@ export function apiError(
   details?: unknown,
 ): NextResponse<ApiError> {
   return NextResponse.json(
-    { ok: false, error: { code, message, ...(details !== undefined ? { details } : {}) } },
+    { ok: false, error: { code, message: hideVendorNames(message), ...(details !== undefined ? { details: hideVendorNamesDeep(details) } : {}) } },
     { status },
   );
 }

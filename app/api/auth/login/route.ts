@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ok, badRequest, unauthorized, internalError, apiError, parseBody } from '@/lib/api/response';
 import { AuthService } from '@/lib/api/authService';
 import { CognitoService } from '@/lib/auth/cognitoService';
+import { toPublicMethod } from '@/lib/auth/challengeMethods';
 import { localLoginFallbackAllowed } from '@/lib/auth/localFallback';
 import { clearLoginFailures, limitAuthAttempt, loginLocked, recordLoginFailure } from '@/lib/api/authRateLimit';
 
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
     const limited = await limitAuthAttempt(req, 'login', email) ?? await loginLocked(req, email);
     if (limited) return limited;
 
-    // 1. Try AWS Cognito first
+    // 1. The sign-in service first
     try {
       const cognitoAuth = await CognitoService.signIn(email, password);
 
@@ -32,9 +33,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           success: false,
           requiresMfa: true,
-          challengeName: cognitoAuth.challengeName,
+          method: toPublicMethod(cognitoAuth.challengeName),
           session: cognitoAuth.session,
-          challengeParameters: cognitoAuth.challengeParameters,
           email: cognitoAuth.email,
           message: cognitoAuth.challengeName === 'SMS_MFA'
             ? 'Please enter the SMS verification code sent to your phone.'

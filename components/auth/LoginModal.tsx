@@ -27,7 +27,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
   const [resetCode, setResetCode] = useState('');
   const [mfaCode, setMfaCode] = useState('');
   const [mfaSession, setMfaSession] = useState('');
-  const [mfaChallengeName, setMfaChallengeName] = useState('SOFTWARE_TOKEN_MFA');
+  const [mfaChallengeName, setMfaChallengeName] = useState<'app' | 'sms' | 'email' | 'setup'>('app');
   const [mfaSecret, setMfaSecret] = useState<string | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [showManualKey, setShowManualKey] = useState(false);
@@ -104,7 +104,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
           body: JSON.stringify({
             email,
             session: mfaSession,
-            challengeName: mfaChallengeName,
+            method: mfaChallengeName,
             code: mfaCode,
           }),
         });
@@ -113,7 +113,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
 
         if (data.requiresMfa) {
           setMfaSession(data.session);
-          setMfaChallengeName(data.challengeName || 'SOFTWARE_TOKEN_MFA');
+          setMfaChallengeName(data.method || 'app');
           setInfoMessage(data.message || 'Additional verification required.');
           return;
         }
@@ -220,11 +220,11 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
       if (data.requiresMfa) {
         setMode('mfa');
         setMfaSession(data.session);
-        setMfaChallengeName(data.challengeName || 'SOFTWARE_TOKEN_MFA');
+        setMfaChallengeName(data.method || 'app');
         setInfoMessage(data.message || 'Please enter the 6-digit code from your authenticator app.');
 
         // If user needs to set up TOTP token for first time
-        if (data.challengeName === 'MFA_SETUP') {
+        if (data.method === 'setup') {
           try {
             const setupRes = await fetch('/api/auth/mfa/setup', {
               method: 'POST',
@@ -317,7 +317,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                 <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border ${
                   isLight ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : 'bg-cyan-950 text-cyan-400 border-cyan-800/60'
                 }`}>
-                  AWS Cognito
+                  Secure sign-in
                 </span>
               </div>
               <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
@@ -508,17 +508,17 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                   <div className="flex items-center gap-2">
                     <Smartphone className={`w-4 h-4 ${isLight ? 'text-cyan-600' : 'text-cyan-400'}`} />
                     <span className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                      {mfaChallengeName === 'SMS_MFA'
+                      {mfaChallengeName === 'sms'
                         ? 'SMS Verification'
-                        : mfaChallengeName === 'EMAIL_OTP'
+                        : mfaChallengeName === 'email'
                         ? 'Email Verification'
                         : 'Authenticator App (TOTP)'}
                     </span>
                   </div>
                   <p className={`text-[11px] leading-relaxed ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                    {mfaChallengeName === 'SMS_MFA'
+                    {mfaChallengeName === 'sms'
                       ? 'Enter the 6-digit code sent to your mobile phone via SMS.'
-                      : mfaChallengeName === 'EMAIL_OTP'
+                      : mfaChallengeName === 'email'
                       ? `Enter the 6-digit verification code sent to ${email}.`
                       : 'Scan the QR code with Google Authenticator, Microsoft Authenticator, or 1Password and enter your 6-digit code.'}
                   </p>
@@ -724,7 +724,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                     </div>
                     <p className={`text-[10px] mt-1.5 flex items-center gap-1 ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>
                       <ShieldCheck className="w-3 h-3 text-cyan-500" />
-                      Secured with AWS Cognito User Directory.
+                      Your sign-in is protected.
                     </p>
                   </div>
                 )}
@@ -740,7 +740,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   {mode === 'signin'
-                    ? 'Signing in with Cognito...'
+                    ? 'Signing in...'
                     : mode === 'confirm'
                     ? 'Verifying Code...'
                     : mode === 'mfa'
@@ -749,11 +749,11 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                     ? 'Sending Reset Code...'
                     : mode === 'reset_password'
                     ? 'Resetting Password...'
-                    : 'Creating Cognito account...'}
+                    : 'Creating account...'}
                 </>
               ) : (
                 mode === 'signin'
-                  ? 'Sign In with Cognito'
+                  ? 'Sign In'
                   : mode === 'confirm'
                   ? 'Verify Code & Sign In'
                   : mode === 'mfa'

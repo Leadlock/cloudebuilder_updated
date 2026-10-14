@@ -5,6 +5,7 @@
  * There is no outbound email integration yet, so POST returns the accept
  * link directly in the response for the admin to share manually.
  */
+import { hideVendorNames } from '@/lib/api/vendorNames';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ok, created, badRequest, unauthorized, forbidden, internalError, parseBody } from '@/lib/api/response';
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest) {
       expiresAt: invite.expiresAt,
       acceptUrl: url,
       emailSent: emailResult.sent,
-      emailError: emailResult.error,
+      emailError: emailResult.error ? hideVendorNames(emailResult.error) : emailResult.error,
     });
   } catch (err) {
     console.error('[POST /api/auth/invite]', err);

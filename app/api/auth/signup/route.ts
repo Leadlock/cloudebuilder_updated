@@ -11,6 +11,7 @@ import { AuthService } from '@/lib/api/authService';
 import { orgRepository } from '@/lib/repositories/orgRepository';
 import { isPasswordStrongEnough } from '@/lib/crypto/password';
 import { CognitoService } from '@/lib/auth/cognitoService';
+import { hideVendorNames } from '@/lib/api/vendorNames';
 import { localSignupAllowed } from '@/lib/auth/localFallback';
 import { limitAuthAttempt } from '@/lib/api/authRateLimit';
 
@@ -81,10 +82,10 @@ export async function POST(req: NextRequest) {
       return response;
     } catch (cognitoErr: any) {
       if (cognitoErr.name === 'UsernameExistsException') {
-        return apiError('CONFLICT', 'An account with this email already exists in Cognito', 409);
+        return apiError('CONFLICT', 'An account with this email already exists', 409);
       }
       if (cognitoErr.name === 'InvalidPasswordException') {
-        return badRequest(cognitoErr.message || 'Password does not meet Cognito complexity requirements');
+        return badRequest(hideVendorNames(cognitoErr.message || 'Password does not meet the password requirements'));
       }
 
       // Never fall back to an unverified local account: that would let anyone register an email address they do not own.

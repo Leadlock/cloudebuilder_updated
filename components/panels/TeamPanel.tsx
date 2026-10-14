@@ -128,7 +128,7 @@ export default function TeamPanel() {
                 "text-[10px] border px-2 py-0.5 rounded font-mono font-medium",
                 isLight ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-blue-950 text-blue-400 border-blue-800/60"
               )}>
-                AWS SES Outbound
+                Email invitations
               </span>
             </div>
             <form onSubmit={handleInvite} className="flex flex-wrap items-end gap-3">
@@ -185,15 +185,13 @@ export default function TeamPanel() {
                   )}
                   <span className={clsx("font-semibold", isLight ? "text-slate-900" : "text-white")}>
                     {lastEmailSent
-                      ? 'Invitation email delivered via AWS SES!'
+                      ? 'Invitation email sent!'
                       : 'Invite created. Share this link directly with your teammate:'}
                   </span>
                 </div>
                 {!lastEmailSent && lastEmailError && (
                   <p className={clsx("text-[11px] leading-relaxed", isLight ? "text-amber-800" : "text-amber-300/90")}>
-                    <strong>Note (AWS SES Sandbox):</strong> {lastEmailError.includes('not verified') 
-                      ? 'AWS SES is in Sandbox mode and will only deliver emails to verified email identities. To deliver to any email, request SES Production access or add the recipient to Verified Identities in the AWS SES Console (eu-north-1).'
-                      : lastEmailError}
+                    <strong>Note:</strong> The email could not be delivered to this address yet. Share the invite link below directly with your teammate.
                   </p>
                 )}
                 <div className={clsx("flex items-center gap-2 border rounded-lg px-3 py-2", isLight ? "bg-white border-slate-200" : "bg-gray-950 border-gray-800")}>

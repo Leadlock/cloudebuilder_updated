@@ -19,7 +19,7 @@ const TIER_STYLE: Record<PricingTier, string> = {
   UNAVAILABLE: 'bg-gray-800 text-gray-400 border-gray-600',
 };
 const TIER_HELP: Record<PricingTier, string> = {
-  LIVE: 'Official list price returned by the AWS Price List API / Azure Retail Prices API for this estimate.',
+  LIVE: 'Official list price from the cloud provider for this estimate.',
   CACHED_LIVE: 'Official list price retrieved earlier from the provider API and served from cache.',
   FALLBACK_ESTIMATE: 'The provider API was not available or does not price this resource: CloudCraft static list-price estimate, not a live price.',
   UNAVAILABLE: 'No price could be determined for this resource. It is excluded from totals.',
