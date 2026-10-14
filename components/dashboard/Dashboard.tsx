@@ -1,4 +1,5 @@
 'use client';
+import { RESTRICTED_FEATURE_LABEL } from '@/lib/auth/restrictedFeatures';
 import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import {
@@ -100,7 +101,7 @@ export default function Dashboard() {
     { icon: LayoutGrid, label: 'Template Gallery', desc: 'Start from a template', view: 'templates' as const, color: 'bg-purple-900/30 border-purple-800/80 text-purple-400' },
     { icon: Sparkles, label: 'AI Generator', desc: 'Describe your architecture', view: 'ai-generator' as const, color: 'bg-pink-900/30 border-pink-800/80 text-pink-400' },
     { icon: Upload, label: 'Import Infrastructure', desc: 'Import existing resources', view: 'import' as const, color: 'bg-orange-900/30 border-orange-800/80 text-orange-400' },
-  ].filter((a) => a.view !== 'ai-generator' || state.currentUser?.restrictedFeatures !== false);
+  ];
 
   const isLight = state.theme === 'light';
 
@@ -170,20 +171,27 @@ export default function Dashboard() {
       <div className="mb-6">
         <h2 className={clsx("font-semibold text-xs sm:text-sm mb-3 uppercase tracking-wider", isLight ? "text-slate-500" : "text-gray-400")}>Quick Start</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {quickActions.map(({ icon: Icon, label, desc, view, color }) => (
+          {quickActions.map(({ icon: Icon, label, desc, view, color }) => {
+            const locked = view === 'ai-generator' && state.currentUser?.restrictedFeatures === false;
+            return (
             <button
               key={view}
+              disabled={locked}
               onClick={() => dispatch({ type: 'SET_VIEW', view })}
+              title={locked ? `${label} — ${RESTRICTED_FEATURE_LABEL}` : undefined}
               className={clsx(
-                'text-left p-3.5 rounded-xl border transition-all hover:scale-[1.01] active:scale-[0.99] shadow-xs',
-                isLight ? 'bg-white border-slate-200 hover:border-blue-400 hover:shadow-md' : color
+                'text-left p-3.5 rounded-xl border transition-all shadow-xs',
+                locked
+                  ? 'opacity-50 grayscale cursor-not-allowed ' + (isLight ? 'bg-slate-100 border-slate-200' : 'bg-gray-900 border-gray-800')
+                  : 'hover:scale-[1.01] active:scale-[0.99] ' + (isLight ? 'bg-white border-slate-200 hover:border-blue-400 hover:shadow-md' : color)
               )}
             >
               <Icon className={clsx("w-5 h-5 mb-2", isLight ? "text-blue-600" : "text-inherit")} />
               <p className={clsx("text-sm font-semibold", isLight ? "text-slate-900" : "text-white")}>{label}</p>
-              <p className={clsx("text-xs mt-0.5", isLight ? "text-slate-500" : "text-gray-400")}>{desc}</p>
+              <p className={clsx("text-xs mt-0.5", isLight ? "text-slate-500" : "text-gray-400")}>{locked ? RESTRICTED_FEATURE_LABEL : desc}</p>
             </button>
-          ))}
+            );
+          })}
         </div>
       </div>
 

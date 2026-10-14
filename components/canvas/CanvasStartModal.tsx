@@ -1,4 +1,5 @@
 'use client';
+import { RESTRICTED_FEATURE_LABEL } from '@/lib/auth/restrictedFeatures';
 import React, { useState } from 'react';
 import { useEscapeKey } from '@/lib/ui/useEscapeKey';
 import { ProviderMode, ScaleProfile, Region, AWS_REGIONS, AZURE_REGIONS } from '@/types';
@@ -34,6 +35,7 @@ export default function CanvasStartModal({ isOpen, onClose, onStart }: CanvasSta
   const isLight = state.theme === 'light';
   const [providerMode, setProviderMode] = useState<ProviderMode>('AWS');
   const [buildMode, setBuildMode] = useState<'manual' | 'ai'>('manual');
+  const aiLocked = state.currentUser?.restrictedFeatures === false;
   const [expectedUsers, setExpectedUsers] = useState<number>(10000);
   const [customUsers, setCustomUsers] = useState<string>('');
   const [isCustomUsers, setIsCustomUsers] = useState<boolean>(false);
@@ -311,13 +313,15 @@ export default function CanvasStartModal({ isOpen, onClose, onStart }: CanvasSta
                 </div>
               </button>
 
-              {state.currentUser?.restrictedFeatures !== false && (
               <button
                 type="button"
                 id="btn-mode-ai"
+                disabled={aiLocked}
+                title={aiLocked ? `AI-Assisted — ${RESTRICTED_FEATURE_LABEL}` : undefined}
                 onClick={() => setBuildMode('ai')}
                 className={clsx(
                   'flex items-start gap-3 p-3 rounded-xl border text-left transition-all',
+                  aiLocked && 'opacity-50 grayscale cursor-not-allowed',
                   buildMode === 'ai'
                     ? (isLight ? 'border-indigo-500 bg-indigo-50 text-slate-900 ring-1 ring-indigo-400/40 shadow-sm' : 'border-indigo-500 bg-indigo-500/10 text-white ring-1 ring-indigo-500/30')
                     : isLight
@@ -331,11 +335,10 @@ export default function CanvasStartModal({ isOpen, onClose, onStart }: CanvasSta
                 <div>
                   <div className={clsx('text-sm font-semibold', isLight ? 'text-slate-900' : 'text-white')}>AI-Assisted</div>
                   <div className={clsx('text-[11px] leading-snug mt-0.5', isLight ? 'text-slate-500' : 'text-gray-400')}>
-                    CloudCraft derives workload and suggests validated canonical topology.
+                    {aiLocked ? RESTRICTED_FEATURE_LABEL : 'CloudCraft derives workload and suggests validated canonical topology.'}
                   </div>
                 </div>
               </button>
-              )}
             </div>
 
             {buildMode === 'ai' && (

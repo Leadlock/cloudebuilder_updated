@@ -20,20 +20,25 @@ import Sidebar from '@/components/layout/Sidebar';
 import LockedFeature from '@/components/panels/LockedFeature';
 
 describe('Sidebar', () => {
-  test('an account that may use them sees the Deploy and AI Generator tabs', () => {
-    mockUser = { role: 'admin', restrictedFeatures: true };
-    render(<Sidebar />);
-    expect(screen.getAllByText('Deploy').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('AI Generator').length).toBeGreaterThan(0);
-  });
-
-  test('another account does not see them, and still sees everything else', () => {
+  test('another account still sees them, greyed out and marked Not accessible, and cannot open them', () => {
     mockUser = { role: 'admin', restrictedFeatures: false };
     render(<Sidebar />);
-    expect(screen.queryAllByText('Deploy')).toHaveLength(0);
-    expect(screen.queryAllByText('AI Generator')).toHaveLength(0);
-    expect(screen.getAllByText('Terraform').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Visual Builder').length).toBeGreaterThan(0);
+    for (const label of ['Deploy', 'AI Generator']) {
+      const button = screen.getByRole('button', { name: `${label} — Not accessible` }) as HTMLButtonElement;
+      expect(button.disabled).toBe(true);
+      expect(button.textContent).toContain('Not accessible');
+    }
+    // everything else is unchanged
+    const terraform = screen.getByRole('button', { name: /Terraform/ }) as HTMLButtonElement;
+    expect(terraform.textContent).not.toContain('Not accessible');
+    expect(screen.getByRole('button', { name: /Visual Builder/ })).toBeTruthy();
+  });
+
+  test('an account that may use them gets working buttons, with no "Not accessible" anywhere', () => {
+    mockUser = { role: 'admin', restrictedFeatures: true };
+    render(<Sidebar />);
+    expect((screen.getByRole('button', { name: 'AI Generator' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryAllByText('Not accessible')).toHaveLength(0);
   });
 
   test('an older saved user without the field is treated as allowed (the server decides)', () => {
@@ -43,7 +48,8 @@ describe('Sidebar', () => {
   });
 });
 
-test('the locked screen says the feature is not open', () => {
+test('the locked screen says the feature is not accessible', () => {
   render(<LockedFeature />);
-  expect(screen.getByText(/not open to your account/i)).toBeTruthy();
+  expect(screen.getByText('Not accessible')).toBeTruthy();
+  expect(screen.getByText(/not accessible for your account/i)).toBeTruthy();
 });

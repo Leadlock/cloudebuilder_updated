@@ -26,4 +26,6 @@ export function canUseRestrictedFeatures(email: unknown, env: NodeJS.ProcessEnv 
   return restrictedFeatureEmails(env).includes(email.trim().toLowerCase());
 }
 
-export const RESTRICTED_FEATURE_MESSAGE = 'This feature is not open to your account yet.';
+/** The short word shown on a closed tab. */
+export const RESTRICTED_FEATURE_LABEL = 'Not accessible';
+export const RESTRICTED_FEATURE_MESSAGE = 'This feature is not accessible for your account.';

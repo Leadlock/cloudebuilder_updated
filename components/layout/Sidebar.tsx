@@ -1,6 +1,6 @@
 'use client';
 
-import { RESTRICTED_VIEWS } from '@/lib/auth/restrictedFeatures';
+import { RESTRICTED_VIEWS, RESTRICTED_FEATURE_LABEL } from '@/lib/auth/restrictedFeatures';
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '@/context/AppContext';
 import {
@@ -202,17 +202,18 @@ export default function Sidebar() {
               <p className={clsx("text-[10px] uppercase tracking-widest font-bold px-2.5 mb-1.5", isLight ? "text-slate-400" : "text-gray-500")}>{group.label}</p>
             )}
             <div className="space-y-1">
-              {group.items.filter((item) => (!('adminOnly' in item && item.adminOnly) || isAdmin) && (!('operatorOnly' in item && item.operatorOnly) || currentUser?.operator === true) && (canUseRestricted || !RESTRICTED_VIEWS.has(item.id))).map(({ id, label, icon: Icon, requiresProject }) => {
+              {group.items.filter((item) => (!('adminOnly' in item && item.adminOnly) || isAdmin) && (!('operatorOnly' in item && item.operatorOnly) || currentUser?.operator === true) ).map(({ id, label, icon: Icon, requiresProject }) => {
                 const active = activeView === id;
                 const hasArchitecture = !!activeProjectId || (state.draftProject && state.draftProject.nodes.length > 0) || activeView === 'canvas';
-                const disabled = requiresProject && !hasArchitecture;
+                const locked = !canUseRestricted && RESTRICTED_VIEWS.has(id);
+                const disabled = locked || (requiresProject && !hasArchitecture);
                 return (
                   <button
                     key={id}
                     disabled={disabled}
                     onClick={() => handleNavClick(id as AppView)}
-                    title={disabled ? 'Select a project first' : sidebarCollapsed && !isMobile ? label : undefined}
-                    aria-label={disabled ? `${label} — Select a project first` : label}
+                    title={locked ? `${label} — ${RESTRICTED_FEATURE_LABEL}` : disabled ? 'Select a project first' : sidebarCollapsed && !isMobile ? label : undefined}
+                    aria-label={locked ? `${label} — ${RESTRICTED_FEATURE_LABEL}` : disabled ? `${label} — Select a project first` : label}
                     aria-current={active ? 'page' : undefined}
                     className={clsx(
                       'w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-xs font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-left',
@@ -227,6 +228,7 @@ export default function Sidebar() {
                   >
                     <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
                     {(!sidebarCollapsed || isMobile) && <span className="truncate flex-1">{label}</span>}
+                    {locked && (!sidebarCollapsed || isMobile) && <span className="text-[9px] font-medium uppercase tracking-wide opacity-80">{RESTRICTED_FEATURE_LABEL}</span>}
                   </button>
                 );
               })}

@@ -1,4 +1,5 @@
 'use client';
+import { RESTRICTED_FEATURE_LABEL } from '@/lib/auth/restrictedFeatures';
 import { useState, useRef, useEffect } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
 import { Bell, Globe, Coins, ShieldCheck, UserCheck, LogOut, User, FileCheck, Menu, Sun, Moon, ChevronDown } from 'lucide-react';
@@ -225,10 +226,12 @@ export default function TopBar() {
         )}
 
         {/* Deploy button */}
-        {activeProject && currentUser?.restrictedFeatures !== false && !['dashboard', 'wizard', 'templates', 'ai-generator', 'import', 'container-templates', 'disaster-recovery'].includes(activeView) && (
+        {activeProject && !['dashboard', 'wizard', 'templates', 'ai-generator', 'import', 'container-templates', 'disaster-recovery'].includes(activeView) && (
           <button
             onClick={() => dispatch({ type: 'SET_VIEW', view: 'deploy' })}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors shrink-0 shadow-sm active:scale-[0.98]"
+            disabled={currentUser?.restrictedFeatures === false}
+            title={currentUser?.restrictedFeatures === false ? `Deploy — ${RESTRICTED_FEATURE_LABEL}` : undefined}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors shrink-0 shadow-sm active:scale-[0.98] disabled:bg-gray-500/40 disabled:text-gray-400 disabled:cursor-not-allowed disabled:shadow-none disabled:active:scale-100"
           >
             Deploy
           </button>
