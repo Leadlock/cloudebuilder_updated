@@ -19,7 +19,7 @@ const FULL_CSP = [
   "manifest-src 'self'",
 ].join('; ');
 
-/** Directives that cannot break a page, so they are enforced from day one. */
+/** Directives that stop framing, injected <base> tags, forms posting elsewhere and plugins. */
 const ENFORCED_CSP = [
   "frame-ancestors 'none'",   // nobody may embed the app in a frame (clickjacking)
   "base-uri 'self'",          // an injected <base> cannot redirect relative URLs
@@ -27,11 +27,11 @@ const ENFORCED_CSP = [
   "object-src 'none'",        // no plugins
 ].join('; ');
 
+/** The complete policy, enforced: nothing loads from, or is sent to, any other origin. */
+const CSP = `${FULL_CSP}; ${ENFORCED_CSP}`;
+
 const securityHeaders = [
-  { key: 'Content-Security-Policy', value: ENFORCED_CSP },
-  // The full script/style/connect policy is reported, not enforced, until it has been watched in the browser console
-  // on every screen; then move it into the enforced policy above.
-  { key: 'Content-Security-Policy-Report-Only', value: FULL_CSP },
+  { key: 'Content-Security-Policy', value: CSP },
   { key: 'X-Frame-Options', value: 'DENY' },                       // same as frame-ancestors, for older browsers
   { key: 'X-Content-Type-Options', value: 'nosniff' },             // a response is never reinterpreted as another type
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
