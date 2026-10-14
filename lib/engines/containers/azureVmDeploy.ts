@@ -15,6 +15,7 @@ import { usesExistingImage } from './existingImageUse';
 import { azureVmHourlyUsd } from '@/lib/engines/cost/azurePricing';
 import { GITHUB_REPO, TAG, q, secretNames, validCidr, type DeployCost } from './ec2Deploy';
 import { companionServices } from './companions';
+import { hostPorts, hostSoftwareSh, hostSoftwareWarnings, validateHostSoftware } from './hostSoftware';
 
 export interface AzVmConfig {
   enabled: boolean;
@@ -28,10 +29,14 @@ export interface AzVmConfig {
   githubActions: boolean;
   githubRepo: string;
   scanImage: boolean;
+  /** Software installed on the VM itself, by id (see lib/engines/servers/software.ts). */
+  software: string[];
+  /** One line for the home page of a web server installed this way. */
+  pageText: string;
 }
 
 export const defaultAzVm = (): AzVmConfig => ({
-  enabled: false, location: 'westeurope', size: 'Standard_B2s', diskGb: 30, allowedCidr: '0.0.0.0/0', imageTag: 'latest', githubActions: true, githubRepo: '', scanImage: true,
+  enabled: false, location: 'westeurope', size: 'Standard_B2s', diskGb: 30, allowedCidr: '0.0.0.0/0', imageTag: 'latest', githubActions: true, githubRepo: '', scanImage: true, software: [], pageText: '',
 });
 
 const LOCATION = /^[a-z]{3,}[a-z0-9]*$/;
@@ -49,6 +54,7 @@ export function validateAzVm(c: ContainerConfig): string[] {
   if (!Number.isInteger(v.diskGb) || v.diskGb < 30 || v.diskGb > 1024) out.push('Azure VM: disk size must be 30 to 1024 GB.');
   if (!TAG.test(v.imageTag)) out.push('Azure VM: image tag may use letters, digits, "_", "." and "-" (up to 128 characters).');
   if (v.githubRepo !== '' && !GITHUB_REPO.test(v.githubRepo)) out.push('Azure VM: GitHub repository looks like owner/name.');
+  out.push(...validateHostSoftware('Azure VM', v.software, c.port));
   return out;
 }
 
@@ -60,6 +66,8 @@ export function azVmWarnings(c: ContainerConfig): string[] {
   if (companionServices(c).length > 0) w.push('Azure VM: PostgreSQL, MySQL, MongoDB, Redis and RabbitMQ are not started on the VM. Use the managed Azure services and put the connection settings in the environment variables.');
   if (!usesExistingImage(c) && v.imageTag === 'latest') w.push('Azure VM: the "latest" tag is used. A version tag (for example the commit id) makes it clear what is running.');
   if (c.env.some((x) => x.secret)) w.push('Azure VM: deploy.sh stores each secret in Key Vault (asks once, hidden); the VM reads it when the container starts.');
+  w.push(...hostSoftwareWarnings('Azure VM', v.software));
+  if (hostPorts(v.software).length > 0 && v.allowedCidr === '0.0.0.0/0') w.push('Azure VM: the web server on ports 80 and 443 will be open to the whole internet. Narrow "who can connect" if the site is not public.');
   return w;
 }
 
@@ -216,7 +224,19 @@ resource "azurerm_network_security_group" "app" {
     source_address_prefix      = var.allowed_cidr
     destination_address_prefix = "*"
   }
-}
+${hostPorts(c.azvm.software).map((port, i) => `
+  security_rule {
+    name                       = "web-${port}"
+    priority                   = ${110 + i}
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "${port}"
+    source_address_prefix      = var.allowed_cidr
+    destination_address_prefix = "*"
+  }
+`).join('')}}
 
 resource "azurerm_public_ip" "app" {
   name                = "pip-$\{var.app_name}"
@@ -398,7 +418,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y docker.io curl python3
 systemctl enable --now docker
-
+${hostSoftwareSh(c.azvm.software, { family: 'apt', loginUser: 'azureuser', pageText: c.azvm.pageText })}
 cat > /usr/local/bin/${app}-run <<'RUNNER'
 #!/bin/bash
 # Started by systemd. Safe to re-run: it fetches the current image and secrets every time, so a restart picks up a new push.

@@ -16,6 +16,7 @@
  *  - Secret values never enter Terraform, its state or user_data: the instance reads them from SSM Parameter Store
  *    (SecureString) at /<app>/<NAME> when the service starts. The role can read only that path.
  */
+import { hostPorts, hostSoftwareSh, hostSoftwareWarnings, validateHostSoftware } from './hostSoftware';
 import { companionServices } from './companions';
 import type { ContainerConfig } from './dockerTemplates';
 import { usesExistingImage } from './existingImageUse';
@@ -36,10 +37,14 @@ export interface Ec2Config {
   githubRepo: string;
   /** Scan the built image with Trivy in the workflow and stop before pushing if it has a fixable HIGH or CRITICAL vulnerability. */
   scanImage: boolean;
+  /** Software installed on the instance itself, by id (see lib/engines/servers/software.ts). */
+  software: string[];
+  /** One line for the home page of a web server installed this way. */
+  pageText: string;
 }
 
 export const defaultEc2 = (): Ec2Config => ({
-  enabled: false, region: 'us-east-1', instanceType: 't3.small', allowedCidr: '0.0.0.0/0', volumeGb: 20, imageTag: 'latest', elasticIp: false, githubActions: true, githubRepo: '', scanImage: true,
+  enabled: false, region: 'us-east-1', instanceType: 't3.small', allowedCidr: '0.0.0.0/0', volumeGb: 20, imageTag: 'latest', elasticIp: false, githubActions: true, githubRepo: '', scanImage: true, software: [], pageText: '',
 });
 
 export const REGION = /^[a-z]{2}(?:-[a-z]+)+-\d$/;
@@ -62,6 +67,7 @@ export function validateEc2(c: ContainerConfig): string[] {
   if (!Number.isInteger(e.volumeGb) || e.volumeGb < 8 || e.volumeGb > 1000) out.push('EC2: disk size must be 8 to 1000 GB.');
   if (!TAG.test(e.imageTag)) out.push('EC2: image tag may use letters, digits, "_", "." and "-" (up to 128 characters).');
   if (e.githubRepo !== '' && !GITHUB_REPO.test(e.githubRepo)) out.push('EC2: GitHub repository looks like owner/name.');
+  out.push(...validateHostSoftware('EC2', e.software, c.port));
   return out;
 }
 
@@ -73,6 +79,8 @@ export function ec2Warnings(c: ContainerConfig): string[] {
   if (companionServices(c).length > 0) w.push('EC2: PostgreSQL and Redis are not started on the instance. Use RDS / ElastiCache and put the connection settings in the environment variables.');
   if (!usesExistingImage(c) && e.imageTag === 'latest') w.push('EC2: the "latest" tag is used. It works, but a version tag (for example the commit id) makes it clear what is running.');
   if (c.env.some((v) => v.secret)) w.push(`EC2: create each secret in SSM Parameter Store as a SecureString named /${c.appName}/<NAME> before the service can start.`);
+  w.push(...hostSoftwareWarnings('EC2', e.software));
+  if (hostPorts(e.software).length > 0 && e.allowedCidr === '0.0.0.0/0') w.push('EC2: the web server on ports 80 and 443 will be open to the whole internet. Narrow "who can connect" if the site is not public.');
   return w;
 }
 
@@ -257,7 +265,15 @@ resource "aws_security_group" "app" {
     protocol    = "tcp"
     cidr_blocks = [var.allowed_cidr]
   }
-
+${hostPorts(c.ec2.software).map((port) => `
+  ingress {
+    description = "Web server (port ${port})"
+    from_port   = ${port}
+    to_port     = ${port}
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_cidr]
+  }
+`).join('')}
   egress {
     description = "Outbound (image pulls, updates, AWS APIs)"
     from_port   = 0
@@ -409,7 +425,7 @@ set -euo pipefail
 
 dnf install -y docker
 systemctl enable --now docker
-
+${hostSoftwareSh(c.ec2.software, { family: 'dnf', loginUser: 'ec2-user', pageText: c.ec2.pageText })}
 cat > /usr/local/bin/${app}-run <<'RUNNER'
 #!/bin/bash
 # Started by systemd. Safe to re-run: it fetches the current image and secrets every time, so a restart picks up a new push.

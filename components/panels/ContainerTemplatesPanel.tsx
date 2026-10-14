@@ -19,9 +19,32 @@ import {
 import { buildZip } from '@/lib/engines/containers/zip';
 import { FARGATE_CPU, fargateMemoryOptions } from '@/lib/engines/containers/ecsDeploy';
 import { ACA_CPU } from '@/lib/engines/containers/containerAppsDeploy';
+import { SOFTWARE } from '@/lib/engines/servers/software';
 
 const STACKS = Object.keys(STACK_LABEL) as ContainerStack[];
 const newNodeId = () => `node-${Date.now()}`;
+
+/** "Install on the server": software put on the virtual machine itself at first boot, next to the container. Docker is left out: it is always installed. */
+function SoftwarePicker({ id, value, pageText, onChange, onPageText, inputClass, labelClass }: {
+  id: string; value: string[]; pageText: string; onChange: (v: string[]) => void; onPageText: (v: string) => void; inputClass: string; labelClass: string;
+}) {
+  const web = value.some((v) => v === 'nginx' || v === 'apache');
+  const toggle = (sid: string, on: boolean) => onChange(on ? [...value.filter((v) => v !== sid), sid] : value.filter((v) => v !== sid));
+  return (
+    <fieldset className="col-span-2 space-y-1">
+      <legend className={labelClass}>Install on the server</legend>
+      <p className="text-xs opacity-70">Put software on the machine itself the first time it starts (the app keeps running in its container). A web server opens ports 80 and 443 to the same range as the app port.</p>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+        {SOFTWARE.filter((s) => s.id !== 'docker').map((s) => (
+          <label key={s.id} className="flex items-center gap-2 text-xs" title={s.description}>
+            <input type="checkbox" checked={value.includes(s.id)} onChange={(e) => toggle(s.id, e.target.checked)} aria-label={`Install ${s.label}`} />{s.label}
+          </label>
+        ))}
+      </div>
+      {web && <div><label className={labelClass} htmlFor={`${id}-page`}>Start page text (optional)</label><input id={`${id}-page`} className={inputClass} maxLength={200} value={pageText} onChange={(e) => onPageText(e.target.value)} /></div>}
+    </fieldset>
+  );
+}
 
 interface Saved { id: string; name: string; config: ContainerConfig; updatedAt: string }
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -351,6 +374,7 @@ export default function ContainerTemplatesPanel() {
                   {!ex && (
                   <div><label className={label} htmlFor="ec2-tag">Image tag</label><input id="ec2-tag" className={input} value={cfg.ec2.imageTag} onChange={(e) => setEc2('imageTag', e.target.value)} /></div>
                   )}
+                  <SoftwarePicker id="ec2-sw" value={cfg.ec2.software ?? []} pageText={cfg.ec2.pageText ?? ''} onChange={(v) => setEc2('software', v)} onPageText={(v) => setEc2('pageText', v)} inputClass={input} labelClass={label} />
                   <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={cfg.ec2.elasticIp} onChange={(e) => setEc2('elasticIp', e.target.checked)} />Fixed public IP</label>
                   {!ex && (<>
                   <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={cfg.ec2.githubActions} onChange={(e) => setEc2('githubActions', e.target.checked)} />GitHub Actions workflow</label>
@@ -420,6 +444,7 @@ export default function ContainerTemplatesPanel() {
                   )}
                   <div className="col-span-2"><label className={label} htmlFor="azvm-cidr">Who can connect to the app port</label><input id="azvm-cidr" className={input} value={cfg.azvm.allowedCidr} onChange={(e) => setAzvm('allowedCidr', e.target.value)} /></div>
                   {!ex && (<>
+                  <SoftwarePicker id="azvm-sw" value={cfg.azvm.software ?? []} pageText={cfg.azvm.pageText ?? ''} onChange={(v) => setAzvm('software', v)} onPageText={(v) => setAzvm('pageText', v)} inputClass={input} labelClass={label} />
                   <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.azvm.githubActions} onChange={(e) => setAzvm('githubActions', e.target.checked)} />GitHub Actions workflow</label>
                   {cfg.azvm.githubActions && (<>
                     <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.azvm.scanImage} onChange={(e) => setAzvm('scanImage', e.target.checked)} />Scan the image for vulnerabilities before pushing (Trivy)</label>
