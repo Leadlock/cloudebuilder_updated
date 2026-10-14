@@ -8,6 +8,10 @@ function subnetAzOptions(): { label: string; value: string }[] {
 }
 
 import { defaultNodeConfig as defaultContainerNodeConfig } from '@/lib/engines/containers/nodeConfig';
+import { SOFTWARE } from '@/lib/engines/servers/software';
+
+/** The software CloudCraft can install on a server, as the options of the "Install on the server" setting. */
+const SOFTWARE_OPTIONS = SOFTWARE.map((s) => ({ label: `${s.label} (${s.kind})`, value: s.id }));
 
 export const awsResources: ResourceDefinition[] = [
   {
@@ -100,6 +104,7 @@ export const awsResources: ResourceDefinition[] = [
       detailedMonitoring: false,
       metadataHttpTokens: 'required',
       tenancy: 'default',
+      serverSoftware: [], serverPageText: '', webAccessCidr: '',
       associatePublicIpAddress: false,
       ebsOptimized: true,
       terminationProtection: false,
@@ -196,6 +201,23 @@ export const awsResources: ResourceDefinition[] = [
           { label: 'Stop', value: 'stop' },
           { label: 'Terminate', value: 'terminate' },
         ],
+      },
+      {
+        key: 'serverSoftware', label: 'Install on the server', type: 'multiselect', defaultValue: [], section: 'Server software',
+        options: SOFTWARE_OPTIONS,
+        description: 'Installed the first time the server starts, so it is ready to use without logging in. The server needs a way out to the internet to download packages (a public IP or a NAT gateway). Works on Amazon Linux 2023, Ubuntu and Debian.',
+      },
+      {
+        key: 'webAccessCidr', label: 'Who can reach the web server', type: 'cidr', defaultValue: '', section: 'Server software',
+        visibleWhen: (c) => Array.isArray(c['serverSoftware']) && c['serverSoftware'].some((s) => s === 'nginx' || s === 'apache'),
+        placeholder: '203.0.113.0/24',
+        description: 'Opens ports 80 and 443 to this IPv4 range only. Leave empty to open nothing; 0.0.0.0/0 means the whole internet. Databases are never opened.',
+      },
+      {
+        key: 'serverPageText', label: 'Start page text (optional)', type: 'text', defaultValue: '', section: 'Server software',
+        visibleWhen: (c) => Array.isArray(c['serverSoftware']) && c['serverSoftware'].some((s) => s === 'nginx' || s === 'apache'),
+        placeholder: 'Hello from CloudCraft',
+        description: 'One line shown on the web server\'s home page instead of its default page.',
       },
       {
         key: 'userData', label: 'User Data (Startup Script)', type: 'text', defaultValue: '', section: 'Advanced', advanced: true,

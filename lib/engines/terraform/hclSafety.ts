@@ -52,7 +52,7 @@ export function escapeHclHeredoc(value: string): string {
 }
 
 /** Keys whose values are multi-line scripts rendered in heredocs by the generator. */
-const HEREDOC_KEYS = new Set(['userData']);
+const HEREDOC_KEYS = new Set(['userData', 'customData']);
 
 function sanitizeValue(key: string, value: unknown): unknown {
   if (typeof value === 'string') return HEREDOC_KEYS.has(key) ? escapeHclHeredoc(value) : escapeHclString(value);

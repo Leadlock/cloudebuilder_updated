@@ -4,6 +4,7 @@
 #   build              the production build, which catches what the type check cannot (route files, client/server mix-ups)
 #   terraform-validate generates Terraform for every verified Azure pattern and runs `terraform validate` on it
 #   docker-samples     builds and runs the sample app of every Container Templates stack, and a compose stack with every companion service
+#   server-software    runs the "Install on the server" script for every item in real Amazon Linux, Ubuntu and Debian containers
 #
 # To make a red run block merging: GitHub repository Settings, Branches, add a rule for main that requires these three checks.
 name: ci
@@ -99,3 +100,16 @@ jobs:
       - run: npm ci
       - name: Build and run every sample
         run: npx tsx --tsconfig tsconfig.json scripts/build-samples.ts "$RUNNER_TEMP/build-samples"
+
+  server-software:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Install every server software item in Amazon Linux 2023, Ubuntu and Debian
+        run: npx tsx --tsconfig tsconfig.json scripts/verify-server-software.ts

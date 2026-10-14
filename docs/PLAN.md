@@ -41,6 +41,10 @@ Where the work stands and what comes next. Effort: S is under a day, M a few day
 
 Nothing has to be configured. The person who first signed up is the operator (`CLOUDCRAFT_OPERATOR_EMAILS` overrides that) and enables Terraform for their own organization with one click; they approve, deny or revoke others on the "Deploy access" page. Any other organization enables it itself once its owner has the authenticator app on, it has a cloud account that passed its check and, on a production server, the server has its own encryption key (`CLOUDCRAFT_TERRAFORM_AUTO_APPROVE=0` makes every request wait for an operator). The old `CLOUDCRAFT_TERRAFORM_ORG_IDS` list still works as an override. Every request and decision is in the Terraform audit trail.
 
+## Server software (done)
+
+EC2 and Azure VM nodes have an "Install on the server" setting (nginx, Apache, PHP, Node.js, Python, Java, Docker, Git, MariaDB, PostgreSQL, Redis). The software is installed at first boot by a generated script (`lib/engines/servers/software.ts`), the web ports are opened only to the range the person types, and EC2 finds the current OS image by name. The `server-software` CI job runs the script for every item in Amazon Linux 2023, Ubuntu and Debian containers. Nothing has been run on a real AWS or Azure account yet.
+
 ## Phase 4: code health (ongoing)
 
 | # | Task |

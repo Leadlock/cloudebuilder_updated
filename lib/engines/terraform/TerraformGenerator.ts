@@ -11,6 +11,7 @@
 import { placeholderProblems } from './placeholderChecks';
 import { containerServiceBlocks } from './containerService';
 import { azureContainerServiceBlocks } from './azureContainerService';
+import { awsImage, awsStartup, awsWebSecurityGroup, azureStartup, azureWebNsg, openCidr } from './serverSoftware';
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
 import { assertSafeHcl, escapeHclString, hclSafeId, sanitizeResourcesForHcl } from './hclSafety';
 import { PRIVATE_LINK_TARGETS } from '@/lib/engines/assessment/privateAccess';
@@ -297,7 +298,18 @@ locals {
             blocks.push(this._dataEc2(name, cfg));
             resourceMap[r.id] = `data.aws_instance.${name}`;
           } else {
-            blocks.push(this._ec2(name, cfg, subnetRef, sgRef));
+            // Server software: the first-boot script, the latest image of the chosen operating system, and a firewall for the web ports.
+            const startup = awsStartup(r.label, cfg);
+            warnings.push(...startup.warnings);
+            let sgFinal = sgRef;
+            const webCidr = openCidr(startup, cfg);
+            if (webCidr) {
+              blocks.push(awsWebSecurityGroup(name, subnetRef, startup.ports, webCidr));
+              sgFinal = sgRef ? sgRef.replace(/\]$/, `, aws_security_group.${name}_web.id]`) : `[aws_security_group.${name}_web.id]`;
+            }
+            const image = awsImage(name, cfg);
+            if (image.block) blocks.push(image.block);
+            blocks.push(this._ec2(name, { ...cfg, userData: startup.script }, subnetRef, sgFinal, image.ref));
             resourceMap[r.id] = `aws_instance.${name}`;
           }
           break;
@@ -955,13 +967,13 @@ resource "aws_flow_log" "${name}_flow_log" {
 }`;
   }
 
-  private _ec2(name: string, cfg: Record<string, unknown>, subnetRef: string | null, sgRef: string | null): string {
+  private _ec2(name: string, cfg: Record<string, unknown>, subnetRef: string | null, sgRef: string | null, amiRef?: string): string {
     const storageType = (cfg['storageType'] as string) || 'gp3';
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
 
     const lines: string[] = [
       `resource "aws_instance" "${name}" {`,
-      `  ami                         = "${cfg['ami'] ?? 'ami-0c55b159cbfafe1f0'}"`,
+      `  ami                         = ${amiRef ?? `"${cfg['ami'] ?? 'ami-0c55b159cbfafe1f0'}"`}`,
       `  instance_type               = "${cfg['instanceType'] ?? 't3.micro'}"`,
     ];
     if (cfg['keyName']) lines.push(`  key_name                    = "${cfg['keyName']}"`);
@@ -979,7 +991,7 @@ resource "aws_flow_log" "${name}_flow_log" {
       lines.push(`  iam_instance_profile        = "${cfg['iamInstanceProfile']}"`);
     }
     if (cfg['userData']) {
-      lines.push(`  user_data                   = base64encode(<<-EOF\n    ${cfg['userData']}\n  EOF\n  )`);
+      lines.push(`  user_data                   = base64encode(<<-EOF\n${cfg['userData']}\nEOF\n  )`);
     }
     // Emitted only when specified, so Terraform never asserts a metadata setting the design did not choose.
     if (cfg['metadataHttpTokens'] === 'required' || cfg['metadataHttpTokens'] === 'optional') {
@@ -2622,7 +2634,14 @@ locals {
               blocks.push(this._publicIp(name, rgName, rgLoc));
             }
             blocks.push(this._nic(name, rgName, rgLoc, subnetRef, cfg['publicIpEnabled'] === true));
-            blocks.push(this._vm(name, cfg, rgName, rgLoc));
+            // Server software: the first-boot script and a firewall for the web ports on this VM's network interface.
+            const startup = isWindows
+              ? { script: String(cfg['customData'] ?? ''), items: [], ports: [], warnings: Array.isArray(cfg['serverSoftware']) && cfg['serverSoftware'].length > 0 ? [`${r.label}: software can be installed on Linux VMs only. This is a Windows VM, so nothing was installed; the startup script you wrote still runs (Ubuntu and Debian are supported).`] : [] }
+              : azureStartup(r.label, cfg);
+            warnings.push(...startup.warnings);
+            const webCidr = openCidr(startup, cfg);
+            if (webCidr) blocks.push(azureWebNsg(name, rgName, rgLoc, startup.ports, webCidr));
+            blocks.push(this._vm(name, { ...cfg, customData: startup.script }, rgName, rgLoc));
             resourceMap[r.id] = `${isWindows ? 'azurerm_windows_virtual_machine' : 'azurerm_linux_virtual_machine'}.${name}`;
           }
           break;
@@ -3140,7 +3159,8 @@ data "azurerm_network_security_group" "${name}" {
     }
 
     if (cfg['customData']) {
-      lines.push(`  custom_data = base64encode(${JSON.stringify(cfg['customData'])})`);
+      // A heredoc keeps the script's line breaks (a quoted string would turn them into the two characters \n).
+      lines.push(`  custom_data = base64encode(<<-EOF\n${cfg['customData']}\nEOF\n  )`);
     }
 
     lines.push(`  tags = {`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);

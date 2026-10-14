@@ -1,5 +1,9 @@
 import { ResourceDefinition } from '@/types';
+import { SOFTWARE } from '@/lib/engines/servers/software';
 import { azureServiceResources } from './azureServices';
+
+/** The software CloudCraft can install on a server, as the options of the "Install on the server" setting. */
+const SOFTWARE_OPTIONS = SOFTWARE.map((s) => ({ label: `${s.label} (${s.kind})`, value: s.id }));
 
 const coreAzureResources: ResourceDefinition[] = [
   {
@@ -89,7 +93,7 @@ const coreAzureResources: ResourceDefinition[] = [
     monthlyBaseCost: 36.5,
     defaultConfig: {
       size: 'Standard_B2s', osType: 'Linux', adminUsername: 'azureuser', osDiskType: 'Premium_LRS',
-      osDiskCaching: 'ReadWrite', osDiskSizeGb: 0, useManagedDisk: true, publicIpEnabled: false,
+      osDiskCaching: 'ReadWrite', serverSoftware: [], serverPageText: '', webAccessCidr: '', osDiskSizeGb: 0, useManagedDisk: true, publicIpEnabled: false,
       availabilityZone: '', encryptionAtHostEnabled: false, bootDiagnosticsEnabled: true, customData: '',
       name: 'my-vm', tags: {},
     },
@@ -155,6 +159,23 @@ const coreAzureResources: ResourceDefinition[] = [
       { key: 'adminUsername', label: 'Admin Username', type: 'text', defaultValue: 'azureuser', section: 'Identity & Access' },
       { key: 'bootDiagnosticsEnabled', label: 'Boot Diagnostics', type: 'boolean', defaultValue: true, section: 'Monitoring' },
       { key: 'encryptionAtHostEnabled', label: 'Encryption at Host', type: 'boolean', defaultValue: false, section: 'Advanced', advanced: true },
+      {
+        key: 'serverSoftware', label: 'Install on the server', type: 'multiselect', defaultValue: [], section: 'Server software',
+        options: SOFTWARE_OPTIONS,
+        description: 'Installed the first time the server starts, so it is ready to use without logging in. The server needs a way out to the internet to download packages (a public IP or a NAT gateway). Works on Ubuntu and Debian (Linux VMs).',
+      },
+      {
+        key: 'webAccessCidr', label: 'Who can reach the web server', type: 'cidr', defaultValue: '', section: 'Server software',
+        visibleWhen: (c) => Array.isArray(c['serverSoftware']) && c['serverSoftware'].some((s) => s === 'nginx' || s === 'apache'),
+        placeholder: '203.0.113.0/24',
+        description: 'Opens ports 80 and 443 to this IPv4 range only. Leave empty to open nothing; 0.0.0.0/0 means the whole internet. Databases are never opened.',
+      },
+      {
+        key: 'serverPageText', label: 'Start page text (optional)', type: 'text', defaultValue: '', section: 'Server software',
+        visibleWhen: (c) => Array.isArray(c['serverSoftware']) && c['serverSoftware'].some((s) => s === 'nginx' || s === 'apache'),
+        placeholder: 'Hello from CloudCraft',
+        description: 'One line shown on the web server\'s home page instead of its default page.',
+      },
       {
         key: 'customData', label: 'Custom Data (cloud-init)', type: 'text', defaultValue: '', section: 'Advanced', advanced: true,
         placeholder: '#cloud-config ...',
