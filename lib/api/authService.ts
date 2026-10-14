@@ -16,6 +16,7 @@
  * any instance holding the same SESSION_SECRET can verify a token no
  * matter which instance minted it.
  */
+import { canUseRestrictedFeatures } from '@/lib/auth/restrictedFeatures';
 import { emailAllowed } from '@/lib/auth/emailDomains';
 import { isOperatorEmail } from '@/lib/terraform/access/operators';
 import { sharedStoreEnabled, warnSharedStore } from './sharedStore';
@@ -34,6 +35,8 @@ export interface AuthUser {
   avatarUrl?: string;
   /** Shown in the interface only (the Operator page). Every server check recomputes it from the email: this field is never trusted. */
   operator?: boolean;
+  /** Shown in the interface only (whether the Deploy and AI Generator tabs are open). Every server check recomputes it from the email. */
+  restrictedFeatures?: boolean;
 }
 
 export interface UserSession {
@@ -112,7 +115,7 @@ async function toAuthUser(user: { id: string; email: string; name: string | null
   const orgIds = await orgRepository_resolveOrgIds(user.id);
   const orgId = orgIds[0]?.orgId ?? '';
   const role: AuthUser['role'] = orgIds[0] && ADMIN_ORG_ROLES.has(orgIds[0].role) ? 'admin' : 'user';
-  return { id: user.id, email: user.email, name: user.name ?? user.email, role, orgId, operator: await isOperatorEmail(user.email) };
+  return { id: user.id, email: user.email, name: user.name ?? user.email, role, orgId, operator: await isOperatorEmail(user.email), restrictedFeatures: canUseRestrictedFeatures(user.email) };
 }
 
 // Lazily imported to avoid a hard dependency cycle at module init.

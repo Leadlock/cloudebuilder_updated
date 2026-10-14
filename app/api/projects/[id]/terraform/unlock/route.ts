@@ -40,7 +40,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return badRequest('orgId required');
-    const denied = await terraformExecutionDenied(identity.userId, orgId);
+    const denied = await terraformExecutionDenied(identity.userId, orgId, identity.email);
     if (denied) {
       await recordTerraformAudit({ action: 'unlock', outcome: 'denied', orgId, projectId, userId: identity.userId, detail: denied });
       return forbidden(denied);

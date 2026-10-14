@@ -41,7 +41,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       if (!(await getOrgRole(identity.userId, orgId))) return forbidden();
       const ctx = await resolveArchitecture(projectId, orgId, env);
       if ('error' in ctx && ctx.error === 'project_not_found') return notFound('Project');
-      access = { denied: await terraformExecutionDenied(identity.userId, orgId) };
+      access = { denied: await terraformExecutionDenied(identity.userId, orgId, identity.email) };
       accessCache.set(key, access);
     }
     const { denied } = access;

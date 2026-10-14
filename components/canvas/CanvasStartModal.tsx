@@ -311,6 +311,7 @@ export default function CanvasStartModal({ isOpen, onClose, onStart }: CanvasSta
                 </div>
               </button>
 
+              {state.currentUser?.restrictedFeatures !== false && (
               <button
                 type="button"
                 id="btn-mode-ai"
@@ -334,6 +335,7 @@ export default function CanvasStartModal({ isOpen, onClose, onStart }: CanvasSta
                   </div>
                 </div>
               </button>
+              )}
             </div>
 
             {buildMode === 'ai' && (

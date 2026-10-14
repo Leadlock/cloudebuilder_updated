@@ -5,6 +5,7 @@
  * reflects what the user is looking at rather than the last autosave. Scores and findings come from
  * CloudCraft's own analysis engine; the model only explains and prioritises them (see AiReviewService).
  */
+import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { NextRequest } from 'next/server';
 import { createHash } from 'crypto';
 import { TtlCache } from '@/lib/api/ttlCache';
@@ -45,6 +46,8 @@ export async function POST(req: NextRequest) {
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
+    const closed = refuseRestrictedFeature(identity.email);
+    if (closed) return closed;
 
     const parsed = await parseBody(req, RequestSchema);
     if (!parsed.ok) return parsed.response;

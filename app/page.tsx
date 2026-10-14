@@ -1,4 +1,6 @@
 'use client';
+import LockedFeature from '@/components/panels/LockedFeature';
+import { RESTRICTED_VIEWS } from '@/lib/auth/restrictedFeatures';
 import Sidebar from '@/components/layout/Sidebar';
 import TopBar from '@/components/layout/TopBar';
 import Dashboard from '@/components/dashboard/Dashboard';
@@ -84,7 +86,7 @@ function MainContent() {
               isActive ? 'block' : 'hidden'
             )}
           >
-            {map[viewKey]}
+            {RESTRICTED_VIEWS.has(viewKey) && state.currentUser?.restrictedFeatures === false ? <LockedFeature /> : map[viewKey]}
           </div>
         );
       })}

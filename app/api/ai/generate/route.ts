@@ -1,3 +1,4 @@
+import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { NextRequest, NextResponse } from 'next/server';
 import { AiGeneratorService } from '@/lib/services/AiGeneratorService';
 import { realSession } from '@/lib/api/realSession';
@@ -20,6 +21,8 @@ export async function POST(req: NextRequest) {
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const closed = refuseRestrictedFeature(session.user.email);
+    if (closed) return closed;
 
     const rl = await checkRateLimit(`${session.user.id}:ai-generate`, RATE_LIMITS.AI_GENERATE.limit, RATE_LIMITS.AI_GENERATE.windowMs);
     if (!rl.allowed) {

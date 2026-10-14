@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     const [record, checks, denied] = await Promise.all([
       terraformAccessRepository.get(orgId).catch(() => null),
       evaluateEligibility(identity.userId, orgId),
-      terraformExecutionDenied(identity.userId, orgId),
+      terraformExecutionDenied(identity.userId, orgId, identity.email),
     ]);
     const listed = allowedTerraformOrgIds().has(orgId);
     const status = listed ? 'approved' : record?.status ?? 'none';

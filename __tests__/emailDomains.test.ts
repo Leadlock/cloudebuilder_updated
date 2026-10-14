@@ -76,3 +76,17 @@ describe('production startup', () => {
     expect(checkProductionConfig(prod('neozaar')).errors.join(' ')).toContain('nobody could sign in');
   });
 });
+
+describe('production startup: closed features', () => {
+  const base = (v?: string): NodeJS.ProcessEnv => ({
+    NODE_ENV: 'production', SESSION_SECRET: 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90',
+    ENCRYPTION_KEY: '0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f1',
+    DATABASE_URL: 'postgresql://a:b@localhost:5432/x', APP_URL: 'https://x.test', SMTP_HOST: 's', ...(v === undefined ? {} : { RESTRICTED_FEATURES_ALLOWED_EMAILS: v }),
+  });
+  test('a working list is announced, a list nobody could satisfy stops the server', () => {
+    const ok = checkProductionConfig(base('ajinkya@neozaar.com'));
+    expect(ok.errors).toEqual([]);
+    expect(ok.warnings.join(' ')).toContain('ajinkya@neozaar.com');
+    expect(checkProductionConfig(base('ajinkya')).errors.join(' ')).toContain('nobody could use Deploy');
+  });
+});

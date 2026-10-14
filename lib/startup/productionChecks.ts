@@ -6,6 +6,7 @@
 import { createHash } from 'crypto';
 import { assessEncryptionKey } from '@/lib/crypto/credentials';
 import { allowedEmailDomains } from '@/lib/auth/emailDomains';
+import { restrictedFeatureEmails, restrictedFeaturesClosed } from '@/lib/auth/restrictedFeatures';
 
 export interface StartupReport { errors: string[]; warnings: string[] }
 
@@ -61,6 +62,12 @@ export function checkProductionConfig(env: NodeJS.ProcessEnv = process.env): Sta
     const domains = allowedEmailDomains(env);
     if (domains.length === 0) errors.push('ALLOWED_EMAIL_DOMAINS is set but has no valid domain (for example neozaar.com), so nobody could sign in. Fix it or remove it.');
     else warnings.push(`Access is limited to ${domains.map((d) => `@${d}`).join(', ')} email addresses (ALLOWED_EMAIL_DOMAINS).`);
+  }
+
+  if (restrictedFeaturesClosed(env)) {
+    const people = restrictedFeatureEmails(env);
+    if (people.length === 0) errors.push('RESTRICTED_FEATURES_ALLOWED_EMAILS is set but has no valid email address, so nobody could use Deploy or the AI Generator. Fix it or remove it.');
+    else warnings.push(`Deploy and the AI Generator are open only to ${people.length === 1 ? people[0] : `${people.length} listed accounts`} (RESTRICTED_FEATURES_ALLOWED_EMAILS).`);
   }
 
   const appUrl = env['APP_URL'];

@@ -13,6 +13,7 @@
  * the caller's own organisation is allowed (rule 2 still applies). Setting the variable turns this off, so the gate can
  * still be exercised locally. It never applies in production or test builds.
  */
+import { canUseRestrictedFeatures, RESTRICTED_FEATURE_MESSAGE } from '@/lib/auth/restrictedFeatures';
 import { devShortcutsEnabled } from '@/lib/dev/shortcuts';
 import { getOrgRole } from '@/lib/api/auth';
 import { terraformExecutionDisabled } from '@/lib/terraform/execution/killSwitch';
@@ -32,7 +33,8 @@ export function allowedTerraformOrgIds(): Set<string> {
 }
 
 /** Returns a message explaining the refusal, or null when the caller may execute Terraform for `orgId`. */
-export async function terraformExecutionDenied(userId: string, orgId: string): Promise<string | null> {
+export async function terraformExecutionDenied(userId: string, orgId: string, email?: string): Promise<string | null> {
+  if (!canUseRestrictedFeatures(email)) return RESTRICTED_FEATURE_MESSAGE;
   if (terraformExecutionDisabled()) return 'Terraform execution is switched off by the server operator (CLOUDCRAFT_TERRAFORM_DISABLED).';
   const listed = allowedTerraformOrgIds();
   const localDevOpen = devShortcutsEnabled() && listed.size === 0;

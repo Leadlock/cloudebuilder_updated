@@ -100,7 +100,7 @@ export default function Dashboard() {
     { icon: LayoutGrid, label: 'Template Gallery', desc: 'Start from a template', view: 'templates' as const, color: 'bg-purple-900/30 border-purple-800/80 text-purple-400' },
     { icon: Sparkles, label: 'AI Generator', desc: 'Describe your architecture', view: 'ai-generator' as const, color: 'bg-pink-900/30 border-pink-800/80 text-pink-400' },
     { icon: Upload, label: 'Import Infrastructure', desc: 'Import existing resources', view: 'import' as const, color: 'bg-orange-900/30 border-orange-800/80 text-orange-400' },
-  ];
+  ].filter((a) => a.view !== 'ai-generator' || state.currentUser?.restrictedFeatures !== false);
 
   const isLight = state.theme === 'light';
 

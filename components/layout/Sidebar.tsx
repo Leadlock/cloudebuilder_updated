@@ -1,5 +1,6 @@
 'use client';
 
+import { RESTRICTED_VIEWS } from '@/lib/auth/restrictedFeatures';
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '@/context/AppContext';
 import {
@@ -68,6 +69,8 @@ export default function Sidebar() {
   const { activeView, sidebarCollapsed, mobileSidebarOpen, projects, activeProjectId, currentUser, theme } = state;
   const isLight = theme === 'light';
   const isAdmin = currentUser?.role === 'admin';
+  // The server decides; this only keeps closed tabs out of sight. A user object without the field (an older saved one) is treated as allowed.
+  const canUseRestricted = currentUser?.restrictedFeatures !== false;
 
   // Resizable sidebar state
   const [sidebarWidth, setSidebarWidth] = useState<number>(240);
@@ -199,7 +202,7 @@ export default function Sidebar() {
               <p className={clsx("text-[10px] uppercase tracking-widest font-bold px-2.5 mb-1.5", isLight ? "text-slate-400" : "text-gray-500")}>{group.label}</p>
             )}
             <div className="space-y-1">
-              {group.items.filter((item) => (!('adminOnly' in item && item.adminOnly) || isAdmin) && (!('operatorOnly' in item && item.operatorOnly) || currentUser?.operator === true)).map(({ id, label, icon: Icon, requiresProject }) => {
+              {group.items.filter((item) => (!('adminOnly' in item && item.adminOnly) || isAdmin) && (!('operatorOnly' in item && item.operatorOnly) || currentUser?.operator === true) && (canUseRestricted || !RESTRICTED_VIEWS.has(item.id))).map(({ id, label, icon: Icon, requiresProject }) => {
                 const active = activeView === id;
                 const hasArchitecture = !!activeProjectId || (state.draftProject && state.draftProject.nodes.length > 0) || activeView === 'canvas';
                 const disabled = requiresProject && !hasArchitecture;
