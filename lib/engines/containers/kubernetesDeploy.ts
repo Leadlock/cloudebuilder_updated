@@ -80,6 +80,11 @@ export function k8sWarnings(c0: ContainerConfig): string[] {
   if (k.ingressHost !== '' && k.tlsSecret === '') w.push('Kubernetes: the ingress serves plain HTTP. Add a TLS secret name (for example from cert-manager) to serve HTTPS.');
   if (/(:latest|^[^:@]+)$/.test(k.image.split('/').pop() ?? '')) w.push('Kubernetes: the image has no version tag or uses :latest. A version tag makes it clear what is running and allows a rollback.');
   if (companionServices(c).length > 0) w.push('Kubernetes: PostgreSQL and Redis are not deployed. Use your cloud\'s managed services (or a Helm chart for them) and put the connection settings in the environment variables.');
+  if (usesExistingImage(c) && ROOT_IMAGE.test(c.image)) {
+    w.push(c.runAsNonRoot
+      ? `Kubernetes: ${c.image} starts as root and listens on port 80, so Kubernetes will refuse to start it while "Run as non-root" is on. Use the unprivileged build (for example nginxinc/nginx-unprivileged:1.27 on port 8080), or turn "Run as non-root" off: the pod then keeps all other restrictions and only gets the four permissions this image needs (CHOWN, SETGID, SETUID, NET_BIND_SERVICE).`
+      : `Kubernetes: ${c.image} runs as root with the four permissions it needs (CHOWN, SETGID, SETUID, NET_BIND_SERVICE) and nothing else. For a fully non-root pod use the unprivileged build (for example nginxinc/nginx-unprivileged:1.27 on port 8080).`);
+  }
   if (c.env.some((v) => v.secret)) w.push(`Kubernetes: deploy.sh asks for each secret and stores it in a Secret named ${c.appName}-secrets in the cluster.`);
   return w;
 }
@@ -101,6 +106,16 @@ const cpuQty = (v: string) => { const n = Number(v); return Number.isInteger(n) 
 const halfCpu = (v: string) => `${Math.max(50, Math.round((Number(v) * 1000) / 2))}m`;
 /** The numeric user the generated Dockerfile (or nginx-unprivileged) runs as. */
 const runAsUser = (stack: ContainerStack) => (stack === 'static' ? 101 : 1001);
+/**
+ * A ready-made image decides its own user, so none is forced on it (a forced one breaks images that need to write to files owned by their
+ * own user, such as the official nginx). "Run as non-root" then only makes Kubernetes refuse an image that would run as root.
+ */
+const userId = (c: ContainerConfig): number | null => (usesExistingImage(c) ? null : runAsUser(c.stack));
+const nonRoot = (c: ContainerConfig): boolean => (usesExistingImage(c) ? c.runAsNonRoot : c.runAsNonRoot || c.stack === 'static');
+/** Official images that start as root and listen on a privileged port: they cannot run under the hardened settings as they are. */
+const ROOT_IMAGE = /^(?:docker\.io\/)?(?:library\/)?(nginx|httpd)(?::|@|$)/;
+/** What a root-running image needs after "drop all": start the server, switch to its own user, own its cache files, listen on port 80. */
+const ROOT_IMAGE_CAPS = ['CHOWN', 'SETGID', 'SETUID', 'NET_BIND_SERVICE'] as const;
 
 /** "ghcr.io/a/b:1.2" -> repository and tag (a registry port is not a tag). */
 export function splitImage(image: string): { repository: string; tag: string } {
@@ -164,11 +179,13 @@ function containerBlock(c: ContainerConfig, image: string, indent: number, helm:
   lines.push('    allowPrivilegeEscalation: false');
   lines.push('    capabilities:');
   lines.push('      drop: ["ALL"]');
+  if (usesExistingImage(c) && !c.runAsNonRoot) lines.push(`      add: [${ROOT_IMAGE_CAPS.map((x) => `"${x}"`).join(', ')}]`);
   lines.push('    seccompProfile:');
   lines.push('      type: RuntimeDefault');
-  if (c.runAsNonRoot || c.stack === 'static') {
+  if (nonRoot(c)) {
     lines.push('    runAsNonRoot: true');
-    lines.push(`    runAsUser: ${runAsUser(c.stack)}`);
+    const uid = userId(c);
+    if (uid !== null) lines.push(`    runAsUser: ${uid}`);
   }
   if (helm) {
     lines.push('  {{- if .Values.keyVault.enabled }}', '  volumeMounts:', '    - name: secrets-store', '      mountPath: /mnt/secrets-store', '      readOnly: true', '  {{- end }}');
@@ -404,8 +421,9 @@ env:${plain.length === 0 ? ' {}' : '\n' + plain.map((v) => `  ${v.key}: ${yq(v.v
 # Secret values live in a Secret created by deploy.sh (or kubectl); these are the keys the pods read from it.
 secretName: ${c.appName}-secrets
 secretNames:${secrets.length === 0 ? ' []' : '\n' + secrets.map((s) => `  - ${s}`).join('\n')}
-nonRoot: ${c.runAsNonRoot || c.stack === 'static'}
-runAsUser: ${runAsUser(c.stack)}
+nonRoot: ${nonRoot(c)}
+# The numeric user to force. Empty lets the image choose (always the case for a ready-made image).
+runAsUser: ${userId(c) ?? '""'}
 # Secrets from Azure Key Vault (Secrets Store CSI driver + workload identity). Fill these from the Terraform outputs (vault_name, tenant_id, workload_client_id).
 keyVault:
   enabled: ${usesKeyVault(c)}
@@ -425,7 +443,7 @@ app.kubernetes.io/name: {{ include "app.name" . }}
 `;
   const container = containerBlock(c, '{{ .Values.image.repository }}:{{ .Values.image.tag }}', 8, true)
     // The user ids and the non-root switch come from values so they can be changed per environment.
-    .replace(/ {8} {4}runAsNonRoot: true\n? {8} {4}runAsUser: \d+/, '        {{- if .Values.nonRoot }}\n            runAsNonRoot: true\n            runAsUser: {{ .Values.runAsUser }}\n        {{- end }}');
+    .replace(/ {8} {4}runAsNonRoot: true(?:\n {8} {4}runAsUser: \d+)?/, '        {{- if .Values.nonRoot }}\n            runAsNonRoot: true\n            {{- if .Values.runAsUser }}\n            runAsUser: {{ .Values.runAsUser }}\n            {{- end }}\n        {{- end }}');
   const deployment = `apiVersion: apps/v1
 kind: Deployment
 metadata:
