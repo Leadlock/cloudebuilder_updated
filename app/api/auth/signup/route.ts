@@ -4,6 +4,7 @@
  * Joining an existing org happens through an invite (see /api/auth/invite/accept),
  * not through signup — signup always creates a fresh org with the new user as owner.
  */
+import { refuseDisallowedEmail } from '@/lib/auth/emailDomains';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { apiError, badRequest, internalError, parseBody } from '@/lib/api/response';
@@ -30,6 +31,8 @@ export async function POST(req: NextRequest) {
     if (!parsed.ok) return parsed.response;
 
     const { email, password, name, orgName } = parsed.data;
+    const notAllowed = refuseDisallowedEmail(email);
+    if (notAllowed) return notAllowed;
 
     const limited = await limitAuthAttempt(req, 'signup', email);
     if (limited) return limited;

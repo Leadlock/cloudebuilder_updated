@@ -5,6 +5,7 @@
  * There is no outbound email integration yet, so POST returns the accept
  * link directly in the response for the admin to share manually.
  */
+import { refuseDisallowedEmail } from '@/lib/auth/emailDomains';
 import { hideVendorNames } from '@/lib/api/vendorNames';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
@@ -53,6 +54,9 @@ export async function POST(req: NextRequest) {
 
     const parsed = await parseBody(req, InviteSchema);
     if (!parsed.ok) return parsed.response;
+
+    const notAllowed = refuseDisallowedEmail(parsed.data.email);
+    if (notAllowed) return notAllowed;
 
     const [org, inviter] = await Promise.all([
       orgRepository.findOrg(orgId),

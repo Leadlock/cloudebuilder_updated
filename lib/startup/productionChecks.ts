@@ -5,6 +5,7 @@
  */
 import { createHash } from 'crypto';
 import { assessEncryptionKey } from '@/lib/crypto/credentials';
+import { allowedEmailDomains } from '@/lib/auth/emailDomains';
 
 export interface StartupReport { errors: string[]; warnings: string[] }
 
@@ -53,6 +54,13 @@ export function checkProductionConfig(env: NodeJS.ProcessEnv = process.env): Sta
     const parsed = databaseHost(db);
     if (!parsed) errors.push('DATABASE_URL is not a valid address.');
     else if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsed.host) && !parsed.ssl) warnings.push('DATABASE_URL does not require TLS (add ?sslmode=require), so database traffic is not encrypted.');
+  }
+
+  const restricted = (env['ALLOWED_EMAIL_DOMAINS'] ?? '').trim() !== '';
+  if (restricted) {
+    const domains = allowedEmailDomains(env);
+    if (domains.length === 0) errors.push('ALLOWED_EMAIL_DOMAINS is set but has no valid domain (for example neozaar.com), so nobody could sign in. Fix it or remove it.');
+    else warnings.push(`Access is limited to ${domains.map((d) => `@${d}`).join(', ')} email addresses (ALLOWED_EMAIL_DOMAINS).`);
   }
 
   const appUrl = env['APP_URL'];

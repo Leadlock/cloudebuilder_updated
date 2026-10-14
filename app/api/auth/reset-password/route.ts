@@ -1,3 +1,4 @@
+import { refuseDisallowedEmail } from '@/lib/auth/emailDomains';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiError, badRequest, internalError, ok, parseBody } from '@/lib/api/response';
@@ -20,6 +21,8 @@ export async function POST(req: NextRequest) {
     if (!parsed.ok) return parsed.response;
 
     const { email, code, newPassword } = parsed.data;
+    const notAllowed = refuseDisallowedEmail(email);
+    if (notAllowed) return notAllowed;
 
     // Rate limiting: per IP and per (IP, email) attempt pairs
     const limited = await limitAuthAttempt(req, 'reset-password', email);

@@ -6,6 +6,7 @@
  * same as a typical email magic-link flow). If they don't have an account
  * yet, `password` and `name` are required to create one in the same request.
  */
+import { refuseDisallowedEmail } from '@/lib/auth/emailDomains';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { apiError, badRequest, internalError, parseBody } from '@/lib/api/response';
@@ -38,6 +39,9 @@ export async function POST(req: NextRequest) {
     if (new Date(invite.expiresAt).getTime() < Date.now()) {
       return apiError('CONFLICT', 'This invite has expired', 409);
     }
+
+    const notAllowed = refuseDisallowedEmail(invite.email);
+    if (notAllowed) return notAllowed;
 
     let dbUser = await orgRepository.findUserByEmailForAuth(invite.email);
 

@@ -1,3 +1,4 @@
+import { emailAllowed } from '@/lib/auth/emailDomains';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { internalError, parseBody, ok, apiError } from '@/lib/api/response';
@@ -21,6 +22,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.ok) return parsed.response;
 
     const { email } = parsed.data;
+    if (!emailAllowed(email)) return ok({ success: true, message: GENERIC });
     const limited = await limitAuthAttempt(req, 'resend', email);
     if (limited) return limited;
 

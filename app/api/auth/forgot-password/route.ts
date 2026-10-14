@@ -1,3 +1,4 @@
+import { emailAllowed } from '@/lib/auth/emailDomains';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { internalError, parseBody, ok, apiError } from '@/lib/api/response';
@@ -22,6 +23,8 @@ export async function POST(req: NextRequest) {
     if (!parsed.ok) return parsed.response;
 
     const { email } = parsed.data;
+    // Outside the allowed domains nothing is sent, and the answer is the same as for any other address.
+    if (!emailAllowed(email)) return ok({ success: true, message: GENERIC_RESPONSE, email });
 
     // Rate limiting: per IP and per (IP, email)
     const limited = await limitAuthAttempt(req, 'forgot-password', email);

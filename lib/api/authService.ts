@@ -16,6 +16,7 @@
  * any instance holding the same SESSION_SECRET can verify a token no
  * matter which instance minted it.
  */
+import { emailAllowed } from '@/lib/auth/emailDomains';
 import { isOperatorEmail } from '@/lib/terraform/access/operators';
 import { sharedStoreEnabled, warnSharedStore } from './sharedStore';
 import { pullRevocations, saveTokenRevocation, saveUserRevocation, PULL_OVERLAP_MS } from './revocationStore';
@@ -167,6 +168,8 @@ export class AuthService {
     if (revokedTokens.has(tokenKey(token))) return null;
     const cutoff = revokedBefore.get(payload.sub);
     if (cutoff !== undefined && payload.iat <= cutoff) return null;
+    // A person who signed in before the allowed domains were set (or whose domain was removed) is signed out at once.
+    if (!emailAllowed(payload.email)) return null;
 
     return {
       token,
