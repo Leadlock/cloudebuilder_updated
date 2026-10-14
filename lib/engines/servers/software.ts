@@ -58,7 +58,7 @@ export const SOFTWARE: readonly SoftwareItem[] = [
     verify: { dnf: 'mariadb --version', apt: 'mariadb --version' }, note: 'Not reachable from outside the server.' },
   { id: 'postgresql', label: 'PostgreSQL', kind: 'database', description: 'PostgreSQL database, listening on this server only.',
     packages: { dnf: ['postgresql15-server'], apt: ['postgresql'] }, service: { dnf: 'postgresql', apt: 'postgresql' },
-    after: { dnf: ['postgresql-setup --initdb'] }, verify: { dnf: 'psql --version', apt: 'psql --version' }, note: 'Not reachable from outside the server.' },
+    after: { dnf: ['[ -s /var/lib/pgsql/data/PG_VERSION ] || su postgres -c "initdb -D /var/lib/pgsql/data"'] }, verify: { dnf: 'psql --version', apt: 'psql --version' }, note: 'Not reachable from outside the server.' },
   { id: 'redis', label: 'Redis', kind: 'database', description: 'Redis key-value store, listening on this server only.',
     packages: { dnf: ['redis6'], apt: ['redis-server'] }, service: { dnf: 'redis6', apt: 'redis-server' },
     verify: { dnf: 'redis6-server --version', apt: 'redis-server --version' }, note: 'Not reachable from outside the server.' },
