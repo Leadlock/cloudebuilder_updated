@@ -10,7 +10,9 @@ import { parseStoredConfig } from '@/lib/engines/containers/stored';
 
 const config = (target: 'ec2' | 'azvm', software: string[], extra: Partial<ContainerConfig> = {}): ContainerConfig => {
   const c = defaultConfig('node');
-  c[target] = { ...c[target], enabled: true, software, pageText: 'Hello <b>there</b>', allowedCidr: '203.0.113.0/24' };
+  const on = { enabled: true, software, pageText: 'Hello <b>there</b>', allowedCidr: '203.0.113.0/24' };
+  if (target === 'ec2') c.ec2 = { ...c.ec2, ...on };
+  else c.azvm = { ...c.azvm, ...on };
   return { ...c, ...extra };
 };
 const files = (c: ContainerConfig) => {
