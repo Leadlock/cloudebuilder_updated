@@ -119,5 +119,11 @@
     "ts-jest": "^29.4.12",
     "tsx": "^4.23.15",
     "typescript": "^5"
+  },
+  "overrides": {
+    "@hono/node-server": "^1.19.17",
+    "hono": "^4.13.13",
+    "lodash": "^4.18.1",
+    "valibot": "^1.5.0"
   }
 }
