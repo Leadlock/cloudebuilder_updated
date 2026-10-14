@@ -9,6 +9,7 @@
  * Only an owner or admin. The active key itself lives in the server environment (ENCRYPTION_KEY) and is changed there: a web page
  * must not be able to change what protects every stored secret.
  */
+import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { NextRequest } from 'next/server';
 import { randomBytes } from 'crypto';
 import { z } from 'zod';
@@ -26,6 +27,8 @@ const Body = z.object({ action: z.enum(['reencrypt', 'generate']) }).strict();
 async function authorize(req: NextRequest): Promise<{ orgId: string; userId: string } | Response> {
   const identity = extractIdentity(req);
   if (!identity) return unauthorized();
+  const closed = refuseRestrictedFeature(identity.email);
+  if (closed) return closed;
   const orgId = await resolveOrgId(req, identity.userId);
   if (!orgId) return forbidden();
   const role = await getOrgRole(identity.userId, orgId);

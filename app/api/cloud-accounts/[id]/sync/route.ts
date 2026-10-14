@@ -6,6 +6,7 @@
  * - Org isolation and membership authorization enforced.
  * - Read-only: does not modify or delete any cloud or canvas infrastructure.
  */
+import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { NextRequest } from 'next/server';
 import {
   ok, notFound, forbidden, unauthorized, internalError, badRequest,
@@ -28,6 +29,8 @@ export async function POST(
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
+    const closed = refuseRestrictedFeature(identity.email);
+    if (closed) return closed;
 
     const { id } = await ctx.params;
     const orgId = await resolveOrgId(req, identity.userId);

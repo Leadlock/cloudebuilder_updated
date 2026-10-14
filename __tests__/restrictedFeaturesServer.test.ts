@@ -17,6 +17,7 @@ import { RESTRICTED_FEATURE_MESSAGE } from '@/lib/auth/restrictedFeatures';
 import { POST as generate } from '@/app/api/ai/generate/route';
 import { POST as questionnaire } from '@/app/api/ai/questionnaire/route';
 import { POST as review } from '@/app/api/ai/review/route';
+import { GET as listAccounts, POST as connectAccount } from '@/app/api/cloud-accounts/route';
 
 const OLD = process.env['RESTRICTED_FEATURES_ALLOWED_EMAILS'];
 beforeEach(() => { process.env['RESTRICTED_FEATURES_ALLOWED_EMAILS'] = 'ajinkya@neozaar.com'; mockSession.mockReset(); mockIdentity.mockReset(); });
@@ -72,6 +73,38 @@ describe('Terraform execution', () => {
       for (const call of readFileSync(f, 'utf8').match(/terraformExecutionDenied\([^)]*\)/g) ?? []) {
         expect({ f: f.replace(root, ''), call }).toEqual({ f: f.replace(root, ''), call: expect.stringContaining('.email') });
       }
+    }
+  });
+});
+
+describe('Cloud Accounts', () => {
+  test.each([
+    ['list', () => listAccounts(new NextRequest('http://localhost/api/cloud-accounts'))],
+    ['connect', () => connectAccount(post('/api/cloud-accounts', {}))],
+  ])('%s refuses another account with 403', async (_n, call) => {
+    mockIdentity.mockReturnValue({ userId: 'u2', email: 'someone@neozaar.com', role: 'admin', orgIds: ['o1'] });
+    const res = await call();
+    expect(res.status).toBe(403);
+    expect(JSON.stringify(await res.json())).toContain(RESTRICTED_FEATURE_MESSAGE);
+  });
+
+  test('the listed account is not stopped by the lock', async () => {
+    mockIdentity.mockReturnValue({ userId: 'u1', email: 'ajinkya@neozaar.com', role: 'admin', orgIds: [] });
+    const res = await connectAccount(post('/api/cloud-accounts', {}));
+    expect(res.status).not.toBe(403);
+  });
+
+  test('every handler of every route that reads or uses a connected account checks the lock, so none can be added without it', () => {
+    const root = join(__dirname, '..', 'app', 'api');
+    const files: string[] = [];
+    (function walk(d: string) { for (const e of readdirSync(d)) { const p = join(d, e); if (statSync(p).isDirectory()) walk(p); else if (e === 'route.ts') files.push(p); } })(join(root, 'cloud-accounts'));
+    files.push(join(root, 'projects', '[id]', 'terraform', 'permissions', 'route.ts'), join(root, 'projects', '[id]', 'well-architected', 'account-controls', 'route.ts'));
+    expect(files.length).toBeGreaterThanOrEqual(13);
+    for (const f of files) {
+      const text = readFileSync(f, 'utf8');
+      const identified = (text.match(/extractIdentity\(req\)/g) ?? []).length;
+      const guarded = (text.match(/refuseRestrictedFeature\(identity\.email\)/g) ?? []).length;
+      expect({ f: f.replace(root, ''), identified, guarded }).toEqual({ f: f.replace(root, ''), identified, guarded: identified });
     }
   });
 });

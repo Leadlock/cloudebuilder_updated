@@ -1,5 +1,5 @@
 /**
- * The Deploy tab (running Terraform plan, apply and destroy) and the AI Generator can be closed to everyone except a short list of people.
+ * The Deploy tab (running Terraform plan, apply and destroy), the AI Generator and Cloud Accounts can be closed to everyone except a short list of people.
  * Set RESTRICTED_FEATURES_ALLOWED_EMAILS to a comma separated list of email addresses (ajinkya@neozaar.com). Empty or missing means open to
  * everyone who can sign in, as before. A list with no valid address closes the features for everyone.
  *
@@ -7,7 +7,7 @@
  */
 
 /** The screens that are closed. */
-export const RESTRICTED_VIEWS: ReadonlySet<string> = new Set(['deploy', 'ai-generator']);
+export const RESTRICTED_VIEWS: ReadonlySet<string> = new Set(['deploy', 'ai-generator', 'accounts']);
 
 const ADDRESS = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

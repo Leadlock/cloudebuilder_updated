@@ -7,6 +7,7 @@
  *
  * Only an owner or admin may do this. Nothing secret is returned.
  */
+import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ok, notFound, forbidden, unauthorized, internalError, badRequest } from '@/lib/api/response';
@@ -28,6 +29,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<Record<strin
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
+    const closed = refuseRestrictedFeature(identity.email);
+    if (closed) return closed;
 
     const { id } = await ctx.params;
     const orgId = await resolveOrgId(req, identity.userId);

@@ -3,6 +3,7 @@
  * deployments, so an owner or admin can connect to what was created. Passwords the operator set in the server environment are not
  * included (CloudCraft does not hold them). Never cached; every read is logged (who and which account, never the values).
  */
+import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { NextRequest, NextResponse } from 'next/server';
 import { ok, notFound, forbidden, unauthorized, internalError } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
@@ -16,6 +17,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<Record<string
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
+    const closed = refuseRestrictedFeature(identity.email);
+    if (closed) return closed;
 
     const { id } = await ctx.params;
     const orgId = await resolveOrgId(req, identity.userId);

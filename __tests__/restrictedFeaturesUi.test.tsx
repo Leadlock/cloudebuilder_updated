@@ -23,7 +23,7 @@ describe('Sidebar', () => {
   test('another account still sees them, greyed out and marked Not accessible, and cannot open them', () => {
     mockUser = { role: 'admin', restrictedFeatures: false };
     render(<Sidebar />);
-    for (const label of ['Deploy', 'AI Generator']) {
+    for (const label of ['Deploy', 'AI Generator', 'Cloud Accounts']) {
       const button = screen.getByRole('button', { name: `${label} — Not accessible` }) as HTMLButtonElement;
       expect(button.disabled).toBe(true);
       expect(button.textContent).toContain('Not accessible');

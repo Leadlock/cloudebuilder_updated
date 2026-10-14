@@ -5,6 +5,7 @@
  * - Credentials are loaded server-side and never returned to the caller.
  * - Org isolation and membership authorization enforced.
  */
+import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { NextRequest } from 'next/server';
 import {
   ok, notFound, forbidden, unauthorized, internalError,
@@ -25,6 +26,8 @@ export async function GET(
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
+    const closed = refuseRestrictedFeature(identity.email);
+    if (closed) return closed;
 
     const { id } = await ctx.params;
     const orgId = await resolveOrgId(req, identity.userId);

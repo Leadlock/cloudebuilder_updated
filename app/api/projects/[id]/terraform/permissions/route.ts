@@ -8,6 +8,7 @@
  *
  * Accounts connected "Simple" (an administrator user's own key) need no extra permissions and get `needed: false`.
  */
+import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ok, forbidden, unauthorized, badRequest, notFound, internalError, tooManyRequests, parseBody } from '@/lib/api/response';
@@ -35,6 +36,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
+    const closed = refuseRestrictedFeature(identity.email);
+    if (closed) return closed;
     const { id: projectId } = await params;
     const access = await requireProjectAccess(req, identity.userId, projectId, { adminOnly: true });
     if ('response' in access) return access.response;

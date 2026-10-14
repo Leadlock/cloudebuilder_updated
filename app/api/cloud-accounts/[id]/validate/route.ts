@@ -6,6 +6,7 @@
  * - Validation result returned to client contains identity info only (no credentials).
  * - Org membership is checked before any credential access.
  */
+import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { NextRequest } from 'next/server';
 import {
   ok, notFound, forbidden, unauthorized, internalError,
@@ -30,6 +31,8 @@ export async function POST(
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
+    const closed = refuseRestrictedFeature(identity.email);
+    if (closed) return closed;
 
     const { id } = await ctx.params;
     const orgId = await resolveOrgId(req, identity.userId);

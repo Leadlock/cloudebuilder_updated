@@ -2,6 +2,7 @@
  * GET  /api/cloud-accounts        — list org's cloud accounts (no credentials)
  * POST /api/cloud-accounts        — connect a new cloud account
  */
+import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { devShortcutsEnabled } from '@/lib/dev/shortcuts';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
@@ -36,6 +37,8 @@ export async function GET(req: NextRequest) {
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
+    const closed = refuseRestrictedFeature(identity.email);
+    if (closed) return closed;
 
     let orgId = req.nextUrl.searchParams.get('orgId') ?? '';
     if (!orgId) {
@@ -69,6 +72,8 @@ export async function POST(req: NextRequest) {
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
+    const closed = refuseRestrictedFeature(identity.email);
+    if (closed) return closed;
 
     let raw: unknown;
     try { raw = await req.json(); } catch { return badRequest('Invalid JSON body'); }

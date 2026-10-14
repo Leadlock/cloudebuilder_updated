@@ -3,6 +3,7 @@
  * PATCH  /api/cloud-accounts/[id]   — edit an account: its name and/or credentials (owner/admin only)
  * DELETE /api/cloud-accounts/[id]   — disconnect/remove a cloud account
  */
+import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import {
@@ -26,6 +27,8 @@ export async function GET(
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
+    const closed = refuseRestrictedFeature(identity.email);
+    if (closed) return closed;
 
     const { id } = await ctx.params;
     const orgId = await resolveOrgId(req, identity.userId);
@@ -68,6 +71,8 @@ export async function PATCH(
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
+    const closed = refuseRestrictedFeature(identity.email);
+    if (closed) return closed;
 
     const { id } = await ctx.params;
     const orgId = await resolveOrgId(req, identity.userId);
@@ -130,6 +135,8 @@ export async function DELETE(
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
+    const closed = refuseRestrictedFeature(identity.email);
+    if (closed) return closed;
 
     const { id } = await ctx.params;
     const orgId = await resolveOrgId(req, identity.userId);

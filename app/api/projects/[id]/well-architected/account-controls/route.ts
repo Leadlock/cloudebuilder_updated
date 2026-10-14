@@ -7,6 +7,7 @@
  *
  * Auth: extractIdentity + org membership; running a check needs the owner, admin or member role.
  */
+import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ok, notFound, forbidden, unauthorized, internalError, badRequest, tooManyRequests, parseBody } from '@/lib/api/response';
@@ -31,6 +32,8 @@ const CheckSchema = z.object({
 async function authorise(req: NextRequest, projectId: string, write: boolean) {
   const identity = extractIdentity(req);
   if (!identity) return { response: unauthorized() };
+  const closed = refuseRestrictedFeature(identity.email);
+  if (closed) return { response: closed };
   const orgId = await resolveOrgId(req, identity.userId);
   if (!orgId) return { response: badRequest('orgId required') };
   const role = await getOrgRole(identity.userId, orgId);

@@ -4,6 +4,7 @@
  * Returns a list of discovery runs (most recent first) with resources and summary.
  * Credentials are NEVER included in the response.
  */
+import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { NextRequest } from 'next/server';
 import {
   ok, notFound, forbidden, unauthorized, internalError,
@@ -22,6 +23,8 @@ export async function GET(
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized();
+    const closed = refuseRestrictedFeature(identity.email);
+    if (closed) return closed;
 
     const { id } = await ctx.params;
     const orgId = await resolveOrgId(req, identity.userId);
