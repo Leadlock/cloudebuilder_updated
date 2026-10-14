@@ -6,6 +6,12 @@
 // NODE_ENV is read-only in strict TS; set via env in jest config
 process.env['DATABASE_URL'] = 'postgresql://test:test@localhost:5432/cloudcraft_test';
 
+// Access limits a developer may have in their own .env (who can sign in, who can use Deploy and the AI Generator) must not change what the
+// tests see. Set to empty rather than deleted: dotenv, loaded later, only fills variables that are not defined. Tests of these limits set
+// their own values.
+process.env['ALLOWED_EMAIL_DOMAINS'] = '';
+process.env['RESTRICTED_FEATURES_ALLOWED_EMAILS'] = '';
+
 // Allow the x-user-id / x-user-role test-automation identity headers that
 // lib/api/auth.ts's extractIdentity() otherwise refuses outside this opt-in —
 // this test suite is exactly that sanctioned automation consumer.
