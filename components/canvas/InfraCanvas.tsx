@@ -55,7 +55,8 @@ import { architectureAutoFixEngine } from '@/lib/engines/autofix/ArchitectureAut
 import { scaleAdvisorEngine } from '@/lib/engines/ai/ScaleAdvisorEngine';
 import { toCanonicalGraph, validateCanonicalArchitecture } from '@/lib/domain/canonicalArchitecture';
 import { CloudProvider, ProviderMode, ScaleProfile, Region, providerModeToCloudProvider, cloudProviderToProviderMode, isNodeCompatibleWithProviderMode, inferNodeProvider } from '@/types';
-import { AlertTriangle, Check, X, Sparkles, Bot, ShieldCheck, GitMerge, Download, Loader2, Wrench, Search, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Check, X, Sparkles, Bot, ShieldCheck, GitMerge, Download, Loader2, Wrench, Search, Plus, Trash2, Workflow } from 'lucide-react';
+import DrawioExportDialog from './DrawioExportDialog';
 import clsx from 'clsx';
 
 const nodeTypes = {
@@ -523,6 +524,7 @@ export default function InfraCanvas() {
   const [showGitOps, setShowGitOps] = useState(false);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [showDrawio, setShowDrawio] = useState(false);
   const toolsMenuRef = useRef<HTMLDivElement>(null);
 
   // Close the tools menu on an outside click
@@ -2024,9 +2026,25 @@ export default function InfraCanvas() {
                   <span>Export as {fmt.toUpperCase()}</span>
                 </button>
               ))}
+              <button
+                type="button"
+                id="btn-export-drawio"
+                onClick={() => { setShowDrawio(true); setShowToolsMenu(false); }}
+                className={clsx(
+                  'w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors',
+                  isLight ? 'text-slate-700 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                )}
+              >
+                <Workflow className="w-3.5 h-3.5" />
+                <span>Export to draw.io</span>
+              </button>
             </div>
           )}
         </div>
+
+        {showDrawio && activeProject && (
+          <DrawioExportDialog title={activeProject.name} nodes={activeProject.nodes} edges={activeProject.edges} onClose={() => setShowDrawio(false)} />
+        )}
 
         {showAiPrompt && (
           <AiPromptPanel
