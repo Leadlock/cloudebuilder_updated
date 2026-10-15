@@ -35,6 +35,7 @@ import type { CloudCredentials } from '@/lib/cloud/types';
 import type { CanvasNode, CanvasEdge } from '@/types';
 import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/repositories/architectureRepository';
 import { runTerraform } from './cli';
+import { selectTargets } from './targetSelection';
 import { renderBackendConfig } from './backendConfig';
 import { assertSafeHcl } from '@/lib/engines/terraform/hclSafety';
 import { terraformSecretVarsFor } from './deploymentSecrets';
@@ -77,6 +78,8 @@ interface GeneratePlanInput {
   connections: DbArchitectureConnection[];
   architectureId: string;
   projectName: string;
+  /** Canvas resource ids: plan and deploy only these (and what they need), not the whole architecture. */
+  targetNodeIds?: string[];
 }
 
 type TerraformPlanJson = PlanJsonForGuardrails;
@@ -197,6 +200,13 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
     throw Object.assign(new Error(`Plan blocked: ${generated.blocking.join(' ')}`), { statusCode: 400 });
   }
 
+  let targets: string[] = [];
+  if (input.targetNodeIds && input.targetNodeIds.length > 0) {
+    const picked = selectTargets(generated, input.targetNodeIds, (id) => resources.find((r) => r.id === id)?.label ?? id);
+    if (picked.error !== undefined) throw Object.assign(new Error(`Plan blocked: ${picked.error}`), { statusCode: 400 });
+    targets = picked.addresses;
+  }
+
   const workDir = await mkdtemp(join(tmpdir(), 'cloudcraft-tf-'));
   try {
     for (const file of generated.files) {
@@ -229,7 +239,7 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
     // -detailed-exitcode: 0 = no changes, 2 = changes present, 1 = error (thrown by runTerraform).
     await handleStateLockAndRetry(
       () =>
-        retryPluginStartup(() => runTerraform(['plan', '-input=false', '-no-color', '-out=tfplan', '-detailed-exitcode'], {
+        retryPluginStartup(() => runTerraform(['plan', '-input=false', '-no-color', '-out=tfplan', '-detailed-exitcode', ...targets.map((t) => `-target=${t}`)], {
           cwd: workDir,
           env,
           allowExitCodes: [0, 2],
@@ -268,6 +278,7 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
       // The generator's warnings, minus the one that is just the diagram's cloud outline (a drawing helper, not a resource).
       notes: generated.warnings.filter((w) => !/^Unsupported AWS resource type: aws_cloud_boundary/.test(w)).slice(0, 8),
       guardrails,
+      ...(targets.length > 0 ? { targets } : {}),
     };
 
     const planFileBytes = await readFile(join(workDir, 'tfplan'));

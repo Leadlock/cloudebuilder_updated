@@ -46,6 +46,8 @@ export interface PlanSummary {
   notes?: string[];
   /** Result of the safety checks run on the plan; shown to the approver. A plan that failed them is never stored. */
   guardrails?: GuardrailReport;
+  /** Set when the plan covers only some resources (and what they need): the Terraform addresses that were asked for. */
+  targets?: string[];
 }
 
 export interface PlanRecord {

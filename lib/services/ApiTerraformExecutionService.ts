@@ -172,12 +172,13 @@ export class ApiTerraformExecutionService {
     cloudAccountId: string,
     stateBackend: TerraformStateBackendConfig,
     user?: { id: string; role?: string },
+    targetNodeIds?: string[],
   ): Promise<TerraformPlanResult> {
     const res = await fetch(`/api/projects/${projectId}/terraform/plan`, {
       method: 'POST',
       headers: authHeaders(user),
       credentials: 'include',
-      body: JSON.stringify({ environment, cloudAccountId, stateBackend }),
+      body: JSON.stringify({ environment, cloudAccountId, stateBackend, ...(targetNodeIds && targetNodeIds.length > 0 ? { targetNodeIds } : {}) }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(parseErrorMessage(data, `Plan generation failed (${res.status})`));

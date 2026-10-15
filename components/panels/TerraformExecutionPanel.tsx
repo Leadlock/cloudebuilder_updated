@@ -112,6 +112,8 @@ export default function TerraformExecutionPanel() {
   const [plan, setPlan] = useState<TerraformPlanResult | null>(null);
   const [planning, setPlanning] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
+  /** Canvas resources to deploy on their own; none ticked means the whole architecture. */
+  const [targetIds, setTargetIds] = useState<string[]>([]);
 
   const [applyJobId, setApplyJobId] = useState<string | null>(null);
   const [applyRunId, setApplyRunId] = useState<string | null>(null);
@@ -499,6 +501,7 @@ export default function TerraformExecutionPanel() {
         selectedAccountId,
         buildBackend(),
         currentUser,
+        targetIds,
       );
       setPlan(result);
     } catch (err) {
@@ -934,6 +937,34 @@ export default function TerraformExecutionPanel() {
 
           {activeProject && <TerraformApprovalInbox projectId={activeProject.id} user={currentUser} />}
 
+          {/* Deploy only some resources */}
+          {!plan && !destroying && activeProject && (() => {
+            const choices = activeProject.nodes.filter((n) => !/_cloud_boundary$/.test(n.resourceType));
+            if (choices.length === 0) return null;
+            const live = targetIds.filter((id) => choices.some((n) => n.id === id));
+            return (
+              <details className={clsx('rounded-lg border px-3 py-2 text-xs', isLight ? 'border-slate-200 bg-slate-50' : 'border-gray-800 bg-gray-950/60')} data-testid="deploy-only">
+                <summary className="cursor-pointer font-medium">
+                  {live.length === 0 ? 'Deploy only some resources (optional)' : `Deploy only ${live.length} selected resource${live.length === 1 ? '' : 's'}`}
+                </summary>
+                <p className={clsx('mt-2 mb-2', isLight ? 'text-slate-500' : 'text-gray-400')}>
+                  Tick the resources to deploy on their own. Terraform also creates what each one needs (its VPC, subnet, security group) and CloudCraft adds the parts that belong to it; the plan lists exactly what will be created. Leave all unticked to deploy the whole architecture.
+                </p>
+                <div className="grid gap-1 sm:grid-cols-2 max-h-48 overflow-y-auto">
+                  {choices.map((n) => (
+                    <label key={n.id} className="flex items-center gap-2">
+                      <input type="checkbox" checked={targetIds.includes(n.id)} aria-label={`Deploy ${n.label}`}
+                        onChange={(e) => setTargetIds((cur) => (e.target.checked ? [...cur, n.id] : cur.filter((x) => x !== n.id)))} />
+                      <span className="truncate">{n.label}</span>
+                      <span className={clsx('truncate font-mono text-[10px]', isLight ? 'text-slate-400' : 'text-gray-500')}>{n.resourceType}</span>
+                    </label>
+                  ))}
+                </div>
+                {live.length > 0 && <button type="button" className="mt-2 text-cyan-600 font-medium" onClick={() => setTargetIds([])}>Clear (deploy everything)</button>}
+              </details>
+            );
+          })()}
+
           {/* Main Action Buttons */}
           {!plan && !destroying && (
             <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -943,7 +974,7 @@ export default function TerraformExecutionPanel() {
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors shadow-sm"
               >
                 {planning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRightLeft className="w-3.5 h-3.5" />}
-                {planning ? 'Generating plan…' : 'Generate Terraform Plan'}
+                {planning ? 'Generating plan…' : targetIds.length > 0 ? `Generate Plan for ${targetIds.length} selected` : 'Generate Terraform Plan'}
               </button>
 
               <button
@@ -1115,6 +1146,7 @@ export default function TerraformExecutionPanel() {
                   isLight ? 'bg-slate-50 border-slate-200' : 'bg-gray-950/60 border-gray-800'
                 )}
               >
+                {plan.summary.targets && <p className="w-full text-[11px] font-medium text-cyan-700 dark:text-cyan-300" data-testid="targeted-plan">Only the selected resources and what they need: {plan.summary.targets.length} address{plan.summary.targets.length === 1 ? '' : 'es'} targeted. The rest of the architecture is not touched.</p>}
                 <div className="flex gap-3">
                   <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
                     <Plus className="w-3.5 h-3.5" /> {plan.summary.toAdd} to add

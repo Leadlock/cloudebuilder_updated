@@ -34,6 +34,8 @@ const RequestSchema = z.object({
   environment: z.string().default('production'),
   cloudAccountId: z.string().min(1),
   stateBackend: StateBackendSchema,
+  /** Canvas resource ids to deploy on their own (with what they depend on). Left out: the whole architecture. */
+  targetNodeIds: z.array(z.string().min(1).max(100)).max(25).optional(),
 });
 
 export async function POST(
@@ -50,7 +52,7 @@ export async function POST(
     const { id: projectId } = await params;
     const parsed = await parseBody(req, RequestSchema);
     if (!parsed.ok) return parsed.response;
-    const { environment, cloudAccountId, stateBackend } = parsed.data;
+    const { environment, cloudAccountId, stateBackend, targetNodeIds } = parsed.data;
 
     const orgId = await resolveOrgId(req, identity.userId);
     if (!orgId) return badRequest('orgId required');
@@ -94,9 +96,10 @@ export async function POST(
         connections: arch.connections,
         architectureId: arch.id,
         projectName: project.name.replace(/\s+/g, '-').toLowerCase(),
+        ...(targetNodeIds && targetNodeIds.length > 0 ? { targetNodeIds } : {}),
       });
 
-      await recordTerraformAudit({ action: 'plan', outcome: 'succeeded', orgId, projectId, userId: identity.userId, planId: record.planId, planHash: record.planHash, detail: `${record.summary.toAdd} to add, ${record.summary.toChange} to change` });
+      await recordTerraformAudit({ action: 'plan', outcome: 'succeeded', orgId, projectId, userId: identity.userId, planId: record.planId, planHash: record.planHash, detail: `${record.summary.toAdd} to add, ${record.summary.toChange} to change${record.summary.targets ? `, only ${record.summary.targets.length} targeted address(es)` : ''}` });
       return ok({
         planId: record.planId,
         planHash: record.planHash,

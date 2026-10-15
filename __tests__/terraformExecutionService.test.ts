@@ -74,6 +74,7 @@ import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepositor
 import {
   generatePlan, verifyPlanForApply, runApply, PlanBlockedError,
 } from '@/lib/terraform/execution/TerraformExecutionService';
+import { terraformGenerator } from '@/lib/engines/terraform/TerraformGenerator';
 import { getPlan, savePlan } from '@/lib/terraform/execution/planStore';
 import type { TerraformStateBackendConfig } from '@/lib/terraform/execution/types';
 
@@ -160,6 +161,40 @@ describe('TerraformExecutionService.generatePlan', () => {
     expect(record.summary.toDestroy).toBe(0);
     expect(record.planHash).toMatch(/^[a-f0-9]{64}$/);
     expect(getPlan(record.planId)).not.toBeNull();
+  });
+
+  describe('deploying only some resources', () => {
+    const generated = { files: [{ filename: 'main.tf', content: 'resource "aws_vpc" "main" {}\nresource "aws_flow_log" "main_flow_log" {}' }], warnings: [], resourceMap: { r1: 'aws_vpc.main' } };
+    const planArgs = () => (mockRunTerraform.mock.calls.map((c) => c[0] as string[]).find((a) => a[0] === 'plan') ?? []);
+
+    test('gives terraform -target for the resource and the parts named after it, and records them', async () => {
+      (terraformGenerator.generate as jest.Mock).mockReturnValueOnce(generated);
+      const record = await generatePlan({ ...baseInput, targetNodeIds: ['r1'] });
+      expect(planArgs()).toEqual(expect.arrayContaining(['-target=aws_flow_log.main_flow_log', '-target=aws_vpc.main']));
+      expect(record.summary.targets).toEqual(['aws_flow_log.main_flow_log', 'aws_vpc.main']);
+    });
+
+    test('without a selection there is no -target and nothing is recorded', async () => {
+      const record = await generatePlan(baseInput);
+      expect(planArgs().some((a) => a.startsWith('-target'))).toBe(false);
+      expect(record.summary.targets).toBeUndefined();
+    });
+
+    test('a resource that creates nothing stops the plan before terraform runs', async () => {
+      (terraformGenerator.generate as jest.Mock).mockReturnValueOnce(generated);
+      await expect(generatePlan({ ...baseInput, targetNodeIds: ['missing'] })).rejects.toMatchObject({ statusCode: 400 });
+      expect(mockRunTerraform).not.toHaveBeenCalled();
+    });
+
+    test('the review, admin and destroy rules still apply to a targeted plan', async () => {
+      (terraformGenerator.generate as jest.Mock).mockReturnValueOnce(generated);
+      await expect(generatePlan({ ...baseInput, targetNodeIds: ['r1'], user: { ...adminUser, role: 'member' } })).rejects.toMatchObject({ statusCode: 403 });
+      (ArchitectureReviewService.computeArchitectureHash as jest.Mock).mockReturnValue('different-hash');
+      await expect(generatePlan({ ...baseInput, targetNodeIds: ['r1'] })).rejects.toMatchObject({ statusCode: 409 });
+      (ArchitectureReviewService.computeArchitectureHash as jest.Mock).mockReturnValue('matching-hash');
+      mockRunTerraform.mockImplementation((args: string[]) => Promise.resolve({ stdout: args[0] === 'show' ? planJsonOutput([['create'], ['delete']]) : '', stderr: '' }));
+      await expect(generatePlan({ ...baseInput, targetNodeIds: ['r1'] })).rejects.toBeInstanceOf(PlanBlockedError);
+    });
   });
 
   test('runs init before plan, and plan before show', async () => {
