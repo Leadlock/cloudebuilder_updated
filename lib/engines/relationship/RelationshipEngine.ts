@@ -532,6 +532,121 @@ export class RelationshipEngine {
         };
       }
 
+      // Valid: Client -> API Gateway / CloudFront / ALB
+      if (sType === 'aws_client' && (tType === 'aws_apigatewayv2' || tType === 'aws_api_gateway' || tType === 'aws_cloudfront' || tType === 'aws_alb')) {
+        return {
+          isValid: true,
+          relationshipType: 'NETWORK_FLOW',
+          networkScope: 'public',
+          protocol: 'HTTPS',
+          port: 443,
+          label: 'Client Request / HTTPS',
+        };
+      }
+
+      // Valid: API Gateway -> Lambda
+      if ((sType === 'aws_apigatewayv2' || sType === 'aws_api_gateway') && tType === 'aws_lambda') {
+        return {
+          isValid: true,
+          relationshipType: 'TRIGGERS',
+          networkScope: 'internal',
+          protocol: 'Lambda Integration',
+          label: 'Proxy Integration',
+        };
+      }
+
+      // Valid: API Gateway -> VPC / Private Workloads via VPC Link
+      if ((sType === 'aws_apigatewayv2' || sType === 'aws_api_gateway') && (tType === 'aws_vpc' || tType === 'aws_alb' || isEc2Like(tType) || tType === 'aws_ecs')) {
+        return {
+          isValid: true,
+          relationshipType: 'NETWORK_FLOW',
+          networkScope: 'private',
+          protocol: 'VPC Link',
+          label: 'VPC Link Integration',
+        };
+      }
+
+      // Valid: Lambda / EC2 / API Gateway -> Secrets Manager
+      if ((isEc2Like(sType) || sType === 'aws_lambda' || sType === 'aws_ecs' || sType === 'aws_apigatewayv2' || sType === 'aws_api_gateway') && (tType === 'aws_secretsmanager' || tType === 'aws_secrets_manager')) {
+        return {
+          isValid: true,
+          relationshipType: 'CONNECTS_TO',
+          networkScope: 'private',
+          protocol: 'Secrets Manager API / HTTPS',
+          port: 443,
+          label: 'GetSecretValue / 443',
+        };
+      }
+
+      // Valid: Secrets Manager -> VPC / Lambda / DocumentDB (Credential Injection)
+      if ((sType === 'aws_secretsmanager' || sType === 'aws_secrets_manager') && (tType === 'aws_vpc' || tType === 'aws_lambda' || tType === 'aws_docdb')) {
+        return {
+          isValid: true,
+          relationshipType: 'AUTHENTICATES_WITH',
+          networkScope: 'private',
+          protocol: 'Secrets Manager API / HTTPS',
+          port: 443,
+          label: 'DB Credentials / 443',
+        };
+      }
+
+      // Valid: EC2 / ECS / Lambda -> DocumentDB
+      if ((isEc2Like(sType) || sType === 'aws_auto_scaling' || sType === 'aws_ecs' || sType === 'aws_lambda') && tType === 'aws_docdb') {
+        const port = Number(targetNode.config?.port) || 27017;
+        return {
+          isValid: true,
+          relationshipType: 'CONNECTS_TO',
+          networkScope: 'private',
+          protocol: 'MongoDB Wire Protocol',
+          port,
+          label: `MongoDB / ${port}`,
+        };
+      }
+
+      // Valid: API Gateway -> Cognito (Authorizer)
+      if ((sType === 'aws_apigatewayv2' || sType === 'aws_api_gateway') && tType === 'aws_cognito') {
+        return {
+          isValid: true,
+          relationshipType: 'AUTHENTICATES_WITH',
+          networkScope: 'internal',
+          protocol: 'JWT Authorizer',
+          label: 'User Pool Auth',
+        };
+      }
+
+      // Valid: SNS -> SQS / Lambda
+      if (sType === 'aws_sns' && (tType === 'aws_sqs' || tType === 'aws_lambda')) {
+        return {
+          isValid: true,
+          relationshipType: 'TRIGGERS',
+          networkScope: 'internal',
+          protocol: 'SNS Subscription',
+          label: 'Pub/Sub Push',
+        };
+      }
+
+      // Valid: EventBridge -> Lambda / SQS / Step Functions
+      if (sType === 'aws_eventbridge' && (tType === 'aws_lambda' || tType === 'aws_sqs' || tType === 'aws_step_functions')) {
+        return {
+          isValid: true,
+          relationshipType: 'TRIGGERS',
+          networkScope: 'internal',
+          protocol: 'Event Rule Target',
+          label: 'Route Event',
+        };
+      }
+
+      // Valid: Step Functions -> Lambda / SNS / SQS
+      if (sType === 'aws_step_functions' && (tType === 'aws_lambda' || tType === 'aws_sns' || tType === 'aws_sqs')) {
+        return {
+          isValid: true,
+          relationshipType: 'TRIGGERS',
+          networkScope: 'internal',
+          protocol: 'State Task Execution',
+          label: 'Task State',
+        };
+      }
+
       // Valid: Security Group association
       if (tType === 'aws_sg' || sType === 'aws_sg') {
         return {

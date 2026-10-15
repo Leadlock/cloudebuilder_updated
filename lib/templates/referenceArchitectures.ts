@@ -421,9 +421,70 @@ function awsThreeTierMultiAz(): ArchitectureTemplate {
   };
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// AWS — REST API for AWS Document DB (Brainboard Reference Architecture)
+// ════════════════════════════════════════════════════════════════════════════
+function awsRestApiDocdb(): ArchitectureTemplate {
+  const id = 'ref-aws-rest-api-docdb';
+  return {
+    id,
+    name: 'REST API for AWS Document DB',
+    category: 'Serverless',
+    description: 'A modern, high-throughput serverless API pattern built with API Gateway V2 (HTTP/WebSocket/REST) invoking Lambda functions with Amazon DocumentDB (MongoDB-compatible) isolated inside a private VPC subnet, and Secrets Manager for automated secret management.',
+    provider: 'aws',
+    complexity: 'simple',
+    estimatedCost: 85,
+    resourceCount: 7,
+    isAdaptive: true,
+    scaleRecommendation: 'API Gateway V2 and Lambda automatically scale per request with low latency. DocumentDB cluster scales vertically or via replica instances.',
+    isReferenceArchitecture: true,
+    architecturePattern: 'REST API with DocumentDB',
+    useCases: [
+      'Document and JSON payload processing APIs',
+      'High-throughput mobile or web backends requiring MongoDB compatibility',
+      'Secure serverless microservices with private VPC data isolation',
+    ],
+    availabilityTarget: 'Managed multi-AZ serverless execution with private subnet DocumentDB cluster',
+    supportedScale: '10K–100K concurrent requests per second across HTTP API endpoints',
+    dataFlowSummary: 'Client → API Gateway V2 API → Lambda function (Private Subnet) → Document DB cluster (MongoDB Wire / 27017) with Secrets Manager secret access',
+    sourceReferences: [AWS_ARCH_CENTER, AWS_WAF_FRAMEWORK],
+    features: [
+      'API Gateway V2 API with configurable HTTP, WebSocket, or REST protocols',
+      'Client application entry point with HTTPS communication',
+      'AWS Lambda compute for serverless business logic execution',
+      'Document DB cluster for high-scale JSON document storage',
+      'AWS Secrets Manager for secure, rotated database credentials',
+      'VPC and Subnet network isolation for database tier',
+    ],
+    tags: ['aws', 'serverless', 'apigateway', 'lambda', 'documentdb', 'secrets-manager'],
+    generate(_opts: TemplateGenerateOptions = {}) {
+      const nodes: CanvasNode[] = [
+        n(`${id}-cloud`, 'aws_cloud_boundary', 'aws', 'EU (Frankfurt)', 180, 40, { region: 'eu-central-1' }, undefined, 820, 560),
+        n(`${id}-client`, 'aws_client', 'aws', 'Client', 60, 270, { clientType: 'Web Browser' }),
+        n(`${id}-apigw`, 'aws_apigatewayv2', 'aws', 'API Gateway V2 API', 300, 270, { protocolType: 'HTTP', routeKey: '$default', stageName: '$default' }, `${id}-cloud`),
+        n(`${id}-lambda-top`, 'aws_lambda', 'aws', 'Lambda function', 300, 100, { runtime: 'nodejs20.x' }, `${id}-cloud`),
+        n(`${id}-secrets`, 'aws_secretsmanager', 'aws', 'Secrets Manager secret', 300, 440, { automaticRotation: true }, `${id}-cloud`),
+        n(`${id}-vpc`, 'aws_vpc', 'aws', 'restAPI-vpc', 460, 90, { cidrBlock: '10.0.0.0/16' }, `${id}-cloud`, 480, 460),
+        n(`${id}-subnet`, 'aws_subnet', 'aws', 'restAPI-subnet', 495, 200, { cidrBlock: '10.0.1.0/24', availabilityZone: 'eu-central-1a' }, `${id}-vpc`, 390, 200),
+        n(`${id}-lambda-sub`, 'aws_lambda', 'aws', 'Lambda function', 540, 260, { runtime: 'nodejs20.x' }, `${id}-subnet`),
+        n(`${id}-docdb`, 'aws_docdb', 'aws', 'Document DB cluster', 710, 260, { instanceClass: 'db.t3.medium', clusterInstances: 2 }, `${id}-subnet`),
+      ];
+      const edges: CanvasEdge[] = [
+        e(`${id}-client`, `${id}-apigw`, 'HTTPS / 443', 'ROUTES_TO', 'HTTPS', 443, 'public'),
+        e(`${id}-apigw`, `${id}-lambda-top`, 'Lambda Integration', 'TRIGGERS', 'Lambda Invoke', undefined, 'internal'),
+        e(`${id}-apigw`, `${id}-lambda-sub`, 'VPC Link Integration', 'ROUTES_TO', 'HTTP', 80, 'private'),
+        e(`${id}-lambda-sub`, `${id}-docdb`, 'MongoDB / 27017', 'CONNECTS_TO', 'MongoDB Wire', 27017, 'private'),
+        e(`${id}-secrets`, `${id}-vpc`, 'DB Credentials', 'AUTHENTICATES_WITH', 'Secrets API', 443, 'private'),
+      ];
+      return { nodes, edges };
+    },
+  };
+}
+
 export const awsReferenceArchitectures: ArchitectureTemplate[] = [
   awsThreeTierMultiAz(),
   awsServerlessApi(),
+  awsRestApiDocdb(),
   awsMicroservicesEcs(),
   awsEksPlatform(),
   awsMultiRegionDr(),

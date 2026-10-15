@@ -3,6 +3,7 @@ import { evaluatePlanGuardrails, PlanGuardrailError, type PlanChangeForGuardrail
 import { ALLOWED_TERRAFORM_RESOURCE_TYPES } from '@/lib/terraform/execution/allowedResourceTypes';
 import { acquireProjectLock, releaseProjectLock } from '@/lib/terraform/execution/projectLock';
 import { terraformExecutionDisabled } from '@/lib/terraform/execution/killSwitch';
+import { terraformAwsCatalog, terraformAzureCatalog } from '@/lib/resources/catalog';
 
 const change = (type: string, after: Record<string, unknown> = {}, actions: string[] = ['create']): PlanChangeForGuardrails =>
   ({ address: `${type}.x`, type, mode: 'managed', change: { actions, after } });
@@ -86,6 +87,12 @@ describe('allowed resource types stay in step with the generator', () => {
     const emitted = new Set([...src.matchAll(/resource "((?:aws|azurerm)_[a-z0-9_]+)"/g)].map((m) => m[1]!));
     for (const d of [...src.matchAll(/const resourceType\s*=\s*([^;]+);/g)].map((m) => m[1]!)) {
       for (const m of d.matchAll(/'((?:aws|azurerm)_[a-z0-9_]+)'/g)) emitted.add(m[1]!);
+    }
+    for (const r of terraformAwsCatalog) {
+      emitted.add(r.type.startsWith('aws_') ? r.type : `aws_${r.type}`);
+    }
+    for (const r of terraformAzureCatalog) {
+      emitted.add(r.type.startsWith('azurerm_') ? r.type : `azurerm_${r.type}`);
     }
     expect([...emitted].sort()).toEqual([...ALLOWED_TERRAFORM_RESOURCE_TYPES].sort());
   });

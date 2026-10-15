@@ -2,7 +2,7 @@
 import { memo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import clsx from 'clsx';
-import { ShieldAlert, ShieldCheck } from 'lucide-react';
+import { MapPin, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 
 export interface CloudProviderBoundaryData {
@@ -18,6 +18,27 @@ export interface CloudProviderBoundaryData {
   importState?: 'imported' | 'cloudcraft-managed' | 'new' | 'modified' | 'planned';
 }
 
+function formatRegionName(region?: string): string {
+  if (!region) return 'EU (Frankfurt)';
+  const lower = region.toLowerCase();
+  const map: Record<string, string> = {
+    'eu-central-1': 'EU (Frankfurt)',
+    'eu-west-1': 'EU (Ireland)',
+    'eu-west-2': 'EU (London)',
+    'eu-west-3': 'EU (Paris)',
+    'us-east-1': 'US East (N. Virginia)',
+    'us-east-2': 'US East (Ohio)',
+    'us-west-1': 'US West (N. California)',
+    'us-west-2': 'US West (Oregon)',
+    'ap-southeast-1': 'Asia Pacific (Singapore)',
+    'ap-south-1': 'Asia Pacific (Mumbai)',
+    'ap-northeast-1': 'Asia Pacific (Tokyo)',
+    'frankfurt': 'EU (Frankfurt)',
+    'global': 'Global Region',
+  };
+  return map[lower] || region;
+}
+
 export const CloudProviderBoundary = memo(({ data, selected }: NodeProps<CloudProviderBoundaryData>) => {
   const { state } = useApp();
   const isLight = state.theme === 'light';
@@ -26,6 +47,11 @@ export const CloudProviderBoundary = memo(({ data, selected }: NodeProps<CloudPr
   const width = data.width || 880;
   const height = data.height || 560;
 
+  const displayRegion = formatRegionName(data.region);
+  const titleText = data.label && !data.label.startsWith('Amazon Web Services')
+    ? data.label
+    : 'REST API for AWS Document DB';
+
   return (
     <div
       role="region"
@@ -33,99 +59,72 @@ export const CloudProviderBoundary = memo(({ data, selected }: NodeProps<CloudPr
       style={{ width, height }}
       className={clsx(
         'relative rounded-3xl transition-all select-none pointer-events-auto',
-        isAws
-          ? isLight
-            ? 'bg-amber-50/40 border-2 border-amber-300 shadow-xl backdrop-blur-[1px]'
-            : 'bg-amber-950/10 border-2 border-amber-500/30 shadow-2xl backdrop-blur-[1px]'
-          : isLight
-            ? 'bg-sky-50/40 border-2 border-sky-300 shadow-xl backdrop-blur-[1px]'
-            : 'bg-sky-950/10 border-2 border-sky-500/30 shadow-2xl backdrop-blur-[1px]',
-        selected && (isAws ? 'ring-2 ring-amber-400 border-amber-400' : 'ring-2 ring-sky-400 border-sky-400')
+        isLight
+          ? 'bg-transparent border-2 border-dashed border-slate-700/80 shadow-sm'
+          : 'bg-transparent border-2 border-dashed border-slate-600/80 shadow-2xl',
+        selected && 'ring-2 ring-indigo-500 border-indigo-500'
       )}
     >
-      {/* Cloud Boundary Header */}
-      <div
-        className={clsx(
-          'flex items-center justify-between px-5 py-3 rounded-t-3xl border-b backdrop-blur-md',
-          isAws
-            ? isLight
-              ? 'bg-amber-100/90 border-amber-300/80'
-              : 'bg-gradient-to-r from-amber-950/60 via-amber-900/30 to-transparent border-amber-500/30'
-            : isLight
-              ? 'bg-sky-100/90 border-sky-300/80'
-              : 'bg-gradient-to-r from-sky-950/60 via-sky-900/30 to-transparent border-sky-500/30'
+      {/* Brainboard Title Pill Floating on Top Edge */}
+      <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+        <div
+          className={clsx(
+            'px-5 py-1.5 rounded-lg border text-xs font-semibold shadow-sm select-none transition-colors tracking-tight',
+            isLight
+              ? 'bg-[#dbeafe] border-[#93c5fd] text-[#1e3a8a]'
+              : 'bg-[#1e293b] border-[#3b82f6]/40 text-blue-200'
+          )}
+        >
+          {titleText}
+        </div>
+      </div>
+
+      {/* Top-Left Location Pin Badge (Brainboard style) */}
+      <div className="absolute top-4 left-5 flex items-center gap-2 z-10 pointer-events-none">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60 shadow-xs">
+          <MapPin className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+          <span className={clsx('text-xs font-medium tracking-tight', isLight ? 'text-slate-800' : 'text-slate-200')}>
+            {displayRegion}
+          </span>
+        </div>
+      </div>
+
+      {/* Top-Right Metrics / Badges */}
+      <div className="absolute top-4 right-5 flex items-center gap-2 z-10">
+        {data.importState === 'imported' && (
+          <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full ${
+            isLight ? 'bg-cyan-100 text-cyan-950 border border-cyan-300 shadow-sm' : 'bg-cyan-950/80 text-cyan-300 border border-cyan-500/40'
+          } uppercase tracking-wider`}>
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
+            Imported
+          </span>
         )}
-      >
-        <div className="flex items-center gap-3">
+
+        {data.showFindings && typeof data.overallScore === 'number' && (
           <div
             className={clsx(
-              'w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs shadow-inner',
-              isAws
-                ? 'bg-amber-500 text-slate-950 shadow-amber-300/40'
-                : 'bg-sky-500 text-white shadow-sky-300/40'
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold',
+              (data.criticalFindingsCount ?? 0) > 0
+                ? isLight ? 'bg-rose-50 border-rose-300 text-rose-900 shadow-sm' : 'bg-rose-950/60 border-rose-500/40 text-rose-300'
+                : isLight ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-sm' : 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
             )}
           >
-            {isAws ? 'AWS' : 'AZ'}
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className={`font-bold text-sm tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                {data.label || (isAws ? 'Amazon Web Services' : 'Microsoft Azure')}
-              </span>
-              <span
-                className={clsx(
-                  'text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider',
-                  isAws
-                    ? isLight ? 'text-amber-900 bg-amber-200/90 border border-amber-400/80 shadow-sm' : 'text-amber-300 bg-amber-500/20 border border-amber-500/30'
-                    : isLight ? 'text-sky-900 bg-sky-200/90 border border-sky-400/80 shadow-sm' : 'text-sky-300 bg-sky-500/20 border border-sky-500/30'
-                )}
-              >
-                Cloud Boundary
-              </span>
-              {data.importState === 'imported' && (
-                <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                  isLight ? 'bg-cyan-100 text-cyan-950 border border-cyan-300 shadow-sm' : 'bg-cyan-950/80 text-cyan-300 border border-cyan-500/40'
-                } uppercase tracking-wider`}>
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
-                  Imported
-                </span>
-              )}
-            </div>
-            {data.region && (
-              <p className={`text-[11px] font-mono mt-0.5 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                Primary Region: <span className={isLight ? 'text-slate-900 font-bold' : 'text-slate-200'}>{data.region}</span>
-              </p>
+            {(data.criticalFindingsCount ?? 0) > 0 ? (
+              <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
+            ) : (
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
             )}
+            <span>WA Score: {data.overallScore}%</span>
           </div>
-        </div>
+        )}
 
-        {/* Right Header Badges */}
-        <div className="flex items-center gap-2.5">
-          {data.showFindings && typeof data.overallScore === 'number' && (
-            <div
-              className={clsx(
-                'flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold',
-                (data.criticalFindingsCount ?? 0) > 0
-                  ? isLight ? 'bg-rose-50 border-rose-300 text-rose-900 shadow-sm' : 'bg-rose-950/60 border-rose-500/40 text-rose-300'
-                  : isLight ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-sm' : 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
-              )}
-            >
-              {(data.criticalFindingsCount ?? 0) > 0 ? (
-                <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
-              ) : (
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-              )}
-              <span>WA Score: {data.overallScore}%</span>
-            </div>
-          )}
-          {typeof data.resourceCount === 'number' && (
-            <span className={`text-xs px-2.5 py-1 rounded-lg border font-mono ${
-              isLight ? 'bg-white border-slate-300 text-slate-800 font-medium shadow-sm' : 'bg-slate-900/80 border-slate-700/60 text-slate-300'
-            }`}>
-              {data.resourceCount} {data.resourceCount === 1 ? 'Resource' : 'Resources'}
-            </span>
-          )}
-        </div>
+        {typeof data.resourceCount === 'number' && data.resourceCount > 0 && (
+          <span className={`text-xs px-2.5 py-1 rounded-lg border font-mono ${
+            isLight ? 'bg-white/90 border-slate-300 text-slate-800 font-medium shadow-sm' : 'bg-slate-900/80 border-slate-700/60 text-slate-300'
+          }`}>
+            {data.resourceCount} {data.resourceCount === 1 ? 'Resource' : 'Resources'}
+          </span>
+        )}
       </div>
 
       {/* Cross-cloud interconnect handles */}

@@ -370,3 +370,138 @@ export function AwsInternetIcon({ size = 24, className = '' }: IconProps) {
   );
 }
 
+// ─── AWS API Gateway / API Gateway V2 ─────────────────────────────────────────
+export function AwsApiGatewayIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#8C4FFF" />
+      {/* API Gateway curly brackets / gateway routes */}
+      <path
+        d="M17 14c-2 0-3 1-3 3v4c0 2-1 3-3 3 2 0 3 1 3 3v4c0 2 1 3 3 3"
+        stroke="#FFFFFF"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M31 14c2 0 3 1 3 3v4c0 2 1 3 3 3-2 0-3 1-3 3v4c0 2-1 3-3 3"
+        stroke="#FFFFFF"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="24" cy="18" r="2.5" fill="#FFFFFF" />
+      <circle cx="24" cy="24" r="2.5" fill="#FFFFFF" />
+      <circle cx="24" cy="30" r="2.5" fill="#FFFFFF" />
+      <path d="M24 20.5v1M24 26.5v1" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// ─── AWS DocumentDB ───────────────────────────────────────────────────────────
+export function AwsDocdbIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#2E3899" />
+      {/* Database cylinder */}
+      <ellipse cx="24" cy="15" rx="11" ry="4" fill="#3B48CC" stroke="#FFFFFF" strokeWidth="2" />
+      <path d="M13 15v17c0 2.2 4.9 4 11 4s11-1.8 11-4V15" stroke="#FFFFFF" strokeWidth="2" fill="none" />
+      <path d="M13 23c0 2.2 4.9 4 11 4s11-1.8 11-4" stroke="#FFFFFF" strokeWidth="1.8" fill="none" />
+      {/* Document overlay symbol */}
+      <rect x="23" y="19" width="11" height="14" rx="1.5" fill="#FFFFFF" />
+      <line x1="26" y1="23" x2="31" y2="23" stroke="#2E3899" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="26" y1="26" x2="31" y2="26" stroke="#2E3899" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="26" y1="29" x2="29" y2="29" stroke="#2E3899" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// ─── AWS Secrets Manager ──────────────────────────────────────────────────────
+export function AwsSecretsManagerIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#DC2626" />
+      {/* Keyhole and target vault */}
+      <circle cx="24" cy="24" r="14" stroke="#FFFFFF" strokeWidth="2" strokeDasharray="3 3" fill="none" />
+      <rect x="18" y="21" width="12" height="10" rx="2" fill="#FFFFFF" />
+      <path d="M21 21v-3a3 3 0 016 0v3" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" fill="none" />
+      <circle cx="24" cy="25" r="1.5" fill="#DC2626" />
+      <path d="M24 26.5v2" stroke="#DC2626" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// ─── Client / Desktop PC ──────────────────────────────────────────────────────
+export function AwsClientIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#F8FAFC" stroke="#94A3B8" strokeWidth="1.5" />
+      {/* Computer monitor */}
+      <rect x="11" y="11" width="26" height="19" rx="2" fill="#1E293B" stroke="#0F172A" strokeWidth="1.5" />
+      <rect x="14" y="14" width="20" height="13" rx="1" fill="#38BDF8" fillOpacity="0.8" />
+      <line x1="16" y1="18" x2="23" y2="18" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="16" y1="21" x2="28" y2="21" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="16" y1="24" x2="20" y2="24" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" />
+      {/* Stand and base */}
+      <path d="M22 30v4h4v-4" stroke="#0F172A" strokeWidth="2" fill="none" />
+      <rect x="17" y="34" width="14" height="2.5" rx="1" fill="#0F172A" />
+    </svg>
+  );
+}
+
+// ─── AWS SNS (Simple Notification Service) ────────────────────────────────────
+export function AwsSnsIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#E11D48" />
+      {/* Pub/Sub broadcast waves */}
+      <circle cx="18" cy="24" r="4" fill="#FFFFFF" />
+      <path d="M24 18c3.3 2 5.5 5.5 5.5 9.5s-2.2 7.5-5.5 9.5" stroke="#FFFFFF" strokeWidth="2.2" strokeLinecap="round" fill="none" />
+      <path d="M28 13c5.5 3 9 8.5 9 14.5s-3.5 11.5-9 14.5" stroke="#FFFFFF" strokeWidth="2.2" strokeLinecap="round" fill="none" />
+    </svg>
+  );
+}
+
+// ─── AWS EventBridge ──────────────────────────────────────────────────────────
+export function AwsEventBridgeIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#FF4F8B" />
+      {/* Central event hub with radiating nodes */}
+      <circle cx="24" cy="24" r="5" fill="#FFFFFF" />
+      <circle cx="13" cy="16" r="3" fill="#FFFFFF" />
+      <circle cx="35" cy="16" r="3" fill="#FFFFFF" />
+      <circle cx="13" cy="32" r="3" fill="#FFFFFF" />
+      <circle cx="35" cy="32" r="3" fill="#FFFFFF" />
+      <path d="M15.5 17.5l6 4.5M32.5 17.5l-6 4.5M15.5 30.5l6-4.5M32.5 30.5l-6-4.5" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// ─── AWS Cognito ──────────────────────────────────────────────────────────────
+export function AwsCognitoIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#DC2626" />
+      {/* User profile with security checkmark */}
+      <circle cx="24" cy="18" r="5" fill="#FFFFFF" />
+      <path d="M15 32c0-5 4-8 9-8s9 3 9 8" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+      <path d="M30 26l3 3 6-6" stroke="#FEF08A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// ─── AWS Step Functions ───────────────────────────────────────────────────────
+export function AwsStepFunctionsIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#C925D1" />
+      {/* State machine nodes */}
+      <rect x="13" y="13" width="8" height="8" rx="2" fill="#FFFFFF" />
+      <rect x="27" y="20" width="8" height="8" rx="2" fill="#FFFFFF" />
+      <rect x="13" y="27" width="8" height="8" rx="2" fill="#FFFFFF" />
+      <path d="M21 17h3v6h3M21 31h3v-4" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" fill="none" />
+    </svg>
+  );
+}
+

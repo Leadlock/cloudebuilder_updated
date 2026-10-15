@@ -38,8 +38,8 @@ export const SERVICES: ServiceEntry[] = [
   S('Message queue', /\b(?:message|task|job|work|background)\s+queues?\b|\bmessage\s+broker\b|\bqueue\s+for\b|\bpub\s?\/?\s?sub\b/i, ['aws_sqs', 'azure_service_bus']),
   S('AKS', /\baks\b/i, ['azure_aks']), S('Front Door', /\bfront\s?door\b/i, ['azure_front_door']), S('Azure Bastion', /\bbastion\b/i, ['azure_bastion']),
 
-  // ── Not modelled today ──
-  S('API Gateway', /\bapi\s?gateway\b/i, ['aws_api_gateway'], ['aws_alb', 'aws_lambda']),
+  // ── Extended & Not modelled in AI spec today ──
+  S('API Gateway', /\bapi\s?gateway\b/i, ['aws_apigatewayv2', 'aws_api_gateway'], ['aws_alb', 'aws_lambda']),
   S('Step Functions', /\bstep\s?functions?\b/i, ['aws_step_functions'], ['aws_lambda', 'aws_sqs']),
   S('SNS', /\bsns\b|simple notification service/i, ['aws_sns'], ['aws_sqs']),
   S('EventBridge', /\bevent\s?bridge\b/i, ['aws_eventbridge'], ['aws_sqs', 'aws_lambda']),
@@ -47,7 +47,9 @@ export const SERVICES: ServiceEntry[] = [
   S('Glue', /\baws glue\b|\bglue\b(?!\s+(?:code|logic|layer|between))/i, ['aws_glue']), S('Redshift', /\bredshift\b/i, ['aws_redshift']),
   S('Data lake (Glue / Athena / Lake Formation)', /\bdata\s*lake\b|\blake\s*formation\b/i, ['aws_glue', 'aws_athena', 'aws_lake_formation'], ['aws_s3']),
   S('Athena', /\bathena\b/i, ['aws_athena']), S('SageMaker', /\bsage\s?maker\b/i, ['aws_sagemaker']),
-  S('Cognito', /\bcognito\b/i, ['aws_cognito'], ['aws_iam']), S('Secrets Manager', /\bsecrets\s?manager\b/i, ['aws_secrets_manager'], ['aws_kms']),
+  S('Cognito', /\bcognito\b/i, ['aws_cognito'], ['aws_iam']), S('Secrets Manager', /\bsecrets\s?manager\b/i, ['aws_secretsmanager', 'aws_secrets_manager'], ['aws_kms']),
+  S('DocumentDB', /\bdocument\s?db\b|\bdocdb\b/i, ['aws_docdb'], ['aws_dynamodb', 'aws_rds']),
+  S('Client', /\bclient\b|\bend[\s-]user\b/i, ['aws_client']),
   S('ECR', /\becr\b|\belastic container registry\b/i, ['aws_ecr']), S('EFS', /\befs\b|\belastic file system\b/i, ['aws_efs'], ['aws_ebs']),
   S('OpenSearch', /\bopen\s?search\b|\belasticsearch\b/i, ['aws_opensearch']), S('MSK / Kafka', /\bmsk\b|\bkafka\b/i, ['aws_msk'], ['aws_sqs']),
   S('CloudTrail', /\bcloud\s?trail\b/i, ['aws_cloudtrail'], ['aws_cloudwatch']), S('GuardDuty', /\bguard\s?duty\b/i, ['aws_guardduty']),

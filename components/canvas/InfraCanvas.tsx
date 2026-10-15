@@ -55,7 +55,7 @@ import { architectureAutoFixEngine } from '@/lib/engines/autofix/ArchitectureAut
 import { scaleAdvisorEngine } from '@/lib/engines/ai/ScaleAdvisorEngine';
 import { toCanonicalGraph, validateCanonicalArchitecture } from '@/lib/domain/canonicalArchitecture';
 import { CloudProvider, ProviderMode, ScaleProfile, Region, providerModeToCloudProvider, cloudProviderToProviderMode, isNodeCompatibleWithProviderMode, inferNodeProvider } from '@/types';
-import { AlertTriangle, Check, X, Sparkles, Bot, ShieldCheck, GitMerge, Download, Loader2, Wrench, Search, Plus, Trash2, Workflow } from 'lucide-react';
+import { AlertTriangle, Check, X, Sparkles, Bot, ShieldCheck, GitMerge, Download, Loader2, Wrench, Search, Plus, Trash2, Workflow, Undo2, Redo2, Grid3X3, SlidersHorizontal } from 'lucide-react';
 import DrawioExportDialog from './DrawioExportDialog';
 import clsx from 'clsx';
 
@@ -189,8 +189,8 @@ function toReactFlowNodes(
     const isVpc = n.resourceType === 'aws_vpc' || n.resourceType === 'azure_vnet' || n.resourceType === 'azure_resource_group';
     const isSubnet = n.resourceType === 'aws_subnet' || n.resourceType === 'azure_subnet';
 
-    const width = n.width || def?.defaultWidth || (isBoundary ? 980 : isVpc ? 840 : isSubnet ? 380 : 180);
-    const height = n.height || def?.defaultHeight || (isBoundary ? 620 : isVpc ? 520 : isSubnet ? 200 : 100);
+    const width = n.width || def?.defaultWidth || (isBoundary ? 980 : isVpc ? 840 : isSubnet ? 380 : 80);
+    const height = n.height || def?.defaultHeight || (isBoundary ? 620 : isVpc ? 520 : isSubnet ? 200 : 88);
 
     const nodeType = isBoundary ? 'cloudProviderNode' : isContainer ? 'containerNode' : 'cloudNode';
 
@@ -236,8 +236,8 @@ function recalculateContainerBounds(allNodes: Node[]): Node[] {
     if (children.length > 0) {
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       for (const c of children) {
-        const cw = c.data.width || 180;
-        const ch = c.data.height || 100;
+        const cw = c.data.width || 80;
+        const ch = c.data.height || 88;
         minX = Math.min(minX, c.position.x);
         minY = Math.min(minY, c.position.y);
         maxX = Math.max(maxX, c.position.x + cw);
@@ -562,6 +562,7 @@ export default function InfraCanvas() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  const [isGridVisible, setIsGridVisible] = useState(true);
 
   // Provider filter for multi-cloud canvas
   const [canvasFilter, setCanvasFilter] = useState<'all' | 'aws' | 'azure'>('all');
@@ -1928,6 +1929,95 @@ export default function InfraCanvas() {
           )}
         </div>
 
+        {/* Brainboard Left Floating Toolbars */}
+        <div className="absolute top-28 left-4 z-20 flex flex-col gap-2.5">
+          {/* Top Pill: Undo & Redo */}
+          <div
+            className={clsx(
+              'flex flex-col items-center p-1 rounded-2xl border shadow-lg backdrop-blur-md transition-colors',
+              isLight
+                ? 'bg-white/95 border-slate-200 text-slate-700 shadow-slate-300/40'
+                : 'bg-slate-900/95 border-slate-800 text-slate-200 shadow-2xl'
+            )}
+          >
+            <button
+              type="button"
+              id="brainboard-undo-btn"
+              onClick={handleUndo}
+              disabled={!canUndo}
+              title="Undo (Ctrl+Z)"
+              className={clsx(
+                'w-9 h-9 rounded-xl flex items-center justify-center transition-all',
+                canUndo
+                  ? isLight
+                    ? 'hover:bg-slate-100 text-slate-700 hover:text-slate-900 active:scale-95'
+                    : 'hover:bg-slate-800 text-slate-300 hover:text-white active:scale-95'
+                  : 'opacity-25 cursor-not-allowed text-slate-400'
+              )}
+            >
+              <Undo2 className="w-4 h-4" />
+            </button>
+            <div className={clsx('w-5 h-px my-0.5', isLight ? 'bg-slate-200' : 'bg-slate-800')} />
+            <button
+              type="button"
+              id="brainboard-redo-btn"
+              onClick={handleRedo}
+              disabled={!canRedo}
+              title="Redo (Ctrl+Y)"
+              className={clsx(
+                'w-9 h-9 rounded-xl flex items-center justify-center transition-all',
+                canRedo
+                  ? isLight
+                    ? 'hover:bg-slate-100 text-slate-700 hover:text-slate-900 active:scale-95'
+                    : 'hover:bg-slate-800 text-slate-300 hover:text-white active:scale-95'
+                  : 'opacity-25 cursor-not-allowed text-slate-400'
+              )}
+            >
+              <Redo2 className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Bottom Pill: Grid Toggle & Canvas Controls */}
+          <div
+            className={clsx(
+              'flex flex-col items-center p-1 rounded-2xl border shadow-lg backdrop-blur-md transition-colors',
+              isLight
+                ? 'bg-white/95 border-slate-200 text-slate-700 shadow-slate-300/40'
+                : 'bg-slate-900/95 border-slate-800 text-slate-200 shadow-2xl'
+            )}
+          >
+            <button
+              type="button"
+              id="brainboard-grid-toggle"
+              onClick={() => setIsGridVisible((v) => !v)}
+              title={isGridVisible ? 'Hide Canvas Grid' : 'Show Canvas Grid'}
+              className={clsx(
+                'w-9 h-9 rounded-xl flex items-center justify-center transition-all',
+                isGridVisible
+                  ? (isLight ? 'bg-indigo-50 text-indigo-600 font-bold' : 'bg-indigo-950/60 text-indigo-400')
+                  : (isLight ? 'hover:bg-slate-100 text-slate-500' : 'hover:bg-slate-800 text-slate-400')
+              )}
+            >
+              <Grid3X3 className="w-4 h-4" />
+            </button>
+            <div className={clsx('w-5 h-px my-0.5', isLight ? 'bg-slate-200' : 'bg-slate-800')} />
+            <button
+              type="button"
+              id="brainboard-settings-btn"
+              onClick={() => setShowToolsMenu((v) => !v)}
+              title="Canvas & Architecture Tools"
+              className={clsx(
+                'w-9 h-9 rounded-xl flex items-center justify-center transition-all',
+                showToolsMenu
+                  ? (isLight ? 'bg-indigo-50 text-indigo-600' : 'bg-indigo-950/60 text-indigo-400')
+                  : (isLight ? 'hover:bg-slate-100 text-slate-700' : 'hover:bg-slate-800 text-slate-300')
+              )}
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
         {/* Multi-cloud filter bar */}
         {activeProject.provider === 'multi' && (
           <div className={clsx(
@@ -2105,14 +2195,16 @@ export default function InfraCanvas() {
           // behind their children), and a selected node keeps its place.
           elevateNodesOnSelect={false}
         >
-          {/* Architecture Blueprint Grid Background */}
-          <Background
-            variant={BackgroundVariant.Dots}
-            color={isLight ? '#94a3b8' : '#334155'}
-            gap={24}
-            size={1.2}
-            className={isLight ? 'opacity-40' : 'opacity-60'}
-          />
+          {/* Architecture Blueprint Grid Background (Brainboard Dot Grid) */}
+          {isGridVisible && (
+            <Background
+              variant={BackgroundVariant.Dots}
+              color={isLight ? '#94a3b8' : '#334155'}
+              gap={20}
+              size={1.2}
+              className={isLight ? 'opacity-40' : 'opacity-60'}
+            />
+          )}
           <Controls className={clsx(
             '!rounded-xl !shadow-2xl overflow-hidden',
             isLight ? '!bg-white/95 !border-slate-300 text-slate-800' : '!bg-slate-900/90 !border-slate-700'
