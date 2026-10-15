@@ -64,7 +64,19 @@ const NOT_USABLE = /_(unsupported|unknown)$/;
  * Palette resources the AI architect is not offered. The container service is configured from Container Templates (it carries a stack, a
  * start-up script and an image), and the fine-tuned model has never seen it, so letting the model place it would produce unreviewed designs.
  */
-export const CANVAS_ONLY_TYPES: ReadonlySet<string> = new Set(['aws_container_service', 'azure_container_service']);
+export const CANVAS_ONLY_TYPES: ReadonlySet<string> = new Set([
+  'aws_container_service',
+  'azure_container_service',
+  'aws_apigatewayv2',
+  'aws_api_gateway',
+  'aws_docdb',
+  'aws_secretsmanager',
+  'aws_client',
+  'aws_sns',
+  'aws_eventbridge',
+  'aws_cognito',
+  'aws_step_functions',
+]);
 export const CATALOG_TYPES: string[] = allResources.map((r) => r.type).filter((t) => !NOT_USABLE.test(t) && !CANVAS_ONLY_TYPES.has(t));
 const CATALOG_SET = new Set(CATALOG_TYPES);
 

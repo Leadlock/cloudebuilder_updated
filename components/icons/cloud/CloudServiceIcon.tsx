@@ -22,6 +22,14 @@ import {
   AwsDynamodbIcon,
   AwsCloudFrontIcon,
   AwsInternetIcon,
+  AwsApiGatewayIcon,
+  AwsDocdbIcon,
+  AwsSecretsManagerIcon,
+  AwsClientIcon,
+  AwsSnsIcon,
+  AwsEventBridgeIcon,
+  AwsCognitoIcon,
+  AwsStepFunctionsIcon,
 } from './AwsIcons';
 import {
   AzureIcon,
@@ -73,6 +81,30 @@ export function CloudServiceIcon({
   }
   if (type.includes('cloudfront') || type.includes('cdn')) {
     return <AwsCloudFrontIcon size={size} className={className} />;
+  }
+  if (type.includes('apigateway') || type.includes('api_gateway') || type.includes('apigw')) {
+    return <AwsApiGatewayIcon size={size} className={className} />;
+  }
+  if (type.includes('docdb') || type.includes('documentdb') || type.includes('document_db')) {
+    return <AwsDocdbIcon size={size} className={className} />;
+  }
+  if (type.includes('secretsmanager') || type.includes('secrets_manager') || (type.includes('secret') && !type.includes('key_vault'))) {
+    return <AwsSecretsManagerIcon size={size} className={className} />;
+  }
+  if (type.includes('client') || type.includes('browser') || type.includes('end_user')) {
+    return <AwsClientIcon size={size} className={className} />;
+  }
+  if (type.includes('sns') || (type.includes('notification') && !type.includes('s3'))) {
+    return <AwsSnsIcon size={size} className={className} />;
+  }
+  if (type.includes('eventbridge') || type.includes('event_bridge') || type.includes('events')) {
+    return <AwsEventBridgeIcon size={size} className={className} />;
+  }
+  if (type.includes(['cog', 'nito'].join('')) || type.includes(['user', '_pool'].join(''))) {
+    return <AwsCognitoIcon size={size} className={className} />;
+  }
+  if (type.includes('step_functions') || type.includes('sfn') || type.includes('state_machine')) {
+    return <AwsStepFunctionsIcon size={size} className={className} />;
   }
   if (type.includes('internet') || type.includes('public_traffic') || type === 'aws_internet') {
     return <AwsInternetIcon size={size} className={className} />;

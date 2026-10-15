@@ -19,6 +19,7 @@ import {
   acrBlocks, apiManagementBlocks, containerAppBlocks, eventGridBlocks, eventHubsBlocks, firewallBlocks, delegationBlock, DELEGATION_FOR_TYPE, monitorBlocks, mysqlBlocks, postgresBlocks, PrivateDnsRegistry,
   privateEndpointBlocks, serviceBusBlocks,
 } from './azureServices';
+import { generateUniversalAwsHcl, generateUniversalAzureHcl } from '@/lib/resources/catalog';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -842,8 +843,63 @@ locals {
           resourceMap[r.id] = `aws_autoscaling_group.${name}`;
           break;
         }
+        case 'aws_apigatewayv2': {
+          blocks.push(this._apigatewayv2(name, cfg));
+          resourceMap[r.id] = `aws_apigatewayv2_api.${name}`;
+          break;
+        }
+        case 'aws_api_gateway': {
+          blocks.push(this._apigateway(name, cfg));
+          resourceMap[r.id] = `aws_api_gateway_rest_api.${name}`;
+          break;
+        }
+        case 'aws_docdb': {
+          const subnets = resolver.resolveParents(r.id, 'aws_subnet', connections, resources);
+          const subnetRefs = subnets.map((s) => {
+            const isImp = Boolean(this._cfg(s).imported || this._cfg(s).importState === 'imported');
+            return `${isImp ? 'data.' : ''}aws_subnet.${resolver.tfNameOf(s.id) ?? 'main'}.id`;
+          });
+          blocks.push(this._docdb(name, cfg, subnetRefs));
+          resourceMap[r.id] = `aws_docdb_cluster.${name}`;
+          break;
+        }
+        case 'aws_secretsmanager': {
+          blocks.push(this._secretsmanager(name, cfg));
+          resourceMap[r.id] = `aws_secretsmanager_secret.${name}`;
+          break;
+        }
+        case 'aws_client': {
+          // Client application / user entrypoint marker (no standalone cloud resource)
+          break;
+        }
+        case 'aws_sns': {
+          blocks.push(this._sns(name, cfg));
+          resourceMap[r.id] = `aws_sns_topic.${name}`;
+          break;
+        }
+        case 'aws_eventbridge': {
+          blocks.push(this._eventbridge(name, cfg));
+          resourceMap[r.id] = `aws_cloudwatch_event_bus.${name}`;
+          break;
+        }
+        case 'aws_cognito': {
+          blocks.push(this._cognito(name, cfg));
+          resourceMap[r.id] = `aws_cognito_user_pool.${name}`;
+          break;
+        }
+        case 'aws_step_functions': {
+          blocks.push(this._stepFunctions(name, cfg));
+          resourceMap[r.id] = `aws_sfn_state_machine.${name}`;
+          break;
+        }
         default: {
-          warnings.push(`Unsupported AWS resource type: ${r.resourceType} (resource: ${r.label})`);
+          if (r.resourceType.startsWith('aws_')) {
+            const universal = generateUniversalAwsHcl(r, name, cfg, connections, resources, resolver);
+            blocks.push(universal.block);
+            resourceMap[r.id] = universal.address;
+          } else {
+            warnings.push(`Unsupported AWS resource type: ${r.resourceType} (resource: ${r.label})`);
+          }
         }
       }
     }
@@ -2000,6 +2056,209 @@ ${tagLines.join('\n')}
     return parts.join('\n\n');
   }
 
+  private _apigatewayv2(name: string, cfg: Record<string, unknown>): string {
+    const protocolType = (cfg['protocolType'] as string) || 'HTTP';
+    const lines = [
+      `resource "aws_apigatewayv2_api" "${name}" {`,
+      `  name          = "${cfg['name'] ?? name}"`,
+      `  protocol_type = "${protocolType}"`,
+    ];
+    if (cfg['description']) {
+      lines.push(`  description   = "${cfg['description']}"`);
+    }
+    if (cfg['corsEnabled'] === true && protocolType !== 'WEBSOCKET') {
+      const allowed = ((cfg['allowMethods'] as string) || 'GET,POST,PUT,DELETE,OPTIONS').split(',').map((m) => `"${m.trim()}"`).join(', ');
+      lines.push(
+        `  cors_configuration {`,
+        `    allow_origins = ["${cfg['allowOrigins'] ?? '*'}"]`,
+        `    allow_methods = [${allowed}]`,
+        `    allow_headers = ["*"]`,
+        `  }`
+      );
+    }
+    lines.push(
+      `  tags = {`,
+      `    Name      = "${name}"`,
+      `    ManagedBy = "CloudCraft"`,
+      `  }`,
+      `}`,
+      ``,
+      `resource "aws_apigatewayv2_stage" "${name}_stage" {`,
+      `  api_id      = aws_apigatewayv2_api.${name}.id`,
+      `  name        = "${cfg['stageName'] ?? '$default'}"`,
+      `  auto_deploy = ${cfg['autoDeploy'] !== false}`,
+      `  tags = {`,
+      `    Name      = "${name}-stage"`,
+      `    ManagedBy = "CloudCraft"`,
+      `  }`,
+      `}`
+    );
+    return lines.join('\n');
+  }
+
+  private _apigateway(name: string, cfg: Record<string, unknown>): string {
+    const endpointType = (cfg['endpointType'] as string) || 'REGIONAL';
+    return `resource "aws_api_gateway_rest_api" "${name}" {
+  name        = "${cfg['name'] ?? name}"
+  description = "${cfg['description'] ?? 'API Gateway REST endpoint'}"
+  endpoint_configuration {
+    types = ["${endpointType}"]
+  }
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+  }
+}
+
+resource "aws_api_gateway_deployment" "${name}_deploy" {
+  rest_api_id = aws_api_gateway_rest_api.${name}.id
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_api_gateway_stage" "${name}_stage" {
+  deployment_id = aws_api_gateway_deployment.${name}_deploy.id
+  rest_api_id   = aws_api_gateway_rest_api.${name}.id
+  stage_name    = "${cfg['stageName'] ?? 'prod'}"
+}`;
+  }
+
+  private _docdb(name: string, cfg: Record<string, unknown>, subnetRefs: string[] = []): string {
+    const instanceClass = (cfg['instanceClass'] as string) || 'db.t3.medium';
+    const clusterInstances = Number(cfg['clusterInstances'] ?? 2);
+    const parts: string[] = [];
+
+    if (subnetRefs.length > 0) {
+      parts.push(`resource "aws_docdb_subnet_group" "${name}_subnets" {
+  name       = "${name}-subnet-group"
+  subnet_ids = [${subnetRefs.join(', ')}]
+  tags = {
+    Name      = "${name}-subnet-group"
+    ManagedBy = "CloudCraft"
+  }
+}`);
+    }
+
+    parts.push(`resource "aws_docdb_cluster" "${name}" {
+  cluster_identifier      = "${name.replace(/_/g, '-')}"
+  engine                  = "docdb"
+  engine_version          = "${cfg['engineVersion'] ?? '5.0.0'}"
+  master_username         = "${cfg['masterUsername'] ?? 'docdbadmin'}"
+  master_password         = "ChangeMe123!"
+  backup_retention_period = ${cfg['backupRetentionPeriod'] ?? 7}
+  storage_encrypted       = ${cfg['storageEncrypted'] !== false}
+  deletion_protection     = ${cfg['deletionProtection'] === true}
+  port                    = ${cfg['port'] ?? 27017}
+  ${subnetRefs.length > 0 ? `db_subnet_group_name    = aws_docdb_subnet_group.${name}_subnets.name` : ''}
+  skip_final_snapshot     = true
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+  }
+}`);
+
+    for (let i = 0; i < clusterInstances; i++) {
+      parts.push(`resource "aws_docdb_cluster_instance" "${name}_instance_${i}" {
+  identifier         = "${name.replace(/_/g, '-')}-${i + 1}"
+  cluster_identifier = aws_docdb_cluster.${name}.id
+  instance_class     = "${instanceClass}"
+  tags = {
+    Name      = "${name}-instance-${i + 1}"
+    ManagedBy = "CloudCraft"
+  }
+}`);
+    }
+
+    return parts.join('\n\n');
+  }
+
+  private _secretsmanager(name: string, cfg: Record<string, unknown>): string {
+    return `resource "aws_secretsmanager_secret" "${name}" {
+  name                    = "${cfg['name'] ?? name}"
+  recovery_window_in_days = ${cfg['recoveryWindowInDays'] ?? 30}
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+  }
+}`;
+  }
+
+  private _sns(name: string, cfg: Record<string, unknown>): string {
+    const isFifo = cfg['fifoTopic'] === true;
+    return `resource "aws_sns_topic" "${name}" {
+  name                        = "${name}${isFifo ? '.fifo' : ''}"
+  fifo_topic                  = ${isFifo}
+  content_based_deduplication = ${isFifo && cfg['contentBasedDeduplication'] === true}
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+  }
+}`;
+  }
+
+  private _eventbridge(name: string, cfg: Record<string, unknown>): string {
+    return `resource "aws_cloudwatch_event_bus" "${name}" {
+  name = "${cfg['name'] ?? name}"
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+  }
+}`;
+  }
+
+  private _cognito(name: string, cfg: Record<string, unknown>): string {
+    return `resource "aws_cognito_user_pool" "${name}" {
+  name = "${cfg['name'] ?? name}"
+  mfa_configuration = "${cfg['mfaConfiguration'] ?? 'OPTIONAL'}"
+  password_policy {
+    minimum_length    = ${cfg['passwordMinLength'] ?? 8}
+    require_lowercase = true
+    require_numbers   = true
+    require_symbols   = false
+    require_uppercase = true
+  }
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+  }
+}`;
+  }
+
+  private _stepFunctions(name: string, cfg: Record<string, unknown>): string {
+    return `resource "aws_iam_role" "${name}_sfn_role" {
+  name = "${name}-sfn-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "states.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_sfn_state_machine" "${name}" {
+  name     = "${cfg['name'] ?? name}"
+  role_arn = aws_iam_role.${name}_sfn_role.arn
+  type     = "${cfg['stateMachineType'] ?? 'STANDARD'}"
+  definition = jsonencode({
+    Comment = "State Machine created via CloudCraft"
+    StartAt = "PassState"
+    States = {
+      PassState = {
+        Type = "Pass"
+        End  = true
+      }
+    }
+  })
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudCraft"
+  }
+}`;
+  }
+
   private _s3(name: string, cfg: Record<string, unknown>): string {
     const rawBucketName = (cfg['bucketName'] as string) ?? name;
     const sanitizedRaw = rawBucketName.toLowerCase().replace(/_/g, '-').replace(/[^a-z0-9-]/g, '').replace(/--+/g, '-').replace(/^-+|-+$/g, '');
@@ -2896,7 +3155,13 @@ locals {
           break;
         }
         default: {
-          warnings.push(`Unsupported Azure resource type: ${r.resourceType} (resource: ${r.label})`);
+          if (r.resourceType.startsWith('azure_') || r.resourceType.startsWith('azurerm_')) {
+            const universal = generateUniversalAzureHcl(r, name, cfg, rgName, rgLoc, connections, resources, resolver);
+            blocks.push(universal.block);
+            resourceMap[r.id] = universal.address;
+          } else {
+            warnings.push(`Unsupported Azure resource type: ${r.resourceType} (resource: ${r.label})`);
+          }
         }
       }
     }

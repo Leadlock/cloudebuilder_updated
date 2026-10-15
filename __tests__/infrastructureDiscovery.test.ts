@@ -308,9 +308,9 @@ describe('Production Infrastructure Discovery & Import', () => {
       const unfamiliarResources: DiscoveredResource[] = [
         {
           provider: 'aws',
-          resourceType: 'apprunner-service' as unknown as DiscoveredResource['resourceType'],
-          providerResourceId: 'arn:aws:apprunner:us-east-1:123456789012:service/my-service',
-          name: 'my-apprunner-svc',
+          resourceType: 'quantum-service' as unknown as DiscoveredResource['resourceType'],
+          providerResourceId: 'arn:aws:quantum:us-east-1:123456789012:service/my-service',
+          name: 'my-quantum-svc',
           region: 'us-east-1',
           status: 'RUNNING',
           configuration: {
@@ -339,8 +339,8 @@ describe('Production Infrastructure Discovery & Import', () => {
 
       const awsUnsupported = nodes.find((n) => n.provider === 'aws');
       expect(awsUnsupported?.resourceType).toBe('aws_unknown');
-      expect(awsUnsupported?.label).toBe('my-apprunner-svc');
-      expect(awsUnsupported?.config?.originalResourceType).toBe('apprunner-service');
+      expect(awsUnsupported?.label).toBe('my-quantum-svc');
+      expect(awsUnsupported?.config?.originalResourceType).toBe('quantum-service');
       expect(awsUnsupported?.config?.customField).toBe('value123');
       expect(awsUnsupported?.importState).toBe('imported');
 

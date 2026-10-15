@@ -127,187 +127,171 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
     <div
       role="article"
       aria-label={`${data.label} (${serviceTitle})`}
-      className={clsx(
-        'group relative rounded-xl transition-all select-none border',
-        isLight
-          ? 'bg-white/95 shadow-md backdrop-blur-md text-slate-900'
-          : 'bg-slate-900/95 shadow-xl backdrop-blur-md text-white',
-        isDeleted && (isLight ? '!opacity-50 !border-slate-300 bg-slate-100 grayscale' : '!opacity-50 !border-slate-700 bg-slate-950/80 grayscale'),
-        isDeleting && '!border-rose-500/60 shadow-rose-950/50 ring-1 ring-rose-500/30',
-        isStopped && '!border-amber-500/50 shadow-amber-950/40',
-        isFailed && '!border-rose-500 shadow-rose-950/50',
-        isImported && !isDeleted && !isDeleting && !isStopped && !isFailed && (isLight ? '!border-cyan-500/80 shadow-cyan-500/10' : '!border-cyan-500/50 shadow-cyan-950/40'),
-        selected
-          ? '!border-cyan-400 !shadow-cyan-500/25 ring-2 ring-cyan-400/40'
-          : isLight
-            ? 'border-slate-200/90 hover:border-slate-400 hover:shadow-lg'
-            : 'border-slate-700/80 hover:border-slate-500 hover:shadow-2xl',
-        isZoomedOut ? 'min-w-[130px] p-2' : 'min-w-[180px] p-3'
-      )}
+      className="group relative flex flex-col items-center select-none"
     >
-      {data.showFindings && data.findingsSummary && (
-        <div
+      {/* Brainboard Square Icon Card */}
+      <div
+        className={clsx(
+          'relative w-[60px] h-[60px] sm:w-16 sm:h-16 rounded-xl flex items-center justify-center transition-all duration-150',
+          isLight
+            ? 'bg-white shadow-sm border border-slate-300 hover:border-slate-400 hover:shadow-md'
+            : 'bg-slate-900 shadow-md border border-slate-700 hover:border-slate-500 hover:shadow-xl',
+          isDeleted && '!opacity-50 !border-slate-300 bg-slate-100 grayscale',
+          isDeleting && '!border-rose-500/80 ring-2 ring-rose-500/30 shadow-rose-950/40',
+          isStopped && '!border-amber-500/60 shadow-amber-950/30',
+          isFailed && '!border-rose-500 ring-2 ring-rose-500/40',
+          isImported && !isDeleted && !isDeleting && !isStopped && !isFailed && (isLight ? '!border-cyan-500 shadow-cyan-500/10' : '!border-cyan-500/50'),
+          selected
+            ? '!border-rose-500 !ring-2 !ring-rose-400 shadow-lg shadow-rose-500/20'
+            : ''
+        )}
+      >
+        {/* Security / Well-Architected Findings Badge */}
+        {data.showFindings && data.findingsSummary && (
+          <div
+            className={clsx(
+              'absolute -top-2 -right-2 z-20 flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full text-[9px] font-bold shadow-lg border pointer-events-none',
+              (data.findingsSummary.critical > 0 || data.findingsSummary.high > 0)
+                ? 'bg-rose-500 text-white border-rose-400 ring-2 ring-rose-950/80'
+                : data.findingsSummary.medium > 0
+                ? 'bg-amber-500 text-slate-950 border-amber-400 ring-2 ring-amber-950/80'
+                : data.findingsSummary.total > 0
+                ? 'bg-yellow-500 text-slate-950 border-yellow-400'
+                : 'bg-emerald-500 text-white border-emerald-400'
+            )}
+            title={`Well-Architected Findings: ${data.findingsSummary.total} (${data.findingsSummary.critical} critical, ${data.findingsSummary.high} high, ${data.findingsSummary.medium} medium)`}
+          >
+            {data.findingsSummary.total > 0 ? (
+              <span>{data.findingsSummary.critical > 0 ? `!${data.findingsSummary.critical}` : data.findingsSummary.total}</span>
+            ) : (
+              <span className="w-1.5 h-1.5 rounded-full bg-white" />
+            )}
+          </div>
+        )}
+
+        {/* Status Dot (bottom-right) */}
+        {!isDeleted && (
+          <span
+            className={clsx(
+              'absolute -bottom-1 -right-1 z-10 w-3 h-3 rounded-full border-2',
+              statusColor,
+              isLight ? 'border-white' : 'border-slate-900'
+            )}
+            title={`Status: ${statusText}`}
+          />
+        )}
+
+        {/* 4 Connection Ports (Top, Right, Bottom, Left) - Source & Target */}
+        <Handle
+          type="target"
+          position={Position.Top}
+          id="target-top"
           className={clsx(
-            'absolute -top-2 -right-2 z-10 flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full text-[9px] font-bold shadow-lg border pointer-events-none',
-            (data.findingsSummary.critical > 0 || data.findingsSummary.high > 0)
-              ? 'bg-rose-500 text-white border-rose-400 ring-2 ring-rose-950/80'
-              : data.findingsSummary.medium > 0
-              ? 'bg-amber-500 text-slate-950 border-amber-400 ring-2 ring-amber-950/80'
-              : data.findingsSummary.total > 0
-              ? 'bg-yellow-500 text-slate-950 border-yellow-400'
-              : 'bg-emerald-500 text-white border-emerald-400'
+            '!w-2.5 !h-2.5 !bg-indigo-500/70 hover:!bg-indigo-600 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
+            isLight ? '!border-white' : '!border-slate-900'
           )}
-          title={`Well-Architected Findings: ${data.findingsSummary.total} (${data.findingsSummary.critical} critical, ${data.findingsSummary.high} high, ${data.findingsSummary.medium} medium)`}
-        >
-          {data.findingsSummary.total > 0 ? (
-            <span>{data.findingsSummary.critical > 0 ? `!${data.findingsSummary.critical}` : data.findingsSummary.total}</span>
-          ) : (
-            <span className="w-1.5 h-1.5 rounded-full bg-white" />
+          style={{ top: -5 }}
+        />
+        <Handle
+          type="source"
+          position={Position.Top}
+          id="source-top"
+          className={clsx(
+            '!w-2.5 !h-2.5 !bg-indigo-500/70 hover:!bg-indigo-600 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
+            isLight ? '!border-white' : '!border-slate-900'
           )}
-        </div>
-      )}
+          style={{ top: -5 }}
+        />
 
-      {/* Handles */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        id="target-top"
-        className={clsx('!w-2 !h-2 !bg-cyan-500/50 hover:!bg-cyan-500 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125', isLight ? '!border-white' : '!border-slate-900')}
-        style={{ top: -4 }}
-      />
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="target-left"
-        className={clsx('!w-2 !h-2 !bg-cyan-500/50 hover:!bg-cyan-500 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125', isLight ? '!border-white' : '!border-slate-900')}
-        style={{ left: -4 }}
-      />
+        <Handle
+          type="target"
+          position={Position.Right}
+          id="target-right"
+          className={clsx(
+            '!w-2.5 !h-2.5 !bg-indigo-500/70 hover:!bg-indigo-600 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
+            isLight ? '!border-white' : '!border-slate-900'
+          )}
+          style={{ right: -5 }}
+        />
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="source-right"
+          className={clsx(
+            '!w-2.5 !h-2.5 !bg-indigo-500/70 hover:!bg-indigo-600 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
+            isLight ? '!border-white' : '!border-slate-900'
+          )}
+          style={{ right: -5 }}
+        />
 
-      {/* Node Header */}
-      <div className="flex items-start gap-2.5">
-        <div className={`shrink-0 p-1.5 rounded-lg ${isLight ? 'bg-slate-100 border border-slate-200' : 'bg-slate-950 border border-slate-800'} shadow-inner`}>
+        <Handle
+          type="target"
+          position={Position.Bottom}
+          id="target-bottom"
+          className={clsx(
+            '!w-2.5 !h-2.5 !bg-indigo-500/70 hover:!bg-indigo-600 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
+            isLight ? '!border-white' : '!border-slate-900'
+          )}
+          style={{ bottom: -5 }}
+        />
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          id="source-bottom"
+          className={clsx(
+            '!w-2.5 !h-2.5 !bg-indigo-500/70 hover:!bg-indigo-600 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
+            isLight ? '!border-white' : '!border-slate-900'
+          )}
+          style={{ bottom: -5 }}
+        />
+
+        <Handle
+          type="target"
+          position={Position.Left}
+          id="target-left"
+          className={clsx(
+            '!w-2.5 !h-2.5 !bg-indigo-500/70 hover:!bg-indigo-600 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
+            isLight ? '!border-white' : '!border-slate-900'
+          )}
+          style={{ left: -5 }}
+        />
+        <Handle
+          type="source"
+          position={Position.Left}
+          id="source-left"
+          className={clsx(
+            '!w-2.5 !h-2.5 !bg-indigo-500/70 hover:!bg-indigo-600 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
+            isLight ? '!border-white' : '!border-slate-900'
+          )}
+          style={{ left: -5 }}
+        />
+
+        {/* Centered Service Icon */}
+        <div className="flex items-center justify-center p-2.5 w-full h-full">
           <CloudServiceIcon
             provider={provider}
             resourceType={data.resourceType}
-            size={isZoomedOut ? 22 : 28}
+            size={38}
           />
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <p className={`${isLight ? 'text-slate-900' : 'text-white'} font-bold text-xs tracking-tight truncate leading-snug`}>
-            {data.label}
-          </p>
-          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-            <p className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'} truncate font-medium`}>
-              {serviceTitle}
-            </p>
-            {isImported && (
-              <span
-                className={`inline-flex items-center gap-1 text-[8px] font-bold ${
-                  isLight ? 'text-cyan-800 bg-cyan-50 border-cyan-300' : 'text-cyan-300 bg-cyan-950/90 border-cyan-500/40'
-                } border px-1.5 py-0.2 rounded-full uppercase tracking-wider shrink-0`}
-                title={rawId ? `Imported (${rawId})` : 'Imported Infrastructure'}
-              >
-                <span className="w-1 h-1 rounded-full bg-cyan-500 animate-pulse" />
-                Imported
-              </span>
-            )}
-            {isDeleted && (
-              <span className={`inline-flex items-center gap-1 text-[8px] font-bold ${
-                isLight ? 'text-slate-600 bg-slate-100 border-slate-300' : 'text-slate-300 bg-slate-800/90 border-slate-600'
-              } border px-1.5 py-0.2 rounded-full uppercase tracking-wider shrink-0`}>
-                <span className="w-1 h-1 rounded-full bg-slate-400" />
-                Deleted
-              </span>
-            )}
-            {isDeleting && (
-              <span className={`inline-flex items-center gap-1 text-[8px] font-bold ${
-                isLight ? 'text-rose-700 bg-rose-50 border-rose-300' : 'text-rose-300 bg-rose-950/90 border-rose-500/40'
-              } border px-1.5 py-0.2 rounded-full uppercase tracking-wider shrink-0 animate-pulse`}>
-                <span className="w-1 h-1 rounded-full bg-rose-500" />
-                Deleting
-              </span>
-            )}
-            {isStopped && (
-              <span className={`inline-flex items-center gap-1 text-[8px] font-bold ${
-                isLight ? 'text-amber-800 bg-amber-50 border-amber-300' : 'text-amber-300 bg-amber-950/90 border-amber-500/40'
-              } border px-1.5 py-0.2 rounded-full uppercase tracking-wider shrink-0`}>
-                <span className="w-1 h-1 rounded-full bg-amber-500" />
-                Stopped
-              </span>
-            )}
-            {isFailed && (
-              <span className={`inline-flex items-center gap-1 text-[8px] font-bold ${
-                isLight ? 'text-rose-700 bg-rose-50 border-rose-300' : 'text-rose-300 bg-rose-950/90 border-rose-500/40'
-              } border px-1.5 py-0.2 rounded-full uppercase tracking-wider shrink-0`}>
-                <span className="w-1 h-1 rounded-full bg-rose-500" />
-                Failed
-              </span>
-            )}
-            {isPlanned && (
-              <span
-                className={`inline-flex items-center gap-1 text-[8px] font-bold ${
-                  isLight ? 'text-emerald-800 bg-emerald-50 border-emerald-300' : 'text-emerald-300 bg-emerald-950/90 border-emerald-500/40'
-                } border px-1.5 py-0.2 rounded-full uppercase tracking-wider shrink-0`}
-              >
-                <span className="w-1 h-1 rounded-full bg-emerald-500" />
-                Proposed
-              </span>
-            )}
-          </div>
         </div>
       </div>
 
-      {/* Node Body / Architectural Specs (Hidden when zoomed out for performance and clarity) */}
-      {!isZoomedOut && specs.length > 0 && (
-        <div className={`mt-2.5 pt-2 border-t ${isLight ? 'border-slate-100' : 'border-slate-800/80'} space-y-1`}>
-          {specs.map((spec, i) => (
-            <div key={i} className={`flex items-center text-[10px] font-mono ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${isLight ? 'bg-slate-400' : 'bg-slate-600'} mr-1.5 shrink-0`} />
-              <span className="truncate">{spec}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Status Footer */}
-      {!isZoomedOut && (
-        <div className={`mt-2.5 pt-1.5 flex items-center justify-between border-t ${isLight ? 'border-slate-100' : 'border-slate-800/50'}`}>
-          <div className="flex items-center gap-1.5">
-            <span className={clsx('w-2 h-2 rounded-full', statusColor)} />
-            <span className={`text-[9px] font-medium uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              {statusText}
-            </span>
-          </div>
-
-          <span
-            className={clsx(
-              'text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded',
-              provider === 'aws'
-                ? isLight ? 'text-amber-700 bg-amber-100/80' : 'text-amber-400 bg-amber-400/10'
-                : isLight ? 'text-blue-700 bg-blue-100/80' : 'text-blue-400 bg-blue-400/10'
-            )}
-          >
-            {provider.toUpperCase()}
-          </span>
-        </div>
-      )}
-
-      {/* Source Handles */}
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        id="source-bottom"
-        className={clsx('!w-2 !h-2 !bg-cyan-500/50 hover:!bg-cyan-500 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125', isLight ? '!border-white' : '!border-slate-900')}
-        style={{ bottom: -4 }}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="source-right"
-        className={clsx('!w-2 !h-2 !bg-cyan-500/50 hover:!bg-cyan-500 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125', isLight ? '!border-white' : '!border-slate-900')}
-        style={{ right: -4 }}
-      />
+      {/* Centered Resource Label (Brainboard style beneath square card) */}
+      <div className="mt-1.5 flex flex-col items-center max-w-[130px] px-1 pointer-events-none">
+        <span
+          className={clsx(
+            'text-[11px] font-semibold tracking-tight text-center leading-snug line-clamp-2 select-none',
+            selected
+              ? 'text-rose-600 dark:text-rose-400 font-bold'
+              : isLight
+              ? 'text-slate-800'
+              : 'text-slate-200'
+          )}
+          title={data.label}
+        >
+          {data.label}
+        </span>
+      </div>
     </div>
   );
 });
