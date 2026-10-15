@@ -78,11 +78,11 @@ export default function CompliancePanel({ projectId, architectureId, resources, 
   return (
     <div className={clsx(
       "absolute right-4 top-20 bottom-4 w-96 rounded-xl shadow-2xl flex flex-col z-30 border",
-      isLight ? "bg-white border-slate-200 text-slate-900 shadow-xl" : "bg-slate-900 border-slate-700 text-slate-100"
+      isLight ? "bg-white border-slate-200 text-slate-900 shadow-xl" : "bg-[#1c1c1e] border-white/[0.10] text-slate-100 shadow-2xl"
     )}>
       <div className={clsx(
         "p-4 border-b flex items-center justify-between rounded-t-xl",
-        isLight ? "border-slate-200 bg-slate-50" : "border-slate-800 bg-slate-800/50"
+        isLight ? "border-slate-200 bg-slate-50" : "border-white/[0.08] bg-[#141416]"
       )}>
         <div className="flex items-center gap-2">
           <ShieldCheck className={clsx("w-5 h-5", isLight ? "text-emerald-600" : "text-emerald-400")} />
@@ -93,7 +93,7 @@ export default function CompliancePanel({ projectId, architectureId, resources, 
         </button>
       </div>
 
-      <div className={clsx("p-4 border-b", isLight ? "border-slate-200" : "border-slate-800")}>
+      <div className={clsx("p-4 border-b", isLight ? "border-slate-200" : "border-white/[0.08]")}>
         <label className={clsx("text-xs font-semibold mb-2 block", isLight ? "text-slate-600" : "text-slate-400")}>Frameworks to Evaluate</label>
         <div className="flex flex-wrap gap-2">
           {(['SOC2', 'HIPAA', 'PCI-DSS'] as const).map(fw => {
@@ -105,8 +105,8 @@ export default function CompliancePanel({ projectId, architectureId, resources, 
                 className={clsx(
                   'px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
                   active
-                    ? (isLight ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold' : 'bg-blue-900/40 border-blue-500/50 text-blue-300')
-                    : (isLight ? 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-300')
+                    ? (isLight ? 'bg-[#0078d4]/10 border-[#0078d4]/30 text-[#005a9e] font-semibold' : 'bg-[#0078d4]/18 border-[#0078d4]/40 text-[#50e6ff] font-semibold')
+                    : (isLight ? 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200' : 'bg-[#242426] border-white/[0.10] text-slate-400 hover:text-white')
                 )}
               >
                 {fw}
@@ -117,7 +117,7 @@ export default function CompliancePanel({ projectId, architectureId, resources, 
         <button
           onClick={runEvaluation}
           disabled={loading || frameworks.length === 0}
-          className="mt-4 w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg shadow flex items-center justify-center gap-2 disabled:opacity-50"
+          className="mt-4 w-full py-2 bg-[#0078d4] hover:bg-[#1084d8] text-white text-xs font-semibold rounded-lg shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
         >
           {loading ? <Activity className="w-4 h-4 animate-spin" /> : 'Run Assessment'}
         </button>
@@ -128,7 +128,7 @@ export default function CompliancePanel({ projectId, architectureId, resources, 
           <>
             <div className={clsx(
               "p-3 rounded-lg border text-[11px] leading-relaxed",
-              isLight ? "bg-slate-50 border-slate-200 text-slate-600" : "bg-slate-800/60 border-slate-700 text-slate-400"
+              isLight ? "bg-slate-50 border-slate-200 text-slate-600" : "bg-[#242426] border-white/[0.08] text-slate-300"
             )}>
               {results.disclaimer}
             </div>
@@ -138,7 +138,7 @@ export default function CompliancePanel({ projectId, architectureId, resources, 
                 ['Failing', results.failing, isLight ? 'text-rose-600' : 'text-rose-400'],
                 ['Not evaluated', results.notEvaluated, isLight ? 'text-slate-500' : 'text-slate-400'],
               ] as const).map(([label, n, cls]) => (
-                <div key={label} className={clsx("border rounded-lg p-2", isLight ? "bg-slate-50 border-slate-200" : "bg-slate-800/40 border-slate-700")}>
+                <div key={label} className={clsx("border rounded-lg p-2", isLight ? "bg-slate-50 border-slate-200" : "bg-[#242426] border-white/[0.08]")}>
                   <p className={clsx('text-lg font-bold', cls)}>{n}</p>
                   <p className={clsx("text-[10px] uppercase tracking-wide", isLight ? "text-slate-500" : "text-slate-500")}>{label}</p>
                 </div>
@@ -149,7 +149,7 @@ export default function CompliancePanel({ projectId, architectureId, resources, 
               const expanded = expandedRule === r.ruleId;
               const tone = isLight
                 ? (r.status === 'fail' ? 'border-rose-200 bg-rose-50/50' : r.status === 'pass' ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200 bg-slate-50')
-                : (r.status === 'fail' ? 'border-rose-500/30 bg-slate-800/40' : r.status === 'pass' ? 'border-emerald-500/20 bg-slate-800/20' : 'border-slate-600/40 bg-slate-800/20');
+                : (r.status === 'fail' ? 'border-rose-500/30 bg-rose-500/10' : r.status === 'pass' ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-white/[0.08] bg-[#242426]');
               
               return (
                 <div key={r.ruleId} className={clsx('border rounded-xl overflow-hidden transition-all', tone)}>
@@ -169,10 +169,10 @@ export default function CompliancePanel({ projectId, architectureId, resources, 
                         <span className={clsx("text-xs font-bold", isLight ? "text-slate-800" : "text-slate-300")}>{r.framework}</span>
                         <span className={clsx("text-xs", isLight ? "text-slate-500" : "text-slate-500")}>{r.controlId}</span>
                         <span className={clsx(
-                          'text-[10px] px-1.5 py-0.5 rounded font-medium',
+                          'text-[10px] px-2 py-0.5 rounded border font-semibold',
                           isLight
-                            ? (r.status === 'fail' ? 'bg-rose-100 text-rose-800' : r.status === 'pass' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700')
-                            : (r.status === 'fail' ? 'bg-rose-500/15 text-rose-300' : r.status === 'pass' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-700 text-slate-300')
+                            ? (r.status === 'fail' ? 'bg-rose-50 text-rose-700 border-rose-200' : r.status === 'pass' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-200')
+                            : (r.status === 'fail' ? 'bg-rose-500/18 text-rose-300 border-rose-500/40' : r.status === 'pass' ? 'bg-emerald-500/18 text-emerald-300 border-emerald-500/40' : 'bg-slate-500/18 text-slate-300 border-slate-500/40')
                         )}>
                           {r.status === 'fail' ? 'Gaps found' : r.status === 'pass' ? 'Technical indicators passed' : 'Not evaluated'}
                         </span>
@@ -185,7 +185,7 @@ export default function CompliancePanel({ projectId, architectureId, resources, 
                   {expanded && (
                     <div className={clsx(
                       "p-3 pt-2 border-t text-xs space-y-2",
-                      isLight ? "border-slate-200 bg-white text-slate-700" : "border-slate-700/50 bg-slate-900/30 text-slate-300"
+                      isLight ? "border-slate-200 bg-white text-slate-700" : "border-white/[0.08] bg-[#141416] text-slate-300"
                     )}>
                       <p className={isLight ? "text-slate-600" : "text-slate-400"}>{r.description}</p>
                       <p className={isLight ? "text-slate-800" : "text-slate-300"}>

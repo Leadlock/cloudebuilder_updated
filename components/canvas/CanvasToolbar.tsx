@@ -81,7 +81,7 @@ export default function CanvasToolbar({
     <div
       className={clsx(
         'absolute top-3 left-3 sm:top-4 sm:left-4 z-20 max-w-[calc(100%-7.5rem)] overflow-x-auto [scrollbar-width:thin] flex items-center gap-1 p-1 rounded-xl shadow-xl backdrop-blur-md select-none border transition-colors',
-        isLight ? 'bg-white/95 border-slate-200 text-slate-800 shadow-slate-300/60' : 'bg-slate-900/95 border-slate-700/80 text-slate-200 shadow-2xl'
+        isLight ? 'bg-white/95 border-slate-200 text-slate-800 shadow-sm' : 'bg-[#18181a]/95 border-white/[0.10] text-slate-200 shadow-2xl'
       )}
     >
       {/* Quick Add Service */}
@@ -90,7 +90,7 @@ export default function CanvasToolbar({
           <button
             onClick={onOpenAddModal}
             title="Add Cloud Resource"
-            className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold shadow transition-all mr-1"
+            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0078d4] hover:bg-[#0067b8] text-white text-xs font-semibold shadow-sm transition-all mr-1"
           >
             <Plus className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Add Resource</span>
@@ -410,7 +410,7 @@ export default function CanvasToolbar({
                 id="btn-save-now"
                 onClick={onSaveNow}
                 title={isDraft ? "Save this builder as a new Project in your account" : "Save changes to this project"}
-                className="px-3 py-1 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white transition-colors shadow-sm flex items-center gap-1 shrink-0"
+                className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-[#0078d4] hover:bg-[#0067b8] active:bg-[#005a9e] text-white transition-all shadow-sm flex items-center gap-1 shrink-0"
               >
                 <span>{isDraft ? "Save Project" : "Save"}</span>
               </button>

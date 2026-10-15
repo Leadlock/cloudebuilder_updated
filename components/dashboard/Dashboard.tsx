@@ -19,13 +19,21 @@ function ScoreBadge({ score }: { score: number }) {
   return <span className={clsx('font-bold', color)}>{score}</span>;
 }
 
-function ProviderBadge({ provider }: { provider: CloudProvider }) {
+function ProviderBadge({ provider, isLight }: { provider: CloudProvider; isLight?: boolean }) {
+  const badgeStyle = isLight
+    ? provider === 'aws'
+      ? 'bg-amber-50 text-amber-800 border-amber-200'
+      : provider === 'azure'
+      ? 'bg-[#0078d4] text-white border-[#0078d4]'
+      : 'bg-purple-50 text-purple-700 border-purple-200'
+    : provider === 'aws'
+    ? 'bg-amber-500/15 text-amber-300 border-amber-500/35'
+    : provider === 'azure'
+    ? 'bg-[#0078d4] text-white border-[#0078d4]'
+    : 'bg-purple-500/15 text-purple-300 border-purple-500/35';
+
   return (
-    <span className={clsx('text-xs px-2 py-0.5 rounded-full font-medium',
-      provider === 'aws' ? 'bg-orange-900/40 text-orange-300 border border-orange-800/50' :
-      provider === 'azure' ? 'bg-blue-900/40 text-blue-300 border border-blue-800/50' :
-      'bg-purple-900/40 text-purple-300 border border-purple-800/50'
-    )}>
+    <span className={clsx('text-[10px] px-2 py-0.5 rounded-md font-semibold uppercase tracking-wider border shadow-xs', badgeStyle)}>
       {provider === 'aws' ? 'AWS' : provider === 'azure' ? 'Azure' : 'Multi-cloud'}
     </span>
   );
@@ -123,18 +131,18 @@ export default function Dashboard() {
               dispatch({ type: 'SET_ACTIVE_PROJECT', id: 'draft-project' });
               dispatch({ type: 'SET_VIEW', view: 'canvas' });
             }}
-            className="flex items-center gap-2 px-3.5 sm:px-4 py-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 !text-white rounded-xl text-xs sm:text-sm font-semibold shadow-lg shadow-blue-500/25 transition-all transform active:scale-98"
+            className="flex items-center gap-2 px-4 py-2 bg-[#0078d4] hover:bg-[#0067b8] active:bg-[#005a9e] text-white rounded-lg text-xs sm:text-sm font-semibold shadow-sm transition-all transform active:scale-98"
           >
-            <Box className="w-4 h-4 !text-white" /> <span className="!text-white font-bold">Open Visual Builder</span>
+            <Box className="w-4 h-4 text-white" /> <span className="text-white font-semibold">Open Visual Builder</span>
           </button>
           <button
             id="btn-new-project"
             onClick={() => setShowNewProject(true)}
             className={clsx(
-              "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all border shadow-sm active:scale-[0.98]",
+              "flex items-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all border shadow-xs active:scale-[0.98]",
               isLight
-                ? "bg-white hover:bg-slate-100 text-slate-800 border-slate-300 hover:border-slate-400"
-                : "bg-gray-800/90 hover:bg-gray-700 text-gray-200 border-gray-700"
+                ? "bg-white hover:bg-slate-100 text-slate-800 border-slate-300"
+                : "bg-[#242426] hover:bg-[#2c2c2e] text-slate-200 border-white/[0.12]"
             )}
           >
             <Plus className="w-4 h-4" /> New Project
@@ -202,14 +210,14 @@ export default function Dashboard() {
           {/* Provider tabs */}
           <div className={clsx(
             "flex gap-1 rounded-lg p-0.5 border transition-colors",
-            isLight ? "bg-slate-100 border-slate-300 shadow-sm" : "bg-gray-900 border-gray-800"
+            isLight ? "bg-slate-100 border-slate-300 shadow-xs" : "bg-[#141416] border-white/[0.08]"
           )}>
             {(['all', 'aws', 'azure', 'multi'] as Tab[]).map((t) => (
               <button key={t} onClick={() => setTab(t)}
                 className={clsx('px-2.5 py-1 rounded-md text-xs font-semibold capitalize transition-all',
                   tab === t
-                    ? isLight ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80 font-bold' : 'bg-gray-800 text-white shadow-sm'
-                    : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-gray-400 hover:text-gray-200'
+                    ? isLight ? 'bg-white text-slate-900 shadow-xs border border-slate-200 font-bold' : 'bg-[#0078d4] text-white shadow-xs font-semibold'
+                    : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white'
                 )}>
                 {t === 'multi' ? 'Multi' : t === 'all' ? 'All' : t.toUpperCase()}
               </button>
@@ -263,7 +271,7 @@ export default function Dashboard() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <h3 className={clsx("font-bold text-sm truncate", isLight ? "text-slate-900" : "text-white")}>{project.name}</h3>
-                    <ProviderBadge provider={project.provider} />
+                    <ProviderBadge provider={project.provider} isLight={isLight} />
                   </div>
                   {project.description && (
                     <p className={clsx("text-xs line-clamp-2", isLight ? "text-slate-500" : "text-gray-400")}>

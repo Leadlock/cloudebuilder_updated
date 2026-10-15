@@ -6,18 +6,27 @@ import { costService } from '@/lib/services/CostService';
 import { CostItem } from '@/types';
 import { DollarSign, TrendingDown, Zap, CheckCircle2, AlertTriangle, Globe, ArrowRightLeft, Info } from 'lucide-react';
 import { getResourceDefinition } from '@/lib/resources';
+import { CloudServiceIcon } from '@/components/icons/cloud/CloudServiceIcon';
 import { cloudRegionService } from '@/lib/cloud/regions/CloudRegionService';
 import { formatCurrency } from '@/lib/currency/formatter';
 import { getCurrencyDefinition } from '@/lib/currency/types';
 import clsx from 'clsx';
 import { PRICING_TIER_LABEL, weakestTier, type PricingTier } from '@/lib/cloud/pricing/tiers';
 
-const TIER_STYLE: Record<PricingTier, string> = {
-  LIVE: 'bg-emerald-950/80 text-emerald-300 border-emerald-800/80',
-  CACHED_LIVE: 'bg-sky-950/80 text-sky-300 border-sky-800/80',
-  FALLBACK_ESTIMATE: 'bg-amber-950/80 text-amber-300 border-amber-800/80',
-  UNAVAILABLE: 'bg-gray-800 text-gray-400 border-gray-600',
+const TIER_STYLE_DARK: Record<PricingTier, string> = {
+  LIVE: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40',
+  CACHED_LIVE: 'bg-sky-500/15 text-sky-300 border-sky-500/40',
+  FALLBACK_ESTIMATE: 'bg-amber-500/15 text-amber-300 border-amber-500/40',
+  UNAVAILABLE: 'bg-white/5 text-slate-400 border-white/10',
 };
+
+const TIER_STYLE_LIGHT: Record<PricingTier, string> = {
+  LIVE: 'bg-emerald-50 text-emerald-800 border-emerald-300',
+  CACHED_LIVE: 'bg-sky-50 text-sky-800 border-sky-300',
+  FALLBACK_ESTIMATE: 'bg-amber-50 text-amber-800 border-amber-300',
+  UNAVAILABLE: 'bg-slate-100 text-slate-700 border-slate-300',
+};
+
 const TIER_HELP: Record<PricingTier, string> = {
   LIVE: 'Official list price from the cloud provider for this estimate.',
   CACHED_LIVE: 'Official list price retrieved earlier from the provider API and served from cache.',
@@ -25,9 +34,10 @@ const TIER_HELP: Record<PricingTier, string> = {
   UNAVAILABLE: 'No price could be determined for this resource. It is excluded from totals.',
 };
 
-function TierBadge({ tier, stale }: { tier: PricingTier; stale?: boolean }) {
+function TierBadge({ tier, stale, isLight }: { tier: PricingTier; stale?: boolean; isLight?: boolean }) {
+  const badgeClass = isLight ? TIER_STYLE_LIGHT[tier] : TIER_STYLE_DARK[tier];
   return (
-    <span className={clsx('text-[9px] px-1.5 py-0.5 rounded border font-medium', TIER_STYLE[tier])} title={TIER_HELP[tier]} data-testid="pricing-tier">
+    <span className={clsx('text-[10px] px-2 py-0.5 rounded-md border font-semibold tracking-tight shrink-0 shadow-xs', badgeClass)} title={TIER_HELP[tier]} data-testid="pricing-tier">
       {PRICING_TIER_LABEL[tier]}{stale ? ' (stale)' : ''}
     </span>
   );
@@ -262,7 +272,7 @@ export default function CostPanel() {
             <h2 className={clsx('font-bold text-lg', isLight ? 'text-slate-900' : 'text-white')}>Cost Estimate</h2>
             {overallTier && (
               <span
-                className={clsx('text-xs px-2.5 py-0.5 border rounded-full font-medium', TIER_STYLE[overallTier])}
+                className={clsx('text-xs px-2.5 py-0.5 border rounded-full font-medium shadow-xs', isLight ? TIER_STYLE_LIGHT[overallTier] : TIER_STYLE_DARK[overallTier])}
                 title={`${TIER_HELP[overallTier]} On-demand list prices; negotiated discounts, Reserved Instances and Savings Plans are not reflected.`}
                 data-testid="pricing-tier-overall"
               >
@@ -270,7 +280,7 @@ export default function CostPanel() {
               </span>
             )}
             {unavailableCount > 0 && (
-              <span className={clsx('text-xs px-2.5 py-0.5 border rounded-full font-medium', TIER_STYLE.UNAVAILABLE)} title={TIER_HELP.UNAVAILABLE}>
+              <span className={clsx('text-xs px-2.5 py-0.5 border rounded-full font-medium shadow-xs', isLight ? TIER_STYLE_LIGHT.UNAVAILABLE : TIER_STYLE_DARK.UNAVAILABLE)} title={TIER_HELP.UNAVAILABLE}>
                 {unavailableCount} unpriced
               </span>
             )}
@@ -376,28 +386,61 @@ export default function CostPanel() {
               {sortedCosts.map((item) => {
                 const def = getResourceDefinition(item.resourceType);
                 const pct = total > 0 ? (item.monthlyCost / total) * 100 : 0;
+                const isAzure = item.provider === 'azure';
                 return (
-                  <div key={item.nodeId}>
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded flex items-center justify-center text-white text-[8px] font-bold" style={{ backgroundColor: def?.color ?? '#6B7280' }} aria-hidden="true">
-                          {def?.icon}
+                  <div
+                    key={item.nodeId}
+                    className={clsx(
+                      "p-3 rounded-xl border transition-all mb-2.5",
+                      isLight
+                        ? "bg-slate-50/70 border-slate-200/90 hover:border-slate-300 shadow-xs"
+                        : "bg-[#1c1c1e] border-white/8 hover:border-white/15 shadow-xs"
+                    )}
+                  >
+                    <div className="flex items-center justify-between mb-2 gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={clsx(
+                          "w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border shadow-xs p-1",
+                          isLight ? "bg-white border-slate-200" : "bg-[#141416] border-white/10"
+                        )}>
+                          <CloudServiceIcon
+                            provider={item.provider as any}
+                            resourceType={item.resourceType}
+                            size={18}
+                          />
                         </div>
-                        <span className={clsx('text-xs font-medium', isLight ? 'text-slate-900' : 'text-gray-300')}>{item.nodeLabel}</span>
-                        <span className={clsx('text-[9px] px-1 py-0.5 rounded font-medium', item.provider === 'aws' ? (isLight ? 'bg-orange-50 text-orange-700 border border-orange-200' : 'bg-orange-900/40 text-orange-400') : (isLight ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-blue-900/40 text-blue-400'))}>
+                        <span className={clsx('text-xs font-semibold truncate', isLight ? 'text-slate-900' : 'text-slate-100')}>
+                          {item.nodeLabel}
+                        </span>
+                        <span className={clsx(
+                          'text-[10px] px-2 py-0.5 rounded-md border font-semibold uppercase tracking-wider shrink-0 shadow-xs',
+                          isAzure
+                            ? 'bg-[#0078d4] text-white border-[#0078d4]'
+                            : (isLight ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-amber-500/15 text-amber-300 border-amber-500/30')
+                        )}>
                           {item.provider.toUpperCase()}
                         </span>
-                        <TierBadge tier={item.pricingTier ?? 'FALLBACK_ESTIMATE'} stale={item.pricingIsStale} />
+                        <TierBadge tier={item.pricingTier ?? 'FALLBACK_ESTIMATE'} stale={item.pricingIsStale} isLight={isLight} />
                       </div>
-                      <div className="text-right">
-                        <span className="text-orange-500 text-xs font-medium">{item.pricingTier === 'UNAVAILABLE' ? 'Price unavailable' : `${formatCurrency(item.monthlyCost, valueCurrency)}/mo`}</span>
+                      <div className="text-right shrink-0">
+                        <span className="text-orange-500 text-xs font-bold block">
+                          {item.pricingTier === 'UNAVAILABLE' ? 'Price unavailable' : `${formatCurrency(item.monthlyCost, valueCurrency)}/mo`}
+                        </span>
                         {valueCurrency !== 'USD' && (
-                          <span className={clsx('text-[10px] block', isLight ? 'text-slate-400' : 'text-gray-500')}>≈ {formatCurrency(item.providerCostUsd ?? item.monthlyCost, 'USD')}</span>
+                          <span className={clsx('text-[10px] block', isLight ? 'text-slate-400' : 'text-slate-400')}>
+                            ≈ {formatCurrency(item.providerCostUsd ?? item.monthlyCost, 'USD')}
+                          </span>
                         )}
                       </div>
                     </div>
-                    <div className={clsx('h-1.5 rounded-full overflow-hidden', isLight ? 'bg-slate-100' : 'bg-gray-700')}>
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct.toFixed(1)}%`, backgroundColor: def?.color ?? '#6B7280' }} />
+                    <div className={clsx('h-1.5 rounded-full overflow-hidden', isLight ? 'bg-slate-200/80' : 'bg-white/10')}>
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${pct.toFixed(1)}%`,
+                          backgroundColor: def?.color ?? (isAzure ? '#0078d4' : '#f59e0b')
+                        }}
+                      />
                     </div>
                   </div>
                 );
@@ -470,15 +513,34 @@ export default function CostPanel() {
               const providerHourly = item.providerHourlyUsd ?? (item.hourlyCost ?? 0);
 
               return (
-                <div key={item.nodeId} className={clsx('border rounded-2xl p-4 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-800 border-gray-700')}>
+                <div key={item.nodeId} className={clsx('border rounded-xl p-4 transition-all mb-3', isLight ? 'bg-white border-slate-200 shadow-xs' : 'bg-[#1c1c1e] border-white/8 shadow-xs')}>
                   <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: def?.color ?? '#6B7280' }} aria-hidden="true">
-                        {def?.icon}
+                    <div className="flex items-center gap-3">
+                      <div className={clsx(
+                        "w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border shadow-xs p-1.5",
+                        isLight ? "bg-slate-50 border-slate-200" : "bg-[#141416] border-white/10"
+                      )}>
+                        <CloudServiceIcon
+                          provider={item.provider as any}
+                          resourceType={item.resourceType}
+                          size={22}
+                        />
                       </div>
                       <div>
-                        <p className={clsx('font-medium text-sm', isLight ? 'text-slate-900' : 'text-white')}>{item.nodeLabel}</p>
-                        <p className={clsx('text-xs flex items-center gap-1.5', isLight ? 'text-slate-500' : 'text-gray-500')}>{def?.label} · <span className={clsx('font-mono font-medium', isLight ? 'text-slate-600' : 'text-gray-400')}>{item.provider.toUpperCase()}</span> <TierBadge tier={item.pricingTier ?? 'FALLBACK_ESTIMATE'} stale={item.pricingIsStale} /></p>
+                        <p className={clsx('font-semibold text-sm', isLight ? 'text-slate-900' : 'text-white')}>{item.nodeLabel}</p>
+                        <p className={clsx('text-xs flex items-center gap-2 mt-0.5', isLight ? 'text-slate-500' : 'text-slate-400')}>
+                          <span>{def?.label}</span>
+                          <span>·</span>
+                          <span className={clsx(
+                            'text-[9px] px-1.5 py-0.5 rounded border font-semibold uppercase tracking-wider',
+                            item.provider === 'azure'
+                              ? (isLight ? 'bg-[#0078d4]/10 text-[#005a9e] border-[#0078d4]/30' : 'bg-[#0078d4]/20 text-[#50e6ff] border-[#0078d4]/40')
+                              : (isLight ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-amber-500/15 text-amber-300 border-amber-500/30')
+                          )}>
+                            {item.provider.toUpperCase()}
+                          </span>
+                          <TierBadge tier={item.pricingTier ?? 'FALLBACK_ESTIMATE'} stale={item.pricingIsStale} isLight={isLight} />
+                        </p>
                       </div>
                     </div>
                     <div className="text-right">

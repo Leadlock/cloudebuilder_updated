@@ -154,7 +154,7 @@ export default function Sidebar() {
       {/* Header / Logo */}
       <div className={clsx(
         "flex items-center justify-between px-3 py-4 border-b shrink-0 transition-colors",
-        isLight ? "border-slate-200 bg-white" : "border-gray-800 bg-gray-950"
+        isLight ? "border-slate-200 bg-white" : "border-white/[0.08] bg-[#141416]"
       )}>
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center shrink-0 shadow-md shadow-blue-500/20">
@@ -218,12 +218,12 @@ export default function Sidebar() {
                     className={clsx(
                       'w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-xs font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-left',
                       active
-                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/25 ring-1 ring-blue-400/30 font-bold'
+                        ? 'bg-[#0078d4] text-white shadow-sm ring-1 ring-[#0078d4]/40 font-semibold'
                         : disabled
-                        ? isLight ? 'text-slate-300 cursor-not-allowed opacity-50' : 'text-gray-700 cursor-not-allowed opacity-40'
+                        ? isLight ? 'text-slate-300 cursor-not-allowed opacity-50' : 'text-slate-600 cursor-not-allowed opacity-40'
                         : isLight
                         ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 active:scale-[0.98]'
-                        : 'text-gray-400 hover:text-white hover:bg-gray-900/90 active:scale-[0.98]'
+                        : 'text-slate-300 hover:text-white hover:bg-white/[0.06] active:scale-[0.98]'
                     )}
                   >
                     <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
@@ -241,7 +241,7 @@ export default function Sidebar() {
       {(!sidebarCollapsed || isMobile) && (
         <div className={clsx(
           "border-t p-3 shrink-0 transition-colors",
-          isLight ? "border-slate-200 bg-slate-50/80" : "border-gray-800/80 bg-gray-950/95"
+          isLight ? "border-slate-200 bg-slate-50/80" : "border-white/[0.08] bg-[#141416]"
         )}>
           <div className="flex items-center justify-between mb-2 px-1">
             <span className={clsx("text-[10px] uppercase tracking-wider font-bold", isLight ? "text-slate-500" : "text-gray-400")}>
@@ -284,10 +284,10 @@ export default function Sidebar() {
                       isActive
                         ? isLight
                           ? 'bg-blue-50 text-blue-900 font-bold border-blue-300 shadow-xs'
-                          : 'bg-blue-950/60 text-blue-200 font-semibold border-blue-600/50 shadow-md shadow-blue-950/50'
+                          : 'bg-[#0078d4]/18 text-[#50e6ff] font-semibold border-[#0078d4]/40 shadow-xs'
                         : isLight
                         ? 'text-slate-700 hover:text-slate-900 hover:bg-white border-slate-200/90 shadow-2xs'
-                        : 'text-gray-300 hover:text-white hover:bg-gray-900/80 border-gray-800/50'
+                        : 'text-slate-300 hover:text-white hover:bg-white/[0.06] border-white/[0.06]'
                     )}
                   >
                     <span
@@ -393,7 +393,7 @@ export default function Sidebar() {
         }}
         className={clsx(
           'hidden lg:flex flex-col shrink-0 h-screen select-none relative group/sidebar transition-colors',
-          isLight ? 'bg-white border-r border-slate-200' : 'bg-gray-950 border-r border-gray-800',
+          isLight ? 'bg-white border-r border-slate-200' : 'bg-[#161618] border-r border-white/[0.08]',
           !isResizing && 'transition-[width] duration-200 ease-out'
         )}
       >
@@ -428,7 +428,7 @@ export default function Sidebar() {
             onClick={() => dispatch({ type: 'SET_MOBILE_SIDEBAR', open: false })}
           />
           {/* Slide-over Drawer */}
-          <div className="relative w-72 max-w-[85vw] bg-gray-950 border-r border-gray-800 h-full flex flex-col shadow-2xl z-10 animate-in slide-in-from-left duration-200">
+          <div className={clsx("relative w-72 max-w-[85vw] border-r h-full flex flex-col shadow-2xl z-10 animate-in slide-in-from-left duration-200", isLight ? "bg-white border-slate-200" : "bg-[#161618] border-white/[0.08]")}>
             {navContent(true)}
           </div>
         </div>

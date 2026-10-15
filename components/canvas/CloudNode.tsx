@@ -134,15 +134,15 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
         className={clsx(
           'relative w-[60px] h-[60px] sm:w-16 sm:h-16 rounded-xl flex items-center justify-center transition-all duration-150',
           isLight
-            ? 'bg-white shadow-sm border border-slate-300 hover:border-slate-400 hover:shadow-md'
-            : 'bg-slate-900 shadow-md border border-slate-700 hover:border-slate-500 hover:shadow-xl',
+            ? 'bg-white shadow-xs border border-slate-200/90 hover:border-[#0078d4]/60 hover:shadow-md'
+            : 'bg-[#1c1c1e] shadow-md border border-white/10 hover:border-[#0078d4]/60 hover:shadow-xl',
           isDeleted && '!opacity-50 !border-slate-300 bg-slate-100 grayscale',
           isDeleting && '!border-rose-500/80 ring-2 ring-rose-500/30 shadow-rose-950/40',
           isStopped && '!border-amber-500/60 shadow-amber-950/30',
           isFailed && '!border-rose-500 ring-2 ring-rose-500/40',
-          isImported && !isDeleted && !isDeleting && !isStopped && !isFailed && (isLight ? '!border-cyan-500 shadow-cyan-500/10' : '!border-cyan-500/50'),
+          isImported && !isDeleted && !isDeleting && !isStopped && !isFailed && (isLight ? '!border-[#0078d4] shadow-[#0078d4]/10' : '!border-[#0078d4]/60 shadow-[#0078d4]/20'),
           selected
-            ? '!border-rose-500 !ring-2 !ring-rose-400 shadow-lg shadow-rose-500/20'
+            ? '!border-[#0078d4] !ring-2 !ring-[#0078d4]/40 shadow-lg shadow-[#0078d4]/20'
             : ''
         )}
       >
@@ -187,7 +187,7 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
           position={Position.Top}
           id="target-top"
           className={clsx(
-            '!w-2.5 !h-2.5 !bg-indigo-500/70 hover:!bg-indigo-600 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
+            '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
             isLight ? '!border-white' : '!border-slate-900'
           )}
           style={{ top: -5 }}
@@ -197,7 +197,7 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
           position={Position.Top}
           id="source-top"
           className={clsx(
-            '!w-2.5 !h-2.5 !bg-indigo-500/70 hover:!bg-indigo-600 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
+            '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
             isLight ? '!border-white' : '!border-slate-900'
           )}
           style={{ top: -5 }}
@@ -208,7 +208,7 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
           position={Position.Right}
           id="target-right"
           className={clsx(
-            '!w-2.5 !h-2.5 !bg-indigo-500/70 hover:!bg-indigo-600 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
+            '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
             isLight ? '!border-white' : '!border-slate-900'
           )}
           style={{ right: -5 }}
@@ -218,7 +218,7 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
           position={Position.Right}
           id="source-right"
           className={clsx(
-            '!w-2.5 !h-2.5 !bg-indigo-500/70 hover:!bg-indigo-600 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
+            '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
             isLight ? '!border-white' : '!border-slate-900'
           )}
           style={{ right: -5 }}
@@ -229,7 +229,7 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
           position={Position.Bottom}
           id="target-bottom"
           className={clsx(
-            '!w-2.5 !h-2.5 !bg-indigo-500/70 hover:!bg-indigo-600 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
+            '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
             isLight ? '!border-white' : '!border-slate-900'
           )}
           style={{ bottom: -5 }}
@@ -239,7 +239,7 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
           position={Position.Bottom}
           id="source-bottom"
           className={clsx(
-            '!w-2.5 !h-2.5 !bg-indigo-500/70 hover:!bg-indigo-600 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
+            '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
             isLight ? '!border-white' : '!border-slate-900'
           )}
           style={{ bottom: -5 }}
@@ -250,7 +250,7 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
           position={Position.Left}
           id="target-left"
           className={clsx(
-            '!w-2.5 !h-2.5 !bg-indigo-500/70 hover:!bg-indigo-600 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
+            '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
             isLight ? '!border-white' : '!border-slate-900'
           )}
           style={{ left: -5 }}
@@ -260,7 +260,7 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
           position={Position.Left}
           id="source-left"
           className={clsx(
-            '!w-2.5 !h-2.5 !bg-indigo-500/70 hover:!bg-indigo-600 !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
+            '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
             isLight ? '!border-white' : '!border-slate-900'
           )}
           style={{ left: -5 }}
@@ -282,7 +282,7 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
           className={clsx(
             'text-[11px] font-semibold tracking-tight text-center leading-snug line-clamp-2 select-none',
             selected
-              ? 'text-rose-600 dark:text-rose-400 font-bold'
+              ? 'text-[#0078d4] dark:text-[#50e6ff] font-bold'
               : isLight
               ? 'text-slate-800'
               : 'text-slate-200'

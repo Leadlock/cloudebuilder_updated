@@ -212,7 +212,7 @@ export default function SecurityPanel() {
 
   const cov = score.coverage;
   return (
-    <div className={clsx('flex-1 overflow-y-auto px-4 sm:px-6 py-6 pb-36 custom-scrollbar', isLight ? 'bg-slate-50 text-slate-900' : 'bg-gray-950 text-slate-100')} data-testid="security-panel">
+    <div className={clsx('flex-1 overflow-y-auto px-4 sm:px-6 py-6 pb-36 custom-scrollbar', isLight ? 'bg-slate-50 text-slate-900' : 'bg-[#111113] text-slate-100')} data-testid="security-panel">
       <div className="max-w-5xl mx-auto space-y-5">
         {/* Header */}
         <div className="flex flex-wrap items-center gap-3">
@@ -222,7 +222,7 @@ export default function SecurityPanel() {
           <span className={clsx('text-[11px]', isLight ? 'text-slate-500' : 'text-gray-500')}>Ruleset {assessment.rulesetVersion} · {assessment.providers.map((p) => p.toUpperCase()).join(' + ')}</span>
           <div className="ml-auto flex gap-2">
             <button onClick={() => void refreshServer()} disabled={!isSaved || isStale || scanning} title={!isSaved ? 'Save the project to run persisted scans' : isStale ? 'Save your changes first' : 'Re-run the persisted scan'}
-              className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs disabled:opacity-40 transition-all border', isLight ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300 shadow-sm' : 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700')}>
+              className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs disabled:opacity-40 transition-all border', isLight ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300 shadow-sm' : 'bg-[#242426] hover:bg-[#2c2c2e] text-slate-200 border-white/[0.12]')}>
               <RefreshCw className={clsx('w-3.5 h-3.5', scanning && 'animate-spin')} />Re-scan
             </button>
             {(['pdf', 'html', 'json'] as const).map((fmt) => (
@@ -236,7 +236,7 @@ export default function SecurityPanel() {
         </div>
 
         {/* Persistence status */}
-        <div className={clsx('rounded-xl border px-4 py-2.5 text-xs flex flex-wrap items-center gap-2', isStale ? (isLight ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-amber-900/20 border-amber-800/50 text-amber-200') : !isSaved ? (isLight ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-gray-800/60 border-gray-700 text-gray-400') : persisted?.assessment ? (isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-gray-800/60 border-gray-700 text-gray-300') : (isLight ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-gray-800/60 border-gray-700 text-gray-400'))}>
+        <div className={clsx('rounded-xl border px-4 py-2.5 text-xs flex flex-wrap items-center gap-2', isStale ? (isLight ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-amber-900/20 border-amber-800/50 text-amber-200') : !isSaved ? (isLight ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-[#1c1c1e] border-white/[0.08] text-slate-400') : persisted?.assessment ? (isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-[#1c1c1e] border-white/[0.08] text-slate-300') : (isLight ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-[#1c1c1e] border-white/[0.08] text-slate-400'))}>
           {isStale ? <><AlertTriangle className="w-4 h-4 text-amber-600" />Showing a live evaluation of unsaved changes. Save to persist, re-scan the stored architecture and enable report export.</>
             : !isSaved ? <><Info className="w-4 h-4 text-blue-500" />Draft architecture — live evaluation only. Save as a project to persist scans, record review decisions and export reports.</>
               : persisted?.assessment ? <><CheckCircle2 className="w-4 h-4 text-emerald-500" />Persisted scan of revision {persisted.architectureRevision} at {new Date(persisted.createdAt).toLocaleString()} · graph {persisted.graphHash}{divergent ? <span className="text-amber-600 ml-2 font-medium">— differs from the live view; re-scan after saving.</span> : <span className="text-emerald-600 ml-2 font-medium">— matches the live view.</span>}</>
@@ -250,7 +250,7 @@ export default function SecurityPanel() {
 
         {/* Scores */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className={clsx('lg:col-span-2 border rounded-2xl p-5 flex items-center gap-5 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-800 border-gray-700')}>
+          <div className={clsx('lg:col-span-2 border rounded-2xl p-5 flex items-center gap-5 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#1c1c1e] border-white/[0.08]')}>
             <ScoreRing score={score.score} isLight={isLight} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
@@ -271,15 +271,15 @@ export default function SecurityPanel() {
               </div>
             </div>
           </div>
-          <div className={clsx('border rounded-2xl p-5 space-y-3 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-800 border-gray-700')}>
+          <div className={clsx('border rounded-2xl p-5 space-y-3 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#1c1c1e] border-white/[0.08]')}>
             <h3 className={clsx('font-semibold text-sm', isLight ? 'text-slate-900' : 'text-white')}>Auto-Fix</h3>
             <p className={clsx('text-xs', isLight ? 'text-slate-600' : 'text-gray-400')}>{safeFixes.length} safe · {assessment.findings.filter((f) => f.autoFix.available && f.autoFix.safety === 'REVIEW_REQUIRED').length} need review · {assessment.findings.filter((f) => !f.autoFix.available).length} manual</p>
             <button onClick={() => setBulkOpen(true)} disabled={safeFixes.length === 0} className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold disabled:opacity-40 transition-colors shadow-sm" data-testid="fix-all-safe">
               <Wrench className="w-3.5 h-3.5" />Fix all safe issues ({safeFixes.length})
             </button>
-            <div className={clsx('flex rounded-lg overflow-hidden border text-xs', isLight ? 'border-slate-300' : 'border-gray-700')}>
+            <div className={clsx('flex rounded-lg overflow-hidden border text-xs', isLight ? 'border-slate-300' : 'border-white/[0.10]')}>
               {(['security', 'all'] as const).map((s) => (
-                <button key={s} onClick={() => setScope(s)} className={clsx('flex-1 py-1.5 transition-colors', scope === s ? (isLight ? 'bg-slate-200 text-slate-900 font-semibold' : 'bg-gray-700 text-white') : (isLight ? 'bg-slate-50 text-slate-600 hover:text-slate-900' : 'text-gray-400 hover:text-gray-200'))}>{s === 'security' ? 'Security' : 'All pillars'}</button>
+                <button key={s} onClick={() => setScope(s)} className={clsx('flex-1 py-1.5 transition-colors', scope === s ? (isLight ? 'bg-slate-200 text-slate-900 font-semibold' : 'bg-[#0078d4] text-white') : (isLight ? 'bg-slate-50 text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white'))}>{s === 'security' ? 'Security' : 'All pillars'}</button>
               ))}
             </div>
           </div>
@@ -289,14 +289,14 @@ export default function SecurityPanel() {
         {aiReview && aiReview.nodes === nodes && <p className={clsx('text-[11px] -mt-3', isLight ? 'text-slate-500' : 'text-gray-500')}>The AI summary above will be included in PDF and HTML exports as a separately labelled section.</p>}
 
         {/* Tabs */}
-        <div className={clsx('flex gap-1 border-b text-xs', isLight ? 'border-slate-200' : 'border-gray-800')}>
+        <div className={clsx('flex gap-1 border-b text-xs', isLight ? 'border-slate-200' : 'border-white/[0.08]')}>
           {([['findings', `Findings (${findings.length})`], ['not-evaluated', `Not evaluated (${notEvaluated.length})`], ['passed', `Passed (${passed.length})`], ['history', `History (${history.length})`]] as [Tab, string][]).map(([t, label]) => (
-            <button key={t} onClick={() => setTab(t)} className={clsx('px-3 py-2 -mb-px border-b-2 font-medium transition-colors', tab === t ? (isLight ? 'border-blue-600 text-blue-600' : 'border-blue-500 text-white') : (isLight ? 'border-transparent text-slate-500 hover:text-slate-900' : 'border-transparent text-gray-400 hover:text-gray-200'))}>{label}</button>
+            <button key={t} onClick={() => setTab(t)} className={clsx('px-3 py-2 -mb-px border-b-2 font-medium transition-colors', tab === t ? (isLight ? 'border-blue-600 text-blue-600' : 'border-[#0078d4] text-white') : (isLight ? 'border-transparent text-slate-500 hover:text-slate-900' : 'border-transparent text-slate-400 hover:text-white'))}>{label}</button>
           ))}
         </div>
 
         {tab === 'findings' && (findings.length === 0 ? (
-          <div className={clsx('text-center py-12 rounded-2xl border', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-800/40 border-gray-700')}>
+          <div className={clsx('text-center py-12 rounded-2xl border', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#1c1c1e] border-white/[0.08]')}>
             <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
             <p className={clsx('font-medium', isLight ? 'text-slate-900' : 'text-white')}>No failing checks{sevFilter !== 'ALL' ? ` at ${SEVERITY_STYLE[sevFilter].label} severity` : ''}</p>
             <p className={clsx('text-xs mt-1', isLight ? 'text-slate-500' : 'text-gray-500')}>{notEvaluated.length > 0 ? `${notEvaluated.length} check(s) could not be evaluated — see "Not evaluated". This is not the same as passing.` : 'All applicable checks were evaluated.'}</p>
@@ -311,7 +311,7 @@ export default function SecurityPanel() {
           <div className="space-y-2">
             <p className={clsx('text-xs', isLight ? 'text-slate-500' : 'text-gray-500')}>These controls apply but could not be evaluated from the architecture. They are excluded from the score and never treated as passing.</p>
             {notEvaluated.map((e) => (
-              <div key={e.findingId} className={clsx('border rounded-xl p-3 text-xs', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-800/60 border-gray-700')}>
+              <div key={e.findingId} className={clsx('border rounded-xl p-3 text-xs', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#1c1c1e] border-white/[0.08]')}>
                 <div className="flex items-center gap-2 mb-1"><StatusBadge status={e.status} /><code className={isLight ? 'text-slate-500' : 'text-gray-500'}>{e.findingId}</code><span className={clsx('font-semibold', isLight ? 'text-slate-900' : 'text-white')}>{ruleOf(e.ruleId).title}</span></div>
                 <p className={isLight ? 'text-slate-600' : 'text-gray-400'}>{e.resourceLabels.join(', ') || 'Account / subscription level'} — {e.observation}</p>
                 {e.requiredData && <p className={clsx('mt-1', isLight ? 'text-slate-500' : 'text-gray-500')}>Needed: {e.requiredData}</p>}
@@ -323,7 +323,7 @@ export default function SecurityPanel() {
         {tab === 'passed' && (
           <div className="space-y-1.5">
             {passed.map((e) => (
-              <div key={e.findingId} className={clsx('flex items-start gap-2 text-xs rounded-xl px-3 py-2 border', isLight ? 'bg-white border-slate-200 text-slate-800 shadow-sm' : 'bg-gray-800/40 border-transparent text-gray-300')}>
+              <div key={e.findingId} className={clsx('flex items-start gap-2 text-xs rounded-xl px-3 py-2 border', isLight ? 'bg-white border-slate-200 text-slate-800 shadow-sm' : 'bg-[#1c1c1e] border-white/[0.08] text-slate-200')}>
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
                 <span><span className={isLight ? 'text-slate-400' : 'text-gray-500'}>{e.ruleId}</span> · {e.resourceLabels.join(', ') || 'Architecture'} — {e.observation}</span>
               </div>
@@ -337,7 +337,7 @@ export default function SecurityPanel() {
             {history.map((h, i) => {
               const prev = history[i + 1];
               return (
-                <div key={h.scanId} className={clsx('flex flex-wrap items-center gap-3 border rounded-xl px-3 py-2', isLight ? 'bg-white border-slate-200 shadow-sm text-slate-800' : 'bg-gray-800/60 border-gray-700 text-gray-300')}>
+                <div key={h.scanId} className={clsx('flex flex-wrap items-center gap-3 border rounded-xl px-3 py-2', isLight ? 'bg-white border-slate-200 shadow-sm text-slate-800' : 'bg-[#1c1c1e] border-white/[0.08] text-slate-200')}>
                   <History className={clsx('w-3.5 h-3.5', isLight ? 'text-slate-400' : 'text-gray-500')} />
                   <span>{new Date(h.createdAt).toLocaleString()}</span>
                   <span className={isLight ? 'text-slate-400' : 'text-gray-500'}>rev {h.architectureRevision ?? '—'} · ruleset {h.rulesetVersion ?? 'legacy'}</span>
