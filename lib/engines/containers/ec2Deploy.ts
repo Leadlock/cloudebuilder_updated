@@ -23,6 +23,9 @@ import type { ContainerConfig } from './dockerTemplates';
 import { usesExistingImage } from './existingImageUse';
 import { ec2HourlyUsd } from '@/lib/engines/cost/awsPricing';
 
+/** A Terraform interpolation, written so that no escaping is needed inside a template string. */
+const tfRef = (expr: string): string => '$' + '{' + expr + '}';
+
 export interface Ec2Config {
   enabled: boolean;
   region: string;
@@ -404,7 +407,7 @@ output "public_ip" {
 }
 
 output "app_url" {
-  value = ${databaseOf(c) ? '"\${' + ip + '}:\${var.app_port}"' : '"http://\\${' + ip + '}:\\${var.app_port}' + c.healthPath + '"'}
+  value = ${databaseOf(c) ? `"${tfRef(ip)}:${tfRef('var.app_port')}"` : `"http://${tfRef(ip)}:${tfRef('var.app_port')}${c.healthPath}"`}
 }
 
 output "connect" {

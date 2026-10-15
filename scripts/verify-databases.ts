@@ -130,7 +130,8 @@ async function viaVmLine(id: DbEngineId): Promise<void> {
   const name = `vmdb-${id}`;
   const command = line.replace(/^exec docker run/, 'docker run -d').replace(`-p ${c.port}:${c.port}`, `-p 127.0.0.1:${freePort()}:${c.port}`).replace('"$ENV_FILE"', `"${envFile}"`).replace('"$IMAGE"', c.image);
   const start = () => run('bash', ['-c', command]);
-  const stop = () => run('docker', ['rm', '-f', name]);
+  // Like the VM's systemd unit (ExecStop=docker stop): the database gets time to write its data out before the container is removed.
+  const stop = () => { run('docker', ['stop', '-t', '60', name]); return run('docker', ['rm', '-f', name]); };
   const volume = `${c.appName}-data`;
   try {
     stop();

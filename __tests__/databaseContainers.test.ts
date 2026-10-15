@@ -275,3 +275,24 @@ describe('the Stack groups', () => {
     expect(currentOption(fastapi)?.category).toBe('backend');
   });
 });
+
+describe('the Terraform of every VM deployment is written with valid interpolations', () => {
+  const cases: Array<[string, ContainerConfig, string]> = [
+    ['EC2, an application', withDeployTarget({ ...defaultConfig('node'), image: 'nginx:1.27' }, 'ec2'), 'ec2'],
+    ['EC2, built from source', withDeployTarget({ ...defaultConfig('node') }, 'ec2'), 'ec2'],
+    ['Azure VM, an application', withDeployTarget({ ...defaultConfig('node'), image: 'nginx:1.27' }, 'azure-vm'), 'azvm'],
+    ['Azure VM, built from source', withDeployTarget({ ...defaultConfig('node') }, 'azure-vm'), 'azvm'],
+    ['EC2, a database', db('postgres', 'ec2'), 'ec2'],
+    ['Azure VM, a database', db('mysql', 'azure-vm'), 'azvm'],
+  ];
+  test.each(cases)('%s: no escaped "${" in any .tf file, and the app_url output is a clean interpolation', (_n, c, dir) => {
+    const { r, get } = gen(c);
+    for (const f of r.files.filter((x) => x.path.endsWith('.tf'))) {
+      // Terraform rejects "\${" and "$\{" ("Invalid escape sequence"); a literal dollar-brace is written "$${".
+      expect({ file: f.path, bad: /\\\$\{|\$\\\{/.test(f.content) }).toEqual({ file: f.path, bad: false });
+    }
+    const url = /output "app_url" \{\s*value\s*=\s*"([^"]*)"/.exec(get(`${dir}/outputs.tf`))![1]!;
+    expect(url).toMatch(/\$\{(aws_instance\.app\.public_ip|aws_eip\.app\.public_ip|azurerm_public_ip\.app\.ip_address)\}:\$\{var\.app_port\}/);
+    expect(url.startsWith('http://')).toBe(!databaseOf(c));
+  });
+});

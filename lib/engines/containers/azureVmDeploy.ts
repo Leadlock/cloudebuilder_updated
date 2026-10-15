@@ -18,6 +18,9 @@ import { databaseOf } from './databases';
 import { companionServices } from './companions';
 import { hostPorts, hostSoftwareSh, hostSoftwareWarnings, validateHostSoftware } from './hostSoftware';
 
+/** A Terraform interpolation, written so that no escaping is needed inside a template string. */
+const tfRef = (expr: string): string => '$' + '{' + expr + '}';
+
 export interface AzVmConfig {
   enabled: boolean;
   location: string;
@@ -394,7 +397,7 @@ output "public_ip" {
 }
 
 output "app_url" {
-  value = ${databaseOf(c) ? '"$\\{azurerm_public_ip.app.ip_address}:$\\{var.app_port}"' : '"http://$\\{azurerm_public_ip.app.ip_address}:$\\{var.app_port}' + c.healthPath + '"'}
+  value = ${databaseOf(c) ? `"${tfRef('azurerm_public_ip.app.ip_address')}:${tfRef('var.app_port')}"` : `"http://${tfRef('azurerm_public_ip.app.ip_address')}:${tfRef('var.app_port')}${c.healthPath}"`}
 }
 
 output "logs" {
