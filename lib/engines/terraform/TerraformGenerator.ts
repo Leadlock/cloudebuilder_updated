@@ -20,6 +20,7 @@ import {
   privateEndpointBlocks, serviceBusBlocks,
 } from './azureServices';
 import { generateUniversalAwsHcl, generateUniversalAzureHcl } from '@/lib/resources/catalog';
+import { canGenerateGenericBlock } from '@/lib/resources/genericTerraform';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -893,7 +894,7 @@ locals {
           break;
         }
         default: {
-          if (r.resourceType.startsWith('aws_')) {
+          if (r.resourceType.startsWith('aws_') && canGenerateGenericBlock(r.resourceType)) {
             const universal = generateUniversalAwsHcl(r, name, cfg, connections, resources, resolver);
             blocks.push(universal.block);
             resourceMap[r.id] = universal.address;
@@ -3155,7 +3156,7 @@ locals {
           break;
         }
         default: {
-          if (r.resourceType.startsWith('azure_') || r.resourceType.startsWith('azurerm_')) {
+          if ((r.resourceType.startsWith('azure_') || r.resourceType.startsWith('azurerm_')) && canGenerateGenericBlock(r.resourceType)) {
             const universal = generateUniversalAzureHcl(r, name, cfg, rgName, rgLoc, connections, resources, resolver);
             blocks.push(universal.block);
             resourceMap[r.id] = universal.address;
