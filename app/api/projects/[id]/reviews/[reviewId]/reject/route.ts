@@ -1,3 +1,4 @@
+import { mayDecideReviews, reviewDecisionMessage } from '@/lib/auth/superAdmins';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ok, unauthorized, forbidden, badRequest, notFound, parseBody } from '@/lib/api/response';
@@ -19,8 +20,8 @@ export async function POST(
     const identity = extractIdentity(req);
     if (!identity) return unauthorized('Authentication required');
 
-    if (identity.role !== 'admin') {
-      return forbidden('Access denied: Only Administrators can reject architecture reviews.');
+    if (!mayDecideReviews(identity.email, identity.role)) {
+      return forbidden(reviewDecisionMessage());
     }
 
     const { id: projectId, reviewId } = await params;

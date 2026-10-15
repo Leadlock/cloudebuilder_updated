@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname, join } from 'path';
 import type { CanvasNode, CanvasEdge } from '@/types';
 import { runSecurityScan } from '@/lib/analysis';
+import { isSuperAdmin, superAdminEmails, superAdminsConfigured, reviewDecisionMessage } from '@/lib/auth/superAdmins';
 
 export type ReviewStatus =
   | 'pending_review'
@@ -32,6 +33,8 @@ export interface ArchitectureReview {
   reviewedBy?: { id: string; name: string; email: string };
   reviewedAt?: string;
   reviewerComments?: string;
+  /** Who has to decide: the super administrators when there are any (set when the review is submitted). */
+  assignedTo?: string[];
   summary: {
     nodeCount: number;
     edgeCount: number;
@@ -163,6 +166,7 @@ export class ArchitectureReviewService {
       submittedBy: user,
       submittedAt: new Date().toISOString(),
       summary,
+      ...(superAdminsConfigured() ? { assignedTo: superAdminEmails() } : {}),
     };
 
     REVIEWS.set(reviewId, review);
@@ -190,6 +194,30 @@ export class ArchitectureReviewService {
       .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
   }
 
+  /** Only a super administrator decides, when there is one. The routes check this too; this keeps any other caller of the service honest. */
+  private static assertMayDecide(email: string): void {
+    if (superAdminsConfigured() && !isSuperAdmin(email)) {
+      throw Object.assign(new Error(reviewDecisionMessage()), { statusCode: 403 });
+    }
+  }
+
+  /**
+   * Whether a review's approval counts. With a super administrator set up, an approval given by anyone else does not (for example one given
+   * before the setting was turned on), so nothing can be deployed on the strength of it.
+   */
+  static approvalIsValid(review: ArchitectureReview | null | undefined): boolean {
+    if (!review || review.status !== 'approved') return false;
+    return !superAdminsConfigured() || isSuperAdmin(review.reviewedBy?.email);
+  }
+
+  /** The message for a deployment or plan that has no valid approval. */
+  static approvalBlockedMessage(review: ArchitectureReview | null | undefined, what: 'Deployment' | 'Plan'): string {
+    if (review?.status === 'approved' && !this.approvalIsValid(review)) return `${what} blocked: the approval must come from ${superAdminEmails().join(' or ')}. Submit the architecture for review again.`;
+    return review?.status === 'invalidated_due_to_changes'
+      ? `${what} blocked: Architecture was modified after approval and approval was invalidated.`
+      : `${what} blocked: Architecture must be formally approved before ${what === 'Plan' ? 'a Terraform plan can be generated' : 'deployment'}.`;
+  }
+
   /**
    * Approve a review (Admin only)
    */
@@ -198,6 +226,7 @@ export class ArchitectureReviewService {
     adminUser: { id: string; name: string; email: string },
     comments = 'Architecture approved for deployment'
   ): ArchitectureReview {
+    this.assertMayDecide(adminUser.email);
     const review = REVIEWS.get(reviewId);
     if (!review) throw new Error(`Review ${reviewId} not found`);
 
@@ -217,6 +246,7 @@ export class ArchitectureReviewService {
     adminUser: { id: string; name: string; email: string },
     comments: string
   ): ArchitectureReview {
+    this.assertMayDecide(adminUser.email);
     const review = REVIEWS.get(reviewId);
     if (!review) throw new Error(`Review ${reviewId} not found`);
 
@@ -236,6 +266,7 @@ export class ArchitectureReviewService {
     adminUser: { id: string; name: string; email: string },
     comments: string
   ): ArchitectureReview {
+    this.assertMayDecide(adminUser.email);
     const review = REVIEWS.get(reviewId);
     if (!review) throw new Error(`Review ${reviewId} not found`);
 
@@ -293,12 +324,8 @@ export class ArchitectureReviewService {
 
     // 2. Review Gate: Must have an approved review
     const latestReview = this.getLatestReview(projectId, environment);
-    if (!latestReview || latestReview.status !== 'approved') {
-      const err: any = new Error(
-        latestReview?.status === 'invalidated_due_to_changes'
-          ? 'Deployment blocked: Architecture was modified after approval and approval was invalidated.'
-          : 'Deployment blocked: Architecture must be formally approved before deployment.'
-      );
+    if (!latestReview || !this.approvalIsValid(latestReview)) {
+      const err: any = new Error(this.approvalBlockedMessage(latestReview, 'Deployment'));
       err.statusCode = 400;
       throw err;
     }

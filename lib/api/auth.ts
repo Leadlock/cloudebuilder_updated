@@ -9,6 +9,7 @@
  * - Never expose credentials through the returned identity.
  * - The identity is always resolved server-side; never trust client-supplied user IDs.
  */
+import { isSuperAdmin, superAdminsConfigured } from '@/lib/auth/superAdmins';
 import { NextRequest } from 'next/server';
 import { AuthService } from './authService';
 import { TtlCache } from './ttlCache';
@@ -137,7 +138,12 @@ export async function getOrgRole(
     const member = await db.orm.public.OrgMember
       .where({ orgId, userId })
       .first();
-    const role = member?.role ?? null;
+    let role = member?.role ?? null;
+    // A super administrator is an owner of every organization they belong to (never of one they do not belong to).
+    if (role && superAdminsConfigured()) {
+      const person = await db.orm.public.User.where({ id: userId }).first();
+      if (isSuperAdmin(person?.email)) role = 'owner';
+    }
     if (AUTH_CACHE_MS > 0) { roleCache.set(key, role); roleKeys.add(key); }
     return role;
   } catch {

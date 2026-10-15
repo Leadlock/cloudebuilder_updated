@@ -62,6 +62,8 @@ export default function ReviewWorkflowPanel() {
     email: 'admin@cloudcraft.io',
   };
   const isAdmin = currentUser.role === 'admin';
+  // Who may decide is worked out by the server (the super administrator when there is one); the server checks it again on every decision.
+  const canDecide: boolean = typeof currentUser.canDecideReviews === 'boolean' ? currentUser.canDecideReviews : isAdmin;
 
   const formatErrorMessage = (err: any, fallback = 'An error occurred'): string => {
     if (!err) return fallback;
@@ -303,8 +305,16 @@ export default function ReviewWorkflowPanel() {
                 </div>
                 <p>
                   The architecture topology or node configurations were modified after approval was granted.
-                  Deployment is blocked until an Administrator re-reviews and approves the latest changes.
+                  Deployment is blocked until the approver re-reviews and approves the latest changes.
                 </p>
+              </div>
+            )}
+
+            {latestReview && latestReview.status === 'pending_review' && latestReview.assignedTo && latestReview.assignedTo.length > 0 && (
+              <div data-testid="review-assignment" className={clsx("p-3 rounded-xl border text-xs", isLight ? "bg-amber-50 border-amber-200 text-amber-900" : "bg-amber-500/10 border-amber-500/30 text-amber-200")}>
+                {canDecide
+                  ? <><strong>Waiting for you.</strong> This review is assigned to you. Nothing can be planned or deployed until you approve it.</>
+                  : <><strong>Waiting for approval by {latestReview.assignedTo.join(' or ')}.</strong> Only they can approve this architecture, and nothing can be planned or deployed until they do.</>}
               </div>
             )}
 
@@ -361,7 +371,7 @@ export default function ReviewWorkflowPanel() {
                 {actionLoading ? 'Submitting...' : 'Submit Current Architecture for Review'}
               </button>
 
-              {isAdmin && latestReview && latestReview.status !== 'approved' && (
+              {canDecide && latestReview && latestReview.status !== 'approved' && (
                 <>
                   <button
                     onClick={handleApprove}
@@ -396,7 +406,7 @@ export default function ReviewWorkflowPanel() {
               )}
             </div>
 
-            {isAdmin && latestReview && (
+            {canDecide && latestReview && (
               <div className="pt-2">
                 <label className={clsx("text-xs font-medium block mb-1", isLight ? "text-slate-700" : "text-slate-400")}>
                   Administrator Review Comments (Optional for approval, required for rejection)

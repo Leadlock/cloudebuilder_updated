@@ -7,6 +7,7 @@ import { createHash } from 'crypto';
 import { assessEncryptionKey } from '@/lib/crypto/credentials';
 import { allowedEmailDomains } from '@/lib/auth/emailDomains';
 import { restrictedFeatureEmails, restrictedFeaturesClosed } from '@/lib/auth/restrictedFeatures';
+import { superAdminEmails, superAdminsConfigured } from '@/lib/auth/superAdmins';
 
 export interface StartupReport { errors: string[]; warnings: string[] }
 
@@ -68,6 +69,12 @@ export function checkProductionConfig(env: NodeJS.ProcessEnv = process.env): Sta
     const people = restrictedFeatureEmails(env);
     if (people.length === 0) errors.push('RESTRICTED_FEATURES_ALLOWED_EMAILS is set but has no valid email address, so nobody could use Deploy, the AI Generator or Cloud Accounts. Fix it or remove it.');
     else warnings.push(`Deploy, the AI Generator and Cloud Accounts are open only to ${people.length === 1 ? people[0] : `${people.length} listed accounts`} (RESTRICTED_FEATURES_ALLOWED_EMAILS).`);
+  }
+
+  if (superAdminsConfigured(env)) {
+    const admins = superAdminEmails(env);
+    if (admins.length === 0) errors.push('SUPER_ADMIN_EMAILS is set but has no valid email address, so nobody could approve an architecture review and nothing could be deployed. Fix it or remove it.');
+    else warnings.push(`Only ${admins.join(', ')} can approve architecture reviews, and they are an owner of every organization they belong to (SUPER_ADMIN_EMAILS).`);
   }
 
   const appUrl = env['APP_URL'];

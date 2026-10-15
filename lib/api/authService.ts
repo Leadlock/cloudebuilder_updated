@@ -16,6 +16,7 @@
  * any instance holding the same SESSION_SECRET can verify a token no
  * matter which instance minted it.
  */
+import { isSuperAdmin, mayDecideReviews } from '@/lib/auth/superAdmins';
 import { canUseRestrictedFeatures } from '@/lib/auth/restrictedFeatures';
 import { emailAllowed } from '@/lib/auth/emailDomains';
 import { isOperatorEmail } from '@/lib/terraform/access/operators';
@@ -37,6 +38,10 @@ export interface AuthUser {
   operator?: boolean;
   /** Shown in the interface only (whether the Deploy and AI Generator tabs are open). Every server check recomputes it from the email. */
   restrictedFeatures?: boolean;
+  /** Shown in the interface only: this person is a super administrator. */
+  superAdmin?: boolean;
+  /** Shown in the interface only: this person may approve, reject or send back architecture reviews. Every server check recomputes it. */
+  canDecideReviews?: boolean;
 }
 
 export interface UserSession {
@@ -114,8 +119,9 @@ const ADMIN_ORG_ROLES = new Set(['owner', 'admin']);
 async function toAuthUser(user: { id: string; email: string; name: string | null }): Promise<AuthUser> {
   const orgIds = await orgRepository_resolveOrgIds(user.id);
   const orgId = orgIds[0]?.orgId ?? '';
-  const role: AuthUser['role'] = orgIds[0] && ADMIN_ORG_ROLES.has(orgIds[0].role) ? 'admin' : 'user';
-  return { id: user.id, email: user.email, name: user.name ?? user.email, role, orgId, operator: await isOperatorEmail(user.email), restrictedFeatures: canUseRestrictedFeatures(user.email) };
+  // A super administrator is an administrator of the organization they belong to.
+  const role: AuthUser['role'] = isSuperAdmin(user.email) || (orgIds[0] && ADMIN_ORG_ROLES.has(orgIds[0].role)) ? 'admin' : 'user';
+  return { id: user.id, email: user.email, name: user.name ?? user.email, role, orgId, operator: await isOperatorEmail(user.email), restrictedFeatures: canUseRestrictedFeatures(user.email), superAdmin: isSuperAdmin(user.email), canDecideReviews: mayDecideReviews(user.email, role) };
 }
 
 // Lazily imported to avoid a hard dependency cycle at module init.
@@ -178,7 +184,7 @@ export class AuthService {
       token,
       user: {
         id: payload.sub, email: payload.email, name: payload.name,
-        role: payload.role, orgId: payload.orgId, avatarUrl: payload.avatarUrl,
+        role: isSuperAdmin(payload.email) ? 'admin' : payload.role, orgId: payload.orgId, avatarUrl: payload.avatarUrl,
       },
       createdAt: payload.iat,
       expiresAt: payload.exp,

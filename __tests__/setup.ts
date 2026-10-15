@@ -11,6 +11,7 @@ process.env['DATABASE_URL'] = 'postgresql://test:test@localhost:5432/cloudcraft_
 // their own values.
 process.env['ALLOWED_EMAIL_DOMAINS'] = '';
 process.env['RESTRICTED_FEATURES_ALLOWED_EMAILS'] = '';
+process.env['SUPER_ADMIN_EMAILS'] = '';
 
 // Allow the x-user-id / x-user-role test-automation identity headers that
 // lib/api/auth.ts's extractIdentity() otherwise refuses outside this opt-in —

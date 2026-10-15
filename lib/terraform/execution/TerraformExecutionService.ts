@@ -155,12 +155,8 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
     throw err;
   }
   const latestReview = ArchitectureReviewService.getLatestReview(input.projectId, input.environment);
-  if (!latestReview || latestReview.status !== 'approved') {
-    const err = new Error(
-      latestReview?.status === 'invalidated_due_to_changes'
-        ? 'Plan blocked: Architecture was modified after approval and approval was invalidated.'
-        : 'Plan blocked: Architecture must be formally approved before a Terraform plan can be generated.',
-    ) as Error & { statusCode: number };
+  if (!latestReview || !ArchitectureReviewService.approvalIsValid(latestReview)) {
+    const err = new Error(ArchitectureReviewService.approvalBlockedMessage(latestReview, 'Plan')) as Error & { statusCode: number };
     err.statusCode = 400;
     throw err;
   }

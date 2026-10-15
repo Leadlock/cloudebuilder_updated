@@ -63,6 +63,9 @@ jest.mock('@/lib/services/ArchitectureReviewService', () => ({
   ArchitectureReviewService: {
     getLatestReview: jest.fn(),
     computeArchitectureHash: jest.fn(),
+    // No super administrator is set in these tests, so an approved review counts, as it always did.
+    approvalIsValid: (r: { status?: string } | null) => r?.status === 'approved',
+    approvalBlockedMessage: (r: { status?: string } | null) => (r?.status === 'invalidated_due_to_changes' ? 'Plan blocked: Architecture was modified after approval and approval was invalidated.' : 'Plan blocked: Architecture must be formally approved before a Terraform plan can be generated.'),
   },
 }));
 

@@ -6,6 +6,8 @@
  * Nothing in this file touches the server or the browser, so the interface and the API use the same rule.
  */
 
+import { isSuperAdmin } from './superAdmins';
+
 /** The screens that are closed. */
 export const RESTRICTED_VIEWS: ReadonlySet<string> = new Set(['deploy', 'ai-generator', 'accounts']);
 
@@ -23,7 +25,7 @@ export const restrictedFeaturesClosed = (env: NodeJS.ProcessEnv = process.env): 
 export function canUseRestrictedFeatures(email: unknown, env: NodeJS.ProcessEnv = process.env): boolean {
   if (!restrictedFeaturesClosed(env)) return true;
   if (typeof email !== 'string') return false;
-  return restrictedFeatureEmails(env).includes(email.trim().toLowerCase());
+  return restrictedFeatureEmails(env).includes(email.trim().toLowerCase()) || isSuperAdmin(email, env);
 }
 
 /** The short word shown on a closed tab. */
