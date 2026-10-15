@@ -20,7 +20,7 @@ export default function FindingCard({ finding: f, onAutoFix, onReview, canReview
   const [open, setOpen] = useState(false);
   const sev = SEVERITY_STYLE[f.severity];
   return (
-    <div className={clsx('rounded-xl border transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : `bg-gray-800/60 ${sev.border}`)} data-testid="finding-card" data-finding-id={f.findingId}>
+    <div className={clsx('rounded-xl border transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : `bg-[#1c1c1e] ${sev.border} shadow-sm`)} data-testid="finding-card" data-finding-id={f.findingId}>
       <button type="button" onClick={() => setOpen((o) => !o)} className="w-full text-left p-4 flex gap-3 items-start" aria-expanded={open}>
         {open ? <ChevronDown className="w-4 h-4 mt-0.5 text-gray-500 shrink-0" /> : <ChevronRight className="w-4 h-4 mt-0.5 text-gray-500 shrink-0" />}
         <div className="flex-1 min-w-0">

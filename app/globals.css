@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/* ─── Microsoft Fluent 2 Design Tokens & Base Setup ──────────────────────────── */
+:root {
+  --font-fluent: "Segoe UI", "Segoe UI Variable Text", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --fluent-azure-blue: #0078d4;
+  --fluent-azure-light: #50e6ff;
+  --fluent-azure-hover: #106ebe;
+  --fluent-aws-amber: #f59e0b;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -9,29 +18,304 @@ body {
   height: 100%;
   margin: 0;
   padding: 0;
+  font-family: var(--font-fluent);
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ─── Microsoft Fluent Dark Mode (Default / .dark) ─────────────────────────── */
+html:not(.light),
+html.dark {
+  color-scheme: dark;
+}
+
+html:not(.light) body,
+html.dark body {
+  background-color: #111113 !important;
+  color: #f5f5f7 !important;
+}
+
+/* Base Canvas & Shell in Dark Mode */
+html:not(.light) [class*="bg-gray-950"],
+html:not(.light) [class*="bg-slate-950"],
+html:not(.light) [class*="bg-zinc-950"],
+html:not(.light) .bg-gray-950,
+html:not(.light) .bg-slate-950,
+html:not(.light) .bg-black {
+  background-color: #111113 !important;
+}
+
+/* Primary Elevated Cards & Surfaces in Dark Mode */
+html:not(.light) [class*="bg-gray-900"],
+html:not(.light) [class*="bg-slate-900"],
+html:not(.light) [class*="bg-zinc-900"],
+html:not(.light) .bg-gray-900,
+html:not(.light) .bg-slate-900 {
+  background-color: #1c1c1e !important;
+}
+
+/* Secondary Surfaces, Nested Panels & Active States in Dark Mode */
+html:not(.light) [class*="bg-gray-800"],
+html:not(.light) [class*="bg-slate-800"],
+html:not(.light) [class*="bg-zinc-800"],
+html:not(.light) .bg-gray-800,
+html:not(.light) .bg-slate-800 {
+  background-color: #242426 !important;
+}
+
+/* Crisp, subtle 1px Fluent borders in Dark Mode */
+html:not(.light) [class*="border-gray-900"],
+html:not(.light) [class*="border-slate-900"],
+html:not(.light) [class*="border-gray-800"],
+html:not(.light) [class*="border-slate-800"],
+html:not(.light) [class*="border-gray-700"],
+html:not(.light) [class*="border-slate-700"],
+html:not(.light) [class*="border-zinc-800"] {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Inputs & Form Controls in Dark Mode */
+html:not(.light) input:not([type="checkbox"]):not([type="radio"]),
+html:not(.light) select,
+html:not(.light) textarea {
+  background-color: #161618 !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #f5f5f7 !important;
+}
+
+html:not(.light) input::placeholder,
+html:not(.light) textarea::placeholder {
+  color: #71717a !important;
+}
+
+/* Fluent Translucent Pill Badges in Dark Mode */
+html:not(.light) [class*="bg-blue-900"],
+html:not(.light) [class*="bg-blue-950"] {
+  background-color: rgba(0, 120, 212, 0.18) !important;
+  border-color: rgba(0, 120, 212, 0.4) !important;
+  color: #50e6ff !important;
+}
+
+html:not(.light) [class*="bg-amber-900"],
+html:not(.light) [class*="bg-amber-950"],
+html:not(.light) [class*="bg-orange-900"],
+html:not(.light) [class*="bg-orange-950"] {
+  background-color: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(245, 158, 11, 0.35) !important;
+  color: #fcd34d !important;
+}
+
+html:not(.light) [class*="bg-emerald-900"],
+html:not(.light) [class*="bg-emerald-950"] {
+  background-color: rgba(16, 185, 129, 0.16) !important;
+  border-color: rgba(16, 185, 129, 0.35) !important;
+  color: #6ee7b7 !important;
+}
+
+html:not(.light) [class*="bg-purple-900"],
+html:not(.light) [class*="bg-purple-950"] {
+  background-color: rgba(168, 85, 247, 0.16) !important;
+  border-color: rgba(168, 85, 247, 0.35) !important;
+  color: #d8b4fe !important;
+}
+
+html:not(.light) [class*="bg-rose-950"],
+html:not(.light) [class*="bg-rose-900"],
+html:not(.light) [class*="bg-red-950"],
+html:not(.light) [class*="bg-red-900"] {
+  background-color: rgba(244, 63, 94, 0.16) !important;
+  border-color: rgba(244, 63, 94, 0.35) !important;
+  color: #fda4af !important;
+}
+
+/* ─── Microsoft Fluent Light Mode Overrides ─────────────────────────────────── */
+html.light {
+  color-scheme: light;
+}
+
+html.light body {
+  background-color: #f5f6f8 !important;
+  color: #18181b !important;
+}
+
+/* Canvas & Base Container in Light Mode */
+html.light [class*="bg-gray-950"],
+html.light [class*="bg-slate-950"],
+html.light [class*="bg-zinc-950"],
+html.light .bg-gray-950,
+html.light .bg-slate-950,
+html.light .bg-black {
+  background-color: #f5f6f8 !important;
+}
+
+/* Elevated Cards & Surface Backgrounds in Light Mode */
+html.light [class*="bg-gray-900"],
+html.light [class*="bg-slate-900"],
+html.light [class*="bg-zinc-900"],
+html.light .bg-gray-900,
+html.light .bg-slate-900 {
+  background-color: #ffffff !important;
+}
+
+/* Sub-containers, Inputs, Table headers in Light Mode */
+html.light [class*="bg-gray-800"],
+html.light [class*="bg-slate-800"],
+html.light [class*="bg-zinc-800"],
+html.light .bg-gray-800,
+html.light .bg-slate-800 {
+  background-color: #f0f2f5 !important;
+}
+
+/* Subtle Borders in Light Mode */
+html.light [class*="border-gray-900"],
+html.light [class*="border-slate-900"],
+html.light [class*="border-gray-800"],
+html.light [class*="border-slate-800"],
+html.light [class*="border-gray-700"],
+html.light [class*="border-slate-700"],
+html.light [class*="border-zinc-800"],
+html.light [class*="border-zinc-700"] {
+  border-color: #e5e7eb !important;
+}
+
+/* Hover States in Light Mode */
+html.light [class*="hover:bg-gray-900"]:hover,
+html.light [class*="hover:bg-gray-800"]:hover,
+html.light [class*="hover:bg-gray-700"]:hover,
+html.light [class*="hover:bg-slate-900"]:hover,
+html.light [class*="hover:bg-slate-800"]:hover,
+html.light [class*="hover:bg-slate-700"]:hover,
+html.light [class*="hover:bg-zinc-900"]:hover,
+html.light [class*="hover:bg-zinc-800"]:hover {
+  background-color: #f1f3f6 !important;
+}
+
+html.light [class*="hover:border-gray-700"]:hover,
+html.light [class*="hover:border-slate-700"]:hover,
+html.light [class*="hover:border-gray-600"]:hover,
+html.light [class*="hover:border-slate-600"]:hover {
+  border-color: #d1d5db !important;
+}
+
+/* Typography in Light Mode */
+html.light h1,
+html.light h2,
+html.light h3,
+html.light h4,
+html.light h5,
+html.light h6 {
+  color: #18181b;
+}
+
+html.light .text-slate-100,
+html.light .text-slate-200,
+html.light .text-gray-100,
+html.light .text-gray-200,
+html.light .text-gray-300,
+html.light .text-slate-300 {
+  color: #18181b !important;
+}
+
+html.light .text-gray-400,
+html.light .text-slate-400 {
+  color: #52525b !important;
+}
+
+html.light .text-gray-500,
+html.light .text-slate-500 {
+  color: #71717a !important;
+}
+
+/* Badges & Pill Chips in Light Mode */
+html.light [class*="bg-blue-900"],
+html.light [class*="bg-blue-950"] {
+  background-color: #eff6ff !important;
+  border-color: #bfdbfe !important;
+  color: #0078d4 !important;
+}
+
+html.light [class*="bg-purple-900"],
+html.light [class*="bg-purple-950"] {
+  background-color: #faf5ff !important;
+  border-color: #e9d5ff !important;
+  color: #7e22ce !important;
+}
+
+html.light [class*="bg-orange-900"],
+html.light [class*="bg-orange-950"],
+html.light [class*="bg-amber-900"],
+html.light [class*="bg-amber-950"] {
+  background-color: #fffbeb !important;
+  border-color: #fde68a !important;
+  color: #b45309 !important;
+}
+
+html.light [class*="bg-emerald-900"],
+html.light [class*="bg-emerald-950"] {
+  background-color: #ecfdf5 !important;
+  border-color: #a7f3d0 !important;
+  color: #047857 !important;
+}
+
+html.light [class*="bg-red-950"],
+html.light [class*="bg-red-900"],
+html.light [class*="bg-rose-950"],
+html.light [class*="bg-rose-900"] {
+  background-color: #fef2f2 !important;
+  border-color: #fecaca !important;
+  color: #b91c1c !important;
+}
+
+/* Form Controls in Light Mode */
+html.light input:not([type="checkbox"]):not([type="radio"]),
+html.light select,
+html.light textarea {
+  background-color: #ffffff !important;
+  border-color: #d1d5db !important;
+  color: #18181b !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #9ca3af !important;
+}
+
+html.light select option {
+  background-color: #ffffff !important;
+  color: #18181b !important;
+}
+
+/* ─── Common UI Controls & Components ────────────────────────────────────────── */
 /* React Flow customization */
 .react-flow__node {
   cursor: default;
 }
 
 .react-flow__controls-button {
-  background: #1f2937 !important;
-  border-color: #374151 !important;
-  fill: #9ca3af !important;
+  background: #1c1c1e !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  fill: #a1a1aa !important;
 }
 
 .react-flow__controls-button:hover {
-  background: #374151 !important;
-  fill: #f9fafb !important;
+  background: #28282b !important;
+  fill: #f5f5f7 !important;
 }
 
-.react-flow__minimap-mask {
-  fill: rgba(0, 0, 0, 0.6) !important;
+html.light .react-flow__controls-button {
+  background: #ffffff !important;
+  border-color: #d1d5db !important;
+  fill: #52525b !important;
+}
+
+html.light .react-flow__controls-button:hover {
+  background: #f1f3f6 !important;
+  fill: #18181b !important;
+}
+
+html.light .react-flow__background {
+  background-color: #f5f6f8 !important;
 }
 
 /* Custom scrollbar */
@@ -45,13 +329,13 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(156, 163, 175, 0.25);
+  background: rgba(161, 161, 170, 0.25);
   border-radius: 9999px;
   transition: background-color 0.2s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(156, 163, 175, 0.45);
+  background: rgba(161, 161, 170, 0.45);
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -60,15 +344,14 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.35);
+  background: rgba(161, 161, 170, 0.35);
   border-radius: 9999px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.6);
+  background: rgba(161, 161, 170, 0.6);
 }
 
-/* Hide scrollbar while keeping scroll functionality */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -92,286 +375,93 @@ body {
   overflow: hidden;
 }
 
-/* Glassmorphism & Glow styles */
+/* Fluent Glass & Acrylic Surfaces */
 .glass-panel {
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(28, 28, 30, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .glass-card {
-  background: rgba(30, 41, 59, 0.5);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(36, 36, 38, 0.65);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.glow-emerald {
-  box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.35);
-}
-
-.glow-purple {
-  box-shadow: 0 0 25px -5px rgba(168, 85, 247, 0.35);
-}
-
-.glow-blue {
-  box-shadow: 0 0 25px -5px rgba(59, 130, 246, 0.35);
-}
-
-/* Light Mode Theme Overrides */
-html.light {
-  color-scheme: light;
-}
-
-html.light body {
-  background-color: #f8fafc !important;
-  color: #0f172a !important;
-}
-
-/* Page Level Containers in Light Mode */
-html.light [class*="bg-gray-950"],
-html.light [class*="bg-slate-950"],
-html.light [class*="bg-zinc-950"],
-html.light .bg-gray-950,
-html.light .bg-slate-950,
-html.light .bg-black {
-  background-color: #f8fafc !important;
-}
-
-/* Elevated Cards & Surface Backgrounds in Light Mode */
-html.light [class*="bg-gray-900"],
-html.light [class*="bg-slate-900"],
-html.light [class*="bg-zinc-900"],
-html.light .bg-gray-900,
-html.light .bg-slate-900 {
-  background-color: #ffffff !important;
-}
-
-/* Sub-containers, Inputs, Table headers, Tags in Light Mode */
-html.light [class*="bg-gray-800"],
-html.light [class*="bg-slate-800"],
-html.light [class*="bg-zinc-800"],
-html.light .bg-gray-800,
-html.light .bg-slate-800 {
-  background-color: #f1f5f9 !important;
-}
-
-/* Borders in Light Mode */
-html.light [class*="border-gray-900"],
-html.light [class*="border-slate-900"],
-html.light [class*="border-gray-800"],
-html.light [class*="border-slate-800"],
-html.light [class*="border-gray-700"],
-html.light [class*="border-slate-700"],
-html.light [class*="border-slate-750"],
-html.light [class*="border-zinc-800"],
-html.light [class*="border-zinc-700"] {
-  border-color: #e2e8f0 !important;
-}
-
-/* Hover States in Light Mode */
-html.light [class*="hover:bg-gray-900"]:hover,
-html.light [class*="hover:bg-gray-800"]:hover,
-html.light [class*="hover:bg-gray-700"]:hover,
-html.light [class*="hover:bg-slate-900"]:hover,
-html.light [class*="hover:bg-slate-800"]:hover,
-html.light [class*="hover:bg-slate-700"]:hover,
-html.light [class*="hover:bg-zinc-900"]:hover,
-html.light [class*="hover:bg-zinc-800"]:hover {
-  background-color: #f1f5f9 !important;
-}
-
-html.light [class*="hover:border-gray-700"]:hover,
-html.light [class*="hover:border-slate-700"]:hover,
-html.light [class*="hover:border-gray-600"]:hover,
-html.light [class*="hover:border-slate-600"]:hover {
-  border-color: #cbd5e1 !important;
-}
-
-html.light [class*="hover:text-white"]:hover:not([class*="bg-blue-"]):not([class*="bg-indigo-"]):not([class*="bg-purple-"]):not([class*="bg-emerald-"]):not([class*="bg-rose-"]):not([class*="bg-red-"]):not([class*="bg-cyan-"]):not([class*="bg-amber-"]):not([class*="bg-gradient-"]):not([class*="from-"]):not([class*="!text-white"]) {
-  color: #0f172a !important;
-}
-
-/* Headings and High-Contrast Text in Light Mode */
-html.light h1,
-html.light h2,
-html.light h3,
-html.light h4,
-html.light h5,
-html.light h6 {
-  color: #0f172a;
-}
-
-/* Secondary & Muted Texts */
-html.light .text-slate-100,
-html.light .text-slate-200,
-html.light .text-gray-100,
-html.light .text-gray-200,
-html.light .text-gray-300,
-html.light .text-slate-300 {
-  color: #1e293b !important;
-}
-
-html.light .text-gray-400,
-html.light .text-slate-400 {
-  color: #475569 !important;
-}
-
-html.light .text-gray-500,
-html.light .text-slate-500 {
-  color: #64748b !important;
-}
-
-html.light .text-gray-600,
-html.light .text-slate-600 {
-  color: #94a3b8 !important;
-}
-
-/* Badges & Pill Chips in Light Mode */
-html.light [class*="bg-blue-900"],
-html.light [class*="bg-blue-950"] {
-  background-color: #eff6ff !important;
-  border-color: #bfdbfe !important;
-  color: #1d4ed8 !important;
-}
-
-html.light [class*="bg-purple-900"],
-html.light [class*="bg-purple-950"] {
-  background-color: #faf5ff !important;
-  border-color: #e9d5ff !important;
-  color: #7e22ce !important;
-}
-
-html.light [class*="bg-pink-900"],
-html.light [class*="bg-pink-950"],
-html.light [class*="bg-fuchsia-900"],
-html.light [class*="bg-fuchsia-950"] {
-  background-color: #fdf2f8 !important;
-  border-color: #fbcfe8 !important;
-  color: #be185d !important;
-}
-
-html.light [class*="bg-orange-900"],
-html.light [class*="bg-orange-950"],
-html.light [class*="bg-amber-900"],
-html.light [class*="bg-amber-950"],
-html.light [class*="bg-yellow-900"],
-html.light [class*="bg-yellow-950"] {
-  background-color: #fff7ed !important;
-  border-color: #fed7aa !important;
-  color: #c2410c !important;
-}
-
-html.light [class*="bg-emerald-900"],
-html.light [class*="bg-emerald-950"],
-html.light [class*="bg-teal-900"],
-html.light [class*="bg-teal-950"] {
-  background-color: #ecfdf5 !important;
-  border-color: #a7f3d0 !important;
-  color: #047857 !important;
-}
-
-html.light [class*="bg-cyan-900"],
-html.light [class*="bg-cyan-950"] {
-  background-color: #ecfeff !important;
-  border-color: #a5f3fc !important;
-  color: #0e7490 !important;
-}
-
-html.light [class*="bg-red-950"],
-html.light [class*="bg-red-900"],
-html.light [class*="bg-rose-950"],
-html.light [class*="bg-rose-900"] {
-  background-color: #fef2f2 !important;
-  border-color: #fecaca !important;
-  color: #b91c1c !important;
-}
-
-/* Semi-transparent Tint Overlays */
-html.light [class*="bg-rose-500/10"],
-html.light [class*="bg-rose-500/20"],
-html.light [class*="bg-red-500/10"],
-html.light [class*="bg-red-500/20"] {
-  background-color: #fef2f2 !important;
-  border-color: #fecaca !important;
-}
-
-html.light [class*="bg-amber-500/10"],
-html.light [class*="bg-amber-500/20"],
-html.light [class*="bg-orange-500/10"],
-html.light [class*="bg-orange-500/20"] {
-  background-color: #fffbeb !important;
-  border-color: #fde68a !important;
-}
-
-html.light [class*="bg-blue-500/10"],
-html.light [class*="bg-blue-500/20"] {
-  background-color: #eff6ff !important;
-  border-color: #bfdbfe !important;
-}
-
-html.light [class*="bg-cyan-500/10"],
-html.light [class*="bg-cyan-500/20"] {
-  background-color: #ecfeff !important;
-  border-color: #a5f3fc !important;
-}
-
-/* Form Controls in Light Mode */
-html.light input:not([type="checkbox"]):not([type="radio"]),
-html.light select,
-html.light textarea {
-  background-color: #ffffff !important;
-  border-color: #cbd5e1 !important;
-  color: #0f172a !important;
-}
-
-html.light input::placeholder,
-html.light textarea::placeholder {
-  color: #94a3b8 !important;
-}
-
-html.light select option {
-  background-color: #ffffff !important;
-  color: #0f172a !important;
-}
-
-/* Glass Panels & Modals */
 html.light .glass-panel {
-  background: rgba(255, 255, 255, 0.95) !important;
-  border-color: rgba(226, 232, 240, 0.9) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(229, 231, 235, 0.9) !important;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.06);
 }
 
 html.light .glass-card {
-  background: rgba(255, 255, 255, 0.9) !important;
-  border-color: rgba(226, 232, 240, 0.85) !important;
-}
-
-
-
-/* React Flow in Light Mode */
-html.light .react-flow__controls-button {
-  background: #ffffff !important;
-  border-color: #cbd5e1 !important;
-  fill: #475569 !important;
-}
-
-html.light .react-flow__controls-button:hover {
-  background: #f1f5f9 !important;
-  fill: #0f172a !important;
-}
-
-html.light .react-flow__background {
-  background-color: #f8fafc !important;
+  background: rgba(255, 255, 255, 0.85) !important;
+  border-color: rgba(229, 231, 235, 0.85) !important;
 }
 
 :root, .dark {
-  --edge-badge-bg: #0f172a;
-  --edge-badge-text: #e2e8f0;
+  --edge-badge-bg: #1c1c1e;
+  --edge-badge-text: #f5f5f7;
 }
 
 .light, html.light {
   --edge-badge-bg: #ffffff;
-  --edge-badge-text: #0f172a;
+  --edge-badge-text: #18181b;
 }
+
+/* ─── Microsoft Fluent Button Utilities ─────────────────────────────────────── */
+.btn-primary,
+button.btn-primary,
+.fluent-button {
+  background-color: #0078d4 !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  border-radius: 8px !important;
+  border: 1px solid #0078d4 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08) !important;
+  transition: all 0.15s ease-in-out !important;
+}
+
+.btn-primary:hover,
+button.btn-primary:hover,
+.fluent-button:hover {
+  background-color: #106ebe !important;
+  border-color: #106ebe !important;
+  box-shadow: 0 2px 6px rgba(0, 120, 212, 0.3) !important;
+}
+
+.btn-primary:active,
+button.btn-primary:active,
+.fluent-button:active {
+  background-color: #005a9e !important;
+  border-color: #005a9e !important;
+  transform: scale(0.98);
+}
+
+/* Primary CTA Blue Buttons aligned to Microsoft Blue */
+button.bg-blue-600,
+button.bg-indigo-600,
+button.bg-cyan-600 {
+  background-color: #0078d4 !important;
+  border-color: #0078d4 !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+}
+
+button.bg-blue-600:hover,
+button.bg-indigo-600:hover,
+button.bg-cyan-600:hover {
+  background-color: #106ebe !important;
+  border-color: #106ebe !important;
+}
+
+button.bg-blue-600:active,
+button.bg-indigo-600:active,
+button.bg-cyan-600:active {
+  background-color: #005a9e !important;
+  border-color: #005a9e !important;
+}
+

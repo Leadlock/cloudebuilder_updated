@@ -74,7 +74,7 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
       <div
         className={clsx(
           'w-11 border-r flex flex-col items-center py-3 shrink-0 select-none z-10 transition-all duration-200',
-          isLight ? 'bg-white/95 border-slate-200' : 'bg-slate-950/95 border-slate-800/80'
+          isLight ? 'bg-white border-slate-200' : 'bg-[#161618] border-white/[0.08]'
         )}
       >
         <button
@@ -82,10 +82,10 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
           onClick={() => setIsPaletteCollapsed(false)}
           title="Expand Resource Palette"
           className={clsx(
-            'p-2 rounded-lg border transition-colors shadow-sm',
+            'p-2 rounded-lg border transition-colors shadow-xs',
             isLight
-              ? 'bg-slate-100 hover:bg-slate-200 text-cyan-700 border-slate-300'
-              : 'bg-slate-900 hover:bg-slate-800 text-cyan-400 hover:text-white border-slate-800'
+              ? 'bg-slate-100 hover:bg-slate-200 text-[#0078d4] border-slate-300'
+              : 'bg-[#242426] hover:bg-[#2c2c2e] text-[#50e6ff] border-white/[0.12]'
           )}
         >
           <PanelLeftOpen className="w-4 h-4" />
@@ -109,19 +109,19 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
     <div
       className={clsx(
         'w-64 border-r flex flex-col shrink-0 select-none z-10 transition-all duration-200',
-        isLight ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800/80'
+        isLight ? 'bg-white border-slate-200' : 'bg-[#161618] border-white/[0.08]'
       )}
     >
       {/* Header & Search */}
       <div
         className={clsx(
           'p-3 border-b transition-colors',
-          isLight ? 'border-slate-200 bg-slate-50/70' : 'border-slate-800/80 bg-slate-900/40'
+          isLight ? 'border-slate-200 bg-slate-50/70' : 'border-white/[0.08] bg-[#141416]'
         )}
       >
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">
-            <Layers className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+            <Layers className="w-4 h-4 text-[#0078d4]" />
             <span className={clsx('font-bold text-xs tracking-wider uppercase', isLight ? 'text-slate-900' : 'text-white')}>
               {provider === 'aws' ? 'AWS Services' : provider === 'azure' ? 'Azure Services' : 'Cloud Services'}
             </span>
@@ -266,14 +266,14 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
                       className={clsx(
                         'flex items-center gap-2 px-2.5 py-2 rounded-lg border cursor-grab active:cursor-grabbing group transition-all',
                         isLight
-                          ? 'bg-slate-50/80 border-slate-200 hover:bg-blue-50/60 hover:border-blue-300 hover:shadow-sm'
-                          : 'bg-slate-900/40 border-slate-800/60 hover:bg-slate-800/80 hover:border-slate-600/80 hover:shadow-md'
+                          ? 'bg-slate-50/80 border-slate-200 hover:bg-[#0078d4]/[0.06] hover:border-[#0078d4]/40 hover:shadow-xs'
+                          : 'bg-[#1c1c1e] border-white/[0.08] hover:bg-[#242426] hover:border-[#0078d4]/50 hover:shadow-md'
                       )}
                     >
                       <div
                         className={clsx(
                           'p-1 rounded-md border shrink-0 transition-colors',
-                          isLight ? 'bg-white border-slate-200 group-hover:border-slate-300' : 'bg-slate-950/80 border-slate-800 group-hover:border-slate-700'
+                          isLight ? 'bg-white border-slate-200 group-hover:border-[#0078d4]/40' : 'bg-[#141416] border-white/10 group-hover:border-[#0078d4]/40'
                         )}
                       >
                         <CloudServiceIcon
@@ -288,7 +288,7 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
                           <p
                             className={clsx(
                               'text-xs font-semibold truncate',
-                              isLight ? 'text-slate-800 group-hover:text-blue-700' : 'text-slate-200 group-hover:text-white'
+                              isLight ? 'text-slate-800 group-hover:text-[#0078d4]' : 'text-slate-200 group-hover:text-white'
                             )}
                           >
                             {res.label}
@@ -296,10 +296,10 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
                           {res.isContainer && (
                             <span
                               className={clsx(
-                                'text-[9px] font-medium px-1 py-0.2 rounded border',
+                                'text-[9px] font-medium px-1.5 py-0.2 rounded border',
                                 isLight
-                                  ? 'bg-purple-100 text-purple-700 border-purple-200'
-                                  : 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                                  ? 'bg-[#0078d4]/10 text-[#005a9e] border-[#0078d4]/30'
+                                  : 'bg-[#0078d4]/18 text-[#50e6ff] border-[#0078d4]/40'
                               )}
                             >
                               Container

@@ -2,12 +2,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
 import { apiCostService, CostComparisonResult, type SideQuality } from '@/lib/services/ApiCostService';
-import type { CostItem } from '@/types';
+import type { CostItem, CloudProvider } from '@/types';
 import { costService } from '@/lib/services/CostService';
 import { formatCurrency } from '@/lib/currency/formatter';
 import { DollarSign, ArrowRightLeft, AlertTriangle, Cloud, Scale, RefreshCw } from 'lucide-react';
 import clsx from 'clsx';
 import { getResourceDefinition } from '@/lib/resources';
+import { CloudServiceIcon } from '@/components/icons/cloud/CloudServiceIcon';
 import CostInsightsCard from './CostInsightsCard';
 
 /** Plain-language reasons a service costs very different amounts on the two clouds, for the services present in this architecture. */
@@ -340,8 +341,11 @@ export default function CostComparisonPanel() {
               return (
                 <div key={item.nodeId} className={clsx('border rounded-2xl p-4 flex items-center justify-between transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900 border-slate-800')}>
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: def?.color ?? '#475569' }}>
-                      {def?.icon}
+                    <div className={clsx(
+                      "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border shadow-xs p-1",
+                      isLight ? "bg-slate-50 border-slate-200" : "bg-[#141416] border-white/10"
+                    )}>
+                      <CloudServiceIcon provider={data.currentProvider as CloudProvider} resourceType={item.resourceType} size={20} />
                     </div>
                     <div>
                       <p className={clsx("font-medium text-sm", isLight ? 'text-slate-900' : 'text-white')}>{item.nodeLabel}
@@ -376,8 +380,11 @@ export default function CostComparisonPanel() {
               return (
                 <div key={item.nodeId} className={clsx('border rounded-2xl p-4 flex items-center justify-between transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900 border-slate-800')}>
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: def?.color ?? '#475569' }}>
-                      {def?.icon}
+                    <div className={clsx(
+                      "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border shadow-xs p-1",
+                      isLight ? "bg-slate-50 border-slate-200" : "bg-[#141416] border-white/10"
+                    )}>
+                      <CloudServiceIcon provider={data.targetProvider as CloudProvider} resourceType={item.resourceType} size={20} />
                     </div>
                     <div>
                       <p className={clsx("font-medium text-sm", isLight ? 'text-slate-900' : 'text-white')}>{item.nodeLabel}

@@ -49,24 +49,33 @@ const ContainerNode = memo(({ data, selected }: NodeProps<ContainerNodeData>) =>
       className={clsx(
         'group relative rounded-2xl transition-all select-none',
         isVpc
-          ? isLight
-            ? 'bg-[#fdf6ed] border-2 border-slate-900 shadow-sm'
-            : 'bg-[#261f17] border-2 border-slate-700 shadow-2xl'
-          : isLight
-            ? 'bg-[#faf5ff] border-2 border-purple-600 shadow-sm'
-            : 'bg-[#27153b] border-2 border-purple-500 shadow-md',
+          ? provider === 'azure'
+            ? (isLight ? 'bg-[#0078d4]/[0.04] border-2 border-[#0078d4]/70 shadow-sm' : 'bg-[#0078d4]/[0.08] border-2 border-[#0078d4]/80 shadow-2xl backdrop-blur-xs')
+            : (isLight ? 'bg-[#ff9900]/[0.04] border-2 border-[#ff9900]/70 shadow-sm' : 'bg-[#ff9900]/[0.08] border-2 border-[#ff9900]/80 shadow-2xl backdrop-blur-xs')
+          : isPublic
+            ? (isLight ? 'bg-sky-50/70 border-2 border-dashed border-[#0078d4]/60 shadow-sm' : 'bg-[#0078d4]/[0.05] border-2 border-dashed border-[#0078d4]/60 shadow-md backdrop-blur-xs')
+            : (isLight ? 'bg-slate-50/80 border-2 border-dashed border-slate-300 shadow-sm' : 'bg-white/[0.03] border-2 border-dashed border-slate-600/70 shadow-md backdrop-blur-xs'),
         isDeleted && (isLight ? '!opacity-50 !border-slate-300 bg-slate-100 grayscale' : '!opacity-50 !border-slate-700 bg-slate-950/80 grayscale'),
-        isImported && !isDeleted && (isLight ? '!border-cyan-400' : '!border-cyan-500/40'),
-        selected && (isVpc ? 'ring-2 ring-slate-900' : 'ring-2 ring-purple-600'),
+        isImported && !isDeleted && (isLight ? '!border-[#0078d4]' : '!border-[#0078d4]/60'),
+        selected && (isVpc ? (provider === 'azure' ? 'ring-2 ring-[#0078d4]' : 'ring-2 ring-[#ff9900]') : 'ring-2 ring-[#0078d4]'),
         data.isDragTarget && (data.isValidDrop !== false
-          ? '!border-cyan-400 !ring-4 !ring-cyan-400/30 !bg-cyan-950/25'
+          ? '!border-[#0078d4] !ring-4 !ring-[#0078d4]/30 !bg-[#0078d4]/20'
           : '!border-rose-500 !ring-4 !ring-rose-500/30 !bg-rose-950/25')
       )}
     >
-      {/* Container Header Badge (Brainboard style) */}
+      {/* Container Header Badge (Microsoft Fluent style) */}
       <div className="flex items-center justify-between px-3.5 py-2.5">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="shrink-0 w-6 h-6 rounded-md bg-[#7c3aed] text-white flex items-center justify-center p-1 shadow-sm">
+          <div className={clsx(
+            "shrink-0 w-6 h-6 rounded-md text-white flex items-center justify-center p-1 shadow-sm",
+            isSubnet
+              ? isPublic
+                ? "bg-[#0078d4]"
+                : "bg-slate-600"
+              : provider === 'azure'
+              ? "bg-[#0078d4]"
+              : "bg-[#ff9900]"
+          )}>
             {isSubnet ? (
               <Lock className="w-3.5 h-3.5 text-white" />
             ) : (
@@ -115,7 +124,7 @@ const ContainerNode = memo(({ data, selected }: NodeProps<ContainerNodeData>) =>
             </span>
           )}
           {typeof data.childCount === 'number' && data.childCount > 0 && (
-            <span className={`text-[10px] px-2 py-0.5 rounded-full ${isLight ? 'bg-purple-100 text-purple-900 border border-purple-200' : 'bg-purple-900/40 text-purple-200 border border-purple-500/30'} font-medium`}>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full ${isLight ? 'bg-[#0078d4]/10 text-[#005a9e] border border-[#0078d4]/30' : 'bg-[#0078d4]/18 text-[#50e6ff] border border-[#0078d4]/40'} font-medium`}>
               {data.childCount} {data.childCount === 1 ? 'resource' : 'resources'}
             </span>
           )}

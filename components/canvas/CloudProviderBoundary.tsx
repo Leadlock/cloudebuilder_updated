@@ -62,27 +62,25 @@ export const CloudProviderBoundary = memo(({ data, selected }: NodeProps<CloudPr
         isLight
           ? 'bg-transparent border-2 border-dashed border-slate-700/80 shadow-sm'
           : 'bg-transparent border-2 border-dashed border-slate-600/80 shadow-2xl',
-        selected && 'ring-2 ring-indigo-500 border-indigo-500'
+        selected && 'ring-2 ring-[#0078d4] border-[#0078d4]'
       )}
     >
-      {/* Brainboard Title Pill Floating on Top Edge */}
+      {/* Microsoft Fluent Title Pill Floating on Top Edge */}
       <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
         <div
-          className={clsx(
-            'px-5 py-1.5 rounded-lg border text-xs font-semibold shadow-sm select-none transition-colors tracking-tight',
-            isLight
-              ? 'bg-[#dbeafe] border-[#93c5fd] text-[#1e3a8a]'
-              : 'bg-[#1e293b] border-[#3b82f6]/40 text-blue-200'
-          )}
+          className="px-5 py-1.5 rounded-lg border border-[#0078d4] bg-[#0078d4] text-white text-xs font-semibold shadow-md select-none tracking-tight"
         >
           {titleText}
         </div>
       </div>
 
-      {/* Top-Left Location Pin Badge (Brainboard style) */}
+      {/* Top-Left Location Pin Badge */}
       <div className="absolute top-4 left-5 flex items-center gap-2 z-10 pointer-events-none">
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60 shadow-xs">
-          <MapPin className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+        <div className={clsx(
+          "flex items-center gap-1.5 px-2.5 py-1 rounded-md border shadow-xs",
+          isLight ? "bg-white border-slate-200" : "bg-[#1c1c1e] border-white/10"
+        )}>
+          <MapPin className="w-3.5 h-3.5 text-[#0078d4]" />
           <span className={clsx('text-xs font-medium tracking-tight', isLight ? 'text-slate-800' : 'text-slate-200')}>
             {displayRegion}
           </span>

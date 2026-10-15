@@ -384,14 +384,14 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
   return (
     <div className={clsx(
       'w-full sm:w-80 sm:relative fixed inset-y-0 right-0 z-40 sm:z-20 border-l flex flex-col shrink-0 select-none shadow-2xl animate-in slide-in-from-right duration-150',
-      isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-900 border-slate-800 text-white'
+      isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#18181a] border-white/8 text-white'
     )}>
       {/* Header */}
       <div className={clsx(
         'flex items-center gap-3 px-4 py-3.5 border-b',
-        isLight ? 'border-slate-200 bg-slate-50/80' : 'border-slate-800 bg-slate-950/60'
+        isLight ? 'border-slate-200 bg-slate-50/80' : 'border-white/8 bg-[#141416]'
       )}>
-        <div className={clsx('p-1.5 rounded-lg border shrink-0', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900 border-slate-800')}>
+        <div className={clsx('p-1.5 rounded-lg border shrink-0', isLight ? 'bg-white border-slate-200 shadow-xs' : 'bg-[#1c1c1e] border-white/10 shadow-xs')}>
           <CloudServiceIcon
             provider={provider}
             resourceType={node.resourceType}
@@ -408,7 +408,7 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
               </span>
             )}
             {isImported && (
-              <span className={clsx('text-[9px] px-1 py-0.2 rounded font-medium', isLight ? 'bg-cyan-100 text-cyan-800 border border-cyan-300' : 'bg-cyan-500/20 text-cyan-300')}>
+              <span className={clsx('text-[9px] px-1 py-0.2 rounded font-medium', isLight ? 'bg-cyan-100 text-cyan-800 border border-cyan-300' : 'bg-[#0078d4]/20 text-[#50e6ff] border-[#0078d4]/40')}>
                 Imported
               </span>
             )}
@@ -437,7 +437,7 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
           onClick={onClose}
           className={clsx(
             'p-1 rounded-lg transition-colors shrink-0',
-            isLight ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100' : 'text-slate-500 hover:text-white hover:bg-slate-800'
+            isLight ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100' : 'text-slate-500 hover:text-white hover:bg-white/10'
           )}
         >
           <X className="w-4 h-4" />
@@ -449,14 +449,14 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
       {/* Tabs */}
       <div className={clsx(
         'flex items-center px-4 border-b text-xs',
-        isLight ? 'border-slate-200 bg-slate-50/50' : 'border-slate-800 bg-slate-950/30'
+        isLight ? 'border-slate-200 bg-slate-50/50' : 'border-white/8 bg-[#141416]/50'
       )}>
         <button
           onClick={() => setActiveTab('config')}
           className={clsx(
             'py-2.5 px-3 border-b-2 font-medium transition-colors flex items-center gap-1.5',
             activeTab === 'config'
-              ? (isLight ? 'border-blue-600 text-blue-600 font-semibold' : 'border-cyan-400 text-cyan-400 font-semibold')
+              ? (isLight ? 'border-[#0078d4] text-[#0078d4] font-semibold' : 'border-[#50e6ff] text-[#50e6ff] font-semibold')
               : (isLight ? 'border-transparent text-slate-500 hover:text-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200')
           )}
         >
