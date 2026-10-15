@@ -15,6 +15,7 @@
 
 export type ContainerStack = 'node' | 'python' | 'java' | 'go' | 'dotnet' | 'ruby' | 'static';
 
+import { yq } from './shared';
 import { generateSampleApp } from './sampleApps';
 import { checkContainer, type ContainerFinding } from './checks';
 import { imageIsFloating, validateExistingImage } from './existingImage';
@@ -201,7 +202,6 @@ export function validate(c: ContainerConfig): string[] {
 // ─── quoting ─────────────────────────────────────────────────────────────────
 
 /** A YAML double-quoted string: only backslash and quote need escaping. */
-const yq = (s: string) => `"${s.replace(/[\\"]/g, (m) => `\\${m}`)}"`;
 const json = (s: string) => JSON.stringify(s);
 const shCmd = (cmd: string) => `CMD ["sh", "-c", ${json(cmd)}]`;
 const plain = (c: ContainerConfig) => c.env.filter((v) => !v.secret);

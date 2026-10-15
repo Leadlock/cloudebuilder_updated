@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { ok, badRequest, unauthorized, internalError, apiError, parseBody } from '@/lib/api/response';
 import { AuthService } from '@/lib/api/authService';
 import { CognitoService } from '@/lib/auth/cognitoService';
-import { toPublicMethod } from '@/lib/auth/challengeMethods';
+import { toPublicMethod, UNSUPPORTED_STEP_MESSAGE } from '@/lib/auth/challengeMethods';
 import { localLoginFallbackAllowed } from '@/lib/auth/localFallback';
 import { clearLoginFailures, limitAuthAttempt, loginLocked, recordLoginFailure } from '@/lib/api/authRateLimit';
 
@@ -33,10 +33,16 @@ export async function POST(req: NextRequest) {
       const cognitoAuth = await CognitoService.signIn(email, password);
 
       if ('challenge' in cognitoAuth && cognitoAuth.challenge) {
+        const method = toPublicMethod(cognitoAuth.challengeName);
+        if (!method) {
+          // Answering it as an authenticator code would only fail: say so plainly. The service's own name for the step goes to the log, not to the person.
+          console.warn('[POST /api/auth/login] unsupported sign-in step:', cognitoAuth.challengeName);
+          return apiError('UNSUPPORTED_SIGN_IN_STEP', UNSUPPORTED_STEP_MESSAGE, 400);
+        }
         return NextResponse.json({
           success: false,
           requiresMfa: true,
-          method: toPublicMethod(cognitoAuth.challengeName),
+          method,
           session: cognitoAuth.session,
           email: cognitoAuth.email,
           message: cognitoAuth.challengeName === 'SMS_MFA'

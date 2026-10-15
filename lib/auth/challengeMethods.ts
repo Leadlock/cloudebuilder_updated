@@ -14,7 +14,9 @@ const FROM_PUBLIC: Record<VerificationMethod, string> = { app: 'SOFTWARE_TOKEN_M
 
 export const VERIFICATION_METHODS = Object.keys(FROM_PUBLIC) as VerificationMethod[];
 
-/** The neutral name for a service challenge. Unknown challenges are treated as an authenticator-app code. */
-export const toPublicMethod = (serviceName: string): VerificationMethod => TO_PUBLIC[serviceName] ?? 'app';
+/** The neutral name for a service challenge, or null for a step CloudCraft cannot do (a new password, a choice of method, a custom step). */
+export const toPublicMethod = (serviceName: string): VerificationMethod | null => TO_PUBLIC[serviceName] ?? null;
+
+export const UNSUPPORTED_STEP_MESSAGE = 'This account needs a sign-in step that CloudCraft does not support yet. Ask an administrator for help.';
 /** The service's name for a neutral one. */
 export const fromPublicMethod = (m: VerificationMethod): string => FROM_PUBLIC[m];

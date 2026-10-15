@@ -105,6 +105,18 @@ describe('EC2 Terraform', () => {
     expect(out).not.toMatch(/ingress[\s\S]*?cidr_blocks\s*=\s*\["0\.0\.0\.0\/0"\][\s\S]*?egress/);
   });
 
+  test('an image found by name never replaces a running server when AWS publishes a newer one', () => {
+    const tf = main(ec2({ serverSoftware: ['git'] }));
+    expect(tf).toContain('data.aws_ssm_parameter.web_ami.value');
+    expect(tf).toMatch(/lifecycle\s*\{\s*ignore_changes\s*=\s*\[ami\]\s*\}/);
+  });
+
+  test('a server with a fixed image id has no such block (nothing changes for it)', () => {
+    const tf = main(generate([row('e1', 'aws_ec2', 'Web', { os: 'Amazon Linux 2023', instanceType: 't3.micro', ami: 'ami-0123456789abcdef0' })]));
+    expect(tf).toContain('"ami-0123456789abcdef0"');
+    expect(tf).not.toContain('ignore_changes');
+  });
+
   test('Graviton instance types get the arm64 image', () => {
     expect(main(ec2({ serverSoftware: ['git'], instanceType: 't4g.micro' }))).toContain('arm64');
   });

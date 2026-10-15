@@ -39,10 +39,10 @@ describe('hideVendorNames', () => {
 });
 
 describe('API errors', () => {
-  test('a message and its details are cleaned before they are sent', async () => {
-    const res = apiError('BAD_REQUEST', 'Cognito said no', 400, { reason: 'AWS SES sandbox' });
-    const text = JSON.stringify(await res.json());
-    expect(text).not.toMatch(NAMES);
+  test('an error about the customer\'s own resources is sent exactly as it is', async () => {
+    const message = 'Amazon Bedrock agent "Support Bedrock" has an invalid model, SES identity x@y.z is not verified, project "Foundry" not found';
+    const res = apiError('BAD_REQUEST', message, 400, { resource: 'Azure OpenAI deployment gpt-4o' });
+    expect(await res.json()).toEqual({ ok: false, error: { code: 'BAD_REQUEST', message, details: { resource: 'Azure OpenAI deployment gpt-4o' } } });
   });
 });
 
@@ -52,7 +52,8 @@ describe('verification method names', () => {
     expect(toPublicMethod('SMS_MFA')).toBe('sms');
     expect(toPublicMethod('EMAIL_OTP')).toBe('email');
     expect(toPublicMethod('MFA_SETUP')).toBe('setup');
-    expect(toPublicMethod('SOMETHING_NEW')).toBe('app');
+    expect(toPublicMethod('SOMETHING_NEW')).toBeNull();            // a step CloudCraft cannot do is not guessed to be a code
+    expect(toPublicMethod('NEW_PASSWORD_REQUIRED')).toBeNull();
     for (const m of VERIFICATION_METHODS) expect(toPublicMethod(fromPublicMethod(m))).toBe(m);
     for (const m of VERIFICATION_METHODS) expect(m).not.toMatch(NAMES);
   });

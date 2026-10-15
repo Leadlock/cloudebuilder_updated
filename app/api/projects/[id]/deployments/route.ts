@@ -1,3 +1,4 @@
+import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { NextRequest } from 'next/server';
 import { ok, unauthorized, internalError } from '@/lib/api/response';
 import { extractIdentity } from '@/lib/api/auth';
@@ -13,6 +14,8 @@ export async function GET(
   try {
     const identity = extractIdentity(req);
     if (!identity) return unauthorized('Authentication required');
+    const closed = refuseRestrictedFeature(identity.email);
+    if (closed) return closed;
 
     const { id: projectId } = await params;
     const access = await requireProjectAccess(req, identity.userId, projectId);

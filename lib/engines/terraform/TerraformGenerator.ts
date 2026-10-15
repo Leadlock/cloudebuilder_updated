@@ -1074,6 +1074,8 @@ resource "aws_flow_log" "${name}_flow_log" {
       lines.push(`    ${k} = "${v}"`);
     }
     lines.push(`  }`);
+    // An image found by name moves on whenever AWS publishes a new one; that must not replace (and so restart) a running server on the next apply.
+    if (amiRef?.startsWith('data.')) lines.push(`  lifecycle {`, `    ignore_changes = [ami]`, `  }`);
     lines.push(`}`);
     return lines.join('\n');
   }

@@ -7,6 +7,7 @@
  * (a federated credential ties the app's service account to a managed identity that can only read this vault). They never pass through kubectl or
  * a file. The cluster pulls images with its kubelet identity, which holds only AcrPull on this registry: no registry password, no pull secret. The manifests are the same hardened ones as the plain Kubernetes target; their image is the registry's, filled in by deploy.sh.
  */
+import { LOCATION } from './shared';
 import type { ContainerConfig } from './dockerTemplates';
 import { usesExistingImage } from './existingImageUse';
 import { azureVmHourlyUsd } from '@/lib/engines/cost/azurePricing';
@@ -27,7 +28,6 @@ export interface AksConfig {
 
 export const defaultAks = (): AksConfig => ({ enabled: false, location: 'westeurope', nodeSize: 'Standard_B2s', minNodes: 1, maxNodes: 3, imageTag: 'latest' });
 
-const LOCATION = /^[a-z]{3,}[a-z0-9]*$/;
 const VM_SIZE = /^Standard_[A-Za-z0-9_]{2,30}$/;
 const CLUSTER_NAME = /^[a-z][a-z0-9-]{0,52}[a-z0-9]$/;
 

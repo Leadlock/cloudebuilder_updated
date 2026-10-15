@@ -16,6 +16,7 @@
  *  - Secret values never enter Terraform, its state or user_data: the instance reads them from SSM Parameter Store
  *    (SecureString) at /<app>/<NAME> when the service starts. The role can read only that path.
  */
+import { REGION } from './shared';
 import { hostPorts, hostSoftwareSh, hostSoftwareWarnings, validateHostSoftware } from './hostSoftware';
 import { databaseOf, dbRunArgs, DB_SINGLE_MACHINE_NOTE } from './databases';
 import { companionServices } from './companions';
@@ -55,7 +56,7 @@ export const defaultEc2 = (): Ec2Config => ({
   enabled: false, region: 'us-east-1', instanceType: 't3.small', allowedCidr: '0.0.0.0/0', volumeGb: 20, imageTag: 'latest', elasticIp: false, githubActions: true, githubRepo: '', scanImage: true, software: [], pageText: '',
 });
 
-export const REGION = /^[a-z]{2}(?:-[a-z]+)+-\d$/;
+export { REGION };
 const INSTANCE_TYPE = /^[a-z][a-z0-9]{0,6}\.[a-z0-9]{1,12}$/;
 export const TAG = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
 export const GITHUB_REPO = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
@@ -318,9 +319,10 @@ resource "aws_instance" "app" {
 
   tags = local.tags
 ${databaseOf(c) ? `
-  # A database keeps its data on this machine: a changed setting must never replace the machine (and with it the data).
+  # A database keeps its data on this machine: nothing may replace the machine (and with it the data). That includes a changed setting
+  # (user_data) and AWS publishing a newer image than the one it started from (ami, which is looked up by name).
   lifecycle {
-    ignore_changes = [user_data]
+    ignore_changes = [user_data, ami]
   }
 ` : ''}}
 ${eip ? `

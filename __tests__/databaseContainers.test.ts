@@ -79,6 +79,17 @@ describe('applyDatabase', () => {
     expect(applyDatabase(first, 'mysql').env.map((v) => v.key)).toEqual(['MYSQL_DATABASE', 'MYSQL_USER', 'MYSQL_PASSWORD', 'MYSQL_ROOT_PASSWORD']);
   });
 
+  test.each(['ecs', 'container-apps', 'kubernetes', 'aks'] as const)('choosing a database while %s is the deployment target switches that target off, so no error is left behind', (target) => {
+    const c = applyDatabase(withDeployTarget(defaultConfig('node'), target), 'redis');
+    expect([c.ecs.enabled, c.aca.enabled, c.k8s.enabled, c.aks.enabled]).toEqual([false, false, false, false]);
+    expect(validate(c)).toEqual([]);
+  });
+
+  test('a database already on a virtual machine stays there when its settings are applied again', () => {
+    expect(applyDatabase(withDeployTarget(defaultConfig('node'), 'ec2'), 'redis').ec2.enabled).toBe(true);
+    expect(applyDatabase(withDeployTarget(defaultConfig('node'), 'azure-vm'), 'redis').azvm.enabled).toBe(true);
+  });
+
   test('an unknown version falls back to the newest', () => {
     expect(applyDatabase(defaultConfig('node'), 'mysql', '1.0').version).toBe('8.4');
   });
@@ -145,8 +156,14 @@ describe('docker-compose.yml', () => {
   test('Redis is started with its password and persistence', () => {
     const svc = (parse(gen(db('redis')).get('docker-compose.yml')) as { services: Record<string, { command: string[] }> }).services['orders-db']!;
     expect(svc.command[0]).toBe('sh');
-    expect(svc.command[2]).toContain('--requirepass "$REDIS_PASSWORD"');
+    // A doubled dollar sign: Compose passes a literal one on, and the shell inside the container fills in the password from its environment.
+    expect(svc.command[2]).toContain('--requirepass "$$REDIS_PASSWORD"');
     expect(svc.command[2]).toContain('--appendonly yes');
+  });
+
+  test.each(DB_ENGINE_IDS)('%s: Compose is never given a bare $VARIABLE in a command (it would put the real password into the container\'s stored command, which docker inspect prints)', (id) => {
+    const svc = (parse(gen(db(id)).get('docker-compose.yml')) as { services: Record<string, { command?: string[] }> }).services['orders-db']!;
+    for (const part of svc.command ?? []) expect(part).not.toMatch(/(?<!\$)\$(?!\$)/);
   });
 
   test('the files are only the database\'s own: no Dockerfile, no sample app, no HTTP health path', () => {
@@ -171,11 +188,17 @@ describe('on a virtual machine', () => {
     expect(sh).toContain('-v orders-db-data:/var/lib/postgresql/data');
     expect(sh).not.toContain('mkdir -p /var/lib/orders-db');
     expect(get('ec2/main.tf')).toContain('user_data_replace_on_change = false');
-    expect(get('ec2/main.tf')).toMatch(/lifecycle\s*\{\s*ignore_changes\s*=\s*\[user_data\]/);
+    expect(get('ec2/main.tf')).toMatch(/lifecycle\s*\{\s*ignore_changes\s*=\s*\[user_data, ami\]/);
     expect(get('ec2/outputs.tf')).toMatch(/app_url[\s\S]*value\s*=\s*"\$\{aws_instance\.app\.public_ip\}:\$\{var\.app_port\}"/);
     expect(get('deploy.sh')).not.toContain('curl -fsS -m 5');
     expect(get('deploy.sh')).toContain('PostgreSQL is starting');
     expect(r.warnings.join(' ')).toContain('Take backups');
+  });
+
+  test('a newer machine image from AWS can never replace the machine that holds a database (the image is looked up by name)', () => {
+    const tf = gen(db('postgres', 'ec2')).get('ec2/main.tf');
+    expect(tf).toContain('data.aws_ssm_parameter.al2023.value');    // the image is the latest one ...
+    expect(tf).toMatch(/ignore_changes\s*=\s*\[[^\]]*\bami\b[^\]]*\]/);   // ... so Terraform must be told to ignore it moving
   });
 
   test('an ordinary application on EC2 is unchanged', () => {
@@ -256,6 +279,10 @@ describe('the Stack groups', () => {
     const back = pickStackOption(toDb, 'node');
     expect(back).toMatchObject({ database: '', image: '', stack: 'node', port: 3000 });
     expect(back.env).toEqual([]);
+  });
+
+  test('picking a database from the stack list while on ECS leaves a form with no errors', () => {
+    expect(validate(pickStackOption(withDeployTarget(defaultConfig('node'), 'ecs'), 'db-postgres'))).toEqual([]);
   });
 
   test('from one database to another starts from the new one\'s variables', () => {

@@ -113,6 +113,8 @@ export function applyDatabase(c: ContainerConfig, id: DbEngineId, version?: stri
     postgres: false, redis: false, mysql: false, mongodb: false, rabbitmq: false, proxy: false, includeSample: false,
     ec2: { ...c.ec2, allowedCidr: privateRange(c.ec2.allowedCidr) },
     azvm: { ...c.azvm, allowedCidr: privateRange(c.azvm.allowedCidr) },
+    // A place a database cannot go is switched off (the form offers only none, EC2 and Azure VM), so no error about it is left behind.
+    ecs: { ...c.ecs, enabled: false }, aca: { ...c.aca, enabled: false }, k8s: { ...c.k8s, enabled: false }, aks: { ...c.aks, enabled: false },
   };
 }
 

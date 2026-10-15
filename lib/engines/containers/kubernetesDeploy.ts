@@ -6,6 +6,7 @@
  * all Linux capabilities dropped and the runtime's default seccomp profile, no service account token is mounted, secrets come from a
  * Kubernetes Secret created by deploy.sh (never from a file), and a PodDisruptionBudget keeps one replica up during node maintenance.
  */
+import { yq } from './shared';
 import { companionServices } from './companions';
 import type { ContainerConfig, ContainerStack } from './dockerTemplates';
 import { usesExistingImage } from './existingImageUse';
@@ -98,7 +99,6 @@ export const kvName = (key: string) => key.replace(/_/g, '-');
 /** Tokens in the Key Vault manifests that deploy.sh (or helm --set) fills in once Terraform has created the vault and the identity. */
 export const KV_TOKENS = { clientId: '__WORKLOAD_CLIENT_ID__', tenantId: '__TENANT_ID__', vaultName: '__VAULT_NAME__' } as const;
 
-const yq = (s: string) => `"${s.replace(/[\\"]/g, (m) => `\\${m}`)}"`;
 /** Docker "512m" / "2g" -> Kubernetes "512Mi" / "2Gi". */
 export function k8sMemory(v: string): string { const m = /^(\d+)([mMgG])$/.exec(v); return m ? `${m[1]}${m[2]!.toLowerCase() === 'g' ? 'Gi' : 'Mi'}` : v; }
 const halfMemory = (v: string) => { const m = /^(\d+)([mMgG])$/.exec(v); if (!m) return k8sMemory(v); const mb = Number(m[1]) * (m[2]!.toLowerCase() === 'g' ? 1024 : 1); return `${Math.max(64, Math.floor(mb / 2))}Mi`; };

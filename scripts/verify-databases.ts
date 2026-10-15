@@ -72,6 +72,24 @@ async function waitHealthy(name: string, healthCmd: string, seconds = 240): Prom
 
 const exec = (name: string, line: string) => run('docker', ['exec', name, 'sh', '-c', line]);
 
+/**
+ * No secret may be in the container's stored command or environment-free configuration: Compose substitutes $NAME in the file before the container starts, so a
+ * password used in a command would be stored in clear text and printed by `docker inspect`. Returns the stored command when it leaks.
+ */
+const storedCommandLeak = (name: string, secret: string): string | null => {
+  const r = run('docker', ['inspect', name, '--format', '{{json .Config.Cmd}}']);
+  if (r.status !== 0) throw new Error(`docker inspect failed, so the password check cannot be trusted: ${out(r)}`);
+  return r.stdout.includes(secret) ? r.stdout : null;
+};
+
+/** No secret may be in the arguments of any process of the container (`docker top` and `ps` show them to anyone who can run them). Returns the listing when it leaks. */
+const argsLeak = (name: string, secret: string): string | null => {
+  const top = run('docker', ['top', name, '-eo', 'pid,args']);
+  // A failing `docker top` must not pass the check by saying nothing.
+  if (top.status !== 0) throw new Error(`docker top failed, so the password check cannot be trusted: ${out(top)}`);
+  return top.stdout.includes(secret) ? top.stdout : null;
+};
+
 async function viaCompose(id: DbEngineId): Promise<void> {
   const e = DB_ENGINES[id];
   const c = applyDatabase({ ...defaultConfig('node'), appName: `vdb-${id}` }, id);
@@ -93,6 +111,10 @@ async function viaCompose(id: DbEngineId): Promise<void> {
     const name = run('docker', ['compose', '-p', `vdb-${id}`, 'ps', '-q'], dir).stdout.trim();
     if (!(await waitHealthy(name, e.health))) return fail(`${id} compose: healthy`, out(run('docker', ['logs', '--tail', '40', name])));
     ok(`${id} compose: healthy`);
+    if (argsLeak(name, password)) return fail(`${id} compose: the password is in a process's arguments`, out(run('docker', ['top', name, '-eo', 'pid,args'])).replace(password, '<password>'));
+    ok(`${id} compose: the password is in no process's arguments`);
+    if (storedCommandLeak(name, password)) return fail(`${id} compose: the password is in the container's stored command (docker inspect prints it)`, 'see storedCommandLeak');
+    ok(`${id} compose: the password is not in the container's stored command`);
     const w = exec(name, CHECKS[id].write);
     if (w.status !== 0) return fail(`${id} compose: write`, out(w));
     if (CHECKS[id].refused) {
@@ -139,6 +161,10 @@ async function viaVmLine(id: DbEngineId): Promise<void> {
     if (s1.status !== 0) return fail(`${id} VM line: start`, `${command}\n${out(s1)}`);
     if (!(await waitHealthy(name, e.health))) return fail(`${id} VM line: healthy`, out(run('docker', ['logs', '--tail', '40', name])));
     ok(`${id} VM line: healthy`);
+    if (argsLeak(name, password)) return fail(`${id} VM line: the password is in a process's arguments`, out(run('docker', ['top', name, '-eo', 'pid,args'])).replace(password, '<password>'));
+    ok(`${id} VM line: the password is in no process's arguments`);
+    if (storedCommandLeak(name, password)) return fail(`${id} VM line: the password is in the container's stored command (docker inspect prints it)`, 'see storedCommandLeak');
+    ok(`${id} VM line: the password is not in the container's stored command`);
     const w = exec(name, CHECKS[id].write);
     if (w.status !== 0) return fail(`${id} VM line: write`, out(w));
     stop();

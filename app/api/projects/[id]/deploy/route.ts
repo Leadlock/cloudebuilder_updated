@@ -1,3 +1,4 @@
+import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { ok, unauthorized, forbidden, badRequest, internalError, parseBody } from '@/lib/api/response';
@@ -23,6 +24,10 @@ export async function POST(
     if (!identity) {
       return unauthorized('Authentication required to trigger infrastructure deployment');
     }
+
+    // The Deploy tab is closed to everyone but the listed accounts, here as well as on screen.
+    const closed = refuseRestrictedFeature(identity.email);
+    if (closed) return closed;
 
     // 1. Strict RBAC Gate: Standard users are blocked with 403
     if (identity.role !== 'admin') {

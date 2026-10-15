@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { badRequest, unauthorized, internalError, apiError, parseBody } from '@/lib/api/response';
 import { AuthService } from '@/lib/api/authService';
 import { CognitoService } from '@/lib/auth/cognitoService';
-import { fromPublicMethod, toPublicMethod, VERIFICATION_METHODS, type VerificationMethod } from '@/lib/auth/challengeMethods';
+import { fromPublicMethod, toPublicMethod, UNSUPPORTED_STEP_MESSAGE, VERIFICATION_METHODS, type VerificationMethod } from '@/lib/auth/challengeMethods';
 import { clearLoginFailures, limitAuthAttempt, loginLocked, recordLoginFailure } from '@/lib/api/authRateLimit';
 
 export const dynamic = 'force-dynamic';
@@ -38,10 +38,15 @@ export async function POST(req: NextRequest) {
       });
 
       if ('challenge' in cognitoRes && cognitoRes.challenge) {
+        const method = toPublicMethod(cognitoRes.challengeName);
+        if (!method) {
+          console.warn('[POST /api/auth/mfa/verify] unsupported sign-in step:', cognitoRes.challengeName);
+          return apiError('UNSUPPORTED_SIGN_IN_STEP', UNSUPPORTED_STEP_MESSAGE, 400);
+        }
         return NextResponse.json({
           success: false,
           requiresMfa: true,
-          method: toPublicMethod(cognitoRes.challengeName),
+          method,
           session: cognitoRes.session,
           email: cognitoRes.email,
           message: 'Additional verification step required.',

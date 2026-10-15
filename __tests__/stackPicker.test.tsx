@@ -122,6 +122,16 @@ describe('a database', () => {
     expect(screen.queryByText('Include a sample app')).toBeNull();
   });
 
+  test('the cloud chip sends a database to a virtual machine, never to Container Apps', () => {
+    pickDatabase();
+    fireEvent.change(screen.getByLabelText('Deploy to'), { target: { value: 'ec2' } });
+    fireEvent.click(screen.getByRole('button', { name: /Azure \(Container Apps\)/ }));
+    expect((screen.getByLabelText('Deploy to') as HTMLSelectElement).value).toBe('azure-vm');
+    expect(document.body.textContent).not.toContain('cannot be deployed here');
+    fireEvent.click(screen.getByRole('button', { name: /AWS \(EC2\)/ }));
+    expect((screen.getByLabelText('Deploy to') as HTMLSelectElement).value).toBe('ec2');
+  });
+
   test('going back to an application restores the usual form', () => {
     pickDatabase();
     fireEvent.click(group('Backend'));

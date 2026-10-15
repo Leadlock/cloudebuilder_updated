@@ -10,6 +10,7 @@
  *  - secrets live in Key Vault and are read by the VM when the container starts, never written to Terraform, its state or any file;
  *  - the start-up script is a static file: everything it needs (registry, vault, image tag) is read from the VM's own tags.
  */
+import { LOCATION } from './shared';
 import type { ContainerConfig } from './dockerTemplates';
 import { usesExistingImage } from './existingImageUse';
 import { azureVmHourlyUsd } from '@/lib/engines/cost/azurePricing';
@@ -42,7 +43,6 @@ export const defaultAzVm = (): AzVmConfig => ({
   enabled: false, location: 'westeurope', size: 'Standard_B2s', diskGb: 30, allowedCidr: '0.0.0.0/0', imageTag: 'latest', githubActions: true, githubRepo: '', scanImage: true, software: [], pageText: '',
 });
 
-const LOCATION = /^[a-z]{3,}[a-z0-9]*$/;
 const VM_SIZE = /^Standard_[A-Za-z0-9_]{2,30}$/;
 const APP_NAME = /^[a-z](?:[a-z0-9]|-(?!-)){0,30}[a-z0-9]$/;
 

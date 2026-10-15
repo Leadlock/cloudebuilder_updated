@@ -1,9 +1,11 @@
 /**
  * Customers are not told which services run behind CloudCraft (the sign-in directory, the email service, the AI and the price lookups).
- * Error text from those services can still reach a response, for example a message passed through from a failed sign-in, so every error
- * message sent to a browser goes through hideVendorNames. The real text stays in the server log, where the names help with debugging.
+ * Text from those services can still end up in a response when a route passes it on, for example a failed sign-up or an email that could not be
+ * sent. Such a route puts the text through hideVendorNames at that point. The real text stays in the server log, where the names help debugging.
  *
- * The customer's own clouds (AWS, Azure, their accounts and resources) are not hidden: they are what the product is about.
+ * It is deliberately NOT applied to every error message: Cognito, SES, Bedrock and OpenAI are also services a customer designs with, so an error about
+ * the customer's own resource ("Bedrock agent 'Support' has an invalid model", a project called "Foundry") must be left exactly as it is.
+ * The customer's own clouds (AWS, Azure, their accounts and resources) are never hidden: they are what the product is about.
  */
 
 /** Longest phrases first, so "Amazon Cognito user pool" becomes one neutral phrase rather than two. */

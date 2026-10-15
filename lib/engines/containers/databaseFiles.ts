@@ -1,8 +1,14 @@
 /** The files that are specific to a database: its docker-compose.yml and README. (The deployment files come from the VM generators.) */
+import { yq } from './shared';
 import type { ContainerConfig } from './dockerTemplates';
 import { databaseOf } from './databases';
 
-const yq = (s: string) => `"${s.replace(/[\\"]/g, (m) => `\\${m}`)}"`;
+/**
+ * Text Compose must pass on as it is. Compose replaces $NAME in the file with its value before the container starts, which would put the real
+ * password into the container's stored command (`docker inspect` prints it). A doubled dollar sign is a literal one: the shell inside the container expands it.
+ */
+const composeLiteral = (s: string): string => s.replace(/\$/g, '$$$$');
+
 
 export function composeDatabase(c: ContainerConfig): string {
   const e = databaseOf(c)!;
@@ -23,7 +29,7 @@ services:
 ${env.map((l) => `      ${l}`).join('\n')}
     volumes:
       - ${c.appName}-data:${e.dataPath}
-${e.command ? `    command: ["sh", "-c", ${JSON.stringify(e.command)}]\n` : ''}    healthcheck:
+${e.command ? `    command: ["sh", "-c", ${JSON.stringify(composeLiteral(e.command))}]\n` : ''}    healthcheck:
       test: ["CMD-SHELL", ${yq(e.health)}]
       interval: 10s
       timeout: 5s

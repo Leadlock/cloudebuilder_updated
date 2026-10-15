@@ -81,7 +81,8 @@ export default function ContainerTemplatesPanel() {
   /** The cloud chip also moves a form that already has a deployment: without this the files and the cost below kept showing the old target. */
   function chooseStarterCloud(cl: 'aws' | 'azure') {
     setStarterCloud(cl);
-    setCfg((c) => (deployTargets(c).length > 0 ? withDeployTarget(c, cl === 'azure' ? 'container-apps' : 'ec2') : c));
+    // A database goes to a virtual machine of that cloud (it cannot go to Container Apps); an application to EC2 or Container Apps.
+    setCfg((c) => (deployTargets(c).length > 0 ? withDeployTarget(c, databaseOf(c) ? (cl === 'azure' ? 'azure-vm' : 'ec2') : (cl === 'azure' ? 'container-apps' : 'ec2')) : c));
     setSelected('README.md');
   }
   const [linkedNode, setLinkedNode] = useState<string | null>(null);

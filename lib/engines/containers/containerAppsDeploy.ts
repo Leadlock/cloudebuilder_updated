@@ -7,6 +7,7 @@
  * and images are built inside Azure (az acr build), so Docker is not needed on your machine. Secrets live in Key Vault: deploy.sh stores them
  * there (never in a file or in Terraform's state), and the app reads them through its managed identity (Container Apps "Key Vault reference").
  */
+import { LOCATION } from './shared';
 import { companionServices } from './companions';
 import type { ContainerConfig } from './dockerTemplates';
 import { usesExistingImage } from './existingImageUse';
@@ -39,7 +40,6 @@ export const defaultAca = (): AcaConfig => ({
 });
 
 export const ACA_CPU = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
-const LOCATION = /^[a-z]{3,}[a-z0-9]*$/;
 const APP_NAME = /^[a-z](?:[a-z0-9]|-(?!-)){0,30}[a-z0-9]$/;
 
 export function validateAca(c: ContainerConfig): string[] {

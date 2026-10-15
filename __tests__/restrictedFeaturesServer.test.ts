@@ -17,6 +17,8 @@ import { RESTRICTED_FEATURE_MESSAGE } from '@/lib/auth/restrictedFeatures';
 import { POST as generate } from '@/app/api/ai/generate/route';
 import { POST as questionnaire } from '@/app/api/ai/questionnaire/route';
 import { POST as review } from '@/app/api/ai/review/route';
+import { POST as deploy } from '@/app/api/projects/[id]/deploy/route';
+import { GET as listDeployments } from '@/app/api/projects/[id]/deployments/route';
 import { GET as listAccounts, POST as connectAccount } from '@/app/api/cloud-accounts/route';
 
 const OLD = process.env['RESTRICTED_FEATURES_ALLOWED_EMAILS'];
@@ -48,6 +50,26 @@ describe('AI routes', () => {
   });
 });
 
+describe('the older Deploy routes', () => {
+  const projectCtx = { params: Promise.resolve({ id: 'p1' }) };
+
+  test('another admin is refused by the deploy action and by the deployment history', async () => {
+    mockIdentity.mockReturnValue({ userId: 'u2', email: 'someone@neozaar.com', role: 'admin', orgIds: ['o1'] });
+    const d = await deploy(post('/api/projects/p1/deploy', { environment: 'production', nodes: [], edges: [] }), projectCtx);
+    expect(d.status).toBe(403);
+    expect(JSON.stringify(await d.json())).toContain(RESTRICTED_FEATURE_MESSAGE);
+    const h = await listDeployments(new NextRequest('http://localhost/api/projects/p1/deployments'), projectCtx);
+    expect(h.status).toBe(403);
+    expect(JSON.stringify(await h.json())).toContain(RESTRICTED_FEATURE_MESSAGE);
+  });
+
+  test('the listed account is not stopped by the lock', async () => {
+    mockIdentity.mockReturnValue({ userId: 'u1', email: 'ajinkya@neozaar.com', role: 'admin', orgIds: ['o1'] });
+    const d = await deploy(post('/api/projects/p1/deploy', { environment: 'production', nodes: [], edges: [] }), projectCtx);
+    expect(JSON.stringify(await d.json())).not.toContain(RESTRICTED_FEATURE_MESSAGE);
+  });
+});
+
 describe('Terraform execution', () => {
   test('another account is refused before any other check', async () => {
     expect(await terraformExecutionDenied('u2', 'o1', 'someone@neozaar.com')).toBe(RESTRICTED_FEATURE_MESSAGE);
@@ -61,6 +83,15 @@ describe('Terraform execution', () => {
   test('without the setting nothing changes', async () => {
     delete process.env['RESTRICTED_FEATURES_ALLOWED_EMAILS'];
     expect(await terraformExecutionDenied('u2', 'o1', 'someone@neozaar.com')).not.toBe(RESTRICTED_FEATURE_MESSAGE);
+  });
+
+  test('the older Deploy routes check the lock too (the deploy action and the deployment history)', () => {
+    const root = join(__dirname, '..', 'app', 'api', 'projects', '[id]');
+    for (const f of [join(root, 'deploy', 'route.ts'), join(root, 'deployments', 'route.ts')]) {
+      const text = readFileSync(f, 'utf8');
+      expect({ f, identified: (text.match(/extractIdentity\(req\)/g) ?? []).length, guarded: (text.match(/refuseRestrictedFeature\(identity\.email\)/g) ?? []).length })
+        .toEqual({ f, identified: 1, guarded: 1 });
+    }
   });
 
   test('every route that runs Terraform passes the caller\'s email to the check, so none can be added without the lock', () => {
