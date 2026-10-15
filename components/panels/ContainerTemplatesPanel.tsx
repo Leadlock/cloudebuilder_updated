@@ -18,11 +18,14 @@ import {
 } from '@/lib/engines/containers/dockerTemplates';
 import { buildZip } from '@/lib/engines/containers/zip';
 import { withProjectRegion } from '@/lib/engines/containers/projectRegion';
+import { STACK_CATEGORIES, currentOption, optionsFor, pickStackOption, type StackCategory } from '@/lib/engines/containers/stackOptions';
+import { applyDatabase, databaseOf } from '@/lib/engines/containers/databases';
 import { FARGATE_CPU, fargateMemoryOptions } from '@/lib/engines/containers/ecsDeploy';
 import { ACA_CPU } from '@/lib/engines/containers/containerAppsDeploy';
 import { SOFTWARE } from '@/lib/engines/servers/software';
 
-const STACKS = Object.keys(STACK_LABEL) as ContainerStack[];
+/** A database runs on a virtual machine, or locally with Docker Compose (see lib/engines/containers/databases.ts). */
+const DB_TARGETS: ReadonlySet<DeployTarget> = new Set<DeployTarget>(['none', 'ec2', 'azure-vm']);
 const newNodeId = () => `node-${Date.now()}`;
 
 /** "Install on the server": software put on the virtual machine itself at first boot, next to the container. Docker is left out: it is always installed. */
@@ -95,6 +98,7 @@ export default function ContainerTemplatesPanel() {
 
   function addToArchitecture() {
     if (!project) { setCanvasNote('Open or create a project first, then come back.'); return; }
+    if (dbEngine) { setCanvasNote('A database is not added to the canvas from here: its data volume and passwords are handled by the generated files. Download them, or add an Amazon RDS or Azure Database resource to the architecture.'); return; }
     const res = generateContainerFiles(cfg);
     if (!res.ok) { setCanvasNote('Fix the errors above first.'); return; }
     const type = nodeTypeForTarget(target);
@@ -147,9 +151,15 @@ export default function ContainerTemplatesPanel() {
 
   const result = useMemo(() => generateContainerFiles(cfg), [cfg]);
   const set = <K extends keyof ContainerConfig>(k: K, v: ContainerConfig[K]) => setCfg((c) => ({ ...c, [k]: v }));
-  const pickStack = (s: ContainerStack) => setCfg((c) => ({
-    ...defaultConfig(s), appName: c.appName, env: c.env, runAsNonRoot: c.runAsNonRoot, restart: c.restart, azvm: c.azvm, aks: c.aks, postgres: c.postgres, redis: c.redis, mysql: c.mysql, mongodb: c.mongodb, rabbitmq: c.rabbitmq, proxy: c.proxy, proxyDomain: c.proxyDomain, ec2: c.ec2, ecs: c.ecs, aca: c.aca, k8s: c.k8s,
-  }));
+  const [category, setCategory] = useState<StackCategory>('backend');
+  const option = currentOption(cfg, category);
+  const activeCategory: StackCategory = option?.category ?? category;
+  const dbEngine = databaseOf(cfg);
+  const chooseCategory = (cat: StackCategory) => {
+    setCategory(cat);
+    // Picking a group opens its first option, unless the form already is one of its options.
+    if (!optionsFor(cat).some((o) => o.matches(cfg))) setCfg((c) => pickStackOption(c, optionsFor(cat)[0]!.id));
+  };
   const setEc2 = <K extends keyof ContainerConfig['ec2']>(k: K, v: ContainerConfig['ec2'][K]) => setCfg((c) => ({ ...c, ec2: { ...c.ec2, [k]: v } }));
   const setEcs = <K extends keyof ContainerConfig['ecs']>(k: K, v: ContainerConfig['ecs'][K]) => setCfg((c) => ({ ...c, ecs: { ...c.ecs, [k]: v } }));
   const setAca = <K extends keyof ContainerConfig['aca']>(k: K, v: ContainerConfig['aca'][K]) => setCfg((c) => ({ ...c, aca: { ...c.aca, [k]: v } }));
@@ -243,6 +253,7 @@ export default function ContainerTemplatesPanel() {
         <div className="grid gap-5 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
           {/* ── form ── */}
           <div className="space-y-4">
+            {!dbEngine && (
             <div className={clsx(card, 'space-y-2')}>
               <label className={label} htmlFor="ct-source">Where does the image come from?</label>
               <select id="ct-source" className={input} value={ex ? 'existing' : 'build'} onChange={(e) => set('image', e.target.value === 'existing' ? (cfg.image || 'nginx:1.27') : '')}>
@@ -259,31 +270,42 @@ export default function ContainerTemplatesPanel() {
                 <p className={clsx('text-[11px]', muted)}>CloudCraft writes the Dockerfile, builds the image and, with a deployment target, pushes it to a registry it creates for you.</p>
               )}
             </div>
-            {!ex && (
-            <div className={card}>
+            )}
+            {(!ex || dbEngine) && (
+            <div className={card} data-testid="stack-picker">
               <p className={label}>Stack</p>
-              <div className="grid grid-cols-2 gap-2">
-                {STACKS.map((s) => (
-                  <button key={s} type="button" onClick={() => pickStack(s)} aria-pressed={cfg.stack === s}
-                    className={clsx('rounded-lg border px-3 py-2 text-xs font-medium text-left',
-                      cfg.stack === s ? (isLight ? 'bg-cyan-600 border-cyan-600 text-white' : 'bg-cyan-500/20 border-cyan-400 text-cyan-200')
+              <div className="grid grid-cols-4 gap-1.5 mb-3" role="group" aria-label="Stack group">
+                {STACK_CATEGORIES.map((cat) => (
+                  <button key={cat.id} type="button" onClick={() => chooseCategory(cat.id)} aria-pressed={activeCategory === cat.id} title={cat.hint}
+                    className={clsx('rounded-lg border px-2 py-2 text-xs font-medium',
+                      activeCategory === cat.id ? (isLight ? 'bg-cyan-600 border-cyan-600 text-white' : 'bg-cyan-500/20 border-cyan-400 text-cyan-200')
                         : (isLight ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'))}>
-                    {STACK_LABEL[s]}
+                    {cat.label}
                   </button>
                 ))}
               </div>
+              <label className={label} htmlFor="ct-stack-option">{STACK_CATEGORIES.find((x) => x.id === activeCategory)!.label}</label>
+              <select id="ct-stack-option" className={input} value={option && option.category === activeCategory ? option.id : ''} onChange={(e) => setCfg((c) => pickStackOption(c, e.target.value))}>
+                {(!option || option.category !== activeCategory) && <option value="" disabled>Choose one…</option>}
+                {optionsFor(activeCategory).map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+              <p className={clsx('text-[11px] mt-1.5', muted)}>{STACK_CATEGORIES.find((x) => x.id === activeCategory)!.hint}{activeCategory === 'database' && ' It runs from the official image, with its data kept in a volume. It is deployed to a virtual machine (EC2 or Azure VM) or run with Docker Compose, and is never open to the internet.'}</p>
             </div>
             )}
 
             <div className={clsx(card, 'space-y-3')}>
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2"><label className={label} htmlFor="ct-name">App name</label><input id="ct-name" className={input} value={cfg.appName} onChange={(e) => set('appName', e.target.value)} /></div>
-                <div><label className={label} htmlFor="ct-port">Port</label><input id="ct-port" type="number" className={input} value={cfg.port} onChange={(e) => set('port', Number(e.target.value))} /></div>
-                {!ex && (
+                <div><label className={label} htmlFor="ct-port">Port</label><input id="ct-port" type="number" className={input} value={cfg.port} disabled={!!dbEngine} onChange={(e) => set('port', Number(e.target.value))} /></div>
+                {dbEngine && (
+                <div><label className={label} htmlFor="ct-version">{dbEngine.label} version</label>
+                  <select id="ct-version" className={input} value={cfg.version} onChange={(e) => setCfg((c) => applyDatabase(c, dbEngine.id, e.target.value))}>{dbEngine.versions.map((v) => <option key={v}>{v}</option>)}</select></div>
+                )}
+                {!ex && !dbEngine && (
                 <div><label className={label} htmlFor="ct-version">{cfg.stack === 'static' ? 'nginx version' : 'Version'}</label>
                   <select id="ct-version" className={input} value={cfg.version} onChange={(e) => set('version', e.target.value)}>{VERSIONS[cfg.stack].map((v) => <option key={v}>{v}</option>)}</select></div>
                 )}
-                <div className="col-span-2"><label className={label} htmlFor="ct-health">Health check path</label><input id="ct-health" className={input} value={cfg.healthPath} onChange={(e) => set('healthPath', e.target.value)} /></div>
+                {!dbEngine && <div className="col-span-2"><label className={label} htmlFor="ct-health">Health check path</label><input id="ct-health" className={input} value={cfg.healthPath} onChange={(e) => set('healthPath', e.target.value)} /></div>}
               </div>
 
               {!ex && (<>
@@ -351,13 +373,15 @@ export default function ContainerTemplatesPanel() {
                   <p className={clsx('text-[11px] mt-1', muted)}>A real domain gets a free Let&apos;s Encrypt certificate (its DNS must point at the machine). &quot;localhost&quot; gets a local one. Used by docker-compose.yml only.</p></div>
               )}
               <div className="flex flex-wrap gap-4 text-xs">
-                {!ex && cfg.stack !== 'static' && <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.runAsNonRoot} onChange={(e) => set('runAsNonRoot', e.target.checked)} />Run as non-root (recommended)</label>}
+                {!ex && !dbEngine && cfg.stack !== 'static' && <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.runAsNonRoot} onChange={(e) => set('runAsNonRoot', e.target.checked)} />Run as non-root (recommended)</label>}
+                {!dbEngine && (<>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.postgres} onChange={(e) => set('postgres', e.target.checked)} />Add PostgreSQL</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.redis} onChange={(e) => set('redis', e.target.checked)} />Add Redis</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.mysql} onChange={(e) => set('mysql', e.target.checked)} />Add MySQL</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.mongodb} onChange={(e) => set('mongodb', e.target.checked)} />Add MongoDB</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.rabbitmq} onChange={(e) => set('rabbitmq', e.target.checked)} />Add RabbitMQ</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.proxy} onChange={(e) => set('proxy', e.target.checked)} />HTTPS reverse proxy (Caddy)</label>
+                </>)}
                 {!ex && (
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.includeSample} onChange={(e) => set('includeSample', e.target.checked)} />Include a sample app</label>
                 )}
@@ -370,7 +394,7 @@ export default function ContainerTemplatesPanel() {
                 <option value="none">{DEPLOY_TARGET_LABEL.none}</option>
                 {([['aws', 'AWS'], ['azure', 'Azure'], ['any', 'Any cluster']] as const).map(([cloud, name]) => (
                   <optgroup key={cloud} label={name}>
-                    {(Object.keys(DEPLOY_TARGET_LABEL) as DeployTarget[]).filter((t) => TARGET_CLOUD[t] === cloud).map((t) => <option key={t} value={t}>{DEPLOY_TARGET_LABEL[t]}</option>)}
+                    {(Object.keys(DEPLOY_TARGET_LABEL) as DeployTarget[]).filter((t) => TARGET_CLOUD[t] === cloud && (!dbEngine || DB_TARGETS.has(t))).map((t) => <option key={t} value={t}>{DEPLOY_TARGET_LABEL[t]}</option>)}
                   </optgroup>
                 ))}
               </select>
@@ -385,7 +409,7 @@ export default function ContainerTemplatesPanel() {
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className={label} htmlFor="ec2-region">Region</label><input id="ec2-region" className={input} value={cfg.ec2.region} onChange={(e) => setEc2('region', e.target.value)} /></div>
                   <div><label className={label} htmlFor="ec2-type">Instance type</label><input id="ec2-type" className={input} value={cfg.ec2.instanceType} onChange={(e) => setEc2('instanceType', e.target.value)} /></div>
-                  <div className="col-span-2"><label className={label} htmlFor="ec2-cidr">Who can connect to the app port</label><input id="ec2-cidr" className={input} value={cfg.ec2.allowedCidr} onChange={(e) => setEc2('allowedCidr', e.target.value)} /></div>
+                  <div className="col-span-2"><label className={label} htmlFor="ec2-cidr">{dbEngine ? 'Who can connect to the database (not the whole internet)' : 'Who can connect to the app port'}</label><input id="ec2-cidr" className={input} value={cfg.ec2.allowedCidr} onChange={(e) => setEc2('allowedCidr', e.target.value)} /></div>
                   <div><label className={label} htmlFor="ec2-disk">Disk (GB)</label><input id="ec2-disk" type="number" className={input} value={cfg.ec2.volumeGb} onChange={(e) => setEc2('volumeGb', Number(e.target.value))} /></div>
                   {!ex && (
                   <div><label className={label} htmlFor="ec2-tag">Image tag</label><input id="ec2-tag" className={input} value={cfg.ec2.imageTag} onChange={(e) => setEc2('imageTag', e.target.value)} /></div>
@@ -458,7 +482,7 @@ export default function ContainerTemplatesPanel() {
                   {!ex && (
                   <div><label className={label} htmlFor="azvm-tag">Image tag</label><input id="azvm-tag" className={input} value={cfg.azvm.imageTag} onChange={(e) => setAzvm('imageTag', e.target.value)} /></div>
                   )}
-                  <div className="col-span-2"><label className={label} htmlFor="azvm-cidr">Who can connect to the app port</label><input id="azvm-cidr" className={input} value={cfg.azvm.allowedCidr} onChange={(e) => setAzvm('allowedCidr', e.target.value)} /></div>
+                  <div className="col-span-2"><label className={label} htmlFor="azvm-cidr">{dbEngine ? 'Who can connect to the database (not the whole internet)' : 'Who can connect to the app port'}</label><input id="azvm-cidr" className={input} value={cfg.azvm.allowedCidr} onChange={(e) => setAzvm('allowedCidr', e.target.value)} /></div>
                   {!ex && (<>
                   <SoftwarePicker id="azvm-sw" value={cfg.azvm.software ?? []} pageText={cfg.azvm.pageText ?? ''} onChange={(v) => setAzvm('software', v)} onPageText={(v) => setAzvm('pageText', v)} inputClass={input} labelClass={label} />
                   <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={cfg.azvm.githubActions} onChange={(e) => setAzvm('githubActions', e.target.checked)} />GitHub Actions workflow</label>

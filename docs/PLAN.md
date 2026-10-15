@@ -45,6 +45,10 @@ Nothing has to be configured. The person who first signed up is the operator (`C
 
 EC2 and Azure VM nodes have an "Install on the server" setting (nginx, Apache, PHP, Node.js, Python, Java, Docker, Git, MariaDB, PostgreSQL, Redis). The software is installed at first boot by a generated script (`lib/engines/servers/software.ts`), the web ports are opened only to the range the person types, and EC2 finds the current OS image by name. The `server-software` CI job runs the script for every item in Amazon Linux 2023, Ubuntu and Debian containers. Nothing has been run on a real AWS or Azure account yet.
 
+## Databases as containers (done)
+
+Container Templates has a Stack area with Frontend, Backend, API and Database. A database (PostgreSQL, MySQL, MongoDB, Redis, RabbitMQ) runs from its official image with a data volume, passwords from the secret store, and a port that is never open to the internet. It deploys to EC2 or an Azure VM (the data folder is kept even if a setting changes) or runs with Docker Compose; ECS, Container Apps, Kubernetes and AKS refuse it and point to the cloud's managed database. The `databases` CI job starts each engine from the generated files, checks the password and that data survives a replaced container. It is not yet offered on the canvas (add RDS or Azure Database there) and not on Kubernetes (needs a StatefulSet).
+
 ## Phase 4: code health (ongoing)
 
 | # | Task |

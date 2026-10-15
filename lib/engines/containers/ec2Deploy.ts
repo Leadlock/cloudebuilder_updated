@@ -17,6 +17,7 @@
  *    (SecureString) at /<app>/<NAME> when the service starts. The role can read only that path.
  */
 import { hostPorts, hostSoftwareSh, hostSoftwareWarnings, validateHostSoftware } from './hostSoftware';
+import { databaseOf } from './databases';
 import { companionServices } from './companions';
 import type { ContainerConfig } from './dockerTemplates';
 import { usesExistingImage } from './existingImageUse';
@@ -296,7 +297,7 @@ resource "aws_instance" "app" {
   associate_public_ip_address = true
 
   user_data                   = file("\${path.module}/user_data.sh")
-  user_data_replace_on_change = true
+  user_data_replace_on_change = ${databaseOf(c) ? 'false' : 'true'}
 
   metadata_options {
     http_endpoint = "enabled"
@@ -310,7 +311,12 @@ resource "aws_instance" "app" {
   }
 
   tags = local.tags
-}
+${databaseOf(c) ? `
+  # A database keeps its data on this machine: a changed setting must never replace the machine (and with it the data).
+  lifecycle {
+    ignore_changes = [user_data]
+  }
+` : ''}}
 ${eip ? `
 resource "aws_eip" "app" {
   instance = aws_instance.app.id
@@ -398,7 +404,7 @@ output "public_ip" {
 }
 
 output "app_url" {
-  value = "http://\${${ip}}:\${var.app_port}${c.healthPath}"
+  value = ${databaseOf(c) ? '"\${' + ip + '}:\${var.app_port}"' : '"http://\\${' + ip + '}:\\${var.app_port}' + c.healthPath + '"'}
 }
 
 output "connect" {
@@ -450,7 +456,7 @@ VALUE=$(aws ssm get-parameter --name /${app}/${k} --with-decryption --query Para
 printf '%s=%s\\n' '${k}' "$VALUE" >> "$ENV_FILE"`).join('\n')}
 
 docker rm -f ${app} >/dev/null 2>&1 || true
-exec docker run --name ${app} --init --env-file "$ENV_FILE" -p ${c.port}:${c.port} --memory ${c.memoryLimit} --cpus ${c.cpuLimit} "$IMAGE"
+exec docker run --name ${app} --init --env-file "$ENV_FILE" -p ${c.port}:${c.port}${databaseOf(c) ? ` -v ${app}-data:${databaseOf(c)!.dataPath}` : ''} --memory ${c.memoryLimit} --cpus ${c.cpuLimit} "$IMAGE"${databaseOf(c)?.command ? ` sh -c '${databaseOf(c)!.command}'` : ''}
 RUNNER
 chmod 755 /usr/local/bin/${app}-run
 
@@ -690,7 +696,11 @@ else
   echo "    The server is not reachable by Session Manager yet (normal on a new server). It starts the app by itself within a minute or two."
 fi
 
-URL=$(terraform -chdir=ec2 output -raw app_url)
+${databaseOf(c) ? `ADDRESS=$(terraform -chdir=ec2 output -raw app_url)
+echo "Done. ${databaseOf(c)!.label} is starting at $ADDRESS (allowed from ${c.ec2.allowedCidr} only)."
+echo "The first start takes a minute or two. It is not reachable from the internet, so connect from inside that range."
+echo "Logs: aws ssm start-session --region $REGION --target $INSTANCE_ID   then   sudo journalctl -u $APP.service -f"
+` : `URL=$(terraform -chdir=ec2 output -raw app_url)
 WAIT="\${DEPLOY_WAIT_SECONDS:-300}"
 END=$((SECONDS + WAIT))
 echo "    Waiting for $URL ..."
@@ -705,7 +715,7 @@ else
   echo "Not answering yet. The first start can take a few minutes. Check $URL again, or read the logs:"
   echo "  aws ssm start-session --region $REGION --target $INSTANCE_ID   then   sudo journalctl -u $APP.service -f"
 fi
-`;
+`}`;
 }
 
 function destroySh(c: ContainerConfig): string {
@@ -805,8 +815,8 @@ and generate again. Terraform then creates the role and prints its ARN. Without 
 `}` : ''}
 ## What to know
 
-- This is a single server: HTTP only, no load balancer, and no automatic replacement if it fails. For HTTPS or several servers,
-  put an Application Load Balancer in front or move to ECS.
+${databaseOf(c) ? `- This is a single machine: no automatic replacement or failover if it fails. It is a database, so it is never served over HTTP.` : `- This is a single server: HTTP only, no load balancer, and no automatic replacement if it fails. For HTTPS or several servers,
+  put an Application Load Balancer in front or move to ECS.`}
 - Terraform keeps its record of what it built in \`ec2/terraform.tfstate\`. Keep that folder; \`bash destroy.sh\` needs it.
 - Costs: the server, its disk and the public IPv4 address bill every hour, ${usesExistingImage(c) ? '' : 'and ECR bills for storage.'}
 `;

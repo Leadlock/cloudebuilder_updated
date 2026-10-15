@@ -19,6 +19,8 @@ import { generateSampleApp } from './sampleApps';
 import { checkContainer, type ContainerFinding } from './checks';
 import { imageIsFloating, validateExistingImage } from './existingImage';
 import { caddyfile, companionBlocks, companionDependencies, companionEnv, companionSecrets, companionVolumes, companionServices, PROXY_DOMAIN, dbName } from './companions';
+import { databaseOf, databaseWarnings, validateDatabase, type DbEngineId } from './databases';
+import { composeDatabase, readmeDatabase } from './databaseFiles';
 import { defaultEc2, ec2Warnings, estimateEc2Cost, type Ec2Cost, generateEc2Files, validateEc2, type Ec2Config } from './ec2Deploy';
 export type { Ec2Config } from './ec2Deploy';
 import { defaultEcs, ecsWarnings, estimateEcsCost, generateEcsFiles, validateEcs, type EcsConfig } from './ecsDeploy';
@@ -92,6 +94,8 @@ export interface ContainerConfig {
   azvm: AzVmConfig;
   /** Optional "deploy to AKS" bundle (uses the Kubernetes settings for the manifests). */
   aks: AksConfig;
+  /** When set, this is a database (PostgreSQL, MySQL, MongoDB, Redis or RabbitMQ) run from its official image: see databases.ts. */
+  database: DbEngineId | '';
   /** Add a tiny working sample app next to the Dockerfile, so the template runs before you have your own code. */
   includeSample: boolean;
   /**
@@ -123,7 +127,7 @@ export function defaultConfig(stack: ContainerStack = 'node'): ContainerConfig {
     version: VERSIONS[stack][0]!, env: [], healthPath: stack === 'java' ? '/actuator/health' : '/', runAsNonRoot: true,
     restart: 'unless-stopped', memoryLimit: '512m', cpuLimit: '1.0', postgres: false, redis: false, mysql: false, mongodb: false, rabbitmq: false, proxy: false, proxyDomain: 'localhost',
     packageManager: 'npm', buildCommand: 'npm run build', startCommand: stack === 'ruby' ? 'bundle exec puma -b tcp://0.0.0.0:3000' : 'npm start', nextStandalone: false,
-    pythonFramework: 'fastapi', pythonModule: 'main:app', javaBuildTool: 'maven', goPackage: '.', dotnetProject: 'App.csproj', dotnetAssembly: 'App', rubyFramework: 'rack', staticBuildDir: 'dist', staticSpaFallback: true, ec2: defaultEc2(), ecs: defaultEcs(), aca: defaultAca(), k8s: defaultK8s(), azvm: defaultAzVm(), aks: defaultAks(), includeSample: false, image: '',
+    pythonFramework: 'fastapi', pythonModule: 'main:app', javaBuildTool: 'maven', goPackage: '.', dotnetProject: 'App.csproj', dotnetAssembly: 'App', rubyFramework: 'rack', staticBuildDir: 'dist', staticSpaFallback: true, ec2: defaultEc2(), ecs: defaultEcs(), aca: defaultAca(), k8s: defaultK8s(), azvm: defaultAzVm(), aks: defaultAks(), includeSample: false, image: '', database: '',
   };
 }
 
@@ -190,6 +194,7 @@ export function validate(c: ContainerConfig): string[] {
   e.push(...validateExistingImage(c.image));
   const targets = deployTargets(c);
   if (targets.length > 1) e.push(`Choose one place to deploy to: ${targets.map((t) => DEPLOY_TARGET_LABEL[t]).join(' and ')} are both switched on, and each writes its own deploy.sh.`);
+  e.push(...validateDatabase(c));
   return [...e, ...validateEc2(c), ...validateEcs(c), ...validateAca(c), ...validateK8s(c), ...validateAzVm(c), ...validateAks(c)];
 }
 
@@ -513,11 +518,11 @@ export function generateContainerFiles(config: ContainerConfig): GenerateResult 
   const sample = existing ? { files: [], warnings: [] } : generateSampleApp(c);
   const files: GeneratedFile[] = [
     ...(existing ? [] : [{ path: 'Dockerfile', content: dockerfile }, { path: '.dockerignore', content: dockerignore(c) }]),
-    { path: 'docker-compose.yml', content: compose(c) },
+    { path: 'docker-compose.yml', content: databaseOf(c) ? composeDatabase(c) : compose(c) },
     { path: '.env.example', content: envExample(c) },
     ...(c.stack === 'static' && !existing ? [{ path: 'nginx.conf', content: nginxConf(c) }] : []),
     ...(c.proxy ? [{ path: 'Caddyfile', content: caddyfile(c) }] : []),
-    { path: 'README.md', content: readme(c) },
+    { path: 'README.md', content: databaseOf(c) ? readmeDatabase(c) : readme(c) },
     ...generateEc2Files(c),
     ...generateEcsFiles(c),
     ...generateAcaFiles(c),
@@ -526,7 +531,7 @@ export function generateContainerFiles(config: ContainerConfig): GenerateResult 
     ...generateAksFiles(c),
     ...sample.files,
   ];
-  return { ok: true, files, warnings: [...sample.warnings, ...(existing && imageIsFloating(c.image) ? ['The image has no version tag (or uses :latest). A version tag, or a digest, makes it clear what is running and allows a rollback.'] : []), ...(c.proxy && deployTargets(c).length > 0 ? ['The HTTPS proxy is part of docker-compose.yml only. The deployment target has its own way to serve HTTPS (a load balancer certificate, the ingress, or the platform).'] : []), ...ec2Warnings(c), ...ecsWarnings(c), ...acaWarnings(c), ...k8sWarnings(c), ...azVmWarnings(c), ...aksWarnings(c)], findings: checkContainer(c, files), cost: estimateEc2Cost(c) ?? estimateEcsCost(c) ?? estimateAcaCost(c) ?? estimateAzVmCost(c) ?? estimateAksCost(c) };
+  return { ok: true, files, warnings: [...sample.warnings, ...(existing && imageIsFloating(c.image) ? ['The image has no version tag (or uses :latest). A version tag, or a digest, makes it clear what is running and allows a rollback.'] : []), ...(c.proxy && deployTargets(c).length > 0 ? ['The HTTPS proxy is part of docker-compose.yml only. The deployment target has its own way to serve HTTPS (a load balancer certificate, the ingress, or the platform).'] : []), ...databaseWarnings(c), ...ec2Warnings(c), ...ecsWarnings(c), ...acaWarnings(c), ...k8sWarnings(c), ...azVmWarnings(c), ...aksWarnings(c)], findings: checkContainer(c, files), cost: estimateEc2Cost(c) ?? estimateEcsCost(c) ?? estimateAcaCost(c) ?? estimateAzVmCost(c) ?? estimateAksCost(c) };
 }
 
 // ─── starter templates ───────────────────────────────────────────────────────

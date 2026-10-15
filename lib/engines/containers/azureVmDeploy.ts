@@ -14,6 +14,7 @@ import type { ContainerConfig } from './dockerTemplates';
 import { usesExistingImage } from './existingImageUse';
 import { azureVmHourlyUsd } from '@/lib/engines/cost/azurePricing';
 import { GITHUB_REPO, TAG, q, secretNames, validCidr, type DeployCost } from './ec2Deploy';
+import { databaseOf } from './databases';
 import { companionServices } from './companions';
 import { hostPorts, hostSoftwareSh, hostSoftwareWarnings, validateHostSoftware } from './hostSoftware';
 
@@ -312,7 +313,7 @@ ${usesExistingImage(c) ? '' : `    acr       = azurerm_container_registry.app.lo
   })
 
   lifecycle {
-    ignore_changes = [admin_ssh_key, tags]
+    ignore_changes = [admin_ssh_key, tags${databaseOf(c) ? ', custom_data' : ''}]
   }
 
   depends_on = [${usesExistingImage(c) ? '' : 'azurerm_role_assignment.acr_pull, '}azurerm_role_assignment.vault_read]
@@ -393,7 +394,7 @@ output "public_ip" {
 }
 
 output "app_url" {
-  value = "http://$\{azurerm_public_ip.app.ip_address}:$\{var.app_port}${c.healthPath}"
+  value = ${databaseOf(c) ? '"$\\{azurerm_public_ip.app.ip_address}:$\\{var.app_port}"' : '"http://$\\{azurerm_public_ip.app.ip_address}:$\\{var.app_port}' + c.healthPath + '"'}
 }
 
 output "logs" {
@@ -453,7 +454,7 @@ VALUE=$(curl -fsS -H "Authorization: Bearer $KV_TOKEN" "https://$VAULT.vault.azu
 printf '%s=%s\\n' '${k}' "$VALUE" >> "$ENV_FILE"`).join('\n')}
 ` : ''}
 docker rm -f ${app} >/dev/null 2>&1 || true
-exec docker run --name ${app} --init --env-file "$ENV_FILE" -p ${c.port}:${c.port} --memory ${c.memoryLimit} --cpus ${c.cpuLimit} "$IMAGE"
+exec docker run --name ${app} --init --env-file "$ENV_FILE" -p ${c.port}:${c.port}${databaseOf(c) ? ` -v ${app}-data:${databaseOf(c)!.dataPath}` : ''} --memory ${c.memoryLimit} --cpus ${c.cpuLimit} "$IMAGE"${databaseOf(c)?.command ? ` sh -c '${databaseOf(c)!.command}'` : ''}
 RUNNER
 chmod 755 /usr/local/bin/${app}-run
 
@@ -625,7 +626,11 @@ else
   echo "    The VM is not ready for commands yet (normal on a new VM). It starts the app by itself within a few minutes."
 fi
 
-URL=$(terraform -chdir=azvm output -raw app_url)
+${databaseOf(c) ? `ADDRESS=$(terraform -chdir=azvm output -raw app_url)
+echo "Done. ${databaseOf(c)!.label} is starting at $ADDRESS (allowed from ${c.azvm.allowedCidr} only)."
+echo "The first start installs Docker and takes several minutes. It is not reachable from the internet, so connect from inside that range."
+echo "Logs: $(terraform -chdir=azvm output -raw logs)"
+` : `URL=$(terraform -chdir=azvm output -raw app_url)
 WAIT="\${DEPLOY_WAIT_SECONDS:-480}"
 END=$((SECONDS + WAIT))
 echo "    Waiting for $URL ..."
@@ -640,7 +645,7 @@ else
   echo "Not answering yet. The first start installs Docker and can take several minutes. Check again, or read the logs:"
   echo "  $(terraform -chdir=azvm output -raw logs)"
 fi
-`;
+`}`;
 }
 
 function destroySh(c: ContainerConfig): string {
@@ -719,7 +724,7 @@ Contributor on the resource group is broad; narrow it (AcrPush on the registry a
 ` : ''}
 ## What to know
 
-- This is a single VM: HTTP only, no load balancer, and no automatic replacement if it fails. For HTTPS or several instances use Azure Container Apps or AKS.
+${databaseOf(c) ? `- This is a single machine: no automatic replacement or failover if it fails. It is a database, so it is never served over HTTP.` : `- This is a single VM: HTTP only, no load balancer, and no automatic replacement if it fails. For HTTPS or several instances use Azure Container Apps or AKS.`}
 - Terraform keeps its record in \`azvm/terraform.tfstate\`. Keep that folder; \`bash destroy.sh\` needs it.
 - Costs: the VM, its disk and the public IP bill every hour; the registry bills daily.
 `;
