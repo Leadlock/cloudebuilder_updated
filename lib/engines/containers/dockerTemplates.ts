@@ -394,7 +394,9 @@ ${healthcheck(c, 'wget')}CMD ["nginx", "-g", "daemon off;"]
 `;
 }
 
-function nginxConf(c: ContainerConfig): string {
+/** The static site's nginx configuration. With `upstream`, requests to /api/ are passed on to that service, so the page can call it on its own address. */
+export function nginxConf(c: ContainerConfig, upstream?: { host: string; port: number }): string {
+  const apiBlock = upstream ? `\n  location /api/ {\n    proxy_pass http://${upstream.host}:${upstream.port}/;\n    proxy_set_header Host $host;\n    proxy_set_header X-Real-IP $remote_addr;\n    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n    proxy_set_header X-Forwarded-Proto $scheme;\n  }\n` : '';
   return `server {
   listen ${c.port};
   server_name _;
@@ -411,7 +413,7 @@ function nginxConf(c: ContainerConfig): string {
   location / {
     try_files $uri $uri/ ${c.staticSpaFallback ? '/index.html' : '=404'};
   }
-
+${apiBlock}
   location ~* \\.(?:js|css|png|jpg|jpeg|gif|svg|ico|woff2?)$ {
     expires 30d;
     add_header Cache-Control "public, immutable";
@@ -422,27 +424,53 @@ function nginxConf(c: ContainerConfig): string {
 
 // ─── compose, env, docker ignore, README ─────────────────────────────────────
 
-function compose(c: ContainerConfig): string {
-  const plainVars = plain(c);
-  const secretVars = secrets(c);
+/** How a compose service is published: to the network, to this machine only, only to the other services, or not at all. */
+export type PortExposure = 'public' | 'local' | 'expose' | 'none';
+
+export interface ServiceBlockOptions {
+  /** The service's name in the compose file. */
+  key: string;
+  /** The folder the image is built from. */
+  context: string;
+  ports: PortExposure;
+  /** The port on this machine when it differs from the container's. */
+  hostPort?: number;
+  /** Environment lines ("KEY: value") added after the service's own variables. */
+  extraEnv?: string[];
+  deps?: Array<{ name: string; condition: 'service_healthy' | 'service_started' }>;
+}
+
+/** One application service of a compose file, without the "services:" header. */
+export function composeServiceBlock(c: ContainerConfig, o: ServiceBlockOptions): string {
   const envLines = [
     // Compose treats $ as interpolation, so a literal $ in a value is doubled.
-    ...plainVars.map((v) => `${v.key}: ${yq(v.value.replace(/\$/g, '$$$$'))}`),
-    ...secretVars.map((v) => `${v.key}: "\${${v.key}:?set ${v.key}}"`),
-    ...companionEnv(c),
+    ...plain(c).map((v) => `${v.key}: ${yq(v.value.replace(/\$/g, '$$$$'))}`),
+    ...secrets(c).map((v) => `${v.key}: "\${${v.key}:?set ${v.key}}"`),
+    ...(o.extraEnv ?? []),
   ];
-  const deps = companionDependencies(c);
-  // Behind the proxy only the proxy is published; the app is reachable from it over the compose network.
-  const exposure = c.proxy ? `    expose:\n      - "${c.port}"\n` : `    ports:\n      - "${c.port}:${c.port}"\n`;
-  return `# Run with: docker compose ${usesExistingImage(c) ? 'up' : 'up --build'}
-services:
-  ${c.appName}:
-${usesExistingImage(c) ? `    image: ${c.image}\n` : `    build: .\n    image: ${c.appName}:latest\n`}    restart: ${c.restart}
-${exposure}${envLines.length ? `    environment:\n${envLines.map((l) => `      ${l}`).join('\n')}\n` : ''}${deps.length ? `    depends_on:\n${deps.map((d) => `      ${d}:\n        condition: service_healthy`).join('\n')}\n` : ''}    mem_limit: ${c.memoryLimit}
+  const deps = o.deps ?? [];
+  const published = `${o.hostPort ?? c.port}:${c.port}`;
+  const exposure = o.ports === 'expose' ? `    expose:\n      - "${c.port}"\n`
+    : o.ports === 'local' ? `    ports:\n      - "127.0.0.1:${published}"\n`
+      : o.ports === 'none' ? '' : `    ports:\n      - "${published}"\n`;
+  return `  ${o.key}:
+${usesExistingImage(c) ? `    image: ${c.image}\n` : `    build: ${o.context}\n    image: ${c.appName}:latest\n`}    restart: ${c.restart}
+${exposure}${envLines.length ? `    environment:\n${envLines.map((l) => `      ${l}`).join('\n')}\n` : ''}${deps.length ? `    depends_on:\n${deps.map((d) => `      ${d.name}:\n        condition: ${d.condition}`).join('\n')}\n` : ''}    mem_limit: ${c.memoryLimit}
     cpus: ${c.cpuLimit}
     security_opt:
       - no-new-privileges:true
-${companionBlocks(c)}${companionVolumes(c)}`;
+`;
+}
+
+function compose(c: ContainerConfig): string {
+  // Behind the proxy only the proxy is published; the app is reachable from it over the compose network.
+  const block = composeServiceBlock(c, {
+    key: c.appName, context: '.', ports: c.proxy ? 'expose' : 'public', extraEnv: companionEnv(c),
+    deps: companionDependencies(c).map((name) => ({ name, condition: 'service_healthy' as const })),
+  });
+  return `# Run with: docker compose ${usesExistingImage(c) ? 'up' : 'up --build'}
+services:
+${block}${companionBlocks(c)}${companionVolumes(c)}`;
 }
 
 function envExample(c: ContainerConfig): string {

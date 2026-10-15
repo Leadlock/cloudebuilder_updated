@@ -118,6 +118,24 @@ export function applyDatabase(c: ContainerConfig, id: DbEngineId, version?: stri
   };
 }
 
+/**
+ * The settings an application gets to reach this database over the compose network, as ready-made "KEY: value" lines for the compose file. The
+ * password is Compose's own ${NAME:?...} reference to the .env file, so it is never written into a generated file.
+ */
+export function dbAppEnv(c: ContainerConfig, host: string): Array<{ key: string; value: string }> {
+  const e = databaseOf(c);
+  if (!e) return [];
+  const literal = (k: string) => (c.env.find((x) => x.key === k)?.value ?? '').replace(/\$/g, '$$$$');   // Compose reads a doubled dollar sign as a literal one
+  const secret = (k: string) => `\${${k}:?set ${k}}`;
+  switch (e.id) {
+    case 'postgres': return [{ key: 'DATABASE_URL', value: `postgresql://${literal('POSTGRES_USER')}:${secret('POSTGRES_PASSWORD')}@${host}:${e.port}/${literal('POSTGRES_DB')}` }];
+    case 'mysql': return [{ key: 'DATABASE_URL', value: `mysql://${literal('MYSQL_USER')}:${secret('MYSQL_PASSWORD')}@${host}:${e.port}/${literal('MYSQL_DATABASE')}` }];
+    case 'mongodb': return [{ key: 'MONGODB_URL', value: `mongodb://${literal('MONGO_INITDB_ROOT_USERNAME')}:${secret('MONGO_INITDB_ROOT_PASSWORD')}@${host}:${e.port}/?authSource=admin` }];
+    case 'redis': return [{ key: 'REDIS_URL', value: `redis://:${secret('REDIS_PASSWORD')}@${host}:${e.port}` }];
+    case 'rabbitmq': return [{ key: 'AMQP_URL', value: `amqp://${literal('RABBITMQ_DEFAULT_USER')}:${secret('RABBITMQ_DEFAULT_PASS')}@${host}:${e.port}` }];
+  }
+}
+
 const PREFIX = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/;
 /** Whether a range is wide enough to count as "the internet" for a database (anything bigger than a /8). */
 export const isInternetWide = (cidr: string): boolean => { const m = PREFIX.exec(cidr); return !!m && Number(m[5]) < 8; };

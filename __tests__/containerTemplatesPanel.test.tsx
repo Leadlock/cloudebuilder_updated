@@ -137,7 +137,7 @@ describe('using an existing image', () => {
     expect(tabs()).toContain('Dockerfile');
     chooseExisting();
     expect((screen.getByLabelText('Image') as HTMLInputElement).value).toBe('nginx:1.27');
-    expect(screen.queryByText('Stack')).toBeNull();
+    expect(screen.getByText('Stack')).toBeTruthy();   // the Stack stays: other services can still be added to the image
     expect(screen.queryByLabelText('Version')).toBeNull();
     expect(screen.queryByLabelText('Package manager')).toBeNull();
     expect(screen.queryByLabelText('Include a sample app')).toBeNull();

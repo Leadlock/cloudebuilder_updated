@@ -10,25 +10,30 @@ import { databaseOf } from './databases';
 const composeLiteral = (s: string): string => s.replace(/\$/g, '$$$$');
 
 
-export function composeDatabase(c: ContainerConfig): string {
+export interface DatabaseBlockOptions {
+  /** The service's name in the compose file (its data volume is "<key>-data"). */
+  key: string;
+  /** The port on this machine when it differs from the database's own. */
+  hostPort?: number;
+}
+
+/** The database as one compose service, without the "services:" header. It is published on this machine only (127.0.0.1), never on the network. */
+export function databaseServiceBlock(c: ContainerConfig, o: DatabaseBlockOptions): string {
   const e = databaseOf(c)!;
   const env = [
     // Compose treats $ as interpolation, so a literal $ in a value is doubled.
     ...c.env.filter((v) => !v.secret).map((v) => `${v.key}: ${yq(v.value.replace(/\$/g, '$$$$'))}`),
     ...c.env.filter((v) => v.secret).map((v) => `${v.key}: "\${${v.key}:?set ${v.key}}"`),
   ];
-  return `# Run with: docker compose up -d
-# The database is published on this machine only (127.0.0.1), never on the network.
-services:
-  ${c.appName}:
+  return `  ${o.key}:
     image: ${c.image}
     restart: ${c.restart}
     ports:
-      - "127.0.0.1:${c.port}:${c.port}"
+      - "127.0.0.1:${o.hostPort ?? c.port}:${c.port}"
     environment:
 ${env.map((l) => `      ${l}`).join('\n')}
     volumes:
-      - ${c.appName}-data:${e.dataPath}
+      - ${o.key}-data:${e.dataPath}
 ${e.command ? `    command: ["sh", "-c", ${JSON.stringify(composeLiteral(e.command))}]\n` : ''}    healthcheck:
       test: ["CMD-SHELL", ${yq(e.health)}]
       interval: 10s
@@ -39,7 +44,14 @@ ${e.command ? `    command: ["sh", "-c", ${JSON.stringify(composeLiteral(e.comma
     cpus: ${c.cpuLimit}
     security_opt:
       - no-new-privileges:true
+`;
+}
 
+export function composeDatabase(c: ContainerConfig): string {
+  return `# Run with: docker compose up -d
+# The database is published on this machine only (127.0.0.1), never on the network.
+services:
+${databaseServiceBlock(c, { key: c.appName })}
 volumes:
   ${c.appName}-data:
 `;

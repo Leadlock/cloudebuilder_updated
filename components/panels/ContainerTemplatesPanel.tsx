@@ -18,7 +18,11 @@ import {
 } from '@/lib/engines/containers/dockerTemplates';
 import { buildZip } from '@/lib/engines/containers/zip';
 import { withProjectRegion } from '@/lib/engines/containers/projectRegion';
-import { STACK_CATEGORIES, currentOption, optionsFor, pickStackOption, type StackCategory } from '@/lib/engines/containers/stackOptions';
+import { pickStackOption } from '@/lib/engines/containers/stackOptions';
+import {
+  defaultProject, enabledLayers, generateProjectFiles, LAYER_LABEL, layerOf, mapLayerConfigs, projectFromConfig, type Layer, type StackProject,
+} from '@/lib/engines/containers/stackProject';
+import StackLayers from './StackLayers';
 import { applyDatabase, databaseOf, DB_TARGETS } from '@/lib/engines/containers/databases';
 import { FARGATE_CPU, fargateMemoryOptions } from '@/lib/engines/containers/ecsDeploy';
 import { ACA_CPU } from '@/lib/engines/containers/containerAppsDeploy';
@@ -63,13 +67,34 @@ export default function ContainerTemplatesPanel() {
   // The region chosen for the project fills the matching cloud's region here, now and whenever it changes.
   const projectRegion = project ? (project.environments?.[state.activeEnvironment]?.region ?? project.region) : undefined;
   const projectProvider = project?.provider;
-  const [cfg, setCfg] = useState<ContainerConfig>(() => withProjectRegion(defaultConfig('node'), projectProvider, projectRegion));
+  // The Stack: up to four services (Frontend, Backend, API, Database), each optional. `cfg` below is the one whose settings the form shows.
+  const [stack, setStack] = useState<StackProject>(() => mapLayerConfigs(defaultProject(), (c) => withProjectRegion(c, projectProvider, projectRegion)));
+  const [activeLayer, setActiveLayer] = useState<Layer>('backend');
+  const cfg = stack.layers[activeLayer].config;
+  const setCfg = useCallback((u: ContainerConfig | ((c: ContainerConfig) => ContainerConfig)) => setStack((s) => {
+    const cur = s.layers[activeLayer];
+    return { ...s, layers: { ...s.layers, [activeLayer]: { ...cur, config: typeof u === 'function' ? u(cur.config) : u } } };
+  }), [activeLayer]);
+  /** A whole single-service configuration (a starter, a saved template, one sent from the canvas): it becomes a project of just that service. */
+  const loadConfig = (c: ContainerConfig) => { setStack((s) => projectFromConfig(c, s)); setActiveLayer(layerOf(c)); };
   const lastRegion = useRef(projectRegion);
   useEffect(() => {
     if (lastRegion.current === projectRegion) return;
     lastRegion.current = projectRegion;
-    setCfg((c) => withProjectRegion(c, projectProvider, projectRegion));
+    setStack((s) => mapLayerConfigs(s, (c) => withProjectRegion(c, projectProvider, projectRegion)));
   }, [projectRegion, projectProvider]);
+  const multi = enabledLayers(stack).length > 1;
+  const toggleLayer = (layer: Layer, on: boolean) => {
+    const next = { ...stack, layers: { ...stack.layers, [layer]: { ...stack.layers[layer], enabled: on } } };
+    setStack(next);
+    if (on) setActiveLayer(layer);
+    else if (activeLayer === layer) setActiveLayer(enabledLayers(next)[0] ?? layer);
+    setSelected('README.md');
+  };
+  const pickLayer = (layer: Layer, optionId: string) => {
+    setStack((s) => ({ ...s, layers: { ...s.layers, [layer]: { ...s.layers[layer], config: pickStackOption(s.layers[layer].config, optionId) } } }));
+    setActiveLayer(layer);
+  };
   const [selected, setSelected] = useState('Dockerfile');
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState<Saved[] | null>(null);
@@ -91,12 +116,13 @@ export default function ContainerTemplatesPanel() {
   // A configuration sent here from a Container service node on the canvas.
   useEffect(() => {
     const h = takeContainerHandoff();
-    if (h) { setCfg(h.config); setLinkedNode(h.nodeId ?? null); setSelected('README.md'); }
+    if (h) { loadConfig(h.config); setLinkedNode(h.nodeId ?? null); setSelected('README.md'); }
   }, []);
   const linked = linkedNode ? project?.nodes.find((n) => n.id === linkedNode) : undefined;
 
   function addToArchitecture() {
     if (!project) { setCanvasNote('Open or create a project first, then come back.'); return; }
+    if (multi) { setCanvasNote('A project of several services is not added to the canvas yet. Untick all but one service to add that one, or download the files.'); return; }
     if (dbEngine) { setCanvasNote('A database is not added to the canvas from here: its data volume and passwords are handled by the generated files. Download them, or add an Amazon RDS or Azure Database resource to the architecture.'); return; }
     const res = generateContainerFiles(cfg);
     if (!res.ok) { setCanvasNote('Fix the errors above first.'); return; }
@@ -148,18 +174,9 @@ export default function ContainerTemplatesPanel() {
     finally { setBusy(false); }
   }
 
-  const result = useMemo(() => generateContainerFiles(cfg), [cfg]);
+  const result = useMemo(() => generateProjectFiles(stack), [stack]);
   const set = <K extends keyof ContainerConfig>(k: K, v: ContainerConfig[K]) => setCfg((c) => ({ ...c, [k]: v }));
-  const [category, setCategory] = useState<StackCategory>('backend');
-  const option = currentOption(cfg, category);
-  const activeCategory: StackCategory = option?.category ?? category;
-  const activeGroup = STACK_CATEGORIES.find((x) => x.id === activeCategory)!;
   const dbEngine = databaseOf(cfg);
-  const chooseCategory = (cat: StackCategory) => {
-    setCategory(cat);
-    // Picking a group opens its first option, unless the form already is one of its options.
-    if (!optionsFor(cat).some((o) => o.matches(cfg))) setCfg((c) => pickStackOption(c, optionsFor(cat)[0]!.id));
-  };
   const setEc2 = <K extends keyof ContainerConfig['ec2']>(k: K, v: ContainerConfig['ec2'][K]) => setCfg((c) => ({ ...c, ec2: { ...c.ec2, [k]: v } }));
   const setEcs = <K extends keyof ContainerConfig['ecs']>(k: K, v: ContainerConfig['ecs'][K]) => setCfg((c) => ({ ...c, ecs: { ...c.ecs, [k]: v } }));
   const setAca = <K extends keyof ContainerConfig['aca']>(k: K, v: ContainerConfig['aca'][K]) => setCfg((c) => ({ ...c, aca: { ...c.aca, [k]: v } }));
@@ -173,6 +190,7 @@ export default function ContainerTemplatesPanel() {
   const setTarget = (t: DeployTarget) => setCfg((c) => withDeployTarget(c, t));
   const setEnv = (i: number, patch: Partial<EnvVar>) => setCfg((c) => ({ ...c, env: c.env.map((v, j) => (j === i ? { ...v, ...patch } : v)) }));
 
+  const zipName = multi ? stack.name : cfg.appName;
   const files = result.ok ? result.files : [];
   const current = files.find((f) => f.path === selected) ?? files[0];
 
@@ -217,7 +235,7 @@ export default function ContainerTemplatesPanel() {
           </div>
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {STARTER_TEMPLATES.map((t) => (
-              <button key={t.id} type="button" onClick={() => { setCfg(withProjectRegion(t.config(starterCloud === 'azure' ? 'container-apps' : 'ec2'), projectProvider, projectRegion)); setLoadedId(null); setSelected('README.md'); }}
+              <button key={t.id} type="button" onClick={() => { loadConfig(withProjectRegion(t.config(starterCloud === 'azure' ? 'container-apps' : 'ec2'), projectProvider, projectRegion)); setLoadedId(null); setSelected('README.md'); }}
                 className={clsx('rounded-xl border p-3 text-left', isLight ? 'bg-white border-slate-300 hover:bg-slate-50' : 'bg-slate-900 border-slate-700 hover:bg-slate-800')}>
                 <span className={clsx('block text-sm font-semibold', isLight ? 'text-slate-900' : 'text-white')}>{t.title}</span>
                 <span className={clsx('block text-[11px] mt-0.5', muted)}>{t.blurb}</span>
@@ -238,7 +256,7 @@ export default function ContainerTemplatesPanel() {
                   <span className={clsx('block text-sm font-semibold truncate', isLight ? 'text-slate-900' : 'text-white')}>{t.name}</span>
                   <span className={clsx('block text-[11px]', muted)}>{STACK_LABEL[t.config.stack]} · {t.config.appName}</span>
                   <div className="flex gap-3 mt-2 text-xs">
-                    <button type="button" className="text-cyan-600 font-medium" onClick={() => { setCfg(t.config); setLoadedId(t.id); setSaveName(''); setSelected('README.md'); }}>Open</button>
+                    <button type="button" className="text-cyan-600 font-medium" onClick={() => { loadConfig(t.config); setLoadedId(t.id); setSaveName(''); setSelected('README.md'); }}>Open</button>
                     <button type="button" disabled={busy} className="text-rose-500" onClick={() => void removeSaved(t.id)}>Delete</button>
                   </div>
                 </li>
@@ -247,14 +265,18 @@ export default function ContainerTemplatesPanel() {
           )}
           <div className="flex flex-wrap items-center gap-2">
             <input aria-label="Template name" placeholder={loadedId ? 'Keep the name or type a new one' : 'Name this configuration'} className={clsx(input, 'max-w-xs')} maxLength={80} value={saveName} onChange={(e) => setSaveName(e.target.value)} />
-            {loadedId && <button type="button" disabled={busy} onClick={() => void saveCurrent(false)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-cyan-600 text-white disabled:opacity-50"><Save className="w-3.5 h-3.5" />Update this template</button>}
-            <button type="button" disabled={busy || !result.ok} onClick={() => void saveCurrent(true)} className={clsx('flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium disabled:opacity-50', isLight ? 'border-slate-300 text-slate-700' : 'border-slate-600 text-slate-200')}><Save className="w-3.5 h-3.5" />Save as new</button>
+            {loadedId && <button type="button" disabled={busy || multi} onClick={() => void saveCurrent(false)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-cyan-600 text-white disabled:opacity-50"><Save className="w-3.5 h-3.5" />Update this template</button>}
+            <button type="button" disabled={busy || !result.ok || multi} title={multi ? 'Saving a project of several services is not available yet' : undefined} onClick={() => void saveCurrent(true)} className={clsx('flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium disabled:opacity-50', isLight ? 'border-slate-300 text-slate-700' : 'border-slate-600 text-slate-200')}><Save className="w-3.5 h-3.5" />Save as new</button>
           </div>
         </div>
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
           {/* ── form ── */}
           <div className="space-y-4">
+            <div className={card}>
+              <StackLayers stack={stack} active={activeLayer} onToggle={toggleLayer} onPick={pickLayer} onActive={setActiveLayer} onName={(name) => setStack((st) => ({ ...st, name }))} />
+            </div>
+
             {!dbEngine && (
             <div className={clsx(card, 'space-y-2')}>
               <label className={label} htmlFor="ct-source">Where does the image come from?</label>
@@ -273,31 +295,10 @@ export default function ContainerTemplatesPanel() {
               )}
             </div>
             )}
-            {(!ex || dbEngine) && (
-            <div className={card} data-testid="stack-picker">
-              <p className={label}>Stack</p>
-              <div className="grid grid-cols-4 gap-1.5 mb-3" role="group" aria-label="Stack group">
-                {STACK_CATEGORIES.map((cat) => (
-                  <button key={cat.id} type="button" onClick={() => chooseCategory(cat.id)} aria-pressed={activeCategory === cat.id} title={cat.hint}
-                    className={clsx('rounded-lg border px-2 py-2 text-xs font-medium',
-                      activeCategory === cat.id ? (isLight ? 'bg-cyan-600 border-cyan-600 text-white' : 'bg-cyan-500/20 border-cyan-400 text-cyan-200')
-                        : (isLight ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'))}>
-                    {cat.label}
-                  </button>
-                ))}
-              </div>
-              <label className={label} htmlFor="ct-stack-option">{activeGroup.label}</label>
-              <select id="ct-stack-option" className={input} value={option?.id ?? ''} onChange={(e) => setCfg((c) => pickStackOption(c, e.target.value))}>
-                {!option && <option value="" disabled>Choose one…</option>}
-                {optionsFor(activeCategory).map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-              </select>
-              <p className={clsx('text-[11px] mt-1.5', muted)}>{activeGroup.hint}{activeCategory === 'database' && ' It runs from the official image, with its data kept in a volume. It is deployed to a virtual machine (EC2 or Azure VM) or run with Docker Compose, and is never open to the internet.'}</p>
-            </div>
-            )}
-
             <div className={clsx(card, 'space-y-3')}>
+              {multi && <p className="text-sm font-semibold" data-testid="editing-layer">Settings for the {LAYER_LABEL[activeLayer]}</p>}
               <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2"><label className={label} htmlFor="ct-name">App name</label><input id="ct-name" className={input} value={cfg.appName} onChange={(e) => set('appName', e.target.value)} /></div>
+                {!multi && <div className="col-span-2"><label className={label} htmlFor="ct-name">App name</label><input id="ct-name" className={input} value={cfg.appName} onChange={(e) => set('appName', e.target.value)} /></div>}
                 <div><label className={label} htmlFor="ct-port">Port</label><input id="ct-port" type="number" className={input} value={cfg.port} disabled={!!dbEngine} onChange={(e) => set('port', Number(e.target.value))} /></div>
                 {dbEngine && (
                 <div><label className={label} htmlFor="ct-version">{dbEngine.label} version</label>
@@ -370,13 +371,13 @@ export default function ContainerTemplatesPanel() {
                 <div><label className={label} htmlFor="ct-restart">Restart</label>
                   <select id="ct-restart" className={input} value={cfg.restart} onChange={(e) => set('restart', e.target.value as ContainerConfig['restart'])}><option>unless-stopped</option><option>always</option><option>on-failure</option><option>no</option></select></div>
               </div>
-              {cfg.proxy && (
+              {cfg.proxy && !multi && (
                 <div><label className={label} htmlFor="ct-domain">Domain for HTTPS</label><input id="ct-domain" className={input} placeholder="app.example.com or localhost" value={cfg.proxyDomain} onChange={(e) => set('proxyDomain', e.target.value.trim())} />
                   <p className={clsx('text-[11px] mt-1', muted)}>A real domain gets a free Let&apos;s Encrypt certificate (its DNS must point at the machine). &quot;localhost&quot; gets a local one. Used by docker-compose.yml only.</p></div>
               )}
               <div className="flex flex-wrap gap-4 text-xs">
                 {buildForm && cfg.stack !== 'static' && <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.runAsNonRoot} onChange={(e) => set('runAsNonRoot', e.target.checked)} />Run as non-root (recommended)</label>}
-                {!dbEngine && (<>
+                {!dbEngine && !multi && (<>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.postgres} onChange={(e) => set('postgres', e.target.checked)} />Add PostgreSQL</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.redis} onChange={(e) => set('redis', e.target.checked)} />Add Redis</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.mysql} onChange={(e) => set('mysql', e.target.checked)} />Add MySQL</label>
@@ -390,6 +391,13 @@ export default function ContainerTemplatesPanel() {
               </div>
             </div>
 
+            {multi && (
+              <div className={clsx(card, 'text-xs space-y-1')} data-testid="project-run-note">
+                <p className={clsx('text-sm font-semibold', isLight ? 'text-slate-900' : 'text-white')}>Run it</p>
+                <p className={muted}>The services are built and started together: <code>docker compose up --build</code> in the folder you download. Deploying a combined project to a server is not available yet; untick all but one service to get a deployment for it.</p>
+              </div>
+            )}
+            {!multi && (
             <div className={clsx(card, 'space-y-3')}>
               <label className={label} htmlFor="ct-target">Deploy to</label>
               <select id="ct-target" className={input} value={target} onChange={(e) => setTarget(e.target.value as DeployTarget)}>
@@ -544,6 +552,7 @@ export default function ContainerTemplatesPanel() {
                 </div>
               )}
             </div>
+            )}
 
             <div className={clsx(card, 'space-y-2')}>
               <div className="flex items-center justify-between">
@@ -622,7 +631,7 @@ export default function ContainerTemplatesPanel() {
                     <button type="button" onClick={() => current && download(current.path.replace(/\//g, '_'), current.content, 'text/plain')} className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs', isLight ? 'border-slate-300 text-slate-700 hover:bg-slate-50' : 'border-slate-700 text-slate-300 hover:bg-slate-800')}>
                       <Download className="w-3.5 h-3.5" />File
                     </button>
-                    <button type="button" onClick={() => download(`${cfg.appName}-docker.zip`, buildZip(files, cfg.appName) as BlobPart, 'application/zip')}
+                    <button type="button" onClick={() => download(`${zipName}-docker.zip`, buildZip(files, zipName) as BlobPart, 'application/zip')}
                       className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium', isLight ? 'bg-cyan-600 text-white' : 'bg-cyan-500/20 border border-cyan-400 text-cyan-200')}>
                       <Download className="w-3.5 h-3.5" />All as zip
                     </button>

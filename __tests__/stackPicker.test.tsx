@@ -25,52 +25,101 @@ beforeEach(() => {
   (global as unknown as { fetch: unknown }).fetch = jest.fn(async () => ({ ok: true, json: async () => ({ data: { templates: [] } }) }));
 });
 
-const group = (name: string) => within(screen.getByRole('group', { name: 'Stack group' })).getByRole('button', { name });
-const optionSelect = () => screen.getByLabelText(/^(Frontend|Backend|API|Database)$/) as HTMLSelectElement;
-const optionLabels = () => [...optionSelect().options].map((o) => o.textContent);
+const include = (name: string) => screen.getByLabelText(`Include ${name}`) as HTMLInputElement;
+const choice = (name: string) => screen.getByLabelText(`${name} choice`) as HTMLSelectElement;
+const labels = (name: string) => [...choice(name).options].map((o) => o.textContent);
 const targetOptions = () => [...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value);
+const tabNames = () => screen.getAllByRole('tab').map((t) => t.textContent);
 
-describe('the Stack groups', () => {
-  test('there are four, starting on Backend with Node.js chosen', () => {
+describe('the Stack parts', () => {
+  test('there are four, starting with only the Backend (Node.js) ticked', () => {
     render(<ContainerTemplatesPanel />);
-    expect(['Frontend', 'Backend', 'API', 'Database'].map((n) => group(n).textContent)).toEqual(['Frontend', 'Backend', 'API', 'Database']);
-    expect(group('Backend').getAttribute('aria-pressed')).toBe('true');
-    expect(optionSelect().selectedOptions[0]!.textContent).toMatch(/Node\.js/);
+    expect(['Frontend', 'Backend', 'API', 'Database'].map((n) => include(n).checked)).toEqual([false, true, false, false]);
+    expect(choice('Backend').selectedOptions[0]!.textContent).toMatch(/Node\.js/);
   });
 
-  test('each group lists its own options', () => {
+  test('each part lists its own options', () => {
     render(<ContainerTemplatesPanel />);
-    fireEvent.click(group('Frontend'));
-    expect(optionLabels().join(' | ')).toMatch(/React.*Static website.*Next\.js/);
-    fireEvent.click(group('API'));
-    expect(optionLabels().join(' | ')).toMatch(/FastAPI.*Express.*Spring Boot.*Web API.*Go HTTP API/);
-    fireEvent.click(group('Database'));
-    expect(optionLabels()).toEqual(['PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'RabbitMQ']);
+    expect(labels('Frontend').join(' | ')).toMatch(/React.*Static website.*Next\.js/);
+    expect(labels('API').join(' | ')).toMatch(/FastAPI.*Express.*Spring Boot.*Web API.*Go HTTP API/);
+    expect(labels('Database')).toEqual(['PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'RabbitMQ']);
   });
 
-  test('opening a group opens its first option and the files follow', () => {
+  test('the last ticked part cannot be unticked', () => {
     render(<ContainerTemplatesPanel />);
-    fireEvent.click(group('Frontend'));
-    expect(group('Frontend').getAttribute('aria-pressed')).toBe('true');
-    expect(screen.getByText('nginx.conf')).toBeTruthy();
+    expect(include('Backend').disabled).toBe(true);
+    fireEvent.click(include('Frontend'));
+    expect(include('Backend').disabled).toBe(false);
   });
 
-  test('choosing from the list changes the stack', () => {
+  test('ticking one part never unticks another, and the files cover all of them', () => {
     render(<ContainerTemplatesPanel />);
-    fireEvent.click(group('API'));
-    fireEvent.change(optionSelect(), { target: { value: 'go-api' } });
-    expect((screen.getByLabelText('Health check path') as HTMLInputElement).value).toBe('/health');
-    expect(screen.getAllByText('Dockerfile').length).toBeGreaterThan(0);
-    fireEvent.click(screen.getAllByText('Dockerfile')[0]!);
-    expect(document.body.textContent).toContain('golang');
+    fireEvent.click(include('Frontend'));
+    fireEvent.click(include('API'));
+    fireEvent.click(include('Database'));
+    expect(['Frontend', 'Backend', 'API', 'Database'].map((n) => include(n).checked)).toEqual([true, true, true, true]);
+    expect(tabNames()).toEqual(expect.arrayContaining(['docker-compose.yml', '.env.example', 'README.md', 'frontend/Dockerfile', 'frontend/nginx.conf', 'backend/Dockerfile', 'api/Dockerfile']));
+    expect(tabNames().filter((n) => n === 'docker-compose.yml')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('tab', { name: 'docker-compose.yml' }));
+    const text = document.body.textContent ?? '';
+    for (const svc of ['frontend:', 'backend:', 'api:', 'database:']) expect(text).toContain(svc);
+  });
+
+  test('choosing from one list changes only that part', () => {
+    render(<ContainerTemplatesPanel />);
+    fireEvent.click(include('API'));
+    fireEvent.change(choice('API'), { target: { value: 'go-api' } });
+    expect(choice('Backend').selectedOptions[0]!.textContent).toMatch(/Node\.js/);
+    expect(choice('API').value).toBe('go-api');
+    expect(include('Backend').checked).toBe(true);
+  });
+
+  test('with several parts the app name, deployment and add-on services are not offered, and the project name is', () => {
+    render(<ContainerTemplatesPanel />);
+    expect(screen.getByLabelText('Deploy to')).toBeTruthy();
+    fireEvent.click(include('Frontend'));
+    expect(screen.queryByLabelText('Deploy to')).toBeNull();
+    expect(screen.queryByLabelText('App name')).toBeNull();
+    expect(screen.queryByText('Add PostgreSQL')).toBeNull();
+    expect(screen.getByLabelText('Project name')).toBeTruthy();
+    fireEvent.click(include('Frontend'));
+    expect(screen.getByLabelText('Deploy to')).toBeTruthy();
+    expect(screen.getByLabelText('App name')).toBeTruthy();
+  });
+
+  test('"Edit settings" shows that part\'s form', () => {
+    render(<ContainerTemplatesPanel />);
+    fireEvent.click(include('API'));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit settings' })[0]!);
+    expect(screen.getByTestId('editing-layer').textContent).toContain('Backend');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit settings' })[0]!);
+    expect(screen.getByTestId('editing-layer').textContent).toContain('API');
+  });
+
+  test('a project of several parts cannot be saved or added to the canvas yet', () => {
+    mockProject = { id: 'p1', provider: 'aws', region: 'us-east-1', nodes: [], edges: [], environments: { production: { id: 'production', region: 'us-east-1', nodes: [], edges: [] } } };
+    render(<ContainerTemplatesPanel />);
+    fireEvent.click(include('Database'));
+    expect((screen.getByRole('button', { name: /Save as new/ }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /Add to architecture/ }));
+    expect(screen.getByText(/not added to the canvas yet/)).toBeTruthy();
+    expect(mockDispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'UPDATE_CANVAS' }));
+  });
+
+  test('a bad project name stops the files with the reason', () => {
+    render(<ContainerTemplatesPanel />);
+    fireEvent.click(include('Frontend'));
+    fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'Bad Name' } });
+    expect(screen.getByRole('alert').textContent).toMatch(/Project name/);
   });
 });
 
 describe('a database', () => {
   const pickDatabase = (name = 'PostgreSQL') => {
     render(<ContainerTemplatesPanel />);
-    fireEvent.click(group('Database'));
-    if (name !== 'PostgreSQL') fireEvent.change(optionSelect(), { target: { value: `db-${name.toLowerCase()}` } });
+    fireEvent.click(include('Database'));
+    fireEvent.click(include('Backend'));
+    if (name !== 'PostgreSQL') fireEvent.change(choice('Database'), { target: { value: `db-${name.toLowerCase()}` } });
   };
 
   test('shows its own version list, a fixed port and no health path or image choice', () => {
@@ -85,13 +134,13 @@ describe('a database', () => {
   test('changing the version changes the image in the files', () => {
     pickDatabase();
     fireEvent.change(screen.getByLabelText('PostgreSQL version'), { target: { value: '15' } });
-    fireEvent.click(screen.getByText('docker-compose.yml'));
+    fireEvent.click(screen.getByRole('tab', { name: 'docker-compose.yml' }));
     expect(document.body.textContent).toContain('postgres:15-alpine');
   });
 
   test('its files are only the compose file, the example variables and the README, and it asks for the password', () => {
     pickDatabase('MySQL');
-    expect(screen.getByText('docker-compose.yml')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'docker-compose.yml' })).toBeTruthy();
     expect(screen.queryByText('Dockerfile')).toBeNull();
     expect(screen.getAllByDisplayValue('MYSQL_PASSWORD').length + screen.getAllByText(/MYSQL_PASSWORD/).length).toBeGreaterThan(0);
   });
@@ -134,7 +183,8 @@ describe('a database', () => {
 
   test('going back to an application restores the usual form', () => {
     pickDatabase();
-    fireEvent.click(group('Backend'));
+    fireEvent.click(include('Backend'));
+    fireEvent.click(include('Database'));
     expect(screen.queryByLabelText('PostgreSQL version')).toBeNull();
     expect(screen.getByLabelText('Health check path')).toBeTruthy();
     expect((screen.getByLabelText('Port') as HTMLInputElement).disabled).toBe(false);
