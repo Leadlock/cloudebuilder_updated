@@ -19,13 +19,11 @@ import {
 import { buildZip } from '@/lib/engines/containers/zip';
 import { withProjectRegion } from '@/lib/engines/containers/projectRegion';
 import { STACK_CATEGORIES, currentOption, optionsFor, pickStackOption, type StackCategory } from '@/lib/engines/containers/stackOptions';
-import { applyDatabase, databaseOf } from '@/lib/engines/containers/databases';
+import { applyDatabase, databaseOf, DB_TARGETS } from '@/lib/engines/containers/databases';
 import { FARGATE_CPU, fargateMemoryOptions } from '@/lib/engines/containers/ecsDeploy';
 import { ACA_CPU } from '@/lib/engines/containers/containerAppsDeploy';
 import { SOFTWARE } from '@/lib/engines/servers/software';
 
-/** A database runs on a virtual machine, or locally with Docker Compose (see lib/engines/containers/databases.ts). */
-const DB_TARGETS: ReadonlySet<DeployTarget> = new Set<DeployTarget>(['none', 'ec2', 'azure-vm']);
 const newNodeId = () => `node-${Date.now()}`;
 
 /** "Install on the server": software put on the virtual machine itself at first boot, next to the container. Docker is left out: it is always installed. */
@@ -33,7 +31,7 @@ function SoftwarePicker({ id, value, pageText, onChange, onPageText, inputClass,
   id: string; value: string[]; pageText: string; onChange: (v: string[]) => void; onPageText: (v: string) => void; inputClass: string; labelClass: string;
 }) {
   const web = value.some((v) => v === 'nginx' || v === 'apache');
-  const toggle = (sid: string, on: boolean) => onChange(on ? [...value.filter((v) => v !== sid), sid] : value.filter((v) => v !== sid));
+  const toggle = (sid: string, on: boolean) => { const rest = value.filter((v) => v !== sid); onChange(on ? [...rest, sid] : rest); };
   return (
     <fieldset className="col-span-2 space-y-1">
       <legend className={labelClass}>Install on the server</legend>
@@ -154,6 +152,7 @@ export default function ContainerTemplatesPanel() {
   const [category, setCategory] = useState<StackCategory>('backend');
   const option = currentOption(cfg, category);
   const activeCategory: StackCategory = option?.category ?? category;
+  const activeGroup = STACK_CATEGORIES.find((x) => x.id === activeCategory)!;
   const dbEngine = databaseOf(cfg);
   const chooseCategory = (cat: StackCategory) => {
     setCategory(cat);
@@ -168,6 +167,8 @@ export default function ContainerTemplatesPanel() {
   const setK8s = <K extends keyof ContainerConfig['k8s']>(k: K, v: ContainerConfig['k8s'][K]) => setCfg((c) => ({ ...c, k8s: { ...c.k8s, [k]: v } }));
   const target = (deployTargets(cfg)[0] ?? 'none') as DeployTarget;
   const ex = cfg.image !== '';
+  /** The fields that describe how an application is built: not for a ready-made image and not for a database. */
+  const buildForm = !ex && !dbEngine;
   const setTarget = (t: DeployTarget) => setCfg((c) => withDeployTarget(c, t));
   const setEnv = (i: number, patch: Partial<EnvVar>) => setCfg((c) => ({ ...c, env: c.env.map((v, j) => (j === i ? { ...v, ...patch } : v)) }));
 
@@ -284,12 +285,12 @@ export default function ContainerTemplatesPanel() {
                   </button>
                 ))}
               </div>
-              <label className={label} htmlFor="ct-stack-option">{STACK_CATEGORIES.find((x) => x.id === activeCategory)!.label}</label>
-              <select id="ct-stack-option" className={input} value={option && option.category === activeCategory ? option.id : ''} onChange={(e) => setCfg((c) => pickStackOption(c, e.target.value))}>
-                {(!option || option.category !== activeCategory) && <option value="" disabled>Choose one…</option>}
+              <label className={label} htmlFor="ct-stack-option">{activeGroup.label}</label>
+              <select id="ct-stack-option" className={input} value={option?.id ?? ''} onChange={(e) => setCfg((c) => pickStackOption(c, e.target.value))}>
+                {!option && <option value="" disabled>Choose one…</option>}
                 {optionsFor(activeCategory).map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
               </select>
-              <p className={clsx('text-[11px] mt-1.5', muted)}>{STACK_CATEGORIES.find((x) => x.id === activeCategory)!.hint}{activeCategory === 'database' && ' It runs from the official image, with its data kept in a volume. It is deployed to a virtual machine (EC2 or Azure VM) or run with Docker Compose, and is never open to the internet.'}</p>
+              <p className={clsx('text-[11px] mt-1.5', muted)}>{activeGroup.hint}{activeCategory === 'database' && ' It runs from the official image, with its data kept in a volume. It is deployed to a virtual machine (EC2 or Azure VM) or run with Docker Compose, and is never open to the internet.'}</p>
             </div>
             )}
 
@@ -301,7 +302,7 @@ export default function ContainerTemplatesPanel() {
                 <div><label className={label} htmlFor="ct-version">{dbEngine.label} version</label>
                   <select id="ct-version" className={input} value={cfg.version} onChange={(e) => setCfg((c) => applyDatabase(c, dbEngine.id, e.target.value))}>{dbEngine.versions.map((v) => <option key={v}>{v}</option>)}</select></div>
                 )}
-                {!ex && !dbEngine && (
+                {buildForm && (
                 <div><label className={label} htmlFor="ct-version">{cfg.stack === 'static' ? 'nginx version' : 'Version'}</label>
                   <select id="ct-version" className={input} value={cfg.version} onChange={(e) => set('version', e.target.value)}>{VERSIONS[cfg.stack].map((v) => <option key={v}>{v}</option>)}</select></div>
                 )}
@@ -373,7 +374,7 @@ export default function ContainerTemplatesPanel() {
                   <p className={clsx('text-[11px] mt-1', muted)}>A real domain gets a free Let&apos;s Encrypt certificate (its DNS must point at the machine). &quot;localhost&quot; gets a local one. Used by docker-compose.yml only.</p></div>
               )}
               <div className="flex flex-wrap gap-4 text-xs">
-                {!ex && !dbEngine && cfg.stack !== 'static' && <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.runAsNonRoot} onChange={(e) => set('runAsNonRoot', e.target.checked)} />Run as non-root (recommended)</label>}
+                {buildForm && cfg.stack !== 'static' && <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.runAsNonRoot} onChange={(e) => set('runAsNonRoot', e.target.checked)} />Run as non-root (recommended)</label>}
                 {!dbEngine && (<>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.postgres} onChange={(e) => set('postgres', e.target.checked)} />Add PostgreSQL</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.redis} onChange={(e) => set('redis', e.target.checked)} />Add Redis</label>

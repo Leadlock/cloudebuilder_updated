@@ -24,9 +24,8 @@ const PAD = 40;
 const HEADER = 34;
 
 const escapeXml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+/** Text that is shown as HTML in a label. It is put in an XML attribute, so it is escaped twice: for HTML here, then for XML (escapeXml) around it. */
 const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-/** Text that goes in an attribute holding HTML: escaped for HTML first, then for XML. */
-const htmlValue = (html: string) => escapeXml(html);
 
 const PROVIDER = { aws: { stroke: '#D86613', fill: '#FFF3E6' }, azure: { stroke: '#0078D4', fill: '#E8F3FC' } } as const;
 const CATEGORY_FILL: Record<string, string> = {
@@ -39,6 +38,9 @@ const providerOf = (n: CanvasNode): 'aws' | 'azure' => (n.provider === 'azure' |
 const pretty = (type: string) => type.replace(/^(aws|azure)_/, '').replace(/_/g, ' ');
 
 interface Box { id: string; x: number; y: number; w: number; h: number; parent: string | null }
+
+/** How many groups a box is inside. (The loop is capped: layout() already removed any cycle, this only guards against a mistake there.) */
+const depthOf = (boxes: Map<string, Box>, id: string): number => { let d = 0; let p = boxes.get(id)?.parent; while (p && d < 50) { d++; p = boxes.get(p)?.parent; } return d; };
 
 /** Positions and sizes: absolute on the canvas; a container with no size of its own wraps what is inside it. */
 function layout(nodes: CanvasNode[]): Map<string, Box> {
@@ -64,8 +66,7 @@ function layout(nodes: CanvasNode[]): Map<string, Box> {
   for (const n of nodes) boxes.set(n.id, { id: n.id, x: n.position.x, y: n.position.y, w: n.width ?? (isContainer(n) ? 0 : NODE_W), h: n.height ?? (isContainer(n) ? 0 : NODE_H), parent: safeParent.get(n.id) ?? null });
 
   // A container with no size wraps its members, deepest first.
-  const depth = (id: string): number => { let d = 0; let p = boxes.get(id)?.parent; while (p && d < 50) { d++; p = boxes.get(p)?.parent; } return d; };
-  for (const n of [...nodes].filter((x) => isContainer(x)).sort((a, b) => depth(b.id) - depth(a.id))) {
+  for (const n of [...nodes].filter((x) => isContainer(x)).sort((a, b) => depthOf(boxes, b.id) - depthOf(boxes, a.id))) {
     const b = boxes.get(n.id)!;
     if (b.w > 0 && b.h > 0) continue;
     const members = [...boxes.values()].filter((m) => m.parent === n.id);
@@ -105,8 +106,7 @@ export function drawioModelXml(input: DrawioInput): string {
   const ids = new Set(nodes.map((n) => n.id));
   const boxes = layout(nodes);
   // Containers first (outer before inner), so what is inside is drawn on top.
-  const depth = (id: string): number => { let d = 0; let p = boxes.get(id)?.parent; while (p && d < 50) { d++; p = boxes.get(p)?.parent; } return d; };
-  const ordered = [...nodes].sort((a, b) => (Number(isContainer(b)) - Number(isContainer(a))) || (depth(a.id) - depth(b.id)));
+  const ordered = [...nodes].sort((a, b) => (Number(isContainer(b)) - Number(isContainer(a))) || (depthOf(boxes, a.id) - depthOf(boxes, b.id)));
 
   const cell = (n: CanvasNode): string => {
     const b = boxes.get(n.id)!;
@@ -115,13 +115,13 @@ export function drawioModelXml(input: DrawioInput): string {
     const label = isContainer(n)
       ? `<b>${escapeHtml(n.label)}</b>`
       : `<b>${escapeHtml(n.label)}</b><br><font style="font-size:10px" color="#64748B">${escapeHtml(pretty(n.resourceType))}</font>`;
-    return `<mxCell id="n-${escapeXml(n.id)}" value="${htmlValue(label)}" style="${nodeStyle(n)}" vertex="1" parent="${parent ? `n-${escapeXml(parent.id)}` : '1'}"><mxGeometry x="${x}" y="${y}" width="${Math.round(b.w)}" height="${Math.round(b.h)}" as="geometry"/></mxCell>`;
+    return `<mxCell id="n-${escapeXml(n.id)}" value="${escapeXml(label)}" style="${nodeStyle(n)}" vertex="1" parent="${parent ? `n-${escapeXml(parent.id)}` : '1'}"><mxGeometry x="${x}" y="${y}" width="${Math.round(b.w)}" height="${Math.round(b.h)}" as="geometry"/></mxCell>`;
   };
 
   const edges = input.edges.filter((e) => e && ids.has(e.source) && ids.has(e.target) && e.source !== e.target);
   const edgeCells = edges.map((e, i) => {
     const label = edgeLabel(e);
-    return `<mxCell id="e-${i}-${escapeXml(e.id ?? String(i))}" value="${htmlValue(escapeHtml(label))}" style="${edgeStyle(e)}" edge="1" parent="1" source="n-${escapeXml(e.source)}" target="n-${escapeXml(e.target)}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
+    return `<mxCell id="e-${i}-${escapeXml(e.id ?? String(i))}" value="${escapeXml(escapeHtml(label))}" style="${edgeStyle(e)}" edge="1" parent="1" source="n-${escapeXml(e.source)}" target="n-${escapeXml(e.target)}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
   });
 
   return [

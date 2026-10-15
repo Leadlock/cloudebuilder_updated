@@ -17,14 +17,18 @@
  *    (SecureString) at /<app>/<NAME> when the service starts. The role can read only that path.
  */
 import { hostPorts, hostSoftwareSh, hostSoftwareWarnings, validateHostSoftware } from './hostSoftware';
-import { databaseOf } from './databases';
+import { databaseOf, dbRunArgs, DB_SINGLE_MACHINE_NOTE } from './databases';
 import { companionServices } from './companions';
 import type { ContainerConfig } from './dockerTemplates';
 import { usesExistingImage } from './existingImageUse';
 import { ec2HourlyUsd } from '@/lib/engines/cost/awsPricing';
 
 /** A Terraform interpolation, written so that no escaping is needed inside a template string. */
-const tfRef = (expr: string): string => '$' + '{' + expr + '}';
+export const tfRef = (expr: string): string => '$' + '{' + expr + '}';
+
+/** The value of the app_url output: an address and port for a database, a URL with the health path for an application. `host` is the Terraform reference of the public address. */
+export const appUrlValue = (c: ContainerConfig, host: string): string =>
+  databaseOf(c) ? `"${tfRef(host)}:${tfRef('var.app_port')}"` : `"http://${tfRef(host)}:${tfRef('var.app_port')}${c.healthPath}"`;
 
 export interface Ec2Config {
   enabled: boolean;
@@ -83,8 +87,7 @@ export function ec2Warnings(c: ContainerConfig): string[] {
   if (companionServices(c).length > 0) w.push('EC2: PostgreSQL and Redis are not started on the instance. Use RDS / ElastiCache and put the connection settings in the environment variables.');
   if (!usesExistingImage(c) && e.imageTag === 'latest') w.push('EC2: the "latest" tag is used. It works, but a version tag (for example the commit id) makes it clear what is running.');
   if (c.env.some((v) => v.secret)) w.push(`EC2: create each secret in SSM Parameter Store as a SecureString named /${c.appName}/<NAME> before the service can start.`);
-  w.push(...hostSoftwareWarnings('EC2', e.software));
-  if (hostPorts(e.software).length > 0 && e.allowedCidr === '0.0.0.0/0') w.push('EC2: the web server on ports 80 and 443 will be open to the whole internet. Narrow "who can connect" if the site is not public.');
+  w.push(...hostSoftwareWarnings('EC2', e.software, e.allowedCidr));
   return w;
 }
 
@@ -407,7 +410,7 @@ output "public_ip" {
 }
 
 output "app_url" {
-  value = ${databaseOf(c) ? `"${tfRef(ip)}:${tfRef('var.app_port')}"` : `"http://${tfRef(ip)}:${tfRef('var.app_port')}${c.healthPath}"`}
+  value = ${appUrlValue(c, ip)}
 }
 
 output "connect" {
@@ -428,6 +431,7 @@ export function userDataSh(c: ContainerConfig): string {
   const app = c.appName;
   const plain = c.env.filter((v) => !v.secret);
   const secrets = secretNames(c);
+  const run = dbRunArgs(c, app);
   return `#!/bin/bash
 # Runs once when the instance first starts. Installs Docker and a systemd service that pulls and runs ${app}.
 set -euo pipefail
@@ -459,7 +463,7 @@ VALUE=$(aws ssm get-parameter --name /${app}/${k} --with-decryption --query Para
 printf '%s=%s\\n' '${k}' "$VALUE" >> "$ENV_FILE"`).join('\n')}
 
 docker rm -f ${app} >/dev/null 2>&1 || true
-exec docker run --name ${app} --init --env-file "$ENV_FILE" -p ${c.port}:${c.port}${databaseOf(c) ? ` -v ${app}-data:${databaseOf(c)!.dataPath}` : ''} --memory ${c.memoryLimit} --cpus ${c.cpuLimit} "$IMAGE"${databaseOf(c)?.command ? ` sh -c '${databaseOf(c)!.command}'` : ''}
+exec docker run --name ${app} --init --env-file "$ENV_FILE" -p ${c.port}:${c.port}${run.volume} --memory ${c.memoryLimit} --cpus ${c.cpuLimit} "$IMAGE"${run.command}
 RUNNER
 chmod 755 /usr/local/bin/${app}-run
 
@@ -818,7 +822,7 @@ and generate again. Terraform then creates the role and prints its ARN. Without 
 `}` : ''}
 ## What to know
 
-${databaseOf(c) ? `- This is a single machine: no automatic replacement or failover if it fails. It is a database, so it is never served over HTTP.` : `- This is a single server: HTTP only, no load balancer, and no automatic replacement if it fails. For HTTPS or several servers,
+${databaseOf(c) ? DB_SINGLE_MACHINE_NOTE : `- This is a single server: HTTP only, no load balancer, and no automatic replacement if it fails. For HTTPS or several servers,
   put an Application Load Balancer in front or move to ECS.`}
 - Terraform keeps its record of what it built in \`ec2/terraform.tfstate\`. Keep that folder; \`bash destroy.sh\` needs it.
 - Costs: the server, its disk and the public IPv4 address bill every hour, ${usesExistingImage(c) ? '' : 'and ECR bills for storage.'}

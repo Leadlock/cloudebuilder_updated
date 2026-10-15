@@ -3,6 +3,7 @@
  * operating-system image found by name instead of a fixed id, and a firewall that opens only the web ports, only to the range the person chose.
  */
 import { escapeHclHeredoc } from './hclSafety';
+import { validCidr } from '../containers/ec2Deploy';
 import { awsFamily, azureFamily, combineStartupScripts, planSoftware, softwareScript, webPorts, type PackageFamily, type SoftwareItem } from '../servers/software';
 
 const q = (v: string) => JSON.stringify(v);
@@ -14,9 +15,6 @@ export interface StartupPlan {
   ports: number[];
   warnings: string[];
 }
-
-const CIDR = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/;
-const validCidr = (v: string) => { const m = CIDR.exec(v); return !!m && m.slice(1, 5).every((o) => Number(o) <= 255) && Number(m[5]) <= 32; };
 
 function plan(label: string, cfg: Record<string, unknown>, family: PackageFamily | null, loginUser: string, own: string): StartupPlan {
   const { items, warnings } = planSoftware(cfg['serverSoftware']);

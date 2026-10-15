@@ -8,7 +8,7 @@
  *  - it runs on a virtual machine or locally with Docker Compose. A managed container service (ECS, Container Apps, Kubernetes) needs persistent
  *    storage and a non-HTTP health check that these templates do not set up, so they refuse a database and point to the cloud's managed database.
  */
-import type { ContainerConfig, EnvVar } from './dockerTemplates';
+import type { ContainerConfig, DeployTarget, EnvVar } from './dockerTemplates';
 
 export type DbEngineId = 'postgres' | 'mysql' | 'mongodb' | 'redis' | 'rabbitmq';
 
@@ -89,6 +89,15 @@ export const databaseOf = (c: { database?: string }): DbEngine | null => (c.data
 
 export const dbImage = (e: DbEngine, version: string): string => `${e.image}:${version}${e.tagSuffix}`;
 
+/** What a database adds to the `docker run` line of a VM: the data volume, and the command for an image that needs one. Both empty for an application. */
+export const dbRunArgs = (c: { database?: string }, app: string): { volume: string; command: string } => {
+  const e = databaseOf(c);
+  return { volume: e ? ` -v ${app}-data:${e.dataPath}` : '', command: e?.command ? ` sh -c '${e.command}'` : '' };
+};
+
+/** The README line of a VM deployment of a database. */
+export const DB_SINGLE_MACHINE_NOTE = '- This is a single machine: no automatic replacement or failover if it fails. It is a database, so it is never served over HTTP.';
+
 /** The configuration for a database: the image, port, variables, data and limits of the engine; the deployment settings are kept, but never open to everyone. */
 export function applyDatabase(c: ContainerConfig, id: DbEngineId, version?: string): ContainerConfig {
   const e = DB_ENGINES[id];
@@ -111,7 +120,8 @@ const PREFIX = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/;
 /** Whether a range is wide enough to count as "the internet" for a database (anything bigger than a /8). */
 export const isInternetWide = (cidr: string): boolean => { const m = PREFIX.exec(cidr); return !!m && Number(m[5]) < 8; };
 
-const TARGET_NAMES: Record<string, string> = { ecs: 'ECS Fargate', 'container-apps': 'Azure Container Apps', kubernetes: 'Kubernetes', aks: 'Azure AKS' };
+/** The places a database can be deployed to: a virtual machine, or nowhere (just the Docker Compose files). Everything else refuses it. */
+export const DB_TARGETS: ReadonlySet<DeployTarget> = new Set<DeployTarget>(['none', 'ec2', 'azure-vm']);
 
 /** Everything wrong with a database configuration (empty when it is fine or when this is not a database). */
 export function validateDatabase(c: ContainerConfig): string[] {
@@ -127,12 +137,12 @@ export function validateDatabase(c: ContainerConfig): string[] {
     if (!have) out.push(`${e.label}: add the variable ${need.key} (a password). It is read from the secret store and never written to a file.`);
     else if (!have.secret) out.push(`${e.label}: ${need.key} must be a secret, so its value stays out of the files.`);
   }
-  for (const [target, name] of Object.entries(TARGET_NAMES)) {
-    const on = target === 'ecs' ? c.ecs.enabled : target === 'container-apps' ? c.aca.enabled : target === 'kubernetes' ? c.k8s.enabled : c.aks.enabled;
+  for (const [on, name] of [[c.ecs.enabled, 'ECS Fargate'], [c.aca.enabled, 'Azure Container Apps'], [c.k8s.enabled, 'Kubernetes'], [c.aks.enabled, 'Azure AKS']] as const) {
     if (on) out.push(`${name}: a database cannot be deployed here. It needs persistent storage and a non-HTTP health check that this template does not set up. Run it on a virtual machine (EC2 or Azure VM) or use your cloud's managed database (Amazon RDS, Azure Database).`);
   }
-  if (c.ec2.enabled && isInternetWide(c.ec2.allowedCidr)) out.push(`EC2: a database must not be open to the internet. Use your own network range (for example 10.0.0.0/16 or your office's address), not ${c.ec2.allowedCidr}.`);
-  if (c.azvm.enabled && isInternetWide(c.azvm.allowedCidr)) out.push(`Azure VM: a database must not be open to the internet. Use your own network range (for example 10.0.0.0/16 or your office's address), not ${c.azvm.allowedCidr}.`);
+  for (const [name, on, cidr] of [['EC2', c.ec2.enabled, c.ec2.allowedCidr], ['Azure VM', c.azvm.enabled, c.azvm.allowedCidr]] as const) {
+    if (on && isInternetWide(cidr)) out.push(`${name}: a database must not be open to the internet. Use your own network range (for example 10.0.0.0/16 or your office's address), not ${cidr}.`);
+  }
   return out;
 }
 

@@ -4,13 +4,13 @@
  * region of one cloud means nothing in the other. A value that is not a valid region of that cloud is ignored.
  */
 import type { ContainerConfig } from './dockerTemplates';
+import { REGION } from './ec2Deploy';
 
-const AWS_REGION = /^[a-z]{2}(?:-[a-z]+)+-\d$/;
 const AZURE_LOCATION = /^[a-z]{3,}[a-z0-9]*$/;
 
 export function withProjectRegion(c: ContainerConfig, provider: string | undefined, region: string | undefined): ContainerConfig {
   if (!region) return c;
-  if (provider === 'aws' && AWS_REGION.test(region)) {
+  if (provider === 'aws' && REGION.test(region)) {
     return { ...c, ec2: { ...c.ec2, region }, ecs: { ...c.ecs, region } };
   }
   if (provider === 'azure' && AZURE_LOCATION.test(region)) {

@@ -3,15 +3,10 @@
  * machine itself, next to the container, for example nginx in front of the app or a command-line database client. The script is the same one the
  * canvas nodes use (lib/engines/servers/software.ts). Docker is not offered here: the start-up script already installs it.
  */
-import { planSoftware, softwareScript, webPorts, type PackageFamily, type SoftwareItem } from '../servers/software';
-
-export interface HostSoftware { software: string[]; pageText: string }
+import { planSoftware, softwareScript, webPorts, type PackageFamily } from '../servers/software';
 
 /** The software a VM template can install: everything in the catalog except Docker, which is always installed. */
-export const hostItems = (ids: unknown): { items: SoftwareItem[]; warnings: string[] } => {
-  const p = planSoftware(Array.isArray(ids) ? ids.filter((i) => i !== 'docker') : []);
-  return { items: p.items, warnings: p.warnings };
-};
+const hostItems = (ids: unknown) => planSoftware(Array.isArray(ids) ? ids.filter((i) => i !== 'docker') : []);
 
 /** Ports (80, 443) the chosen software wants open. */
 export const hostPorts = (ids: unknown): number[] => webPorts(hostItems(ids).items);
@@ -37,15 +32,15 @@ bash /usr/local/bin/cloudcraft-software || echo "Installing the chosen software 
 export function validateHostSoftware(prefix: string, ids: unknown, appPort: number): string[] {
   const out: string[] = [];
   if (ids !== undefined && !Array.isArray(ids)) return [`${prefix}: the list of software must be a list.`];
-  const { items, warnings } = hostItems(ids);
-  void warnings;
+  const { items } = hostItems(ids);
   if (items.some((i) => i.ports) && (appPort === 80 || appPort === 443)) out.push(`${prefix}: the web server needs port 80 and 443, which the app already uses. Change the app port, or leave the web server out.`);
   return out;
 }
 
-/** Warnings (never errors) about the chosen software. */
-export const hostSoftwareWarnings = (prefix: string, ids: unknown): string[] => {
+/** Warnings (never errors) about the chosen software, for a machine whose web ports are open to `allowedCidr`. */
+export const hostSoftwareWarnings = (prefix: string, ids: unknown, allowedCidr: string): string[] => {
   const w = hostItems(ids).warnings.map((m) => `${prefix}: ${m}`);
   if (Array.isArray(ids) && ids.includes('docker')) w.push(`${prefix}: Docker is always installed here, so it was not added twice.`);
+  if (hostPorts(ids).length > 0 && allowedCidr === '0.0.0.0/0') w.push(`${prefix}: the web server on ports 80 and 443 will be open to the whole internet. Narrow "who can connect" if the site is not public.`);
   return w;
 };

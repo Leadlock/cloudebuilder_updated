@@ -64,8 +64,8 @@ export const SOFTWARE: readonly SoftwareItem[] = [
     verify: { dnf: 'redis6-server --version', apt: 'redis-server --version' }, note: 'Not reachable from outside the server.' },
 ];
 
-export const SOFTWARE_BY_ID: ReadonlyMap<string, SoftwareItem> = new Map(SOFTWARE.map((s) => [s.id, s]));
-export const SOFTWARE_IDS: readonly string[] = SOFTWARE.map((s) => s.id);
+const SOFTWARE_BY_ID: ReadonlyMap<string, SoftwareItem> = new Map(SOFTWARE.map((s) => [s.id, s]));
+const SOFTWARE_IDS: readonly string[] = SOFTWARE.map((s) => s.id);
 
 export interface SoftwarePlan {
   /** What will be installed, in catalog order. */
@@ -146,12 +146,12 @@ export function softwareScript(items: readonly SoftwareItem[], o: ScriptOptions)
     '',
     apt ? 'retry apt-get update -y' : 'retry dnf -y makecache',
   ];
+  const page = cleanPageText(o.pageText);
   for (const item of items) {
     lines.push('', `# ${item.label}`);
     lines.push(`retry ${apt ? 'apt-get install -y' : 'dnf -y install'} ${item.packages[o.family].join(' ')}`);
     for (const cmd of item.after?.[o.family] ?? []) lines.push(cmd);
     if (item.id === 'docker') lines.push(`if id -u ${o.loginUser} >/dev/null 2>&1; then usermod -aG docker ${o.loginUser}; fi`);
-    const page = cleanPageText(o.pageText);
     if (item.docRoot && page !== '') {
       const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(page)}</title></head><body><h1>${escapeHtml(page)}</h1></body></html>`;
       lines.push(`mkdir -p ${item.docRoot[o.family]}`, `cat > ${item.docRoot[o.family]}/index.html <<'CLOUDCRAFT_PAGE'`, html, 'CLOUDCRAFT_PAGE');
@@ -163,7 +163,7 @@ export function softwareScript(items: readonly SoftwareItem[], o: ScriptOptions)
 }
 
 /** The user's own startup script, without its first "#!" line, so it can follow the software script in one file. */
-export function stripShebang(script: string): string {
+function stripShebang(script: string): string {
   return script.replace(/^#![^\n]*\n?/, '');
 }
 

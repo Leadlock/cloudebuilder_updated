@@ -13,13 +13,12 @@
 import type { ContainerConfig } from './dockerTemplates';
 import { usesExistingImage } from './existingImageUse';
 import { azureVmHourlyUsd } from '@/lib/engines/cost/azurePricing';
-import { GITHUB_REPO, TAG, q, secretNames, validCidr, type DeployCost } from './ec2Deploy';
-import { databaseOf } from './databases';
+import { GITHUB_REPO, TAG, appUrlValue, q, secretNames, validCidr, type DeployCost } from './ec2Deploy';
+import { databaseOf, dbRunArgs, DB_SINGLE_MACHINE_NOTE } from './databases';
 import { companionServices } from './companions';
 import { hostPorts, hostSoftwareSh, hostSoftwareWarnings, validateHostSoftware } from './hostSoftware';
 
 /** A Terraform interpolation, written so that no escaping is needed inside a template string. */
-const tfRef = (expr: string): string => '$' + '{' + expr + '}';
 
 export interface AzVmConfig {
   enabled: boolean;
@@ -70,8 +69,7 @@ export function azVmWarnings(c: ContainerConfig): string[] {
   if (companionServices(c).length > 0) w.push('Azure VM: PostgreSQL, MySQL, MongoDB, Redis and RabbitMQ are not started on the VM. Use the managed Azure services and put the connection settings in the environment variables.');
   if (!usesExistingImage(c) && v.imageTag === 'latest') w.push('Azure VM: the "latest" tag is used. A version tag (for example the commit id) makes it clear what is running.');
   if (c.env.some((x) => x.secret)) w.push('Azure VM: deploy.sh stores each secret in Key Vault (asks once, hidden); the VM reads it when the container starts.');
-  w.push(...hostSoftwareWarnings('Azure VM', v.software));
-  if (hostPorts(v.software).length > 0 && v.allowedCidr === '0.0.0.0/0') w.push('Azure VM: the web server on ports 80 and 443 will be open to the whole internet. Narrow "who can connect" if the site is not public.');
+  w.push(...hostSoftwareWarnings('Azure VM', v.software, v.allowedCidr));
   return w;
 }
 
@@ -397,7 +395,7 @@ output "public_ip" {
 }
 
 output "app_url" {
-  value = ${databaseOf(c) ? `"${tfRef('azurerm_public_ip.app.ip_address')}:${tfRef('var.app_port')}"` : `"http://${tfRef('azurerm_public_ip.app.ip_address')}:${tfRef('var.app_port')}${c.healthPath}"`}
+  value = ${appUrlValue(c, 'azurerm_public_ip.app.ip_address')}
 }
 
 output "logs" {
@@ -413,6 +411,7 @@ export function azureCloudInit(c: ContainerConfig): string {
   const app = c.appName;
   const plain = c.env.filter((v) => !v.secret);
   const secrets = secretNames(c);
+  const run = dbRunArgs(c, app);
   return `#!/bin/bash
 # Runs once when the VM first starts. Installs Docker and a systemd service that pulls and runs ${app}.
 # Nothing here is specific to a deployment: the registry, the vault and the image tag come from the VM's tags (instance metadata).
@@ -457,7 +456,7 @@ VALUE=$(curl -fsS -H "Authorization: Bearer $KV_TOKEN" "https://$VAULT.vault.azu
 printf '%s=%s\\n' '${k}' "$VALUE" >> "$ENV_FILE"`).join('\n')}
 ` : ''}
 docker rm -f ${app} >/dev/null 2>&1 || true
-exec docker run --name ${app} --init --env-file "$ENV_FILE" -p ${c.port}:${c.port}${databaseOf(c) ? ` -v ${app}-data:${databaseOf(c)!.dataPath}` : ''} --memory ${c.memoryLimit} --cpus ${c.cpuLimit} "$IMAGE"${databaseOf(c)?.command ? ` sh -c '${databaseOf(c)!.command}'` : ''}
+exec docker run --name ${app} --init --env-file "$ENV_FILE" -p ${c.port}:${c.port}${run.volume} --memory ${c.memoryLimit} --cpus ${c.cpuLimit} "$IMAGE"${run.command}
 RUNNER
 chmod 755 /usr/local/bin/${app}-run
 
@@ -727,7 +726,7 @@ Contributor on the resource group is broad; narrow it (AcrPush on the registry a
 ` : ''}
 ## What to know
 
-${databaseOf(c) ? `- This is a single machine: no automatic replacement or failover if it fails. It is a database, so it is never served over HTTP.` : `- This is a single VM: HTTP only, no load balancer, and no automatic replacement if it fails. For HTTPS or several instances use Azure Container Apps or AKS.`}
+${databaseOf(c) ? DB_SINGLE_MACHINE_NOTE : `- This is a single VM: HTTP only, no load balancer, and no automatic replacement if it fails. For HTTPS or several instances use Azure Container Apps or AKS.`}
 - Terraform keeps its record in \`azvm/terraform.tfstate\`. Keep that folder; \`bash destroy.sh\` needs it.
 - Costs: the VM, its disk and the public IP bill every hour; the registry bills daily.
 `;

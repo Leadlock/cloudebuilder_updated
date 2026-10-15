@@ -82,8 +82,8 @@ export function k8sWarnings(c0: ContainerConfig): string[] {
   if (companionServices(c).length > 0) w.push('Kubernetes: PostgreSQL and Redis are not deployed. Use your cloud\'s managed services (or a Helm chart for them) and put the connection settings in the environment variables.');
   if (usesExistingImage(c) && ROOT_IMAGE.test(c.image)) {
     w.push(c.runAsNonRoot
-      ? `Kubernetes: ${c.image} starts as root and listens on port 80, so Kubernetes will refuse to start it while "Run as non-root" is on. Use the unprivileged build (for example nginxinc/nginx-unprivileged:1.27 on port 8080), or turn "Run as non-root" off: the pod then keeps all other restrictions and only gets the four permissions this image needs (CHOWN, SETGID, SETUID, NET_BIND_SERVICE).`
-      : `Kubernetes: ${c.image} runs as root with the four permissions it needs (CHOWN, SETGID, SETUID, NET_BIND_SERVICE) and nothing else. For a fully non-root pod use the unprivileged build (for example nginxinc/nginx-unprivileged:1.27 on port 8080).`);
+      ? `Kubernetes: ${c.image} starts as root and listens on port 80, so Kubernetes will refuse to start it while "Run as non-root" is on. Use the unprivileged build (for example nginxinc/nginx-unprivileged:1.27 on port 8080), or turn "Run as non-root" off: the pod then keeps all other restrictions and only gets the four permissions this image needs (${ROOT_IMAGE_CAPS.join(', ')}).`
+      : `Kubernetes: ${c.image} runs as root with the four permissions it needs (${ROOT_IMAGE_CAPS.join(', ')}) and nothing else. For a fully non-root pod use the unprivileged build (for example nginxinc/nginx-unprivileged:1.27 on port 8080).`);
   }
   if (c.env.some((v) => v.secret)) w.push(`Kubernetes: deploy.sh asks for each secret and stores it in a Secret named ${c.appName}-secrets in the cluster.`);
   return w;
