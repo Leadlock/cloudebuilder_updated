@@ -1,7 +1,7 @@
 'use client';
 /**
  * Where a project of several services is deployed: nowhere (run it with Docker Compose), one AWS EC2 server or Azure VM that runs the whole compose file,
- * or a Kubernetes cluster (a Deployment per service).
+ * a Kubernetes cluster (a Deployment per service), or an Azure Kubernetes Service cluster that is created for it.
  * A single service keeps its own Deploy card with every target; this card appears only when two or more services are ticked.
  */
 import clsx from 'clsx';
@@ -10,13 +10,15 @@ import type { Ec2Config } from '@/lib/engines/containers/ec2Deploy';
 import type { AzVmConfig } from '@/lib/engines/containers/azureVmDeploy';
 import type { ProjectDeploy, ProjectTarget } from '@/lib/engines/containers/stackProject';
 import type { StackK8sConfig } from '@/lib/engines/containers/stackKubernetesDeploy';
+import type { StackAksConfig } from '@/lib/engines/containers/stackAksDeploy';
 
-export default function StackDeployCard({ deploy, onTarget, onEc2, onAzure, onK8s }: {
+export default function StackDeployCard({ deploy, onTarget, onEc2, onAzure, onK8s, onAks }: {
   deploy: ProjectDeploy;
   onTarget: (t: ProjectTarget) => void;
   onEc2: <K extends keyof Ec2Config>(k: K, v: Ec2Config[K]) => void;
   onAzure: <K extends keyof AzVmConfig>(k: K, v: AzVmConfig[K]) => void;
   onK8s: <K extends keyof StackK8sConfig>(k: K, v: StackK8sConfig[K]) => void;
+  onAks: <K extends keyof StackAksConfig>(k: K, v: StackAksConfig[K]) => void;
 }) {
   const { state } = useApp();
   const isLight = state.theme === 'light';
@@ -26,6 +28,7 @@ export default function StackDeployCard({ deploy, onTarget, onEc2, onAzure, onK8
   const e = deploy.ec2;
   const z = deploy.azvm;
   const k = deploy.k8s;
+  const a = deploy.aks;
   return (
     <div className={clsx('rounded-2xl border p-5 space-y-3', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/60 border-slate-800')} data-testid="project-deploy">
       <label className={label} htmlFor="ct-project-target">Deploy to</label>
@@ -34,9 +37,10 @@ export default function StackDeployCard({ deploy, onTarget, onEc2, onAzure, onK8
         <option value="ec2">AWS EC2 (one server runs everything)</option>
         <option value="azure-vm">Azure VM (one server runs everything)</option>
         <option value="kubernetes">Kubernetes (a Deployment per service)</option>
+        <option value="aks">Azure Kubernetes Service (AKS cluster created for it)</option>
       </select>
       {deploy.target === 'none' && (
-        <p className={clsx('text-xs', muted)}>The services are built and started together: <code>docker compose up --build</code> in the folder you download. Pick EC2, an Azure VM or Kubernetes to also get <code>deploy.sh</code>, <code>destroy.sh</code> and the Terraform that run all of it on one server.</p>
+        <p className={clsx('text-xs', muted)}>The services are built and started together: <code>docker compose up --build</code> in the folder you download. Pick EC2, an Azure VM, Kubernetes or AKS to also get <code>deploy.sh</code>, <code>destroy.sh</code> and the Terraform that run all of it on one server.</p>
       )}
       {deploy.target === 'ec2' && (
         <>
@@ -76,6 +80,24 @@ export default function StackDeployCard({ deploy, onTarget, onEc2, onAzure, onK8
             <div className="col-span-2"><label className={label} htmlFor="pk8s-host">Ingress host (optional)</label><input id="pk8s-host" className={input} placeholder="app.example.com" value={k.ingressHost} onChange={(ev) => onK8s('ingressHost', ev.target.value.trim())} /></div>
             <div><label className={label} htmlFor="pk8s-class">Ingress class</label><input id="pk8s-class" className={input} value={k.ingressClass} onChange={(ev) => onK8s('ingressClass', ev.target.value.trim())} /></div>
             <div><label className={label} htmlFor="pk8s-tls">TLS secret (optional)</label><input id="pk8s-tls" className={input} value={k.tlsSecret} onChange={(ev) => onK8s('tlsSecret', ev.target.value.trim())} /></div>
+          </div>
+        </>
+      )}
+      {deploy.target === 'aks' && (
+        <>
+          <p className={clsx('text-xs', muted)}>An AKS cluster is created for the project, with a container registry (images are built inside Azure, no Docker needed here) and, when a service has secrets, a Key Vault read through workload identity. Every service becomes a Deployment; only the public service (the Frontend, else the API, else the Backend) is reachable from outside. A database is not run in the cluster: use Azure Database for PostgreSQL or MySQL and add a secret variable DATABASE_URL.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={label} htmlFor="paks-location">Location</label><input id="paks-location" className={input} value={a.location} onChange={(ev) => onAks('location', ev.target.value)} /></div>
+            <div><label className={label} htmlFor="paks-size">Node size</label><input id="paks-size" className={input} value={a.nodeSize} onChange={(ev) => onAks('nodeSize', ev.target.value)} /></div>
+            <div><label className={label} htmlFor="paks-min">Minimum nodes</label><input id="paks-min" type="number" className={input} value={a.minNodes} onChange={(ev) => onAks('minNodes', Number(ev.target.value))} /></div>
+            <div><label className={label} htmlFor="paks-max">Maximum nodes</label><input id="paks-max" type="number" className={input} value={a.maxNodes} onChange={(ev) => onAks('maxNodes', Number(ev.target.value))} /></div>
+            <div><label className={label} htmlFor="paks-ns">Namespace (empty: the project name)</label><input id="paks-ns" className={input} value={a.namespace} onChange={(ev) => onAks('namespace', ev.target.value.trim())} /></div>
+            <div><label className={label} htmlFor="paks-tag">Image tag</label><input id="paks-tag" className={input} value={a.imageTag} onChange={(ev) => onAks('imageTag', ev.target.value.trim())} /></div>
+            <div><label className={label} htmlFor="paks-replicas">Replicas per service</label><input id="paks-replicas" type="number" className={input} value={a.replicas} onChange={(ev) => onAks('replicas', Number(ev.target.value))} /></div>
+            <div><label className={label} htmlFor="paks-svc">Public service type</label>
+              <select id="paks-svc" className={input} value={a.serviceType} onChange={(ev) => onAks('serviceType', ev.target.value as StackAksConfig['serviceType'])}><option>ClusterIP</option><option>LoadBalancer</option></select></div>
+            <div><label className={label} htmlFor="paks-host">Ingress host (optional)</label><input id="paks-host" className={input} placeholder="app.example.com" value={a.ingressHost} onChange={(ev) => onAks('ingressHost', ev.target.value.trim())} /></div>
+            <div><label className={label} htmlFor="paks-tls">TLS secret (optional)</label><input id="paks-tls" className={input} value={a.tlsSecret} onChange={(ev) => onAks('tlsSecret', ev.target.value.trim())} /></div>
           </div>
         </>
       )}

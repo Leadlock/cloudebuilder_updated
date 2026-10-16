@@ -69,19 +69,22 @@ export const namespaceOf = (project: string, k: StackK8sConfig) => (k.namespace 
 export const imageFor = (project: string, k: StackK8sConfig, layer: string) => `${k.registry}/${project}-${layer}:${k.imageTag}`;
 
 /** A service as the single-service generator sees it: named after its layer, deployed to the project's namespace, public only when it is the entry. */
-export function k8sLayerConfig(project: string, k: StackK8sConfig, layer: string, base: ContainerConfig, entry: boolean, extraEnv: Array<{ key: string; value: string }>): ContainerConfig {
+export function k8sLayerConfig(
+  project: string, k: StackK8sConfig, layer: string, base: ContainerConfig, entry: boolean, extraEnv: Array<{ key: string; value: string }>,
+  opts: { image?: string; keyVault?: boolean } = {},
+): ContainerConfig {
   const built = !usesExistingImage(base);
   const cfg: K8sConfig = {
     ...defaultK8s(),
     enabled: true,
     namespace: namespaceOf(project, k),
-    image: built ? imageFor(project, k, layer) : base.image,
+    image: built ? (opts.image ?? imageFor(project, k, layer)) : base.image,
     replicas: k.replicas,
     serviceType: entry ? k.serviceType : 'ClusterIP',
     ingressHost: entry ? k.ingressHost : '',
     ingressClass: k.ingressClass,
     tlsSecret: entry ? k.tlsSecret : '',
-    helm: false, keyVault: false, githubActions: false, autoscaling: false,
+    helm: false, keyVault: opts.keyVault ?? false, githubActions: false, autoscaling: false,
   };
   return { ...withDeployTarget(base, 'none'), appName: layer, proxy: false, postgres: false, redis: false, mysql: false, mongodb: false, rabbitmq: false, k8s: cfg, env: [...base.env.filter((v) => !extraEnv.some((e) => e.key === v.key)), ...extraEnv.map((e) => ({ ...e }))] };
 }
@@ -112,8 +115,8 @@ export function stackK8sWarnings(s: StackK8sSpec): string[] {
 
 // ─── files ───────────────────────────────────────────────────────────────────
 
-function topKustomization(s: StackK8sSpec): string {
-  const res = [...(s.namespace !== 'default' ? ['namespace.yaml'] : []), ...s.layers.map((l) => l.name)];
+function topKustomization(namespace: string, layers: StackK8sLayer[]): string {
+  const res = [...(namespace !== 'default' ? ['namespace.yaml'] : []), ...layers.map((l) => l.name)];
   return `apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -121,11 +124,12 @@ ${res.map((r) => `  - ${r}`).join('\n')}
 `;
 }
 
-function manifestFiles(s: StackK8sSpec): Array<{ path: string; content: string }> {
+/** The manifests of every service: a folder each, the namespace written once, and a top-level kustomization that applies them all. */
+export function stackManifestFiles(namespace: string, layers: StackK8sLayer[]): Array<{ path: string; content: string }> {
   const files: Array<{ path: string; content: string }> = [];
-  if (s.namespace !== 'default') files.push({ path: 'k8s/namespace.yaml', content: namespaceYaml(s.layers[0]!.config) });
-  files.push({ path: 'k8s/kustomization.yaml', content: topKustomization(s) });
-  for (const l of s.layers) {
+  if (namespace !== 'default') files.push({ path: 'k8s/namespace.yaml', content: namespaceYaml(layers[0]!.config) });
+  files.push({ path: 'k8s/kustomization.yaml', content: topKustomization(namespace, layers) });
+  for (const l of layers) {
     for (const f of generateK8sManifestFiles(l.config, { withNamespace: false, servicePort: 'container' })) {
       files.push({ path: f.path.replace(/^k8s\//, `k8s/${l.name}/`), content: f.content });
     }
@@ -287,7 +291,7 @@ export function generateStackK8sFiles(s: StackK8sSpec): Array<{ path: string; co
   return [
     { path: 'deploy.sh', content: stackK8sDeploySh(s), executable: true },
     { path: 'destroy.sh', content: stackK8sDestroySh(s), executable: true },
-    ...manifestFiles(s),
+    ...stackManifestFiles(s.namespace, s.layers),
     { path: 'k8s/README.md', content: stackK8sReadme(s) },
   ];
 }

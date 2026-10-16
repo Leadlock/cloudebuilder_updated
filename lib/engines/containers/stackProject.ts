@@ -26,6 +26,9 @@ import {
 } from './stackAzureDeploy';
 import type { StackDeployBase } from './stackEc2Deploy';
 import {
+  aksLayerConfig, aksImage, aksNamespace, defaultStackAks, estimateStackAksCost, generateStackAksFiles, stackAksWarnings, validateStackAks, type StackAksConfig, type StackAksSpec,
+} from './stackAksDeploy';
+import {
   defaultStackK8s, generateStackK8sFiles, k8sLayerConfig, imageFor, namespaceOf, stackK8sWarnings, validateStackK8s, type StackK8sConfig, type StackK8sSpec,
 } from './stackKubernetesDeploy';
 import type { Ec2Config, Ec2Cost } from './ec2Deploy';
@@ -39,11 +42,11 @@ export const LAYER_LABEL: Record<Layer, string> = { frontend: 'Frontend', backen
 
 export interface LayerState { enabled: boolean; config: ContainerConfig }
 /** Where a project of several services is deployed. Docker Compose on your own machine is always possible; EC2 or an Azure VM runs the whole compose file on one server. */
-export type ProjectTarget = 'none' | 'ec2' | 'azure-vm' | 'kubernetes';
-export interface ProjectDeploy { target: ProjectTarget; ec2: Ec2Config; azvm: AzVmConfig; k8s: StackK8sConfig }
+export type ProjectTarget = 'none' | 'ec2' | 'azure-vm' | 'kubernetes' | 'aks';
+export interface ProjectDeploy { target: ProjectTarget; ec2: Ec2Config; azvm: AzVmConfig; k8s: StackK8sConfig; aks: StackAksConfig }
 export interface StackProject { name: string; layers: Record<Layer, LayerState>; deploy: ProjectDeploy }
 
-export const defaultProjectDeploy = (): ProjectDeploy => ({ target: 'none', ec2: stackEc2Defaults(), azvm: stackAzureDefaults(), k8s: defaultStackK8s() });
+export const defaultProjectDeploy = (): ProjectDeploy => ({ target: 'none', ec2: stackEc2Defaults(), azvm: stackAzureDefaults(), k8s: defaultStackK8s(), aks: defaultStackAks() });
 
 /** What each layer starts as when it is switched on. */
 const DEFAULT_OPTION: Record<Layer, string> = { frontend: 'spa', backend: 'node', api: 'fastapi', database: 'db-postgres' };
@@ -183,7 +186,15 @@ export function generateProjectFiles(p: StackProject): GenerateResult {
     { path: 'README.md', content: projectReadme(p, on, cfg, layout) },
   );
   let cost: Ec2Cost | undefined;
-  if (p.deploy.target === 'kubernetes') {
+  if (p.deploy.target === 'aks') {
+    if (db) return { ok: false, errors: ['AKS: a Database is not run in the cluster (it needs persistent storage and backups these templates do not set up). Untick Database and use Azure Database for PostgreSQL or MySQL: add a secret variable named DATABASE_URL to the Backend and the API.'] };
+    const spec = aksSpec(p, on, cfg, entry);
+    const errors = validateStackAks(spec);
+    if (errors.length > 0) return { ok: false, errors };
+    files.push(...generateStackAksFiles(spec));
+    warnings.push(...stackAksWarnings(spec));
+    cost = estimateStackAksCost(spec);
+  } else if (p.deploy.target === 'kubernetes') {
     if (db) return { ok: false, errors: ['Kubernetes: a Database is not run in the cluster (it needs persistent storage and backups these templates do not set up). Untick Database and use your cloud\'s managed database: add a secret variable named DATABASE_URL to the Backend and the API.'] };
     const spec = k8sSpec(p, on, cfg, entry);
     const errors = validateStackK8s(spec);
@@ -252,16 +263,32 @@ services:
 ${services.join('')}${db ? `\nvolumes:\n  database-data:\n` : ''}`;
 }
 
+/** The addresses a service is told about the others, the same in compose and in a cluster. */
+function wiringEnv(on: Layer[], cfg: Record<Layer, ContainerConfig>, l: Layer): Array<{ key: string; value: string }> {
+  const upstream = on.includes('api') ? 'api' : on.includes('backend') ? 'backend' : null;
+  const staticSite = on.includes('frontend') && cfg.frontend.stack === 'static' && !usesExistingImage(cfg.frontend);
+  return [
+    ...(l === 'api' && on.includes('backend') ? [{ key: 'BACKEND_URL', value: `http://backend:${cfg.backend.port}` }] : []),
+    ...(l === 'frontend' && upstream && !staticSite ? [{ key: 'API_URL', value: `http://${upstream}:${cfg[upstream].port}` }] : []),
+  ];
+}
+
+/** The project as the AKS generator wants it: the same services as on any cluster, with their secrets read from Key Vault. */
+function aksSpec(p: StackProject, on: Layer[], cfg: Record<Layer, ContainerConfig>, entry: Layer): StackAksSpec {
+  const a = p.deploy.aks;
+  const apps = on.filter((l) => l !== 'database');
+  const layers = apps.map((l) => {
+    const config = aksLayerConfig(p.name, a, l, cfg[l], l === entry, wiringEnv(on, cfg, l));
+    return { name: l as string, config, built: !usesExistingImage(cfg[l]), image: usesExistingImage(cfg[l]) ? cfg[l].image : aksImage(p.name, l, a.imageTag), secrets: config.env.filter((v) => v.secret).map((v) => v.key) };
+  });
+  return { project: p.name, namespace: aksNamespace(p.name, a), aks: a, layers, entry, secrets: projectSecrets(apps, cfg) };
+}
+
 /** The project as the Kubernetes generator wants it: every service named after its layer, wired to the others by the same addresses as in compose. */
 function k8sSpec(p: StackProject, on: Layer[], cfg: Record<Layer, ContainerConfig>, entry: Layer): StackK8sSpec {
   const k = p.deploy.k8s;
   const apps = on.filter((l) => l !== 'database');
-  const upstream = on.includes('api') ? 'api' : on.includes('backend') ? 'backend' : null;
-  const staticSite = on.includes('frontend') && cfg.frontend.stack === 'static' && !usesExistingImage(cfg.frontend);
-  const extra = (l: Layer): Array<{ key: string; value: string }> => [
-    ...(l === 'api' && on.includes('backend') ? [{ key: 'BACKEND_URL', value: `http://backend:${cfg.backend.port}` }] : []),
-    ...(l === 'frontend' && upstream && !staticSite ? [{ key: 'API_URL', value: `http://${upstream}:${cfg[upstream].port}` }] : []),
-  ];
+  const extra = (l: Layer) => wiringEnv(on, cfg, l);
   const layers = apps.map((l) => {
     const config = k8sLayerConfig(p.name, k, l, cfg[l], l === entry, extra(l));
     return { name: l as string, config, built: !usesExistingImage(cfg[l]), image: usesExistingImage(cfg[l]) ? cfg[l].image : imageFor(p.name, k, l), secrets: config.env.filter((v) => v.secret).map((v) => v.key) };

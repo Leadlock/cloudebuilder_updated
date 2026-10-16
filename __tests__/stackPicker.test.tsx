@@ -80,7 +80,7 @@ describe('the Stack parts', () => {
     expect([...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value)).toContain('ecs');
     fireEvent.click(include('Frontend'));
     // The Deploy card of one service is replaced by the project's: none, or one server (EC2 or an Azure VM) for everything.
-    expect([...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value)).toEqual(['none', 'ec2', 'azure-vm', 'kubernetes']);
+    expect([...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value)).toEqual(['none', 'ec2', 'azure-vm', 'kubernetes', 'aks']);
     expect(screen.queryByLabelText('App name')).toBeNull();
     expect(screen.queryByText('Add PostgreSQL')).toBeNull();
     expect(screen.getByLabelText('Project name')).toBeTruthy();
@@ -141,6 +141,28 @@ describe('the Stack parts', () => {
     expect(screen.getByRole('alert').textContent).toMatch(/DATABASE_URL/);
     fireEvent.click(include('Database'));
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  test('choosing AKS for the project adds the cluster Terraform and the manifests, with its own settings and cost, and refuses a database with the way out', () => {
+    render(<ContainerTemplatesPanel />);
+    fireEvent.click(include('Frontend')); fireEvent.click(include('API'));
+    fireEvent.change(screen.getByLabelText('Deploy to'), { target: { value: 'aks' } });
+    expect(tabNames()).toEqual(expect.arrayContaining(['deploy.sh', 'aks/main.tf', 'aks/variables.tf', 'k8s/kustomization.yaml', 'k8s/api/deployment.yaml']));
+    expect(tabNames()).not.toContain('ec2/main.tf');
+    expect((screen.getByLabelText('Node size') as HTMLInputElement).value).toBe('Standard_B2s');
+    expect(document.body.textContent).toMatch(/Estimated cost on Azure Kubernetes Service[^:]*: \$\d+/);
+    fireEvent.change(screen.getByLabelText('Node size'), { target: { value: 'Standard_D2s_v3' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'aks/variables.tf' }));
+    expect(document.body.textContent).toContain('Standard_D2s_v3');
+    fireEvent.change(screen.getByLabelText('Ingress host (optional)'), { target: { value: 'shop.example.com' } });
+    expect(tabNames()).toContain('k8s/frontend/ingress.yaml');
+    fireEvent.click(include('Database'));
+    expect(screen.getByRole('alert').textContent).toMatch(/AKS: a Database is not run in the cluster/);
+    expect(screen.getByRole('alert').textContent).toMatch(/DATABASE_URL/);
+    fireEvent.click(include('Database'));
+    expect(screen.queryByRole('alert')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Deploy to'), { target: { value: 'kubernetes' } });
+    expect(screen.getByLabelText('Image registry')).toBeTruthy();    // the plain Kubernetes settings are separate from AKS's
   });
 
   test('the project deployment is kept when parts are ticked and unticked, and one part alone goes back to its own deployment card', () => {
