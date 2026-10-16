@@ -353,7 +353,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
             <p className={clsx('text-[11px]', muted)}>Deletes the resource group this release created: the VM (and the database data on its disk), the registry with its images, the vault with its secrets and the network. You see the list first.</p>
             <button type="button" disabled={busy || !backend.resourceGroupName || !backend.storageAccountName} onClick={() => void previewTeardown()} className="px-3 py-1.5 rounded-lg border text-xs font-medium border-rose-300 text-rose-600 disabled:opacity-40">Preview what would be removed</button>
           </>}
-          {teardown?.nothing && <p className={clsx('text-xs', muted)}>Terraform's record holds nothing to remove.</p>}
+          {teardown?.nothing && <p className={clsx('text-xs', muted)}>Terraform&apos;s record holds nothing to remove.</p>}
           {teardown?.preview && !teardown.runId && (
             <div className="space-y-2">
               <p className="text-xs">{teardown.preview.resourceCount} resources would be deleted:</p>
