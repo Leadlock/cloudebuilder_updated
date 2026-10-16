@@ -92,7 +92,7 @@ describe('planning', () => {
 
   test('without a project there is nothing to deploy from', () => {
     render(<ProjectReleasePanel projectId={null} environment="production" stack={stack} isLight />);
-    expect(screen.getByText(/Open or create a project first/)).toBeTruthy();
+    expect(screen.getByText(/Open or create a saved project first/)).toBeTruthy();
     expect(calls).toEqual([]);
   });
 });

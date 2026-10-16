@@ -150,7 +150,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
     return () => clearInterval(id);
   }, [teardown?.runId, teardown?.state, release?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!projectId) return <div className={card}><p className={clsx('text-xs', muted)}>Open or create a project first: a deployment from CloudCraft belongs to a project.</p></div>;
+  if (!projectId) return <div className={card}><p className={clsx('text-xs', muted)}>Open or create a saved project first (the &quot;Draft Architecture&quot; is not saved anywhere): pick one in the Projects list on the left, or save this one. A deployment from CloudCraft belongs to a project.</p></div>;
   if (off) return <div className={card}><p className="text-sm font-semibold">Deploy from CloudCraft</p><p className={clsx('text-xs', muted)}>{off} You can still download the files and run <code>bash deploy.sh</code> yourself.</p></div>;
 
   const fail = (m: string) => { setError(m); setBusy(false); };

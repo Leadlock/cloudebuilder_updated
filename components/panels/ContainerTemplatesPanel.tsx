@@ -406,7 +406,7 @@ export default function ContainerTemplatesPanel() {
               />
             )}
             {multi && (stack.deploy.target === 'azure-vm' || stack.deploy.target === 'ec2' || stack.deploy.target === 'ecs' || stack.deploy.target === 'container-apps') && result.ok && (
-              <ProjectReleasePanel projectId={project?.id ?? null} environment={state.activeEnvironment} stack={stack} isLight={isLight} />
+              <ProjectReleasePanel projectId={project && project.id !== 'draft-project' ? project.id : null} environment={state.activeEnvironment} stack={stack} isLight={isLight} />
             )}
             {!multi && (
             <div className={clsx(card, 'space-y-3')}>
