@@ -19,8 +19,8 @@ import { DB_SINGLE_MACHINE_NOTE } from './databases';
 export const COMPOSE_VERSION = 'v5.6.0';
 export const COMPOSE_SHA256 = '40343e21ca777173e69cff5dbafeb37c6f81f3b0d57d9e597f036e95eb63e76a';
 
-/** Everything the deployment files need to know about the project. Built by stackProject.ts, which owns the compose file. */
-export interface StackDeploySpec {
+/** What every deployment target needs to know about the project. Built by stackProject.ts, which owns the compose file. */
+export interface StackDeployBase {
   name: string;
   /** The services that are built from source and so need an image repository (a service that uses a ready-made image does not). */
   built: string[];
@@ -33,7 +33,23 @@ export interface StackDeploySpec {
   databaseLabel: string | null;
   /** The compose file the server runs: images from the registry, `${REGISTRY}` and `${TAG}` filled in on the server. */
   compose: string;
-  ec2: Ec2Config;
+}
+
+export interface StackDeploySpec extends StackDeployBase { ec2: Ec2Config }
+
+/** The commands that install the Docker Compose plugin, as a pinned release that is refused unless it matches its published checksum (the same on every server). */
+export function composePluginSh(): string {
+  return `# Neither Amazon Linux nor Ubuntu has a current Compose plugin in its packages: install a pinned release and refuse any file that does not match its published checksum.
+PLUGIN_DIR=/usr/local/lib/docker/cli-plugins
+mkdir -p "$PLUGIN_DIR"
+for ATTEMPT in 1 2 3 4 5; do
+  curl -fsSL -o "$PLUGIN_DIR/docker-compose" "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-x86_64" && break
+  [ "$ATTEMPT" = 5 ] && { echo "Could not download Docker Compose" >&2; exit 1; }
+  sleep 10
+done
+echo "${COMPOSE_SHA256}  $PLUGIN_DIR/docker-compose" | sha256sum -c -
+chmod 755 "$PLUGIN_DIR/docker-compose"
+`;
 }
 
 export const stackEc2Defaults = (): Ec2Config => ({ ...defaultEc2(), enabled: true, instanceType: 't3.medium', volumeGb: 30, githubActions: false });
@@ -430,17 +446,7 @@ set -euo pipefail
 dnf install -y docker
 systemctl enable --now docker
 
-# Amazon Linux has no Compose plugin: install a pinned release and refuse any file that does not match its published checksum.
-PLUGIN_DIR=/usr/local/lib/docker/cli-plugins
-mkdir -p "$PLUGIN_DIR"
-for ATTEMPT in 1 2 3 4 5; do
-  curl -fsSL -o "$PLUGIN_DIR/docker-compose" "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-x86_64" && break
-  [ "$ATTEMPT" = 5 ] && { echo "Could not download Docker Compose" >&2; exit 1; }
-  sleep 10
-done
-echo "${COMPOSE_SHA256}  $PLUGIN_DIR/docker-compose" | sha256sum -c -
-chmod 755 "$PLUGIN_DIR/docker-compose"
-
+${composePluginSh()}
 cat > /usr/local/bin/${app}-run <<'RUNNER'
 #!/bin/bash
 # Started by systemd. Safe to re-run: it fetches the current compose file, tag and secrets every time, so a restart is a new release.

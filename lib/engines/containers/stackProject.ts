@@ -19,9 +19,14 @@ import { databaseServiceBlock } from './databaseFiles';
 import { currentOption, pickStackOption } from './stackOptions';
 import { yq } from './shared';
 import {
-  generateStackEc2Files, stackEc2Defaults, stackEc2Warnings, estimateStackEc2Cost, validateStackEc2, type StackDeploySpec,
+  generateStackEc2Files, stackEc2Defaults, stackEc2Warnings, estimateStackEc2Cost, validateStackEc2,
 } from './stackEc2Deploy';
+import {
+  generateStackAzureFiles, stackAzureDefaults, stackAzureWarnings, estimateStackAzureCost, validateStackAzure,
+} from './stackAzureDeploy';
+import type { StackDeployBase } from './stackEc2Deploy';
 import type { Ec2Config, Ec2Cost } from './ec2Deploy';
+import type { AzVmConfig } from './azureVmDeploy';
 import type { ContainerFinding } from './checks';
 
 export type Layer = 'frontend' | 'backend' | 'api' | 'database';
@@ -30,12 +35,12 @@ export const LAYERS: readonly Layer[] = ['frontend', 'backend', 'api', 'database
 export const LAYER_LABEL: Record<Layer, string> = { frontend: 'Frontend', backend: 'Backend', api: 'API', database: 'Database' };
 
 export interface LayerState { enabled: boolean; config: ContainerConfig }
-/** Where a project of several services is deployed. Docker Compose on your own machine is always possible; EC2 runs the whole compose file on one server. */
-export type ProjectTarget = 'none' | 'ec2';
-export interface ProjectDeploy { target: ProjectTarget; ec2: Ec2Config }
+/** Where a project of several services is deployed. Docker Compose on your own machine is always possible; EC2 or an Azure VM runs the whole compose file on one server. */
+export type ProjectTarget = 'none' | 'ec2' | 'azure-vm';
+export interface ProjectDeploy { target: ProjectTarget; ec2: Ec2Config; azvm: AzVmConfig }
 export interface StackProject { name: string; layers: Record<Layer, LayerState>; deploy: ProjectDeploy }
 
-export const defaultProjectDeploy = (): ProjectDeploy => ({ target: 'none', ec2: stackEc2Defaults() });
+export const defaultProjectDeploy = (): ProjectDeploy => ({ target: 'none', ec2: stackEc2Defaults(), azvm: stackAzureDefaults() });
 
 /** What each layer starts as when it is switched on. */
 const DEFAULT_OPTION: Record<Layer, string> = { frontend: 'spa', backend: 'node', api: 'fastapi', database: 'db-postgres' };
@@ -175,13 +180,23 @@ export function generateProjectFiles(p: StackProject): GenerateResult {
     { path: 'README.md', content: projectReadme(p, on, cfg, layout) },
   );
   let cost: Ec2Cost | undefined;
-  if (p.deploy.target === 'ec2') {
-    const spec = deploySpec(p, on, cfg, layout, entry, composeFor(p, on, cfg, layout, { mode: 'deploy', entry, db, dbLines, upstreamLayer }));
-    const errors = validateStackEc2(spec);
-    if (errors.length > 0) return { ok: false, errors };
-    files.push(...generateStackEc2Files(spec));
-    warnings.push(...stackEc2Warnings(spec));
-    cost = estimateStackEc2Cost(spec);
+  if (p.deploy.target !== 'none') {
+    const base = deployBase(p, on, cfg, layout, entry, composeFor(p, on, cfg, layout, { mode: 'deploy', entry, db, dbLines, upstreamLayer }));
+    if (p.deploy.target === 'ec2') {
+      const spec = { ...base, ec2: p.deploy.ec2 };
+      const errors = validateStackEc2(spec);
+      if (errors.length > 0) return { ok: false, errors };
+      files.push(...generateStackEc2Files(spec));
+      warnings.push(...stackEc2Warnings(spec));
+      cost = estimateStackEc2Cost(spec);
+    } else {
+      const spec = { ...base, azvm: p.deploy.azvm };
+      const errors = validateStackAzure(spec);
+      if (errors.length > 0) return { ok: false, errors };
+      files.push(...generateStackAzureFiles(spec));
+      warnings.push(...stackAzureWarnings(spec));
+      cost = estimateStackAzureCost(spec);
+    }
   }
   return { ok: true, files, warnings, findings, ...(cost ? { cost } : {}) };
 }
@@ -232,7 +247,7 @@ export function projectSecrets(on: Layer[], cfg: Record<Layer, ContainerConfig>)
   return [...new Set(on.flatMap((l) => cfg[l].env.filter((v) => v.secret).map((v) => v.key)))];
 }
 
-function deploySpec(p: StackProject, on: Layer[], cfg: Record<Layer, ContainerConfig>, layout: ProjectLayout, entry: Layer, compose: string): StackDeploySpec {
+function deployBase(p: StackProject, on: Layer[], cfg: Record<Layer, ContainerConfig>, layout: ProjectLayout, entry: Layer, compose: string): StackDeployBase {
   const dbConfig = on.includes('database') ? cfg.database : null;
   return {
     name: p.name,
@@ -242,7 +257,6 @@ function deploySpec(p: StackProject, on: Layer[], cfg: Record<Layer, ContainerCo
     generated: dbConfig ? dbConfig.env.filter((v) => v.secret).map((v) => v.key) : [],
     databaseLabel: dbConfig ? (databaseOf(dbConfig)?.label ?? 'Database') : null,
     compose,
-    ec2: p.deploy.ec2,
   };
 }
 
@@ -299,6 +313,6 @@ The data is in the Docker volume \`database-data\`. It survives \`docker compose
 ` : ''}
 ## Deploying
 
-${p.deploy.target === 'ec2' ? `All the services run on one EC2 server: see \`ec2/README.md\`, or just run \`bash deploy.sh\`.` : 'Run it on any machine with Docker Compose, or choose "AWS EC2 (one server)" for this project in CloudCraft to also get \`deploy.sh\`, \`destroy.sh\` and the Terraform that run all of it on one server.'}
+${p.deploy.target === 'ec2' ? `All the services run on one EC2 server: see \`ec2/README.md\`, or just run \`bash deploy.sh\`.` : p.deploy.target === 'azure-vm' ? `All the services run on one Azure VM: see \`azvm/README.md\`, or just run \`bash deploy.sh\`.` : 'Run it on any machine with Docker Compose, or choose "AWS EC2" or "Azure VM" (one server runs everything) for this project in CloudCraft to also get \`deploy.sh\`, \`destroy.sh\` and the Terraform that run all of it on one server.'}
 `;
 }

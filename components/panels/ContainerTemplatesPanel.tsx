@@ -397,6 +397,7 @@ export default function ContainerTemplatesPanel() {
                 deploy={stack.deploy}
                 onTarget={(target) => { setStack((st) => ({ ...st, deploy: { ...st.deploy, target } })); setSelected('README.md'); }}
                 onEc2={(k, v) => setStack((st) => ({ ...st, deploy: { ...st.deploy, ec2: { ...st.deploy.ec2, [k]: v } } }))}
+                onAzure={(k, v) => setStack((st) => ({ ...st, deploy: { ...st.deploy, azvm: { ...st.deploy.azvm, [k]: v } } }))}
               />
             )}
             {!multi && (
@@ -589,7 +590,7 @@ export default function ContainerTemplatesPanel() {
                 )}
                 {result.cost && (
                   <div className={clsx('mb-3 rounded-lg border px-3 py-2 text-xs', isLight ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-slate-900 border-slate-700 text-slate-200')}>
-                    <p className="font-semibold">Estimated cost on {DEPLOY_TARGET_LABEL[multi ? (stack.deploy.target === 'ec2' ? 'ec2' : 'none') : target].split(' (')[0]}: ${result.cost.monthlyUsd.toFixed(2)} a month</p>
+                    <p className="font-semibold">Estimated cost on {DEPLOY_TARGET_LABEL[multi ? stack.deploy.target : target].split(' (')[0]}: ${result.cost.monthlyUsd.toFixed(2)} a month</p>
                     <p className={muted}>{result.cost.lines.map((l) => `${l.label} $${l.monthlyUsd.toFixed(2)}`).join(' · ')}</p>
                     {result.cost.notes.map((n) => <p key={n} className={muted}>{n}</p>)}
                   </div>

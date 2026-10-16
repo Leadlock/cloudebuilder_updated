@@ -23,12 +23,12 @@ const make = (target: Parameters<typeof withDeployTarget>[1], edit: (c: Containe
   return c;
 };
 
-/** A project of several services deployed to one EC2 server (the compose file runs there). */
-const project = (on: Layer[], edit: (p: StackProject) => void = () => {}): StackProject => {
+/** A project of several services deployed to one EC2 server or Azure VM (the compose file runs there). */
+const project = (on: Layer[], edit: (p: StackProject) => void = () => {}, target: 'ec2' | 'azure-vm' = 'ec2'): StackProject => {
   const p = defaultProject();
   p.name = 'shop';
   for (const l of LAYERS) p.layers[l].enabled = on.includes(l);
-  p.deploy.target = 'ec2';
+  p.deploy.target = target;
   p.layers.backend.config.env = [{ key: 'JWT_SECRET', value: '', secret: true }];
   edit(p);
   return p;
@@ -39,6 +39,10 @@ const cases: Array<[string, Kind, string, ContainerConfig | StackProject]> = [
   ['project-ec2-all-four', 'terraform', 'ec2', project(['frontend', 'backend', 'api', 'database'])],
   ['project-ec2-no-database', 'terraform', 'ec2', project(['frontend', 'api'])],
   ['project-ec2-elastic-ip-private-range', 'terraform', 'ec2', project(['backend', 'api', 'database'], (p) => { p.deploy.ec2.elasticIp = true; p.deploy.ec2.allowedCidr = '203.0.113.0/24'; p.deploy.ec2.instanceType = 'm5.large'; p.deploy.ec2.imageTag = 'v1.2.3'; })],
+  ['project-azvm-all-four', 'terraform', 'azvm', project(['frontend', 'backend', 'api', 'database'], () => {}, 'azure-vm')],
+  ['project-azvm-no-database', 'terraform', 'azvm', project(['frontend', 'api'], () => {}, 'azure-vm')],
+  ['project-azvm-private-range-other-size', 'terraform', 'azvm', project(['backend', 'api', 'database'], (p) => { p.deploy.azvm.allowedCidr = '203.0.113.0/24'; p.deploy.azvm.size = 'Standard_D2s_v3'; p.deploy.azvm.imageTag = 'v1.2.3'; p.deploy.azvm.location = 'eastus2'; }, 'azure-vm')],
+  ['project-azvm-ready-made-images-only', 'terraform', 'azvm', project(['frontend', 'api', 'database'], (p) => { for (const l of ['frontend', 'api'] as const) p.layers[l].config = { ...p.layers[l].config, image: 'nginx:1.27' }; p.layers.backend.config.env = []; }, 'azure-vm')],
   ['project-ec2-ready-made-images-only', 'terraform', 'ec2', project(['frontend', 'api', 'database'], (p) => { for (const l of ['frontend', 'api'] as const) p.layers[l].config = { ...p.layers[l].config, image: 'nginx:1.27' }; p.layers.backend.config.env = []; })],
   ['ecs-http', 'terraform', 'ecs', make('ecs')],
   ['ecs-https-autoscaling-github', 'terraform', 'ecs', make('ecs', (c) => { c.ecs.certificateArn = 'arn:aws:acm:us-east-1:123456789012:certificate/abc-123'; c.ecs.autoscaling = true; c.ecs.githubRepo = 'acme/orders'; c.ecs.cpu = 1024; c.ecs.memoryMb = 4096; })],

@@ -79,8 +79,8 @@ describe('the Stack parts', () => {
     expect(screen.getByLabelText('Deploy to')).toBeTruthy();
     expect([...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value)).toContain('ecs');
     fireEvent.click(include('Frontend'));
-    // The Deploy card of one service is replaced by the project's: none, or one EC2 server for everything.
-    expect([...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value)).toEqual(['none', 'ec2']);
+    // The Deploy card of one service is replaced by the project's: none, or one server (EC2 or an Azure VM) for everything.
+    expect([...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value)).toEqual(['none', 'ec2', 'azure-vm']);
     expect(screen.queryByLabelText('App name')).toBeNull();
     expect(screen.queryByText('Add PostgreSQL')).toBeNull();
     expect(screen.getByLabelText('Project name')).toBeTruthy();
@@ -105,6 +105,23 @@ describe('the Stack parts', () => {
     fireEvent.change(screen.getByLabelText('Deploy to'), { target: { value: 'none' } });
     expect(screen.queryByRole('alert')).toBeNull();
     expect(tabNames()).not.toContain('deploy.sh');
+  });
+
+  test('choosing an Azure VM for the project adds its files, its own settings and cost, and keeps the EC2 settings apart', () => {
+    render(<ContainerTemplatesPanel />);
+    fireEvent.click(include('Frontend')); fireEvent.click(include('API'));
+    fireEvent.change(screen.getByLabelText('Deploy to'), { target: { value: 'azure-vm' } });
+    expect(tabNames()).toEqual(expect.arrayContaining(['deploy.sh', 'azvm/main.tf', 'azvm/cloud-init.sh', 'azvm/compose.deploy.yml']));
+    expect(tabNames()).not.toContain('ec2/main.tf');
+    expect((screen.getByLabelText('VM size') as HTMLInputElement).value).toBe('Standard_B2ms');
+    expect(document.body.textContent).toMatch(/Estimated cost on Azure VM: \$\d+/);
+    fireEvent.change(screen.getByLabelText('VM size'), { target: { value: 'Standard_D2s_v3' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'azvm/variables.tf' }));
+    expect(document.body.textContent).toContain('Standard_D2s_v3');
+    fireEvent.change(screen.getByLabelText(/Who can connect/), { target: { value: 'everyone' } });
+    expect(screen.getByRole('alert').textContent).toMatch(/who can connect/);
+    fireEvent.change(screen.getByLabelText('Deploy to'), { target: { value: 'ec2' } });
+    expect((screen.getByLabelText(/Who can connect/) as HTMLInputElement).value).toBe('0.0.0.0/0');   // the other cloud's setting is not carried over
   });
 
   test('the project deployment is kept when parts are ticked and unticked, and one part alone goes back to its own deployment card', () => {
