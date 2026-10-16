@@ -15,9 +15,10 @@ import { LAYERS, LAYER_LABEL, type StackProject } from '@/lib/engines/containers
 interface Account { id: string; name: string; provider: string; identity?: { authMethod?: string } }
 interface Step { name: string; state: 'pending' | 'running' | 'done' | 'failed' | 'waiting' | 'skipped' | 'rolled_back'; message?: string }
 interface ReleaseView {
-  ownCode: string[]; id: string; project: string; imageTag: string; status: string; steps: Step[]; error: string | null; log: string[]; secrets: string[]; planId: string | null; planHash: string | null;
+  ownCode: string[]; previousReleaseId?: string | null; rollbackOf?: string | null; createdAt?: number; id: string; project: string; imageTag: string; status: string; steps: Step[]; error: string | null; log: string[]; secrets: string[]; planId: string | null; planHash: string | null;
   outputs: { url: string; resourceGroup: string; vmName: string } | null;
 }
+interface DestroyPreview { confirmationToken: string; planId: string; planHash: string; resourceCount: number; resources: Array<{ address: string; type: string }>; project: string }
 interface PlanView { planId: string; planHash: string; summary: { toAdd: number; toChange: number; toDestroy: number }; expiresAt: string }
 
 const STEP_LABEL: Record<string, string> = {
@@ -49,6 +50,9 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
   const [busy, setBusy] = useState(false);
   const [plan, setPlan] = useState<{ release: ReleaseView; plan: PlanView; cost: { monthlyUsd: number } | null; warnings: string[] } | null>(null);
   const [release, setRelease] = useState<ReleaseView | null>(null);
+  const [history, setHistory] = useState<ReleaseView[]>([]);
+  const [putBack, setPutBack] = useState<string | null>(null);
+  const [teardown, setTeardown] = useState<{ preview: DestroyPreview | null; nothing: boolean; name: string; password: string; code: string; needsCode: boolean; runId: string | null; state: string | null; tail: string[]; elapsed: number } | null>(null);
   const [missing, setMissing] = useState<string[] | null>(null);
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
@@ -78,6 +82,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
       if (cancelled) return;
       if (!list.ok) { if (list.status === 503) setOff(list.message); return; }
       const latest = list.data.releases[0];
+      setHistory(list.data.releases);
       if (latest) setRelease(latest);
     })();
     return () => { cancelled = true; };
@@ -98,6 +103,28 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
     if (release && ACTIVE.has(release.status)) timer.current = setInterval(() => void refresh(release.id), 3000);
     return () => { if (timer.current) clearInterval(timer.current); };
   }, [release?.id, release?.status, refresh]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const reloadHistory = async () => {
+    const list = await api<{ releases: ReleaseView[] }>(`${base}?environment=${encodeURIComponent(environment)}`);
+    if (list.ok) setHistory(list.data.releases);
+  };
+
+  // Follow a teardown that is going on; when it is over, ask Azure whether the resources are really gone.
+  useEffect(() => {
+    if (!teardown?.runId || teardown.state !== 'running' || !release) return;
+    const id = setInterval(async () => {
+      const r = await api<{ state: string; logTail: string[]; elapsedSeconds: number; error?: string }>(`/api/projects/${projectId}/terraform/destroy?runId=${teardown.runId}`);
+      if (!r.ok) return;
+      setTeardown((x) => (x ? { ...x, state: r.data.state, tail: r.data.logTail, elapsed: r.data.elapsedSeconds } : x));
+      if (r.data.state === 'failed') setError(r.data.error ?? 'The teardown failed. Read its output below and try again.');
+      if (r.data.state === 'succeeded') {
+        const fresh = await api<{ release: ReleaseView }>(`${base}/${release.id}?reconcile=1`);
+        if (fresh.ok) setRelease(fresh.data.release);
+        await reloadHistory();
+      }
+    }, 3000);
+    return () => clearInterval(id);
+  }, [teardown?.runId, teardown?.state, release?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!projectId) return <div className={card}><p className={clsx('text-xs', muted)}>Open or create a project first: a deployment from CloudCraft belongs to a project.</p></div>;
   if (off) return <div className={card}><p className="text-sm font-semibold">Deploy from CloudCraft</p><p className={clsx('text-xs', muted)}>{off} You can still download the files and run <code>bash deploy.sh</code> yourself.</p></div>;
@@ -161,6 +188,38 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
     if (!r.ok) return fail(r.message);
     setBusy(false);
     await refresh(release.id);
+  }
+
+  async function putBackNow(id: string) {
+    setBusy(true); setError(null); setPutBack(null);
+    const r = await api<{ release: ReleaseView }>(`${base}/${id}/rollback`, { method: 'POST', body: JSON.stringify({ confirm: true }) });
+    if (!r.ok) return fail(r.message);
+    setRelease(r.data.release); setBusy(false);
+    await reloadHistory();
+  }
+
+  const stateBackend = () => ({ provider: 'azure', ...backend });
+
+  async function previewTeardown() {
+    if (!release) return;
+    setBusy(true); setError(null);
+    const r = await api<{ status: string } & Partial<DestroyPreview>>(`${base}/${release.id}/destroy`, { method: 'POST', body: JSON.stringify({ stateBackend: stateBackend() }) });
+    if (!r.ok) return fail(r.message);
+    setBusy(false);
+    setTeardown({ preview: r.data.status === 'confirmation_required' ? (r.data as DestroyPreview) : null, nothing: r.data.status === 'nothing_to_destroy', name: '', password: '', code: '', needsCode: false, runId: null, state: null, tail: [], elapsed: 0 });
+  }
+
+  async function runTeardown() {
+    if (!release || !teardown?.preview) return;
+    const t = teardown; const p = teardown.preview;
+    setBusy(true); setError(null);
+    const c = await api<unknown>(`/api/projects/${projectId}/terraform/confirm`, { method: 'POST', body: JSON.stringify({ action: 'destroy', planId: p.planId, planHash: p.planHash, password: t.password, ...(t.code ? { code: t.code } : {}) }) });
+    setTeardown((x) => (x ? { ...x, password: '', code: '' } : x));
+    if (!c.ok) { if (c.code === 'CODE_REQUIRED') setTeardown((x) => (x ? { ...x, needsCode: true } : x)); return fail(c.message); }
+    const r = await api<{ runId: string }>(`${base}/${release.id}/destroy`, { method: 'POST', body: JSON.stringify({ stateBackend: stateBackend(), confirmationToken: p.confirmationToken, planId: p.planId, confirmName: t.name }) });
+    if (!r.ok) return fail(r.message);
+    setBusy(false);
+    setTeardown((x) => (x ? { ...x, runId: r.data.runId, state: 'running' } : x));
   }
 
   const infraDone = release?.steps.find((s) => s.name === 'infrastructure')?.state === 'done';
@@ -259,12 +318,63 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
           {(release.status === 'failed') && release.error && <p className="text-xs text-rose-500">{release.error}</p>}
           {release.log.length > 0 && <pre className={clsx('rounded-lg p-3 text-[11px] leading-relaxed max-h-40 overflow-auto font-mono', isLight ? 'bg-slate-900 text-slate-100' : 'bg-slate-950 text-slate-200 border border-slate-800')}>{release.log.slice(-12).join('\n')}</pre>}
 
+          {release.status === 'destroyed' && <p className="text-xs text-amber-600">Everything this release created was removed. Plan a new deployment to create it again.</p>}
           <div className="flex flex-wrap gap-2">
             {ACTIVE.has(release.status) && <button type="button" disabled={busy} onClick={() => void act('cancel')} className="px-3 py-1.5 rounded-lg border text-xs font-medium border-rose-300 text-rose-600 disabled:opacity-40">Cancel</button>}
             {release.status === 'failed' && infraDone && <button type="button" disabled={busy} onClick={() => void act('run')} className="px-3 py-1.5 rounded-lg border text-xs font-medium border-cyan-500 text-cyan-600 disabled:opacity-40">Retry from the failed step</button>}
             {release.status === 'failed' && !infraDone && <p className={clsx('text-xs', muted)}>The infrastructure was not created. Plan the deployment again.</p>}
             {release.status === 'waiting' && missing && missing.length === 0 && <button type="button" disabled={busy} onClick={() => void act('run')} className="px-3 py-1.5 rounded-lg border text-xs font-medium border-cyan-500 text-cyan-600 disabled:opacity-40">Continue</button>}
           </div>
+        </div>
+      )}
+
+      {history.filter((h) => h.status === 'succeeded' && h.id !== release?.id).length > 0 && release && (release.status === 'succeeded' || release.status === 'rolled_back' || release.status === 'failed') && (
+        <div className="space-y-2" data-testid="release-history">
+          <p className="text-xs font-semibold">Earlier releases that worked</p>
+          {history.filter((h) => h.status === 'succeeded' && h.id !== release.id).map((h) => (
+            <div key={h.id} className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-mono">{h.imageTag}</span>
+              {putBack === h.id ? (
+                <>
+                  <span>Put {h.imageTag} back on the VM?</span>
+                  <button type="button" disabled={busy} onClick={() => void putBackNow(h.id)} className="px-2 py-1 rounded border border-cyan-500 text-cyan-600 font-medium">Put it back</button>
+                  <button type="button" onClick={() => setPutBack(null)} className={muted}>No</button>
+                </>
+              ) : <button type="button" disabled={busy} onClick={() => setPutBack(h.id)} className="px-2 py-1 rounded border border-slate-400 font-medium">Put this one back</button>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {release && infraDone && release.status !== 'destroyed' && !ACTIVE.has(release.status) && (
+        <div className={clsx('rounded-lg border p-3 space-y-2', isLight ? 'border-rose-200' : 'border-rose-500/30')} data-testid="teardown">
+          <p className="text-xs font-semibold">Remove everything</p>
+          {!teardown && <>
+            <p className={clsx('text-[11px]', muted)}>Deletes the resource group this release created: the VM (and the database data on its disk), the registry with its images, the vault with its secrets and the network. You see the list first.</p>
+            <button type="button" disabled={busy || !backend.resourceGroupName || !backend.storageAccountName} onClick={() => void previewTeardown()} className="px-3 py-1.5 rounded-lg border text-xs font-medium border-rose-300 text-rose-600 disabled:opacity-40">Preview what would be removed</button>
+          </>}
+          {teardown?.nothing && <p className={clsx('text-xs', muted)}>Terraform's record holds nothing to remove.</p>}
+          {teardown?.preview && !teardown.runId && (
+            <div className="space-y-2">
+              <p className="text-xs">{teardown.preview.resourceCount} resources would be deleted:</p>
+              <ul className={clsx('text-[11px] font-mono max-h-32 overflow-auto', muted)}>{teardown.preview.resources.map((r) => <li key={r.address}>{r.address}</li>)}</ul>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={label} htmlFor="td-name">Type the project name ({teardown.preview.project})</label><input id="td-name" className={input} value={teardown.name} onChange={(e) => setTeardown({ ...teardown, name: e.target.value })} /></div>
+                <div><label className={label} htmlFor="td-pw">Your password</label><input id="td-pw" type="password" autoComplete="current-password" className={input} value={teardown.password} onChange={(e) => setTeardown({ ...teardown, password: e.target.value })} /></div>
+                {teardown.needsCode && <div><label className={label} htmlFor="td-code">Code from your authenticator app</label><input id="td-code" inputMode="numeric" autoComplete="one-time-code" className={input} value={teardown.code} onChange={(e) => setTeardown({ ...teardown, code: e.target.value })} /></div>}
+              </div>
+              <div className="flex gap-2">
+                <button type="button" disabled={busy || teardown.name !== teardown.preview.project || teardown.password === ''} onClick={() => void runTeardown()} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 text-white disabled:opacity-40">Delete everything</button>
+                <button type="button" onClick={() => setTeardown(null)} className={clsx('text-xs', muted)}>Cancel</button>
+              </div>
+            </div>
+          )}
+          {teardown?.runId && (
+            <div className="space-y-1" data-testid="teardown-run">
+              <p className="text-xs">{teardown.state === 'succeeded' ? 'Removed.' : teardown.state === 'failed' ? 'The teardown failed.' : `Removing… ${teardown.elapsed}s`}</p>
+              {teardown.tail.length > 0 && <pre className={clsx('rounded-lg p-3 text-[11px] max-h-32 overflow-auto font-mono', isLight ? 'bg-slate-900 text-slate-100' : 'bg-slate-950 text-slate-200 border border-slate-800')}>{teardown.tail.slice(-8).join('\n')}</pre>}
+            </div>
+          )}
         </div>
       )}
     </div>

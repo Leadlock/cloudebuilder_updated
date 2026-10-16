@@ -99,7 +99,7 @@ describe('the approval covers the zip', () => {
 describe('a release builds exactly the zip that was approved', () => {
   const OUT = { resourceGroup: 'rg-shop', vmName: 'vm-shop', acrName: 'acrshop', vaultName: 'kvshop', url: 'http://203.0.113.9:8080/' };
   const archives: Array<{ image: string; source: Buffer }> = [];
-  const ops: AzureOps = { secretExists: async () => true, putSecret: async () => undefined, acrBuild: async (a) => { archives.push({ image: a.image, source: a.source }); }, setVmTag: async () => undefined, runShell: async () => '', httpOk: async () => true };
+  const ops: AzureOps = { secretExists: async () => true, putSecret: async () => undefined, acrBuild: async (a) => { archives.push({ image: a.image, source: a.source }); }, setVmTag: async () => undefined, runShell: async () => '', httpOk: async () => true, resourceGroupExists: async () => true };
 
   async function setup(mutate?: (z: Buffer, sources: InMemorySourceStore) => Promise<void>, over: { orgId?: string; layer?: string } = {}) {
     archives.length = 0;

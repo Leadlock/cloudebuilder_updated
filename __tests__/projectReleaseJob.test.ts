@@ -19,7 +19,7 @@ import type { ReleaseOutputs } from '@/lib/deploy/project/types';
 
 const OUT: ReleaseOutputs = { resourceGroup: 'rg-shop', vmName: 'vm-shop', acrName: 'acrshop', vaultName: 'kvshop', url: 'http://203.0.113.9:8080/' };
 const project = () => { const p = defaultProject(); p.name = 'shop'; for (const l of LAYERS) p.layers[l].enabled = ['backend', 'api'].includes(l); p.layers.backend.config.env = []; p.deploy.target = 'azure-vm'; return p; };
-const okOps = (): AzureOps => ({ secretExists: async () => true, putSecret: async () => undefined, acrBuild: async () => undefined, setVmTag: async () => undefined, runShell: async () => '', httpOk: async () => true });
+const okOps = (): AzureOps => ({ secretExists: async () => true, putSecret: async () => undefined, acrBuild: async () => undefined, setVmTag: async () => undefined, runShell: async () => '', httpOk: async () => true, resourceGroupExists: async () => true });
 
 async function seed(store: InMemoryReleaseStore) {
   const p = project(); const bundle = buildAzureVmBundle(p);

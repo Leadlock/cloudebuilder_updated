@@ -21,7 +21,7 @@ export interface StepRecord {
   message?: string;
 }
 
-export type ReleaseStatus = 'planned' | 'approved' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'rolled_back' | 'cancelled';
+export type ReleaseStatus = 'planned' | 'approved' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'rolled_back' | 'cancelled' | 'destroyed';
 
 /** What Terraform created, as the steps need it. */
 export interface ReleaseOutputs {
@@ -64,6 +64,8 @@ export interface Release {
   outputs: ReleaseOutputs | null;
   /** The release this one replaced (the rollback target). */
   previousReleaseId: string | null;
+  /** Set when this release puts an earlier one back: the release it is a copy of. */
+  rollbackOf: string | null;
   createdBy: string;
   createdAt: number;
   updatedAt: number;

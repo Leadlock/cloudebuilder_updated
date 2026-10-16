@@ -287,3 +287,93 @@ describe('your own code', () => {
     expect(calls.find((c) => c.method === 'POST' && c.path === '/api/projects/p1/releases')!.body).not.toHaveProperty('sources');
   });
 });
+
+describe('earlier releases and removing everything', () => {
+  const ALL_DONE = STEPS({ infrastructure: 'done', secrets: 'done', build: 'done', publish: 'done', start: 'done', verify: 'done' });
+  const cur = release({ id: 'rel-2', imageTag: 'v2', status: 'succeeded', steps: ALL_DONE, outputs: { url: 'http://203.0.113.9:8080/', resourceGroup: 'rg-shop', vmName: 'vm-shop' } });
+  const old = release({ id: 'rel-1', imageTag: 'v1', status: 'succeeded', steps: ALL_DONE, outputs: { url: 'http://203.0.113.9:8080/', resourceGroup: 'rg-shop', vmName: 'vm-shop' } });
+  const showing = async (latest: Record<string, unknown>, list: Array<Record<string, unknown>>) => {
+    routes.unshift([/GET \/api\/projects\/p1\/releases\?/, () => ({ data: { releases: list } })]);
+    routes.unshift([/GET \/api\/projects\/p1\/releases\/rel-\d(\?reconcile=1)?$/, () => ({ data: { release: latest, missing: null } })]);
+    mount();
+    await screen.findByTestId('release-status');
+  };
+
+  test('an earlier release that worked can be put back, after asking, and the new release is shown', async () => {
+    routes.unshift([/POST \/api\/projects\/p1\/releases\/rel-1\/rollback$/, () => ({ status: 201, data: { release: release({ id: 'rel-3', imageTag: 'v1', status: 'approved', rollbackOf: 'rel-1', steps: STEPS({ infrastructure: 'skipped', secrets: 'skipped', build: 'skipped' }) }), jobId: 'j' } })]);
+    await showing(cur, [cur, old]);
+    const history = screen.getByTestId('release-history');
+    expect(history.textContent).toContain('v1');
+    expect(history.textContent).not.toContain('v2');
+    fireEvent.click(screen.getByRole('button', { name: 'Put this one back' }));
+    expect(history.textContent).toContain('Put v1 back on the VM?');
+    expect(calls.some((c) => c.path.endsWith('/rollback'))).toBe(false);                   // asking is not doing
+    fireEvent.click(screen.getByRole('button', { name: 'Put it back' }));
+    await waitFor(() => expect(calls.find((c) => c.path.endsWith('/rollback'))!.body).toEqual({ confirm: true }));
+    await waitFor(() => expect(screen.getByTestId('release-state').textContent).toBe('approved'));
+  });
+
+  test('"No" asks nothing, and there is nothing to put back while a release is going on or when only one worked', async () => {
+    await showing(cur, [cur, old]);
+    fireEvent.click(screen.getByRole('button', { name: 'Put this one back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'No' }));
+    expect(screen.getByRole('button', { name: 'Put this one back' })).toBeTruthy();
+    expect(calls.some((c) => c.path.endsWith('/rollback'))).toBe(false);
+  });
+
+  test('no history is offered with a single release, or while one is running', async () => {
+    await showing(cur, [cur]);
+    expect(screen.queryByTestId('release-history')).toBeNull();
+  });
+
+  test('removing everything: preview the list, then the project name and password are needed, then it runs and follows the teardown', async () => {
+    jest.useFakeTimers();
+    try {
+      routes.unshift([/POST \/api\/projects\/p1\/releases\/rel-2\/destroy$/, (c) => ((c.body as { confirmationToken?: string }).confirmationToken
+        ? { status: 201, data: { status: 'started', runId: 'run-1' } }
+        : { data: { status: 'confirmation_required', confirmationToken: 'tok-12345678', planId: 'destroy-plan-1234', planHash: 'd'.repeat(64), resourceCount: 2, resources: [{ address: 'azurerm_resource_group.app', type: 'azurerm_resource_group' }, { address: 'azurerm_linux_virtual_machine.app', type: 'x' }], project: 'shop' } })]);
+      routes.unshift([/POST \/api\/projects\/p1\/terraform\/confirm$/, () => ({ data: { approval: { id: 'a' } } })]);
+      let polls = 0;
+      routes.unshift([/GET \/api\/projects\/p1\/terraform\/destroy\?runId=run-1/, () => ({ data: { state: ++polls < 2 ? 'running' : 'succeeded', logTail: ['azurerm_linux_virtual_machine.app: Destroying...'], elapsedSeconds: polls * 3 } })]);
+      await showing(cur, [cur]);
+      await waitFor(() => expect((screen.getByLabelText('State: storage account') as HTMLInputElement).value).toBe('tfstateacct'));
+      fireEvent.click(screen.getByRole('button', { name: 'Preview what would be removed' }));
+      await screen.findByText(/2 resources would be deleted/);
+      expect(screen.getByText('azurerm_linux_virtual_machine.app')).toBeTruthy();
+      expect(calls.find((c) => c.path.endsWith('/destroy'))!.body).toMatchObject({ stateBackend: { provider: 'azure', storageAccountName: 'tfstateacct' } });
+      const del = screen.getByRole('button', { name: 'Delete everything' }) as HTMLButtonElement;
+      expect(del.disabled).toBe(true);
+      fireEvent.change(screen.getByLabelText(/Type the project name/), { target: { value: 'sho' } });
+      fireEvent.change(screen.getByLabelText('Your password'), { target: { value: 'pw' } });
+      expect(del.disabled).toBe(true);                                                  // the name is not typed in full
+      fireEvent.change(screen.getByLabelText(/Type the project name/), { target: { value: 'shop' } });
+      expect(del.disabled).toBe(false);
+      await act(async () => { fireEvent.click(del); await Promise.resolve(); });
+      await screen.findByTestId('teardown-run');
+      const posts = calls.filter((c) => c.method === 'POST').map((c) => c.path);
+      expect(posts.slice(-2)).toEqual(['/api/projects/p1/terraform/confirm', '/api/projects/p1/releases/rel-2/destroy']);
+      expect(calls.find((c) => c.path.endsWith('/confirm'))!.body).toEqual({ action: 'destroy', planId: 'destroy-plan-1234', planHash: 'd'.repeat(64), password: 'pw' });
+      expect(calls.filter((c) => c.path.endsWith('/destroy')).pop()!.body).toMatchObject({ confirmationToken: 'tok-12345678', planId: 'destroy-plan-1234', confirmName: 'shop' });
+      routes.unshift([/GET \/api\/projects\/p1\/releases\/rel-2(\?reconcile=1)$/, () => ({ data: { release: release({ id: 'rel-2', status: 'destroyed', steps: ALL_DONE }), missing: null } })]);
+      for (let i = 0; i < 3; i++) await act(async () => { jest.advanceTimersByTime(3100); await Promise.resolve(); });
+      await waitFor(() => expect(screen.getByTestId('release-state').textContent).toBe('destroyed'));
+      expect(calls.some((c) => c.path.includes('reconcile=1'))).toBe(true);
+      expect(screen.getByTestId('release-status').textContent).toContain('Everything this release created was removed');
+      expect(screen.queryByTestId('teardown')).toBeNull();
+    } finally { jest.useRealTimers(); }
+  });
+
+  test('"nothing to remove" is said, and a release that created nothing offers no teardown', async () => {
+    routes.unshift([/POST \/api\/projects\/p1\/releases\/rel-2\/destroy$/, () => ({ data: { status: 'nothing_to_destroy', resourceCount: 0, resources: [] } })]);
+    await showing(cur, [cur]);
+    await waitFor(() => expect((screen.getByLabelText('State: storage account') as HTMLInputElement).value).toBe('tfstateacct'));
+    fireEvent.click(screen.getByRole('button', { name: 'Preview what would be removed' }));
+    expect(await screen.findByText(/holds nothing to remove/)).toBeTruthy();
+  });
+
+  test('no teardown for a release that never created anything or is still going', async () => {
+    const failed = release({ id: 'rel-2', status: 'failed', steps: STEPS({ infrastructure: 'failed' }) });
+    await showing(failed, [failed]);
+    expect(screen.queryByTestId('teardown')).toBeNull();
+  });
+});

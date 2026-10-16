@@ -186,6 +186,19 @@ describe('the VM', () => {
   });
 });
 
+describe('the resource group', () => {
+  const url = /GET https:\/\/management\.azure\.com\/subscriptions\/sub-1\/resourcegroups\/rg-shop\?api-version=2021-04-01/;
+  test('is there for a 200, gone for a 404, and anything else is an error, never a "gone"', async () => {
+    const there = fakeAzure([[url, () => ({ status: 200, json: { name: 'rg-shop' } })]]);
+    expect(await createAzureOps({ ...base, fetchImpl: there.fetchImpl }).resourceGroupExists('rg-shop')).toBe(true);
+    const gone = fakeAzure([[url, () => ({ status: 404, json: { error: { code: 'ResourceGroupNotFound' } } })]]);
+    expect(await createAzureOps({ ...base, fetchImpl: gone.fetchImpl }).resourceGroupExists('rg-shop')).toBe(false);
+    const denied = fakeAzure([[url, () => ({ status: 403, json: { error: { code: 'AuthorizationFailed', message: 'no' } } })]]);
+    await expect(createAzureOps({ ...base, fetchImpl: denied.fetchImpl }).resourceGroupExists('rg-shop')).rejects.toThrow(/AuthorizationFailed/);
+    await expect(createAzureOps({ ...base, fetchImpl: fakeAzure([]).fetchImpl }).resourceGroupExists('rg/../x')).rejects.toThrow(AzureError);
+  });
+});
+
 describe('the public address', () => {
   test('answers for a success status, not for an error, a refusal or a timeout; and never throws', async () => {
     const f = fakeAzure([[/GET http:\/\/up\//, () => ({ status: 200, text: 'ok' })], [/GET http:\/\/err\//, () => ({ status: 502 })]]);

@@ -118,7 +118,7 @@ describe('a whole release against real Postgres (fake cloud)', () => {
     const ops = {
       secretExists: async (_v: string, n: string) => vault.has(n), putSecret: async (_v: string, n: string) => { vault.add(n); },
       acrBuild: async (a: { image: string }) => { calls.push(`build ${a.image}`); }, setVmTag: async (_r: string, _v: string, k: string, v: string) => { calls.push(`tag ${k}=${v}`); },
-      runShell: async () => '', httpOk: async () => true,
+      runShell: async () => '', httpOk: async () => true, resourceGroupExists: async () => true,
     };
     const infra = { apply: async () => ({ resourceGroup: 'rg-shop', vmName: 'vm-shop', acrName: 'acrshop', vaultName: 'kvshop', url: 'http://203.0.113.9:8080/' }) };
     const deps = { store, ops, infra, sleep: async () => undefined, verifyWaitMs: 50, verifyEveryMs: 1 };

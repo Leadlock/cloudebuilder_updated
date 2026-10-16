@@ -6,7 +6,7 @@ import { NextRequest } from 'next/server';
 import { ok, internalError } from '@/lib/api/response';
 import { PgReleaseStore } from '@/lib/deploy/project/pgReleaseStore';
 import { findRelease, publicRelease, releaseGate } from '@/lib/deploy/project/routeGate';
-import { missingSecrets } from '@/lib/deploy/project/orchestrator';
+import { missingSecrets, reconcileDestroyed } from '@/lib/deploy/project/orchestrator';
 import { azureOpsForAccount } from '@/lib/deploy/project/accountOps';
 import { APPLY_WORKER, workerStatus } from '@/lib/terraform/execution/applyProgress';
 
@@ -17,8 +17,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id: projectId, rid } = await params;
     const gate = await releaseGate(req, projectId);
     if (!gate.ok) return gate.response;
-    const found = await findRelease(new PgReleaseStore(), gate, rid);
+    const store = new PgReleaseStore();
+    const found = await findRelease(store, gate, rid);
     if (!('id' in found)) return found;
+    // After a teardown the page asks (?reconcile=1): the releases that ran in a resource group that is gone are marked destroyed, as Azure says, not as the caller says.
+    if (req.nextUrl.searchParams.get('reconcile') === '1' && found.outputs && found.status !== 'destroyed') {
+      try { await reconcileDestroyed({ store, ops: await azureOpsForAccount(found.orgId, found.cloudAccountId) }, found); } catch { /* the next look tries again */ }
+      const fresh = await store.get(found.id);
+      if (fresh) Object.assign(found, fresh);
+    }
     let missing: string[] | null = null;
     if (found.status === 'waiting' && found.outputs) {
       try { missing = await missingSecrets(found, await azureOpsForAccount(found.orgId, found.cloudAccountId)); } catch { missing = null; }

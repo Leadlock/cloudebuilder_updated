@@ -8,7 +8,7 @@ import { join } from 'path';
 import { defaultProject, LAYERS, type Layer, type StackProject } from '@/lib/engines/containers/stackProject';
 import { buildAzureVmBundle } from '@/lib/deploy/project/bundle';
 import { InMemoryReleaseStore } from '@/lib/deploy/project/releaseStore';
-import { approveRelease, cancelRelease, newRelease, provideSecrets, ReleaseError, runRelease, writeComposeScript, type InfraRunner, type OrchestratorDeps } from '@/lib/deploy/project/orchestrator';
+import { approveRelease, cancelRelease, createRollbackRelease, newRelease, provideSecrets, reconcileDestroyed, ReleaseError, runRelease, writeComposeScript, type InfraRunner, type OrchestratorDeps } from '@/lib/deploy/project/orchestrator';
 import type { AzureOps } from '@/lib/deploy/project/azureOps';
 import type { Release, ReleaseOutputs } from '@/lib/deploy/project/types';
 
@@ -36,6 +36,8 @@ class FakeOps implements AzureOps {
   async setVmTag(rg: string, vm: string, key: string, value: string) { this.maybeFail(`setVmTag ${rg} ${vm} ${key}=${value}`); }
   async runShell(_rg: string, _vm: string, script: string) { this.maybeFail(`runShell ${script.startsWith('mkdir') ? 'compose' : script}`); return ''; }
   async httpOk(url: string) { this.calls.push(`httpOk ${url}`); return this.up; }
+  groupExists = true;
+  async resourceGroupExists() { return this.groupExists; }
 }
 
 function setup(over: { ops?: FakeOps; infraCalls?: { n: number }; killSwitch?: () => boolean } = {}) {
@@ -44,7 +46,8 @@ function setup(over: { ops?: FakeOps; infraCalls?: { n: number }; killSwitch?: (
   const infraCalls = over.infraCalls ?? { n: 0 };
   const infra: InfraRunner = { async apply() { infraCalls.n++; return OUT; } };
   const logs: string[] = [];
-  const deps: OrchestratorDeps = { store, ops, infra, killSwitch: over.killSwitch, now: () => 1000, sleep: async () => undefined, log: (_id, l) => logs.push(l), verifyWaitMs: 50, verifyEveryMs: 1 };
+  let clock = 1000;
+  const deps: OrchestratorDeps = { store, ops, infra, killSwitch: over.killSwitch, now: () => ++clock, sleep: async () => undefined, log: (_id, l) => logs.push(l), verifyWaitMs: 50, verifyEveryMs: 1 };
   return { store, ops, deps, logs, infraCalls };
 }
 
@@ -331,5 +334,90 @@ describe('approval', () => {
     expect(buildAzureVmBundle(project()).bundleHash).toBe(base);
     const p = project(); p.deploy.azvm.allowedCidr = '203.0.113.0/24';
     expect(buildAzureVmBundle(p).bundleHash).not.toBe(base);
+  });
+});
+
+describe('putting an earlier release back', () => {
+  async function twoReleases(ops: FakeOps) {
+    const s = setup({ ops });
+    ops.vault.add('JWT-SECRET'); ops.vault.add('POSTGRES-PASSWORD');
+    await plan(s.store, project(['frontend', 'backend', 'api', 'database'], 'v1'), 'r1');
+    await runRelease(s.deps, 'r1');
+    await plan(s.store, project(['frontend', 'backend', 'api', 'database'], 'v2'), 'r2', 'r1');
+    await runRelease(s.deps, 'r2');
+    ops.calls.length = 0;
+    return s;
+  }
+
+  test('writes the earlier tag and compose file again and restarts, with nothing built or planned, and the new release replaces the running one', async () => {
+    const ops = new FakeOps();
+    const s = await twoReleases(ops);
+    const rb = await createRollbackRelease(s.store, { targetId: 'r1', newId: 'r3', orgId: 'org', projectId: 'p1', createdBy: 'u2', now: 50 });
+    expect(rb).toMatchObject({ id: 'r3', status: 'approved', rollbackOf: 'r1', previousReleaseId: 'r2', planId: null, imageTag: 'v1', createdBy: 'u2' });
+    expect(rb.steps.map((x) => x.state)).toEqual(['skipped', 'skipped', 'skipped', 'pending', 'pending', 'pending']);
+    await s.store.save(rb);
+    const done = await runRelease(s.deps, 'r3');
+    expect(done.status).toBe('succeeded');
+    expect(ops.calls.filter((c) => c.startsWith('acrBuild'))).toEqual([]);
+    expect(ops.calls).toEqual(expect.arrayContaining(['setVmTag rg-shop vm-shop image_tag=v1', 'runShell compose', 'runShell systemctl restart shop.service']));
+    expect(s.infraCalls.n).toBe(2);                                                  // the two earlier releases only
+    expect((await s.store.latestSucceeded('p1', 'production'))!.id).toBe('r3');
+  });
+
+  test('when the earlier release does not answer either, the one that was running is put back', async () => {
+    const ops = new FakeOps();
+    const s = await twoReleases(ops);
+    const rb = await createRollbackRelease(s.store, { targetId: 'r1', newId: 'r3', orgId: 'org', projectId: 'p1', createdBy: 'u', now: 50 });
+    await s.store.save(rb);
+    let running = 'v2';
+    const tag = ops.setVmTag.bind(ops);
+    ops.setVmTag = async (rg, vm, k, v) => { await tag(rg, vm, k, v); running = v; };
+    ops.httpOk = async () => running === 'v2';                                       // v1 is gone for good; v2 still answers
+    const r = await runRelease(s.deps, 'r3');
+    expect(r.status).toBe('rolled_back');
+    expect(r.error).toMatch(/previous release \(v2\) was put back and answers/);
+  });
+
+  test.each([
+    ['one that does not exist', 'nope', /not found/],
+    ['one that is not a success', 'r-planned', /Only a release that succeeded/],
+    ['the one that is running now', 'r2', /running now/],
+  ])('%s cannot be put back', async (_n, id, why) => {
+    const ops = new FakeOps();
+    const s = await twoReleases(ops);
+    await plan(s.store, project(), 'r-planned');
+    await expect(createRollbackRelease(s.store, { targetId: id, newId: 'x', orgId: 'org', projectId: 'p1', createdBy: 'u', now: 1 })).rejects.toThrow(why);
+  });
+
+  test('a release of another organization or project cannot be put back', async () => {
+    const ops = new FakeOps();
+    const s = await twoReleases(ops);
+    await expect(createRollbackRelease(s.store, { targetId: 'r1', newId: 'x', orgId: 'other', projectId: 'p1', createdBy: 'u', now: 1 })).rejects.toThrow(/not found/);
+    await expect(createRollbackRelease(s.store, { targetId: 'r1', newId: 'x', orgId: 'org', projectId: 'other', createdBy: 'u', now: 1 })).rejects.toThrow(/not found/);
+  });
+});
+
+describe('after a teardown', () => {
+  test('releases whose resource group is gone are marked destroyed, and only those; it asks Azure', async () => {
+    const ops = new FakeOps();
+    const s = setup({ ops });
+    ops.vault.add('JWT-SECRET'); ops.vault.add('POSTGRES-PASSWORD');
+    await plan(s.store, project(), 'r1'); await runRelease(s.deps, 'r1');
+    await plan(s.store, project(['backend', 'api']), 'r-planned');                       // approved but never ran: stays as it is
+    const r1 = (await s.store.get('r1'))!;
+    expect(await reconcileDestroyed(s.deps, r1)).toBe(0);                                   // the group is still there
+    expect((await s.store.get('r1'))!.status).toBe('succeeded');
+    ops.groupExists = false;
+    expect(await reconcileDestroyed(s.deps, r1)).toBe(1);
+    expect((await s.store.get('r1'))!.status).toBe('destroyed');
+    expect((await s.store.get('r-planned'))!.status).toBe('approved');
+    expect(await s.store.latestSucceeded('p1', 'production')).toBeNull();                   // nothing is "running" any more
+    expect(await reconcileDestroyed(s.deps, r1)).toBe(0);                                   // once
+  });
+
+  test('a release that created nothing has nothing to reconcile', async () => {
+    const s = setup();
+    await plan(s.store);
+    expect(await reconcileDestroyed(s.deps, (await s.store.get('r1'))!)).toBe(0);
   });
 });

@@ -97,7 +97,7 @@ export function newRelease(input: {
     bundleHash: input.bundle.bundleHash, planId: input.planId ?? null, planHash: input.planHash ?? null,
     project: input.bundle.project, settings: structuredClone(input.project), imageTag: input.bundle.imageTag, compose: input.bundle.compose,
     built: input.bundle.built, secrets: input.bundle.secrets, sources: input.sources ?? {}, status: 'planned', steps: newSteps(input.bundle.built.length > 0), outputs: null,
-    previousReleaseId: input.previousReleaseId, createdBy: input.createdBy, createdAt: input.now, updatedAt: input.now, error: null, log: [],
+    previousReleaseId: input.previousReleaseId, rollbackOf: null, createdBy: input.createdBy, createdAt: input.now, updatedAt: input.now, error: null, log: [],
   };
 }
 
@@ -110,6 +110,42 @@ export async function approveRelease(store: ReleaseStore, releaseId: string, exp
   r.status = 'approved'; r.updatedAt = now;
   await store.save(r);
   return r;
+}
+
+/**
+ * A release that puts an earlier successful one back: its tag and compose file on the same VM, with nothing built and no plan. Only a release that
+ * succeeded can be put back, in the same project and environment, and not the one that is already running.
+ */
+export async function createRollbackRelease(store: ReleaseStore, input: { targetId: string; newId: string; orgId: string; projectId: string; createdBy: string; now: number }): Promise<Release> {
+  const target = await store.get(input.targetId);
+  if (!target || target.orgId !== input.orgId || target.projectId !== input.projectId) throw new ReleaseError('Release not found.', 404);
+  if (target.status !== 'succeeded' || !target.outputs) throw new ReleaseError(`Only a release that succeeded can be put back; this one is ${target.status}.`, 409);
+  const running = await store.latestSucceeded(target.projectId, target.environment);
+  if (running && running.id === target.id) throw new ReleaseError('This release is the one that is running now.', 409);
+  const skipped = new Set<StepName>(['infrastructure', 'secrets', 'build']);
+  return {
+    ...structuredClone(target),
+    id: input.newId, status: 'approved', planId: null, planHash: null, previousReleaseId: running?.id ?? null, rollbackOf: target.id, createdBy: input.createdBy,
+    createdAt: input.now, updatedAt: input.now, error: null, log: [],
+    steps: STEP_ORDER.map((name) => ({ name, state: skipped.has(name) ? ('skipped' as const) : ('pending' as const) })),
+  };
+}
+
+/**
+ * After a teardown: when the resource group is gone, the releases that ran in it are not running any more. Returns how many were marked.
+ * It asks Azure rather than believing the caller.
+ */
+export async function reconcileDestroyed(deps: Pick<OrchestratorDeps, 'store' | 'ops' | 'now'>, release: Release): Promise<number> {
+  if (!release.outputs) return 0;
+  if (await deps.ops.resourceGroupExists(release.outputs.resourceGroup)) return 0;
+  let n = 0;
+  for (const r of await deps.store.list(release.projectId, release.environment, 100)) {
+    if (r.orgId !== release.orgId || r.status === 'destroyed' || r.status === 'planned' || r.status === 'cancelled') continue;
+    if (r.outputs?.resourceGroup !== release.outputs.resourceGroup) continue;
+    r.status = 'destroyed'; r.updatedAt = (deps.now ?? Date.now)();
+    await deps.store.save(r); n++;
+  }
+  return n;
 }
 
 export async function cancelRelease(store: ReleaseStore, releaseId: string, now: number): Promise<Release> {

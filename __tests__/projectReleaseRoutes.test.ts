@@ -18,12 +18,16 @@ const A = { consume: jest.fn(), giveBack: jest.fn() };
 jest.mock('@/lib/terraform/execution/approvals', () => ({ consumeApproval: (...a: unknown[]) => A.consume(...a), returnApproval: (...a: unknown[]) => A.giveBack(...a) }));
 const mockVerify = jest.fn();
 class FakePlanBlocked extends Error {}
-jest.mock('@/lib/terraform/execution/TerraformExecutionService', () => ({ verifyPlanForApply: (...a: unknown[]) => mockVerify(...a), PlanBlockedError: FakePlanBlocked }));
+const mockPrepareDestroy = jest.fn();
+const mockStartDestroy = jest.fn();
+jest.mock('@/lib/terraform/execution/TerraformExecutionService', () => ({ verifyPlanForApply: (...a: unknown[]) => mockVerify(...a), PlanBlockedError: FakePlanBlocked, prepareDestroy: (...a: unknown[]) => mockPrepareDestroy(...a), startDestroyRun: (...a: unknown[]) => mockStartDestroy(...a) }));
+const mockPeekDestroy = jest.fn();
+jest.mock('@/lib/terraform/execution/destroyPlans', () => ({ peekPreparedDestroy: (...a: unknown[]) => mockPeekDestroy(...a) }));
 jest.mock('@/lib/terraform/execution/cli', () => ({ TerraformNotInstalledError: class extends Error {} }));
 const mockEnqueue = jest.fn();
 jest.mock('@/lib/jobs/projectReleaseJob', () => ({ enqueueReleaseJob: (...a: unknown[]) => mockEnqueue(...a) }));
 const mockPlanRelease = jest.fn();
-jest.mock('@/lib/deploy/project/infra', () => ({ planRelease: (...a: unknown[]) => mockPlanRelease(...a) }));
+jest.mock('@/lib/deploy/project/infra', () => ({ planRelease: (...a: unknown[]) => mockPlanRelease(...a), throwawayPublicKey: () => 'ssh-ed25519 AAAATEST' }));
 const mockOpsFor = jest.fn();
 jest.mock('@/lib/deploy/project/accountOps', () => ({ azureOpsForAccount: (...a: unknown[]) => mockOpsFor(...a), AccountError: class AccountError extends Error { constructor(m: string, public status = 400) { super(m); } } }));
 jest.mock('@/lib/terraform/execution/applyProgress', () => ({ APPLY_WORKER: 'apply', workerStatus: () => ({ running: true }) }));
@@ -48,6 +52,8 @@ import { GET as oneGet } from '@/app/api/projects/[id]/releases/[rid]/route';
 import { POST as runPost } from '@/app/api/projects/[id]/releases/[rid]/run/route';
 import { POST as secretsPost } from '@/app/api/projects/[id]/releases/[rid]/secrets/route';
 import { POST as cancelPost } from '@/app/api/projects/[id]/releases/[rid]/cancel/route';
+import { POST as rollbackPost } from '@/app/api/projects/[id]/releases/[rid]/rollback/route';
+import { POST as destroyPost } from '@/app/api/projects/[id]/releases/[rid]/destroy/route';
 import { acquireProjectLock, isProjectLocked, releaseProjectLock } from '@/lib/terraform/execution/projectLock';
 import { buildAzureVmBundle } from '@/lib/deploy/project/bundle';
 import { newRelease } from '@/lib/deploy/project/orchestrator';
@@ -79,7 +85,7 @@ async function seed(over: Partial<Release> = {}, id = `rel-${n}`): Promise<Relea
 const fakeOps = (vault: string[] = []): AzureOps & { put: Array<[string, string]> } => {
   const have = new Set(vault);
   const put: Array<[string, string]> = [];
-  return { put, secretExists: async (_v, name) => have.has(name), putSecret: async (_v, name, value) => { have.add(name); put.push([name, value]); }, acrBuild: async () => undefined, setVmTag: async () => undefined, runShell: async () => '', httpOk: async () => true };
+  return { put, secretExists: async (_v, name) => have.has(name), putSecret: async (_v, name, value) => { have.add(name); put.push([name, value]); }, acrBuild: async () => undefined, setVmTag: async () => undefined, runShell: async () => '', httpOk: async () => true, resourceGroupExists: async () => true };
 };
 function zipOf(files: Record<string, string>): Buffer {
   const parts: Buffer[] = []; const central: Buffer[] = []; let offset = 0;
@@ -103,7 +109,7 @@ const form = (layer: string, zip: Buffer | null, name = 'code.zip') => {
 const OUT = { resourceGroup: 'rg-shop', vmName: 'vm-shop', acrName: 'acrshop', vaultName: 'kvshop', url: 'http://203.0.113.9:8080/' };
 
 beforeEach(() => {
-  [mockIdentity, mockOrgRole, mockResolveOrg, mockResolveArch, mockDenied, mockAudit, mockRate, mockVerify, mockEnqueue, mockPlanRelease, mockOpsFor, ...Object.values(A)].forEach((m) => m.mockReset());
+  [mockIdentity, mockOrgRole, mockResolveOrg, mockResolveArch, mockDenied, mockAudit, mockRate, mockVerify, mockEnqueue, mockPlanRelease, mockOpsFor, mockPrepareDestroy, mockStartDestroy, mockPeekDestroy, ...Object.values(A)].forEach((m) => m.mockReset());
   process.env['CLOUDCRAFT_PROJECT_RELEASES'] = '1';
   projectId = `proj-rel-${++n}`;
   mockResolveOrg.mockResolvedValue('org-1'); mockResolveArch.mockResolvedValue({ arch: {}, project: {} });
@@ -127,6 +133,8 @@ describe('the gates in front of every release route', () => {
     ['secrets', () => secretsPost(req(`/api/projects/${projectId}/releases/x/secrets`, { values: { A: 'b' } }), ctx('x'))],
     ['cancel', () => cancelPost(req(`/api/projects/${projectId}/releases/x/cancel`, {}), ctx('x'))],
     ['source upload', () => sourcePost(form('api', zipOf({ 'a.js': 'x' })), ctx())],
+    ['rollback', () => rollbackPost(req(`/api/projects/${projectId}/releases/x/rollback`, { confirm: true }), ctx('x'))],
+    ['destroy', () => destroyPost(req(`/api/projects/${projectId}/releases/x/destroy`, { stateBackend: BACKEND }), ctx('x'))],
   ];
 
   test.each(calls)('%s: switched off by default', async (_n, call) => {
@@ -516,5 +524,174 @@ describe('planning with uploaded code', () => {
 
   test('only the three buildable services can be named', async () => {
     expect((await plan({ database: 'x' })).status).toBe(400);
+  });
+});
+
+describe('POST rollback', () => {
+  const infraDone = (r: Release) => r.steps.map((x) => (x.name === 'infrastructure' ? { ...x, state: 'done' as const } : x));
+  const succeeded = (id: string, tag: string, at: number) => seed({ status: 'succeeded', imageTag: tag, updatedAt: at, outputs: OUT, steps: undefined as never }, id);
+  const rb = (id: string, body: unknown = { confirm: true }) => rollbackPost(req(`/api/projects/${projectId}/releases/${id}/rollback`, body), ctx(id));
+
+  test('queues a release that puts the earlier one back and says which it replaces', async () => {
+    const old = await seed({ status: 'succeeded', imageTag: 'v1', updatedAt: 5, outputs: OUT }, `old-${n}`);
+    await seed({ status: 'succeeded', imageTag: 'v2', updatedAt: 9, outputs: OUT }, `cur-${n}`);
+    const res = await rb(old.id);
+    expect(res.status).toBe(201);
+    const d = (await json(res)).data!;
+    expect(d['release']).toMatchObject({ status: 'approved', imageTag: 'v1', previousReleaseId: `cur-${n}` });
+    expect(mockEnqueue).toHaveBeenCalledWith({ releaseId: d['release']['id'], orgId: 'org-1', projectId, requestedBy: 'alice' });
+    expect((await store().get(d['release']['id']))!.rollbackOf).toBe(old.id);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ detail: expect.stringContaining(`puts release ${old.id} (v1) back`) }));
+    expect(isProjectLocked(projectId)).toBe(true);
+  });
+
+  test('needs an explicit confirm', async () => {
+    const old = await seed({ status: 'succeeded', updatedAt: 5, outputs: OUT }, `old-${n}`);
+    for (const body of [{}, { confirm: false }, { confirm: 'yes' }, { confirm: true, extra: 1 }]) expect((await rb(old.id, body)).status).toBe(400);
+    expect(mockEnqueue).not.toHaveBeenCalled();
+  });
+
+  test('the running release, one that did not succeed, and another organization\'s are not put back, and the project is unlocked after', async () => {
+    const cur = await seed({ status: 'succeeded', updatedAt: 9, outputs: OUT }, `cur-${n}`);
+    expect((await rb(cur.id)).status).toBe(409);
+    expect(isProjectLocked(projectId)).toBe(false);
+    const failed = await seed({ status: 'failed', outputs: OUT }, `failed-${n}`);
+    expect((await rb(failed.id)).status).toBe(409);
+    const other = await seed({ orgId: 'org-2', status: 'succeeded', outputs: OUT }, `other-${n}`);
+    expect((await rb(other.id)).status).toBe(404);
+    expect(mockEnqueue).not.toHaveBeenCalled();
+  });
+
+  test('one run at a time per project, and a queue that is down leaves the project unlocked', async () => {
+    const old = await seed({ status: 'succeeded', updatedAt: 5, outputs: OUT }, `old-${n}`);
+    await seed({ status: 'succeeded', updatedAt: 9, outputs: OUT }, `cur-${n}`);
+    expect(acquireProjectLock(projectId)).toBe(true);
+    expect((await rb(old.id)).status).toBe(409);
+    releaseProjectLock(projectId);
+    mockEnqueue.mockRejectedValue(new Error('queue down'));
+    expect((await rb(old.id)).status).toBe(500);
+    expect(isProjectLocked(projectId)).toBe(false);
+  });
+  void infraDone; void succeeded;
+});
+
+describe('POST destroy (tearing down what a release created)', () => {
+  const FILES = ['cloud-init.sh', 'compose.deploy.yml', 'main.tf', 'outputs.tf', 'variables.tf'];
+  const made = async (over: Partial<Release> = {}) => { const r = await seed({}, `d-${n}`); const steps = r.steps.map((x) => (x.name === 'infrastructure' ? { ...x, state: 'done' as const } : x)); const full = { ...r, status: 'succeeded' as const, steps, outputs: OUT, ...over }; await store().save(full); return full; };
+  const call = (r: Release, body: Record<string, unknown> = {}) => destroyPost(req(`/api/projects/${projectId}/releases/${r.id}/destroy`, { stateBackend: BACKEND, ...body }), ctx(r.id));
+  const PREPARED = { planId: 'destroy-plan-1234', planHash: 'd'.repeat(64), resources: [{ address: 'azurerm_resource_group.app', type: 'azurerm_resource_group' }, { address: 'azurerm_linux_virtual_machine.app', type: 'azurerm_linux_virtual_machine' }] };
+
+  beforeEach(() => {
+    mockPrepareDestroy.mockResolvedValue(PREPARED);
+    mockPeekDestroy.mockReturnValue({ planId: PREPARED.planId, planHash: PREPARED.planHash, orgId: 'org-1', projectId, resources: PREPARED.resources });
+    mockStartDestroy.mockResolvedValue({ runId: 'run-1' });
+  });
+
+  test('previews with the release\'s own Terraform against its state, and lists what would go, with a token bound to that plan', async () => {
+    const r = await made();
+    const res = await call(r);
+    expect(res.status).toBe(200);
+    const d = (await json(res)).data!;
+    expect(d).toMatchObject({ status: 'confirmation_required', planId: PREPARED.planId, planHash: PREPARED.planHash, resourceCount: 2, project: 'shop' });
+    expect(d['confirmationToken']).toBeTruthy();
+    const input = mockPrepareDestroy.mock.calls[0]![0];
+    expect(input).toMatchObject({ projectId, orgId: 'org-1', environment: 'production', cloudAccountId: 'acct-1', stateBackend: BACKEND });
+    expect(input.bundleFiles.map((f: { filename: string }) => f.filename).sort()).toEqual(FILES);
+    expect(input.extraEnv).toEqual({ TF_VAR_admin_ssh_public_key: 'ssh-ed25519 AAAATEST' });
+    expect(mockStartDestroy).not.toHaveBeenCalled();
+  });
+
+  test('a release that never created anything has nothing to tear down; nothing in the state says so', async () => {
+    expect((await call(await seed())).status).toBe(409);
+    mockPrepareDestroy.mockResolvedValue({ planId: null, planHash: null, resources: [] });
+    expect((await json(await call(await made()))).data).toMatchObject({ status: 'nothing_to_destroy' });
+  });
+
+  async function preview(r: Release) { return (await json(await call(r))).data!; }
+
+  test('runs exactly the previewed plan, only with its approval, the confirmation token and the project name typed', async () => {
+    const r = await made();
+    const p = await preview(r);
+    const run = await call(r, { confirmationToken: p['confirmationToken'], planId: p['planId'], confirmName: 'shop' });
+    expect(run.status).toBe(201);
+    expect((await json(run)).data).toMatchObject({ status: 'started', runId: 'run-1' });
+    expect(A.consume).toHaveBeenCalledWith({ orgId: 'org-1', projectId, action: 'destroy', planId: PREPARED.planId, planHash: PREPARED.planHash, userId: 'alice' });
+    expect(mockStartDestroy).toHaveBeenCalledWith(expect.objectContaining({ planId: PREPARED.planId, planHash: PREPARED.planHash, orgId: 'org-1', projectId, cloudAccountId: 'acct-1' }));
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'destroy', outcome: 'allowed', detail: expect.stringContaining('approved by bob') }));
+  });
+
+  test('the token cannot be used twice', async () => {
+    const r = await made();
+    const p = await preview(r);
+    const body = { confirmationToken: p['confirmationToken'], planId: p['planId'], confirmName: 'shop' };
+    expect((await call(r, body)).status).toBe(201);
+    expect((await call(r, body)).status).toBeGreaterThanOrEqual(400);
+    expect(mockStartDestroy).toHaveBeenCalledTimes(1);
+  });
+
+  test('a wrong or missing project name stops it before anything is spent', async () => {
+    const r = await made();
+    const p = await preview(r);
+    for (const confirmName of [undefined, '', 'Shop', 'other']) expect((await call(r, { confirmationToken: p['confirmationToken'], planId: p['planId'], ...(confirmName === undefined ? {} : { confirmName }) })).status).toBe(400);
+    expect(A.consume).not.toHaveBeenCalled();
+    expect(mockStartDestroy).not.toHaveBeenCalled();
+  });
+
+  test('without an approval nothing is run and the token is not used up', async () => {
+    const r = await made();
+    const p = await preview(r);
+    A.consume.mockResolvedValue({ ok: false, code: 'needs_approval', reason: 'This teardown has to be approved before it can run.' });
+    const body = { confirmationToken: p['confirmationToken'], planId: p['planId'], confirmName: 'shop' };
+    const res = await call(r, body);
+    expect(res.status).toBe(403);
+    expect((await json(res)).error!.code).toBe('APPROVAL_REQUIRED');
+    expect(mockStartDestroy).not.toHaveBeenCalled();
+    A.consume.mockResolvedValue({ ok: true, approval: { id: 'appr-1', decidedBy: 'bob' } });
+    expect((await call(r, body)).status).toBe(201);                    // the token was still good
+  });
+
+  test('a preview of another project or that has expired is not run, and a failed start gives the approval back', async () => {
+    const r = await made();
+    const p = await preview(r);
+    mockPeekDestroy.mockReturnValue(null);
+    expect((await call(r, { confirmationToken: p['confirmationToken'], planId: p['planId'], confirmName: 'shop' })).status).toBe(404);
+    mockPeekDestroy.mockReturnValue({ planId: PREPARED.planId, planHash: PREPARED.planHash, orgId: 'org-1', projectId: 'other', resources: PREPARED.resources });
+    expect((await call(r, { confirmationToken: p['confirmationToken'], planId: p['planId'], confirmName: 'shop' })).status).toBe(404);
+    mockPeekDestroy.mockReturnValue({ planId: PREPARED.planId, planHash: PREPARED.planHash, orgId: 'org-1', projectId, resources: PREPARED.resources });
+    mockStartDestroy.mockRejectedValue(Object.assign(new Error('Another Terraform apply or teardown is already running'), { statusCode: 409 }));
+    const res = await call(r, { confirmationToken: p['confirmationToken'], planId: p['planId'], confirmName: 'shop' });
+    expect(res.status).toBe(409);
+    expect(A.giveBack).toHaveBeenCalledWith('appr-1');
+  });
+
+  test('previews are limited per user, and a state backend of nothing is refused', async () => {
+    const r = await made();
+    mockRate.mockResolvedValue({ allowed: false, retryAfterSeconds: 30 });
+    expect((await call(r)).status).toBe(429);
+    mockRate.mockResolvedValue({ allowed: true });
+    expect((await call(r, { stateBackend: {} })).status).toBe(400);
+    expect(mockPrepareDestroy).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET with reconcile (after a teardown)', () => {
+  test('marks the releases of a resource group that is gone as destroyed, as Azure says', async () => {
+    const r = await seed({ status: 'succeeded', outputs: OUT });
+    const ops = fakeOps(); let exists = true;
+    ops.resourceGroupExists = async () => exists;
+    mockOpsFor.mockResolvedValue(ops);
+    const ask = () => oneGet(req(`/api/projects/${projectId}/releases/${r.id}?reconcile=1`), ctx(r.id));
+    expect((await json(await ask())).data!['release'].status).toBe('succeeded');
+    exists = false;
+    expect((await json(await ask())).data!['release'].status).toBe('destroyed');
+    expect((await store().get(r.id))!.status).toBe('destroyed');
+  });
+
+  test('without the flag Azure is not asked, and a failing Azure leaves the release as it is', async () => {
+    const r = await seed({ status: 'succeeded', outputs: OUT });
+    await oneGet(req(`/api/projects/${projectId}/releases/${r.id}`), ctx(r.id));
+    expect(mockOpsFor).not.toHaveBeenCalled();
+    mockOpsFor.mockRejectedValue(new Error('azure down'));
+    expect((await json(await oneGet(req(`/api/projects/${projectId}/releases/${r.id}?reconcile=1`), ctx(r.id)))).data!['release'].status).toBe('succeeded');
   });
 });

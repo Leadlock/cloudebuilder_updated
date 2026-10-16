@@ -16,6 +16,8 @@ export interface AzureOps {
   /** Runs a shell script as root on the VM and returns what it printed. Throws when the script exits with an error. */
   runShell(resourceGroup: string, vm: string, script: string): Promise<string>;
   httpOk(url: string): Promise<boolean>;
+  /** Whether a resource group is still there (a teardown that finished leaves none). */
+  resourceGroupExists(resourceGroup: string): Promise<boolean>;
 }
 
 export interface AzureOpsDeps {
@@ -185,6 +187,14 @@ export function createAzureOps(deps: AzureOpsDeps): AzureOps {
       const output = message.replace(new RegExp(`${MARKER}\\d+`), '').replace(/^Enable succeeded:\s*/, '').trim();
       if (m[1] !== '0') throw new AzureError(`The command failed on the VM (exit ${m[1]}): ${output.slice(-400)}`);
       return output;
+    },
+
+    async resourceGroupExists(resourceGroup) {
+      if (!NAME.test(resourceGroup)) throw new AzureError('The resource group name is not valid.');
+      const r = await call(`${base}/resourcegroups/${resourceGroup}?api-version=2021-04-01`, { scope: ARM_SCOPE });
+      if (r.status === 404) return false;
+      if (r.ok) return true;
+      throw new AzureError(`Could not look for the resource group: ${reason(r.json, `HTTP ${r.status}`)}`, r.status);
     },
 
     async httpOk(url) {

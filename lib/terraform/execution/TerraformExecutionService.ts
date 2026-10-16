@@ -470,6 +470,10 @@ export interface ExecuteDestroyInput {
   connections: DbArchitectureConnection[];
   architectureId: string;
   projectName: string;
+  /** The Terraform project of a release, when the teardown is of one (instead of generating Terraform from the architecture). */
+  bundleFiles?: Array<{ filename: string; content: string }>;
+  /** Extra environment Terraform needs to load that project (for example its required variables). */
+  extraEnv?: Record<string, string>;
 }
 
 // ─── Teardown ─────────────────────────────────────────────────────────────────
@@ -534,14 +538,19 @@ export interface PreparedDestroy {
  * nothing, and keeps the saved plan for ten minutes so the confirmation can run exactly it.
  */
 export async function prepareDestroy(input: ExecuteDestroyInput, onOutput?: (chunk: string) => void): Promise<PreparedDestroy> {
-  const env = await destroyEnvironment(input);
+  const env = { ...(await destroyEnvironment(input)), ...(input.extraEnv ?? {}) };
   // The saved design is only needed so Terraform has a configuration to load; what gets destroyed is whatever the state records.
   let generated: { files: { filename: string; content: string }[] } | null = null;
-  try {
-    generated = terraformGenerator.generate({
-      architectureId: input.architectureId, projectId: input.projectId, resources: input.resources, connections: input.connections, projectName: input.projectName,
-    });
-  } catch { generated = null; }
+  if (input.bundleFiles) {
+    for (const f of input.bundleFiles) if (!BUNDLE_FILE.test(f.filename) || f.filename === 'backend.tf' || f.filename.startsWith('.')) throw httpError(`Teardown blocked: ${JSON.stringify(f.filename.slice(0, 40))} is not an allowed file name.`, 400);
+    generated = { files: input.bundleFiles };
+  } else {
+    try {
+      generated = terraformGenerator.generate({
+        architectureId: input.architectureId, projectId: input.projectId, resources: input.resources, connections: input.connections, projectName: input.projectName,
+      });
+    } catch { generated = null; }
+  }
   const region = regionFromTfvars(generated?.files.find((f) => f.filename === 'terraform.tfvars')?.content)
     ?? input.resources.find((r) => r.region)?.region ?? env['AWS_DEFAULT_REGION'] ?? 'us-east-1';
 
