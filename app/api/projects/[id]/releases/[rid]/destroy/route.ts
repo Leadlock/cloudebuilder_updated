@@ -1,5 +1,5 @@
 /**
- * POST /api/projects/[id]/releases/[rid]/destroy — tear down everything a release created (the whole resource group: VM, registry, vault, network).
+ * POST /api/projects/[id]/releases/[rid]/destroy — tear down everything a release created (Azure: the whole resource group; AWS: the server, repositories, buckets, roles).
  *
  *   POST (no confirmationToken)  PREVIEW — `terraform plan -destroy` of the release's Terraform against its state; lists exactly what would be removed and returns a
  *                                one-time confirmation token bound to that exact plan.
@@ -7,7 +7,7 @@
  *   GET  ?runId=...              STATUS — see GET /api/projects/[id]/terraform/destroy.
  *
  * Same rules as any teardown: administrators on the restricted list only, an approval for exactly the previewed plan (single use), a typed confirmation of
- * the project's name, and nothing runs that was not previewed. The data of a database on the VM is deleted with it.
+ * the project's name, and nothing runs that was not previewed. The data of a database on the VM is deleted with it. On AWS the secrets in Parameter Store are not Terraform's and stay.
  */
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
@@ -24,8 +24,8 @@ import { TerraformNotInstalledError } from '@/lib/terraform/execution/cli';
 import type { TerraformStateBackendConfig } from '@/lib/terraform/execution/types';
 import { PgReleaseStore } from '@/lib/deploy/project/pgReleaseStore';
 import { findRelease, releaseGate } from '@/lib/deploy/project/routeGate';
-import { buildAzureVmBundle } from '@/lib/deploy/project/bundle';
-import { throwawayPublicKey } from '@/lib/deploy/project/infra';
+import { buildBundle } from '@/lib/deploy/project/bundle';
+import { terraformFiles, throwawayPublicKey } from '@/lib/deploy/project/infra';
 import type { StackProject } from '@/lib/engines/containers/stackProject';
 
 export const dynamic = 'force-dynamic';
@@ -63,11 +63,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         await recordTerraformAudit({ action: 'destroy', outcome: 'denied', orgId, projectId, userId: identity.userId, detail: 'rate limited' });
         return tooManyRequests(rl.retryAfterSeconds);
       }
-      const bundle = buildAzureVmBundle(release.settings as StackProject);
+      const bundle = buildBundle(release.settings as StackProject);
       const prepared = await prepareDestroy({
         projectId, orgId, environment, cloudAccountId, stateBackend: backend, user, resources: [], connections: [], architectureId: release.id, projectName: release.project,
-        bundleFiles: bundle.terraform.filter((f) => f.filename.endsWith('.tf') || f.filename === 'cloud-init.sh' || f.filename === 'compose.deploy.yml'),
-        extraEnv: { TF_VAR_admin_ssh_public_key: throwawayPublicKey() },
+        bundleFiles: terraformFiles(bundle),
+        ...(bundle.target === 'azure-vm' ? { extraEnv: { TF_VAR_admin_ssh_public_key: throwawayPublicKey() } } : {}),
       });
       if (!prepared.planId || !prepared.planHash) {
         await recordTerraformAudit({ action: 'destroy', outcome: 'requested', orgId, projectId, userId: identity.userId, detail: `release ${release.id}: nothing in the state to destroy` });

@@ -137,7 +137,7 @@ export function projectLayout(p: StackProject): ProjectLayout {
   return { frontendUpstream: on.includes('api') ? 'api' : on.includes('backend') ? 'backend' : null, hostPort: hostPorts(configs) };
 }
 
-export function generateProjectFiles(p: StackProject): GenerateResult {
+export function generateProjectFiles(p: StackProject, opts: { forRelease?: boolean } = {}): GenerateResult {
   const on = enabledLayers(p);
   if (on.length === 1) {
     // One service: exactly what a single configuration produces, with its own deployment.
@@ -207,7 +207,8 @@ export function generateProjectFiles(p: StackProject): GenerateResult {
       const spec = { ...base, ec2: p.deploy.ec2 };
       const errors = validateStackEc2(spec);
       if (errors.length > 0) return { ok: false, errors };
-      files.push(...generateStackEc2Files(spec));
+      // For a release CloudCraft runs on AWS, the images are built inside the account (CodeBuild); the files a person downloads do not have that.
+      files.push(...generateStackEc2Files(spec, { codeBuild: opts.forRelease === true }));
       warnings.push(...stackEc2Warnings(spec));
       cost = estimateStackEc2Cost(spec);
     } else {

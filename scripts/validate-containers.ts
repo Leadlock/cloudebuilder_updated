@@ -44,6 +44,9 @@ const cases: Array<[string, Kind, string, ContainerConfig | StackProject]> = [
   ['project-k8s-ingress-tls-private-registry', 'kustomize', 'k8s', project(['frontend', 'api'], (p) => { Object.assign(p.deploy.k8s, { registry: 'myregistry.azurecr.io/team', namespace: 'prod', ingressHost: 'shop.example.com', tlsSecret: 'shop-tls', imageTag: 'v1.2.3', replicas: 3 }); }, 'kubernetes')],
   ['project-k8s-loadbalancer-no-secrets', 'kustomize', 'k8s', project(['backend', 'api'], (p) => { p.deploy.k8s.registry = 'ghcr.io/acme'; p.deploy.k8s.serviceType = 'LoadBalancer'; p.layers.backend.config.env = []; }, 'kubernetes')],
   ['project-k8s-ready-made-images', 'kustomize', 'k8s', project(['frontend', 'api'], (p) => { for (const l of ['frontend', 'api'] as const) p.layers[l].config = { ...p.layers[l].config, image: 'nginxinc/nginx-unprivileged:1.27' }; p.layers.backend.config.env = []; }, 'kubernetes')],
+  ['release-ec2-all-four', 'terraform', 'ec2', project(['frontend', 'backend', 'api', 'database'])],
+  ['release-ec2-no-database-elastic-ip', 'terraform', 'ec2', project(['frontend', 'api'], (p) => { p.deploy.ec2.elasticIp = true; p.deploy.ec2.imageTag = 'v1.2.3'; })],
+  ['release-ec2-ready-made-images-only', 'terraform', 'ec2', project(['frontend', 'api', 'database'], (p) => { for (const l of ['frontend', 'api'] as const) p.layers[l].config = { ...p.layers[l].config, image: 'nginx:1.27' }; p.layers.backend.config.env = []; })],
   ['project-ec2-all-four', 'terraform', 'ec2', project(['frontend', 'backend', 'api', 'database'])],
   ['project-ec2-no-database', 'terraform', 'ec2', project(['frontend', 'api'])],
   ['project-ec2-elastic-ip-private-range', 'terraform', 'ec2', project(['backend', 'api', 'database'], (p) => { p.deploy.ec2.elasticIp = true; p.deploy.ec2.allowedCidr = '203.0.113.0/24'; p.deploy.ec2.instanceType = 'm5.large'; p.deploy.ec2.imageTag = 'v1.2.3'; })],
@@ -87,7 +90,8 @@ let failed = 0;
 const fail = (name: string, what: string, out: { stdout: string; stderr: string }) => { failed++; console.log(`${name}: ${what} FAILED\n${(out.stderr || out.stdout).slice(0, 2500)}`); };
 
 for (const [name, kind, dir, cfg] of cases) {
-  const res = 'layers' in cfg ? generateProjectFiles(cfg) : generateContainerFiles(cfg);
+  // A project a release runs on AWS also gets the CodeBuild resources that build its images in the account.
+  const res = 'layers' in cfg ? generateProjectFiles(cfg, { forRelease: name.startsWith('release-') }) : generateContainerFiles(cfg);
   if (!res.ok) { failed++; console.log(`${name}: not generated: ${res.errors.join('; ')}`); continue; }
   const base = join(root, name);
   for (const f of res.files) { const p = join(base, f.path); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, f.content); }

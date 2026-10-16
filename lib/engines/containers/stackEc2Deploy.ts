@@ -80,7 +80,142 @@ export function estimateStackEc2Cost(s: StackDeploySpec): DeployCost {
 
 // ─── Terraform ───────────────────────────────────────────────────────────────
 
-function mainTf(s: StackDeploySpec): string {
+/** Builds images inside the AWS account (CodeBuild), for a deployment CloudCraft runs: no Docker is needed anywhere. Not part of the files a person downloads. */
+function codeBuildTf(s: StackDeploySpec): string {
+  if (s.built.length === 0) return '';
+  return `
+# ── Builds inside this account (CodeBuild): CloudCraft puts a service's source here and starts a build that pushes to its repository ──
+
+resource "aws_s3_bucket" "source" {
+  bucket        = local.source_bucket
+  force_destroy = true # so destroy.sh can remove it
+  tags          = local.tags
+}
+
+resource "aws_s3_bucket_public_access_block" "source" {
+  bucket                  = aws_s3_bucket.source.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_ownership_controls" "source" {
+  bucket = aws_s3_bucket.source.id
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "source" {
+  bucket = aws_s3_bucket.source.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+# Source archives are only needed while a build runs.
+resource "aws_s3_bucket_lifecycle_configuration" "source" {
+  bucket = aws_s3_bucket.source.id
+  rule {
+    id     = "expire-sources"
+    status = "Enabled"
+    filter {}
+    expiration {
+      days = 7
+    }
+  }
+}
+
+data "aws_iam_policy_document" "codebuild_assume" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["codebuild.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "codebuild" {
+  name               = "\${var.app_name}-codebuild"
+  assume_role_policy = data.aws_iam_policy_document.codebuild_assume.json
+  tags               = local.tags
+}
+
+# Only: write its own logs, read the source bucket, sign in to ECR and push to this project's repositories.
+data "aws_iam_policy_document" "codebuild" {
+  statement {
+    sid       = "Logs"
+    actions   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = ["arn:aws:logs:\${var.region}:\${data.aws_caller_identity.current.account_id}:log-group:/aws/codebuild/\${var.app_name}-build*"]
+  }
+  statement {
+    sid       = "ReadSource"
+    actions   = ["s3:GetObject", "s3:GetObjectVersion"]
+    resources = ["\${aws_s3_bucket.source.arn}/*"]
+  }
+  statement {
+    sid       = "EcrLogin"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+  statement {
+    sid       = "EcrPushTheseRepositories"
+    actions   = ["ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
+    resources = [for r in aws_ecr_repository.svc : r.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "codebuild" {
+  name   = "\${var.app_name}-codebuild"
+  role   = aws_iam_role.codebuild.id
+  policy = data.aws_iam_policy_document.codebuild.json
+}
+
+resource "aws_codebuild_project" "build" {
+  name          = "\${var.app_name}-build"
+  service_role  = aws_iam_role.codebuild.arn
+  build_timeout = 30
+  tags          = local.tags
+
+  artifacts {
+    type = "NO_ARTIFACTS"
+  }
+
+  environment {
+    compute_type                = "BUILD_GENERAL1_SMALL"
+    image                       = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+    type                        = "LINUX_CONTAINER"
+    privileged_mode             = true # to run docker build
+    image_pull_credentials_type = "CODEBUILD"
+  }
+
+  # Each build is started with its own source archive and image name (REGISTRY and IMAGE); this location only has to look right.
+  source {
+    type      = "S3"
+    location  = "\${aws_s3_bucket.source.id}/placeholder.zip"
+    buildspec = <<-EOT
+      version: 0.2
+      phases:
+        pre_build:
+          commands:
+            - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $REGISTRY
+        build:
+          commands:
+            - docker build -t $IMAGE .
+        post_build:
+          commands:
+            - docker push $IMAGE
+    EOT
+  }
+}
+`;
+}
+
+function mainTf(s: StackDeploySpec, codeBuild = false): string {
   const eip = s.ec2.elasticIp;
   const repos = s.built.length > 0;
   return `terraform {
@@ -120,7 +255,7 @@ locals {
   built = [${s.built.map((l) => `"${l}"`).join(', ')}]
   # The release bucket: the name the server works out for itself (user_data.sh) has to match.
   release_bucket = "\${substr(var.app_name, 0, 30)}-\${data.aws_caller_identity.current.account_id}"
-}
+${codeBuild && s.built.length > 0 ? '  source_bucket  = "${substr(var.app_name, 0, 24)}-src-${data.aws_caller_identity.current.account_id}"\n' : ''}}
 
 data "aws_subnets" "in_vpc" {
   count = var.subnet_id == "" ? 1 : 0
@@ -342,7 +477,7 @@ resource "aws_eip" "app" {
   domain   = "vpc"
   tags     = local.tags
 }
-` : ''}`;
+` : ''}${codeBuild ? codeBuildTf(s) : ''}`;
 }
 
 function variablesTf(s: StackDeploySpec): string {
@@ -401,7 +536,7 @@ variable "subnet_id" {
 `;
 }
 
-function outputsTf(s: StackDeploySpec): string {
+function outputsTf(s: StackDeploySpec, codeBuild = false): string {
   const ip = s.ec2.elasticIp ? 'aws_eip.app.public_ip' : 'aws_instance.app.public_ip';
   return `${s.built.length > 0 ? `output "ecr_repositories" {
   description = "Where each service's image is pushed."
@@ -419,6 +554,29 @@ output "image_tag" {
 output "instance_id" {
   value = aws_instance.app.id
 }
+${codeBuild ? `
+output "region" {
+  value = var.region
+}
+
+output "registry" {
+  description = "Where the images are pushed and pulled."
+  value       = "\${data.aws_caller_identity.current.account_id}.dkr.ecr.\${var.region}.amazonaws.com"
+}
+
+output "ssm_prefix" {
+  description = "Where the secrets are in Parameter Store."
+  value       = "/\${var.app_name}"
+}
+${s.built.length > 0 ? `
+output "codebuild_project" {
+  value = aws_codebuild_project.build.name
+}
+
+output "source_bucket" {
+  value = aws_s3_bucket.source.id
+}
+` : ''}` : ''}
 
 output "public_ip" {
   value = ${ip}
@@ -683,13 +841,13 @@ ${s.databaseLabel ? `- ${s.databaseLabel} runs on the same server, in the volume
 `;
 }
 
-export function generateStackEc2Files(s: StackDeploySpec): Array<{ path: string; content: string; executable?: boolean }> {
+export function generateStackEc2Files(s: StackDeploySpec, opts: { codeBuild?: boolean } = {}): Array<{ path: string; content: string; executable?: boolean }> {
   return [
     { path: 'deploy.sh', content: stackDeploySh(s), executable: true },
     { path: 'destroy.sh', content: stackDestroySh(s), executable: true },
-    { path: 'ec2/main.tf', content: mainTf(s) },
+    { path: 'ec2/main.tf', content: mainTf(s, opts.codeBuild) },
     { path: 'ec2/variables.tf', content: variablesTf(s) },
-    { path: 'ec2/outputs.tf', content: outputsTf(s) },
+    { path: 'ec2/outputs.tf', content: outputsTf(s, opts.codeBuild) },
     { path: 'ec2/user_data.sh', content: stackUserDataSh(s) },
     { path: 'ec2/compose.deploy.yml', content: s.compose },
     { path: 'ec2/.gitignore', content: '.terraform/\n*.tfstate\n*.tfstate.*\ncrash.log\n' },

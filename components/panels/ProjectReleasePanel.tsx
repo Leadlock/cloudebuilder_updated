@@ -1,6 +1,6 @@
 'use client';
 /**
- * "Deploy from CloudCraft" for a project of several services on an Azure VM (see docs/IN_APP_DEPLOYMENT_DESIGN.md).
+ * "Deploy from CloudCraft" for a project of several services on an Azure VM or an AWS EC2 instance (see docs/IN_APP_DEPLOYMENT_DESIGN.md).
  *
  * The person picks a connected Azure account and where Terraform keeps its state, CloudCraft plans the deployment on the server, the person confirms with
  * their password (the same single-use approval as any Terraform apply) and the release runs in the background: infrastructure, secrets, build, publish,
@@ -21,9 +21,15 @@ interface ReleaseView {
 interface DestroyPreview { confirmationToken: string; planId: string; planHash: string; resourceCount: number; resources: Array<{ address: string; type: string }>; project: string }
 interface PlanView { planId: string; planHash: string; summary: { toAdd: number; toChange: number; toDestroy: number }; expiresAt: string }
 
-const STEP_LABEL: Record<string, string> = {
-  infrastructure: 'Create the resource group, registry, vault and VM', secrets: 'Store the secrets', build: 'Build the images in Azure',
-  publish: 'Put the release on the VM', start: 'Start the services', verify: 'Check the address answers',
+const STEP_LABEL: Record<'azure' | 'aws', Record<string, string>> = {
+  azure: {
+    infrastructure: 'Create the resource group, registry, vault and VM', secrets: 'Store the secrets', build: 'Build the images in Azure',
+    publish: 'Put the release on the VM', start: 'Start the services', verify: 'Check the address answers',
+  },
+  aws: {
+    infrastructure: 'Create the instance, registry, build project and buckets', secrets: 'Store the secrets', build: 'Build the images in CodeBuild',
+    publish: 'Put the release files in the bucket', start: 'Restart the services on the instance', verify: 'Check the address answers',
+  },
 };
 const ACTIVE = new Set(['approved', 'running', 'waiting']);
 
@@ -44,7 +50,9 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
 
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [accountId, setAccountId] = useState('');
+  const cloud: 'azure' | 'aws' = stack.deploy.target === 'ec2' ? 'aws' : 'azure';
   const [backend, setBackend] = useState({ resourceGroupName: '', storageAccountName: '', containerName: 'tfstate', key: '' });
+  const [awsState, setAwsState] = useState({ bucket: '', region: 'eu-north-1', dynamodbTable: '', key: '' });
   const [off, setOff] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -71,14 +79,16 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
     if (!projectId) return;
     let cancelled = false;
     (async () => {
-      const r = await api<Account[]>('/api/cloud-accounts?provider=azure');
+      const r = await api<Account[]>(`/api/cloud-accounts?provider=${cloud}`);
       if (!cancelled && r.ok) {
-        const list = (Array.isArray(r.data) ? r.data : []).filter((a) => a.provider === 'azure' && a.identity?.authMethod !== 'access-key');
+        const list = (Array.isArray(r.data) ? r.data : []).filter((a) => a.provider === cloud && a.identity?.authMethod !== 'access-key');
         setAccounts(list); setAccountId((cur) => cur || list[0]?.id || '');
       } else if (!cancelled) setAccounts([]);
       try {
-        const saved = JSON.parse(localStorage.getItem(`cloudcraft_tf_backend_${projectId}`) ?? 'null') as { azureBackend?: { resourceGroupName?: string; storageAccountName?: string; containerName?: string } } | null;
-        if (saved?.azureBackend && !cancelled) setBackend((b) => ({ ...b, resourceGroupName: saved.azureBackend!.resourceGroupName ?? '', storageAccountName: saved.azureBackend!.storageAccountName ?? '', containerName: saved.azureBackend!.containerName || 'tfstate' }));
+        const saved = JSON.parse(localStorage.getItem(`cloudcraft_tf_backend_${projectId}`) ?? 'null') as { azureBackend?: { resourceGroupName?: string; storageAccountName?: string; containerName?: string }; awsBackend?: { bucket?: string; region?: string; dynamodbTable?: string } } | null;
+        if (cloud === 'aws') {
+          if (saved?.awsBackend && !cancelled) setAwsState((b) => ({ ...b, bucket: saved.awsBackend!.bucket ?? '', region: saved.awsBackend!.region || b.region, dynamodbTable: saved.awsBackend!.dynamodbTable ?? '' }));
+        } else if (saved?.azureBackend && !cancelled) setBackend((b) => ({ ...b, resourceGroupName: saved.azureBackend!.resourceGroupName ?? '', storageAccountName: saved.azureBackend!.storageAccountName ?? '', containerName: saved.azureBackend!.containerName || 'tfstate' }));
       } catch { /* nothing remembered: the person types it */ }
       const list = await api<{ releases: ReleaseView[] }>(`${base}?environment=${encodeURIComponent(environment)}`);
       if (cancelled) return;
@@ -88,10 +98,13 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
       if (latest) setRelease(latest);
     })();
     return () => { cancelled = true; };
-  }, [projectId, environment, base]);
+  }, [projectId, environment, base, cloud]);
 
   // The state key is this project's own, never the architecture's: two Terraform projects must not share one state.
-  useEffect(() => { setBackend((b) => (b.key ? b : { ...b, key: `cloudcraft/releases/${stack.name}-${environment}.tfstate` })); }, [stack.name, environment]);
+  useEffect(() => {
+    const key = `cloudcraft/releases/${stack.name}-${environment}.tfstate`;
+    setBackend((b) => (b.key ? b : { ...b, key })); setAwsState((b) => (b.key ? b : { ...b, key }));
+  }, [stack.name, environment]);
 
   const refresh = useCallback(async (id: string) => {
     const r = await api<{ release: ReleaseView; missing: string[] | null; worker?: { alive: boolean } }>(`${base}/${id}`);
@@ -111,7 +124,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
     if (list.ok) setHistory(list.data.releases);
   };
 
-  // Follow a teardown that is going on; when it is over, ask Azure whether the resources are really gone.
+  // Follow a teardown that is going on; when it is over, ask the cloud whether the resources are really gone.
   useEffect(() => {
     if (!teardown?.runId || teardown.state !== 'running' || !release) return;
     const id = setInterval(async () => {
@@ -151,7 +164,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
     setBusy(true); setError(null); setPlan(null);
     const useSources = Object.fromEntries(Object.entries(sources).filter(([layer]) => (builtLayers as string[]).includes(layer)).map(([layer, s]) => [layer, s.id]));
     const r = await api<{ release: ReleaseView; plan: PlanView; cost: { monthlyUsd: number } | null; warnings: string[] }>(base, {
-      method: 'POST', body: JSON.stringify({ environment, cloudAccountId: accountId, stateBackend: { provider: 'azure', ...backend }, project: stack, ...(Object.keys(useSources).length > 0 ? { sources: useSources } : {}) }),
+      method: 'POST', body: JSON.stringify({ environment, cloudAccountId: accountId, stateBackend: stateBackend(), project: stack, ...(Object.keys(useSources).length > 0 ? { sources: useSources } : {}) }),
     });
     if (!r.ok) { if (r.status === 503) setOff(r.message); return fail(r.message); }
     setPlan(r.data); setRelease(null); setBusy(false);
@@ -200,7 +213,10 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
     await reloadHistory();
   }
 
-  const stateBackend = () => ({ provider: 'azure', ...backend });
+  const stateBackend = () => (cloud === 'aws'
+    ? { provider: 'aws', bucket: awsState.bucket, key: awsState.key, region: awsState.region, ...(awsState.dynamodbTable ? { dynamodbTable: awsState.dynamodbTable } : {}) }
+    : { provider: 'azure', ...backend });
+  const stateReady = cloud === 'aws' ? Boolean(awsState.bucket && awsState.region && awsState.key) : Boolean(backend.resourceGroupName && backend.storageAccountName);
 
   async function previewTeardown() {
     if (!release) return;
@@ -231,22 +247,31 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
   return (
     <div className={card} data-testid="project-release">
       <div className="flex items-center gap-2"><Rocket className="w-4 h-4 text-cyan-500" /><p className="text-sm font-semibold">Deploy from CloudCraft</p></div>
-      <p className={clsx('text-xs', muted)}>CloudCraft creates the Azure resources, builds the images in Azure, stores the secrets in a Key Vault and starts the services, with the account you connected. You see the plan and confirm with your password first. Nothing is created before that.</p>
+      <p className={clsx('text-xs', muted)}>{cloud === 'aws'
+        ? 'CloudCraft creates the AWS resources, builds the images in CodeBuild, stores the secrets in Parameter Store and starts the services, with the account you connected.'
+        : 'CloudCraft creates the Azure resources, builds the images in Azure, stores the secrets in a Key Vault and starts the services, with the account you connected.'} You see the plan and confirm with your password first. Nothing is created before that.</p>
 
       {!release || !ACTIVE.has(release.status) ? (
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <label className={label} htmlFor="rel-account">Azure account</label>
+            <label className={label} htmlFor="rel-account">{cloud === 'aws' ? 'AWS' : 'Azure'} account</label>
             <select id="rel-account" className={input} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
               {accounts === null && <option value="">Loading…</option>}
-              {accounts !== null && accounts.length === 0 && <option value="">No Azure account connected</option>}
+              {accounts !== null && accounts.length === 0 && <option value="">No {cloud === 'aws' ? 'AWS' : 'Azure'} account connected</option>}
               {(accounts ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </div>
+          {cloud === 'aws' ? <>
+          <div><label className={label} htmlFor="rel-bucket">State: S3 bucket</label><input id="rel-bucket" className={input} value={awsState.bucket} onChange={(e) => setAwsState({ ...awsState, bucket: e.target.value })} /></div>
+          <div><label className={label} htmlFor="rel-region">State: region</label><input id="rel-region" className={input} value={awsState.region} onChange={(e) => setAwsState({ ...awsState, region: e.target.value })} /></div>
+          <div><label className={label} htmlFor="rel-ddb">State: lock table (optional)</label><input id="rel-ddb" className={input} value={awsState.dynamodbTable} onChange={(e) => setAwsState({ ...awsState, dynamodbTable: e.target.value })} /></div>
+          <div><label className={label} htmlFor="rel-key">State: file name</label><input id="rel-key" className={input} value={awsState.key} onChange={(e) => setAwsState({ ...awsState, key: e.target.value })} /></div>
+          </> : <>
           <div><label className={label} htmlFor="rel-rg">State: resource group</label><input id="rel-rg" className={input} value={backend.resourceGroupName} onChange={(e) => setBackend({ ...backend, resourceGroupName: e.target.value })} /></div>
           <div><label className={label} htmlFor="rel-sa">State: storage account</label><input id="rel-sa" className={input} value={backend.storageAccountName} onChange={(e) => setBackend({ ...backend, storageAccountName: e.target.value })} /></div>
           <div><label className={label} htmlFor="rel-ct">State: container</label><input id="rel-ct" className={input} value={backend.containerName} onChange={(e) => setBackend({ ...backend, containerName: e.target.value })} /></div>
           <div><label className={label} htmlFor="rel-key">State: file name</label><input id="rel-key" className={input} value={backend.key} onChange={(e) => setBackend({ ...backend, key: e.target.value })} /></div>
+          </>}
           <div className="col-span-2 space-y-2" data-testid="own-code">
             <p className={label}>Your code (optional)</p>
             <p className={clsx('text-[11px]', muted)}>Without it, each service is built from the generated sample app. Upload a zip (up to 5 MB) of a service&apos;s code to build that instead. CloudCraft&apos;s own Dockerfile is used, not one from the zip.</p>
@@ -264,9 +289,9 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
               </div>
             ))}
           </div>
-          <p className={clsx('col-span-2 text-[11px]', muted)}>Terraform keeps a record of what it created in an Azure storage container you own. The Deploy tab can create one. This project uses its own file in it.</p>
+          <p className={clsx('col-span-2 text-[11px]', muted)}>{cloud === 'aws' ? 'Terraform keeps a record of what it created in an S3 bucket you own (the bucket must already exist; the Deploy tab can create one). This project uses its own file in it.' : 'Terraform keeps a record of what it created in an Azure storage container you own. The Deploy tab can create one. This project uses its own file in it.'}</p>
           <div className="col-span-2">
-            <button type="button" disabled={busy || !accountId || !backend.resourceGroupName || !backend.storageAccountName} onClick={() => void makePlan()}
+            <button type="button" disabled={busy || !accountId || !stateReady} onClick={() => void makePlan()}
               className="px-4 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-40">
               {busy && !plan ? 'Planning…' : 'Plan the deployment'}
             </button>
@@ -299,14 +324,14 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
           <p className="text-xs font-semibold">Release {release.imageTag} of {release.project}: <span data-testid="release-state">{release.status.replace('_', ' ')}</span></p>
           <ul className="space-y-1.5">
             {release.steps.filter((s) => s.state !== 'skipped').map((s) => (
-              <li key={s.name} className="flex items-start gap-2 text-xs">{stateIcon(s.state)}<span><span className="font-medium">{STEP_LABEL[s.name] ?? s.name}</span>{s.message && <span className={muted}> · {s.message}</span>}</span></li>
+              <li key={s.name} className="flex items-start gap-2 text-xs">{stateIcon(s.state)}<span><span className="font-medium">{STEP_LABEL[cloud][s.name] ?? s.name}</span>{s.message && <span className={muted}> · {s.message}</span>}</span></li>
             ))}
           </ul>
 
           {release.status === 'waiting' && (
             <div className={clsx('rounded-lg border p-3 space-y-2', isLight ? 'border-amber-200 bg-amber-50' : 'border-amber-500/30 bg-amber-500/10')} data-testid="release-secrets">
               <p className="text-xs font-semibold">Enter the secrets the services need</p>
-              <p className={clsx('text-[11px]', muted)}>Each value is sent once, stored in the Key Vault and forgotten: CloudCraft keeps none. Use letters, digits and . _ ~ - only. Leave blank one that is already stored.</p>
+              <p className={clsx('text-[11px]', muted)}>Each value is sent once, stored in {cloud === 'aws' ? 'Parameter Store' : 'the Key Vault'} and forgotten: CloudCraft keeps none. Use letters, digits and . _ ~ - only. Leave blank one that is already stored.</p>
               {(missing ?? release.secrets).map((name) => (
                 <div key={name}><label className={label} htmlFor={`sec-${name}`}>{name}</label>
                   <input id={`sec-${name}`} type="password" autoComplete="off" className={clsx(input, 'font-mono')} value={secretValues[name] ?? ''} onChange={(e) => setSecretValues({ ...secretValues, [name]: e.target.value })} /></div>
@@ -355,8 +380,8 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
         <div className={clsx('rounded-lg border p-3 space-y-2', isLight ? 'border-rose-200' : 'border-rose-500/30')} data-testid="teardown">
           <p className="text-xs font-semibold">Remove everything</p>
           {!teardown && <>
-            <p className={clsx('text-[11px]', muted)}>Deletes the resource group this release created: the VM (and the database data on its disk), the registry with its images, the vault with its secrets and the network. You see the list first.</p>
-            <button type="button" disabled={busy || !backend.resourceGroupName || !backend.storageAccountName} onClick={() => void previewTeardown()} className="px-3 py-1.5 rounded-lg border text-xs font-medium border-rose-300 text-rose-600 disabled:opacity-40">Preview what would be removed</button>
+            <p className={clsx('text-[11px]', muted)}>{cloud === 'aws' ? 'Deletes what this release created: the instance (and the database data on its disk), the registry with its images, the buckets and the build project. The secrets in Parameter Store stay until you delete them. You see the list first.' : 'Deletes the resource group this release created: the VM (and the database data on its disk), the registry with its images, the vault with its secrets and the network. You see the list first.'}</p>
+            <button type="button" disabled={busy || !stateReady} onClick={() => void previewTeardown()} className="px-3 py-1.5 rounded-lg border text-xs font-medium border-rose-300 text-rose-600 disabled:opacity-40">Preview what would be removed</button>
           </>}
           {teardown?.nothing && <p className={clsx('text-xs', muted)}>Terraform&apos;s record holds nothing to remove.</p>}
           {teardown?.preview && !teardown.runId && (

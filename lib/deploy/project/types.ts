@@ -5,7 +5,7 @@
  * the compose file (which only references secrets) and the ids of the resources that were created. Credentials and secret values never appear here.
  */
 
-export type ReleaseTarget = 'azure-vm';
+export type ReleaseTarget = 'azure-vm' | 'ec2';
 
 export const STEP_ORDER = ['infrastructure', 'secrets', 'build', 'publish', 'start', 'verify'] as const;
 export type StepName = (typeof STEP_ORDER)[number];
@@ -23,8 +23,9 @@ export interface StepRecord {
 
 export type ReleaseStatus = 'planned' | 'approved' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'rolled_back' | 'cancelled' | 'destroyed';
 
-/** What Terraform created, as the steps need it. */
-export interface ReleaseOutputs {
+/** What Terraform created on Azure, as the steps need it. Older records have no `kind`: they are Azure. */
+export interface AzureOutputs {
+  kind?: 'azure-vm';
   resourceGroup: string;
   vmName: string;
   /** Registry name (without .azurecr.io). Empty when nothing is built. */
@@ -33,6 +34,26 @@ export interface ReleaseOutputs {
   /** The address of the public service, for the health check. */
   url: string;
 }
+
+/** What Terraform created on AWS, as the steps need it. */
+export interface AwsOutputs {
+  kind: 'ec2';
+  region: string;
+  instanceId: string;
+  /** The private bucket that holds the compose file and the image tag the server reads when it starts. */
+  releaseBucket: string;
+  /** The private bucket the source of a build is put in for CodeBuild. */
+  sourceBucket: string;
+  codebuildProject: string;
+  /** <account>.dkr.ecr.<region>.amazonaws.com */
+  registry: string;
+  /** Where the secrets are in Parameter Store: /<project>. */
+  ssmPrefix: string;
+  url: string;
+}
+
+export type ReleaseOutputs = AzureOutputs | AwsOutputs;
+export const isAwsOutputs = (o: ReleaseOutputs): o is AwsOutputs => o.kind === 'ec2';
 
 export interface Release {
   id: string;

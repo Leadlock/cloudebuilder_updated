@@ -7,7 +7,7 @@ import { ok, internalError } from '@/lib/api/response';
 import { PgReleaseStore } from '@/lib/deploy/project/pgReleaseStore';
 import { findRelease, publicRelease, releaseGate } from '@/lib/deploy/project/routeGate';
 import { missingSecrets, reconcileDestroyed } from '@/lib/deploy/project/orchestrator';
-import { azureOpsForAccount } from '@/lib/deploy/project/accountOps';
+import { releaseDriverFor } from '@/lib/deploy/project/accountOps';
 import { APPLY_WORKER, workerStatus } from '@/lib/terraform/execution/applyProgress';
 
 export const dynamic = 'force-dynamic';
@@ -22,13 +22,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!('id' in found)) return found;
     // After a teardown the page asks (?reconcile=1): the releases that ran in a resource group that is gone are marked destroyed, as Azure says, not as the caller says.
     if (req.nextUrl.searchParams.get('reconcile') === '1' && found.outputs && found.status !== 'destroyed') {
-      try { await reconcileDestroyed({ store, ops: await azureOpsForAccount(found.orgId, found.cloudAccountId) }, found); } catch { /* the next look tries again */ }
+      try { await reconcileDestroyed({ store, driver: await releaseDriverFor(found) }, found); } catch { /* the next look tries again */ }
       const fresh = await store.get(found.id);
       if (fresh) Object.assign(found, fresh);
     }
     let missing: string[] | null = null;
     if (found.status === 'waiting' && found.outputs) {
-      try { missing = await missingSecrets(found, await azureOpsForAccount(found.orgId, found.cloudAccountId)); } catch { missing = null; }
+      try { missing = await missingSecrets(found, await releaseDriverFor(found)); } catch { missing = null; }
     }
     return ok({ release: publicRelease(found), missing, worker: workerStatus(APPLY_WORKER) });
   } catch (err) {

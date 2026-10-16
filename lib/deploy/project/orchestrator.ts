@@ -13,9 +13,9 @@
  * leave the site down. A failure earlier stops and says which step; nothing created is removed automatically.
  * Nothing here handles a credential or logs a secret value.
  */
-import { buildAzureVmBundle, sourceArchive, type ProjectBundle, type SourceInput } from './bundle';
+import { buildBundle, sourceFiles, type ProjectBundle, type SourceInput } from './bundle';
 import type { AzureOps } from './azureOps';
-import { vaultName } from './azureOps';
+import { azureDriver, writeComposeScript, type ReleaseDriver } from './driver';
 import type { ReleaseStore } from './releaseStore';
 import { sha256Hex, type SourceStore } from './sourceStore';
 import { readZip, ZipError } from './zip';
@@ -29,7 +29,9 @@ export interface InfraRunner {
 
 export interface OrchestratorDeps {
   store: ReleaseStore;
-  ops: AzureOps;
+  /** What the release does in the cloud. Either this, or `ops` (Azure's operations, wrapped in the Azure driver). */
+  driver?: ReleaseDriver;
+  ops?: AzureOps;
   infra: InfraRunner;
   /** Where uploaded code is kept. Needed for a release that builds a service from the person's own code. */
   sources?: SourceStore;
@@ -70,7 +72,7 @@ async function bundleOf(release: Release, sources?: SourceStore): Promise<Projec
     try { own[layer] = { sha256: ref.sha256, files: readZip(stored.zip).files }; }
     catch (err) { throw new ReleaseError(`The uploaded code for the ${layer} cannot be used: ${err instanceof ZipError ? err.message : 'it could not be read'}`); }
   }
-  const bundle = buildAzureVmBundle(release.settings as StackProject, own);
+  const bundle = buildBundle(release.settings as StackProject, own);
   // What is run is what was approved: the files are generated again here and must hash to what the approval was for.
   if (bundle.bundleHash !== release.bundleHash) throw new ReleaseError('The deployment files no longer match what was approved. Plan the release again.', 409);
   return bundle;
@@ -82,10 +84,13 @@ function step(release: Release, name: StepName): StepRecord {
   return s;
 }
 
-/** The commands that put a compose file on the VM: written beside the old one and moved over it, so a start never reads half a file. */
-export function writeComposeScript(project: string, compose: string): string {
-  const b64 = Buffer.from(compose, 'utf8').toString('base64');
-  return `mkdir -p /opt/${project} && printf '%s' '${b64}' | base64 -d > /opt/${project}/compose.yml.new && mv /opt/${project}/compose.yml.new /opt/${project}/compose.yml`;
+export { writeComposeScript };
+
+/** The cloud driver of a run: the one it was given, or the Azure driver around the operations it was given. */
+export function driverOf(deps: Pick<OrchestratorDeps, 'driver' | 'ops'>): ReleaseDriver {
+  if (deps.driver) return deps.driver;
+  if (deps.ops) return azureDriver(deps.ops);
+  throw new ReleaseError('No cloud was given to run the release in.', 500);
 }
 
 export function newRelease(input: {
@@ -135,13 +140,14 @@ export async function createRollbackRelease(store: ReleaseStore, input: { target
  * After a teardown: when the resource group is gone, the releases that ran in it are not running any more. Returns how many were marked.
  * It asks Azure rather than believing the caller.
  */
-export async function reconcileDestroyed(deps: Pick<OrchestratorDeps, 'store' | 'ops' | 'now'>, release: Release): Promise<number> {
+export async function reconcileDestroyed(deps: Pick<OrchestratorDeps, 'store' | 'ops' | 'driver' | 'now'>, release: Release): Promise<number> {
   if (!release.outputs) return 0;
-  if (await deps.ops.resourceGroupExists(release.outputs.resourceGroup)) return 0;
+  const driver = driverOf(deps);
+  if (await driver.exists(release.outputs)) return 0;
   let n = 0;
   for (const r of await deps.store.list(release.projectId, release.environment, 100)) {
     if (r.orgId !== release.orgId || r.status === 'destroyed' || r.status === 'planned' || r.status === 'cancelled') continue;
-    if (r.outputs?.resourceGroup !== release.outputs.resourceGroup) continue;
+    if (!r.outputs || !driver.same(r.outputs, release.outputs)) continue;
     r.status = 'destroyed'; r.updatedAt = (deps.now ?? Date.now)();
     await deps.store.save(r); n++;
   }
@@ -158,10 +164,11 @@ export async function cancelRelease(store: ReleaseStore, releaseId: string, now:
 }
 
 /** Which secrets of the release are not in the vault yet. */
-export async function missingSecrets(release: Release, ops: AzureOps): Promise<string[]> {
+export async function missingSecrets(release: Release, cloud: ReleaseDriver | AzureOps): Promise<string[]> {
+  const driver = 'build' in cloud ? cloud : azureDriver(cloud);
   if (!release.outputs) throw new ReleaseError('The infrastructure is not created yet.', 409);
   const missing: string[] = [];
-  for (const name of release.secrets) if (!(await ops.secretExists(release.outputs.vaultName, vaultName(name)))) missing.push(name);
+  for (const name of release.secrets) if (!(await driver.secretExists(release.outputs, name))) missing.push(name);
   return missing;
 }
 
@@ -169,28 +176,29 @@ export async function missingSecrets(release: Release, ops: AzureOps): Promise<s
  * Stores the secret values the release is waiting for. Each goes straight to the vault; none is kept, returned or logged.
  * Only names the release is waiting for are accepted, so this cannot be used to write anything else into the vault.
  */
-export async function provideSecrets(deps: Pick<OrchestratorDeps, 'store' | 'ops' | 'now'>, releaseId: string, values: Record<string, string>): Promise<{ missing: string[] }> {
+export async function provideSecrets(deps: Pick<OrchestratorDeps, 'store' | 'ops' | 'driver' | 'now'>, releaseId: string, values: Record<string, string>): Promise<{ missing: string[] }> {
+  const driver = driverOf(deps);
   const r = await deps.store.get(releaseId);
   if (!r) throw new ReleaseError('Release not found.', 404);
   if (r.status !== 'waiting' || step(r, 'secrets').state !== 'waiting') throw new ReleaseError('This release is not waiting for secrets.', 409);
-  const missing = await missingSecrets(r, deps.ops);
+  const missing = await missingSecrets(r, driver);
   for (const [name, value] of Object.entries(values)) {
     if (!SECRET_KEY.test(name) || !missing.includes(name)) throw new ReleaseError(`${clean(name)} is not a secret this release is waiting for.`);
     if (typeof value !== 'string' || !SECRET_VALUE.test(value)) throw new ReleaseError(`${name} may use only letters, digits and . _ ~ - (no spaces or other symbols), up to 200 characters.`);
   }
-  for (const [name, value] of Object.entries(values)) await deps.ops.putSecret(r.outputs!.vaultName, vaultName(name), value);
-  return { missing: await missingSecrets(r, deps.ops) };
+  for (const [name, value] of Object.entries(values)) await driver.putSecret(r.outputs!, name, value);
+  return { missing: await missingSecrets(r, driver) };
 }
 
-const STEP_RUNNERS: Record<StepName, (release: Release, deps: Required<Pick<OrchestratorDeps, 'ops' | 'infra' | 'verifyWaitMs' | 'verifyEveryMs' | 'sleep'>> & { sources?: SourceStore; say: (l: string) => void; cancelled: () => Promise<boolean> }) => Promise<Outcome>> = {
+const STEP_RUNNERS: Record<StepName, (release: Release, deps: Required<Pick<OrchestratorDeps, 'infra' | 'verifyWaitMs' | 'verifyEveryMs' | 'sleep'>> & { driver: ReleaseDriver; sources?: SourceStore; say: (l: string) => void; cancelled: () => Promise<boolean> }) => Promise<Outcome>> = {
   async infrastructure(release, d) {
     release.outputs = await d.infra.apply(release, d.say);
-    return { state: 'done', message: `Created ${release.outputs.resourceGroup}` };
+    return { state: 'done', message: `Created ${d.driver.describe(release.outputs)}` };
   },
 
   async secrets(release, d) {
     if (release.secrets.length === 0) return { state: 'done', message: 'No secrets are needed' };
-    const missing = await missingSecrets(release, d.ops);
+    const missing = await missingSecrets(release, d.driver);
     if (missing.length > 0) return { state: 'waiting', message: `Waiting for ${missing.join(', ')}` };
     return { state: 'done', message: 'All secrets are stored' };
   },
@@ -201,21 +209,20 @@ const STEP_RUNNERS: Record<StepName, (release: Release, deps: Required<Pick<Orch
     for (const layer of release.built) {
       if (await d.cancelled()) return { state: 'done', message: 'Cancelled' };       // the run notices it right after this step
       d.say(`Building ${layer}`);
-      await d.ops.acrBuild({ resourceGroup: out.resourceGroup, registry: out.acrName, image: `${release.project}-${layer}:${release.imageTag}`, source: sourceArchive(bundle, layer), onLog: d.say });
+      await d.driver.build(out, { project: release.project, layer, tag: release.imageTag, files: sourceFiles(bundle, layer), onLog: d.say });
     }
     return { state: 'done', message: `Built ${release.built.join(', ')}` };
   },
 
   async publish(release, d) {
     const out = release.outputs!;
-    await d.ops.setVmTag(out.resourceGroup, out.vmName, 'image_tag', release.imageTag);
-    await d.ops.runShell(out.resourceGroup, out.vmName, writeComposeScript(release.project, release.compose));
+    await d.driver.publish(out, { project: release.project, tag: release.imageTag, compose: release.compose });
     return { state: 'done', message: `Tag ${release.imageTag} and the compose file are on the VM` };
   },
 
   async start(release, d) {
     const out = release.outputs!;
-    await d.ops.runShell(out.resourceGroup, out.vmName, `systemctl restart ${release.project}.service`);
+    await d.driver.start(out, { project: release.project });
     return { state: 'done', message: 'Restarted' };
   },
 
@@ -224,7 +231,7 @@ const STEP_RUNNERS: Record<StepName, (release: Release, deps: Required<Pick<Orch
     const end = Date.now() + d.verifyWaitMs;
     for (;;) {
       if (await d.cancelled()) return { state: 'done', message: 'Cancelled' };
-      if (await d.ops.httpOk(url)) return { state: 'done', message: `${url} answers` };
+      if (await d.driver.httpOk(url)) return { state: 'done', message: `${url} answers` };
       if (Date.now() >= end) throw new ReleaseError(`${url} did not answer within ${Math.round(d.verifyWaitMs / 60000)} minutes.`, 504);
       await d.sleep(d.verifyEveryMs);
     }
@@ -237,13 +244,13 @@ async function restorePrevious(current: Release, previous: Release, deps: Orches
   if (!out || !previous.outputs) return false;
   try {
     say(`Putting ${previous.imageTag} back`);
-    await deps.ops.setVmTag(out.resourceGroup, out.vmName, 'image_tag', previous.imageTag);
-    await deps.ops.runShell(out.resourceGroup, out.vmName, writeComposeScript(previous.project, previous.compose));
-    await deps.ops.runShell(out.resourceGroup, out.vmName, `systemctl restart ${previous.project}.service`);
+    const driver = driverOf(deps);
+    await driver.publish(out, { project: previous.project, tag: previous.imageTag, compose: previous.compose });
+    await driver.start(out, { project: previous.project });
     const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
     const end = Date.now() + (deps.verifyWaitMs ?? 10 * 60_000);
     for (;;) {
-      if (await deps.ops.httpOk(out.url)) return true;
+      if (await driverOf(deps).httpOk(out.url)) return true;
       if (Date.now() >= end) return false;
       await sleep(deps.verifyEveryMs ?? 10_000);
     }
@@ -287,7 +294,7 @@ export async function runRelease(deps: OrchestratorDeps, releaseId: string): Pro
     say(`${name}: started`);
     try {
       const outcome = await STEP_RUNNERS[name](release, {
-        ops: deps.ops, infra: deps.infra, sources: deps.sources, sleep, say, cancelled: async () => (await deps.store.get(releaseId))?.status === 'cancelled', verifyWaitMs: deps.verifyWaitMs ?? 10 * 60_000, verifyEveryMs: deps.verifyEveryMs ?? 10_000,
+        driver: driverOf(deps), infra: deps.infra, sources: deps.sources, sleep, say, cancelled: async () => (await deps.store.get(releaseId))?.status === 'cancelled', verifyWaitMs: deps.verifyWaitMs ?? 10 * 60_000, verifyEveryMs: deps.verifyEveryMs ?? 10_000,
       });
       rec.message = outcome.message ? clean(outcome.message) : undefined;
       // A cancel that arrived while the step ran must not be overwritten by this record.

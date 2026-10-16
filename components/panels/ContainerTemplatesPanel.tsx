@@ -403,7 +403,7 @@ export default function ContainerTemplatesPanel() {
                 onAks={(k, v) => setStack((st) => ({ ...st, deploy: { ...st.deploy, aks: { ...st.deploy.aks, [k]: v } } }))}
               />
             )}
-            {multi && stack.deploy.target === 'azure-vm' && result.ok && (
+            {multi && (stack.deploy.target === 'azure-vm' || stack.deploy.target === 'ec2') && result.ok && (
               <ProjectReleasePanel projectId={project?.id ?? null} environment={state.activeEnvironment} stack={stack} isLight={isLight} />
             )}
             {!multi && (

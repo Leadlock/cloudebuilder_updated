@@ -397,3 +397,33 @@ describe('when the worker is not there', () => {
     } finally { jest.useRealTimers(); }
   });
 });
+
+describe('on AWS (EC2)', () => {
+  const awsStack = (() => { const p = defaultProject(); p.name = 'shop'; for (const l of LAYERS) p.layers[l].enabled = ['backend', 'api'].includes(l); p.deploy.target = 'ec2'; return p; })();
+  beforeEach(() => {
+    routes.unshift([/GET \/api\/cloud-accounts\?provider=aws/, () => ({ data: [{ id: 'aws-1', name: 'Test AWS', provider: 'aws' }, { id: 'az-1', name: 'Wrong cloud', provider: 'azure' }] })]);
+    localStorage.setItem('cloudcraft_tf_backend_p1', JSON.stringify({ awsBackend: { bucket: 'my-state', key: 'cloudcraft/terraform.tfstate', region: 'eu-west-1', dynamodbTable: 'locks' } }));
+  });
+
+  test('offers AWS accounts only, fills in the S3 state the Deploy tab knows, and plans with an AWS state backend and its own file', async () => {
+    routes.unshift([/POST \/api\/projects\/p1\/releases$/, () => ({ status: 201, data: PLAN })]);
+    render(<ProjectReleasePanel projectId="p1" environment="production" stack={awsStack} isLight />);
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Test AWS' })).toBeTruthy());
+    expect(screen.queryByRole('option', { name: 'Wrong cloud' })).toBeNull();
+    expect(screen.queryByLabelText('State: resource group')).toBeNull();
+    await waitFor(() => expect((screen.getByLabelText('State: S3 bucket') as HTMLInputElement).value).toBe('my-state'));
+    expect(screen.getByText(/Parameter Store/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Plan the deployment' }));
+    await screen.findByTestId('release-plan');
+    expect(calls.find((c) => c.method === 'POST')!.body).toMatchObject({
+      cloudAccountId: 'aws-1', stateBackend: { provider: 'aws', bucket: 'my-state', region: 'eu-west-1', dynamodbTable: 'locks', key: 'cloudcraft/releases/shop-production.tfstate' },
+    });
+  });
+
+  test('nothing can be planned without a bucket', async () => {
+    localStorage.clear();
+    render(<ProjectReleasePanel projectId="p1" environment="production" stack={awsStack} isLight />);
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Test AWS' })).toBeTruthy());
+    expect((screen.getByRole('button', { name: 'Plan the deployment' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});

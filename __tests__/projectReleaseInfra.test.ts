@@ -10,6 +10,7 @@ jest.mock('@/lib/terraform/execution/TerraformExecutionService', () => ({ planBu
 jest.mock('@/lib/terraform/execution/cli', () => ({ runTerraform: jest.fn() }));
 
 import { defaultProject, LAYERS, type StackProject } from '@/lib/engines/containers/stackProject';
+import type { AzureOutputs } from '@/lib/deploy/project/types';
 import type { PlanBundleInput } from '@/lib/terraform/execution/TerraformExecutionService';
 import { createTerraformInfraRunner, outputsFrom, planRelease, throwawayPublicKey } from '@/lib/deploy/project/infra';
 import { buildAzureVmBundle } from '@/lib/deploy/project/bundle';
@@ -70,7 +71,7 @@ describe('what Terraform created', () => {
   });
   test('a project with nothing built has no registry, which is fine', () => {
     const o = JSON.parse(ALL); delete o.acr_name;
-    expect(outputsFrom(JSON.stringify(o)).acrName).toBe('');
+    expect((outputsFrom(JSON.stringify(o)) as AzureOutputs).acrName).toBe('');
   });
   test.each(['resource_group', 'vm_name', 'vault_name', 'app_url'])('without %s the step fails with that name', (k) => {
     const o = JSON.parse(ALL); delete o[k];
@@ -90,7 +91,7 @@ describe('what Terraform created', () => {
       runTerraform: async (args, o) => { seen.push(`${args.join(' ')} @${o.cwd}`); return { stdout: ALL, stderr: '' }; },
     });
     const out = await runner.apply(release, (l) => lines.push(l));
-    expect(out.vaultName).toBe('kvshop');
+    expect((out as AzureOutputs).vaultName).toBe('kvshop');
     expect(seen).toEqual(['plan-9 o1', 'output -json -no-color @/work']);
     expect(lines).toEqual(['azurerm_resource_group.app: Creating...', 'azurerm_resource_group.app: Creation complete']);
   });

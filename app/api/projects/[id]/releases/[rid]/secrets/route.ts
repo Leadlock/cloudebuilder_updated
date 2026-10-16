@@ -14,8 +14,9 @@ import { enqueueReleaseJob } from '@/lib/jobs/projectReleaseJob';
 import { PgReleaseStore } from '@/lib/deploy/project/pgReleaseStore';
 import { findRelease, releaseGate } from '@/lib/deploy/project/routeGate';
 import { provideSecrets, ReleaseError } from '@/lib/deploy/project/orchestrator';
-import { azureOpsForAccount, AccountError } from '@/lib/deploy/project/accountOps';
+import { releaseDriverFor, AccountError } from '@/lib/deploy/project/accountOps';
 import { AzureError } from '@/lib/deploy/project/azureOps';
+import { AwsError } from '@/lib/deploy/project/awsOps';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,8 +36,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const audit = { action: 'release' as const, orgId, projectId, userId: identity.userId, planId: found.planId, planHash: found.planHash };
     try {
-      const ops = await azureOpsForAccount(orgId, found.cloudAccountId);
-      const { missing } = await provideSecrets({ store, ops }, found.id, parsed.data.values);
+      const driver = await releaseDriverFor(found);
+      const { missing } = await provideSecrets({ store, driver }, found.id, parsed.data.values);
       // Names only: never a value.
       await recordTerraformAudit({ ...audit, outcome: 'allowed', detail: `release ${found.id}: stored ${Object.keys(parsed.data.values).join(', ')}; ${missing.length === 0 ? 'none missing' : `still missing ${missing.join(', ')}`}` });
       if (missing.length > 0) return ok({ missing, continued: false });
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     } catch (err) {
       if (err instanceof ReleaseError) return err.status === 409 ? apiError('CONFLICT', err.message, 409) : badRequest(err.message);
       if (err instanceof AccountError) return apiError('BAD_REQUEST', err.message, err.status);
-      if (err instanceof AzureError) return apiError('BAD_GATEWAY', err.message, 502);
+      if (err instanceof AzureError || err instanceof AwsError) return apiError('BAD_GATEWAY', err.message, 502);
       throw err;
     }
   } catch (err) {

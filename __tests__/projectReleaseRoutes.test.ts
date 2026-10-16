@@ -27,9 +27,9 @@ jest.mock('@/lib/terraform/execution/cli', () => ({ TerraformNotInstalledError: 
 const mockEnqueue = jest.fn();
 jest.mock('@/lib/jobs/projectReleaseJob', () => ({ enqueueReleaseJob: (...a: unknown[]) => mockEnqueue(...a) }));
 const mockPlanRelease = jest.fn();
-jest.mock('@/lib/deploy/project/infra', () => ({ planRelease: (...a: unknown[]) => mockPlanRelease(...a), throwawayPublicKey: () => 'ssh-ed25519 AAAATEST' }));
+jest.mock('@/lib/deploy/project/infra', () => ({ planRelease: (...a: unknown[]) => mockPlanRelease(...a), terraformFiles: (b: unknown) => jest.requireActual('@/lib/deploy/project/infra').terraformFiles(b), throwawayPublicKey: () => 'ssh-ed25519 AAAATEST' }));
 const mockOpsFor = jest.fn();
-jest.mock('@/lib/deploy/project/accountOps', () => ({ azureOpsForAccount: (...a: unknown[]) => mockOpsFor(...a), AccountError: class AccountError extends Error { constructor(m: string, public status = 400) { super(m); } } }));
+jest.mock('@/lib/deploy/project/accountOps', () => ({ releaseDriverFor: async (r: { orgId: string; cloudAccountId: string }) => jest.requireActual('@/lib/deploy/project/driver').azureDriver(await mockOpsFor(r.orgId, r.cloudAccountId)), AccountError: class AccountError extends Error { constructor(m: string, public status = 400) { super(m); } } }));
 jest.mock('@/lib/terraform/execution/applyProgress', () => ({ APPLY_WORKER: 'apply', workerStatus: () => ({ running: true }) }));
 jest.mock('@/lib/deploy/project/pgReleaseStore', () => {
   const { InMemoryReleaseStore } = jest.requireActual('@/lib/deploy/project/releaseStore');
@@ -585,6 +585,17 @@ describe('POST destroy (tearing down what a release created)', () => {
     mockPrepareDestroy.mockResolvedValue(PREPARED);
     mockPeekDestroy.mockReturnValue({ planId: PREPARED.planId, planHash: PREPARED.planHash, orgId: 'org-1', projectId, resources: PREPARED.resources });
     mockStartDestroy.mockResolvedValue({ runId: 'run-1' });
+  });
+
+  test('an AWS release previews with its EC2 Terraform and no SSH key', async () => {
+    const r = await made();
+    const settings = JSON.parse(JSON.stringify(r.settings)); settings.deploy.target = 'ec2';
+    const ec2 = await made({ settings });
+    const res = await call(ec2);
+    expect(res.status).toBe(200);
+    const input = mockPrepareDestroy.mock.calls.at(-1)![0];
+    expect(input.bundleFiles.map((f: { filename: string }) => f.filename).sort()).toEqual(['compose.deploy.yml', 'main.tf', 'outputs.tf', 'user_data.sh', 'variables.tf']);
+    expect(input.extraEnv).toBeUndefined();
   });
 
   test('previews with the release\'s own Terraform against its state, and lists what would go, with a token bound to that plan', async () => {

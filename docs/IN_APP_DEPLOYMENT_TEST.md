@@ -46,3 +46,30 @@ Server side, the worker log (`pm2 logs cloudcraft-tf-apply`) has one line per st
 
 ## 6. Cost and cleanup
 About $60 to $90 a month while it runs (VM, disk, IP, registry). Always finish with **Remove everything** (or `az group delete -n rg-<project>`); a key vault that was deleted by hand stays soft-deleted for 7 days, and the next deployment of the same project recovers it.
+
+---
+
+# The same on AWS (EC2 target)
+
+Pick **AWS EC2** as the project's deploy target; the panel then asks for an AWS account and an S3 state bucket. Same caveat: the AWS calls (CodeBuild, SSM, S3,
+Parameter Store) and the generated Terraform have only been checked with `terraform validate` and fakes. Use a throw-away account.
+
+## What you need
+- An AWS account connected in CloudCraft with a role that can create what the bundle creates: EC2, VPC pieces, ECR, S3, IAM roles and instance profiles, CodeBuild, plus
+  `ssm:PutParameter/GetParameter/SendCommand/GetCommandInvocation` and `s3:PutObject/GetObject/DeleteObject/HeadBucket`. (Admin on a test account is simplest.)
+- An **S3 bucket** for Terraform's state (and optionally a DynamoDB lock table) that already exists. The deployment uses its own state file in it.
+- Same restricted-features and approval requirements as above.
+
+## What happens
+Terraform creates the instance (with Docker and the SSM agent), an ECR repository per built service, a release bucket (`compose.yml`, `release.env`), a source bucket and a
+CodeBuild project. Secrets you type go straight to Parameter Store under `/<project>/<NAME>`. Images are built by CodeBuild from the generated sample (or your zip) and
+pushed to ECR; the release files are written to the bucket and the service is restarted over SSM; the page then checks the address.
+
+## What to check
+- A first release reaches `succeeded` and the address answers (port 8080 by default; allow a minute after start).
+- A tag that does not build fails at `build` and the previous release keeps answering. A release whose address does not answer is rolled back to the previous one.
+- **Remove everything** deletes the Terraform-made resources. **Parameter Store secrets are not Terraform-managed and stay**: delete `/<project>/*` by hand.
+- CodeBuild needs a few minutes the first time (image pulls); CloudCraft gives up on a build after 30 minutes.
+
+## Cost
+A small instance, Elastic IP (if ticked), ECR storage and CodeBuild minutes: roughly $15 to $40 a month plus builds. Always finish with **Remove everything**.

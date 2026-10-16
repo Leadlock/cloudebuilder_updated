@@ -4,7 +4,7 @@
 const audit: Array<Record<string, unknown>> = [];
 jest.mock('@/lib/terraform/execution/audit', () => ({ recordTerraformAudit: jest.fn(async (e: Record<string, unknown>) => { audit.push(e); }) }));
 jest.mock('@/lib/jobs/queue', () => ({ getQueue: jest.fn() }));
-jest.mock('@/lib/deploy/project/accountOps', () => ({ azureOpsForAccount: jest.fn() }));
+jest.mock('@/lib/deploy/project/accountOps', () => ({ releaseDriverFor: jest.fn() }));
 jest.mock('@/lib/deploy/project/infra', () => ({ createTerraformInfraRunner: jest.fn(() => ({ apply: async () => { throw new Error('not used'); } })) }));
 jest.mock('@/lib/deploy/project/pgReleaseStore', () => ({ PgReleaseStore: class {} }));
 
@@ -15,6 +15,7 @@ import { approveRelease, newRelease } from '@/lib/deploy/project/orchestrator';
 import { buildAzureVmBundle } from '@/lib/deploy/project/bundle';
 import { defaultProject, LAYERS } from '@/lib/engines/containers/stackProject';
 import type { AzureOps } from '@/lib/deploy/project/azureOps';
+import { azureDriver } from '@/lib/deploy/project/driver';
 import type { ReleaseOutputs } from '@/lib/deploy/project/types';
 
 const OUT: ReleaseOutputs = { resourceGroup: 'rg-shop', vmName: 'vm-shop', acrName: 'acrshop', vaultName: 'kvshop', url: 'http://203.0.113.9:8080/' };
@@ -27,7 +28,7 @@ async function seed(store: InMemoryReleaseStore) {
   await approveRelease(store, 'r1', { bundleHash: bundle.bundleHash, planHash: 'h' }, 2);
 }
 const data = { releaseId: 'r1', orgId: 'org', projectId: 'p1', requestedBy: 'u1' };
-const deps = (store: InMemoryReleaseStore, over: Partial<ReleaseJobDeps> = {}): ReleaseJobDeps => ({ store, opsFor: async () => okOps(), infra: { apply: async () => OUT }, killSwitch: () => false, ...over });
+const deps = (store: InMemoryReleaseStore, over: Partial<ReleaseJobDeps> = {}): ReleaseJobDeps => ({ store, driverFor: async () => azureDriver(okOps()), infra: { apply: async () => OUT }, killSwitch: () => false, ...over });
 const locked = () => { const got = acquireProjectLock('p1'); if (got) releaseProjectLock('p1'); return !got; };
 
 beforeEach(() => { audit.length = 0; releaseProjectLock('p1'); jest.spyOn(console, 'info').mockImplementation(() => undefined); });
@@ -45,12 +46,12 @@ describe('processReleaseJob', () => {
 
   test('a release that waits for secrets or is cancelled is "allowed", a failed one "failed"', async () => {
     const store = new InMemoryReleaseStore(); await seed(store);
-    const waiting = await processReleaseJob(data, deps(store, { opsFor: async () => ({ ...okOps(), secretExists: async () => false }) }));
+    const waiting = await processReleaseJob(data, deps(store, { driverFor: async () => azureDriver({ ...okOps(), secretExists: async () => false }) }));
     expect(waiting.status).toBe('succeeded');            // this project has no secrets, so it does not wait
     const store2 = new InMemoryReleaseStore(); await seed(store2);
     const r2 = (await store2.get('r1'))!; r2.secrets = ['JWT_SECRET']; await store2.save(r2);
     // the hash is of the files, not of the list of secrets, so this is still the approved release
-    const w = await processReleaseJob(data, deps(store2, { opsFor: async () => ({ ...okOps(), secretExists: async () => false }) }));
+    const w = await processReleaseJob(data, deps(store2, { driverFor: async () => azureDriver({ ...okOps(), secretExists: async () => false }) }));
     expect(w.status).toBe('waiting');
     expect(audit.at(-1)).toMatchObject({ outcome: 'allowed' });
     const store3 = new InMemoryReleaseStore(); await seed(store3);
@@ -62,7 +63,7 @@ describe('processReleaseJob', () => {
   test('an account that cannot be used fails the release with the reason, and the project is unlocked', async () => {
     const store = new InMemoryReleaseStore(); await seed(store);
     expect(acquireProjectLock('p1')).toBe(true);
-    const r = await processReleaseJob(data, deps(store, { opsFor: async () => { throw new Error('A deployment to an Azure VM needs an Azure account.'); } }));
+    const r = await processReleaseJob(data, deps(store, { driverFor: async () => { throw new Error('A deployment to an Azure VM needs an Azure account.'); } }));
     expect(r.status).toBe('failed');
     const rel = (await store.get('r1'))!;
     expect(rel.status).toBe('failed');
