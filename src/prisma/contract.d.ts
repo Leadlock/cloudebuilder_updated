@@ -33,9 +33,9 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'7026e520b55815ed9b2dd462a902005bfc4ec6e2f94db01e5a69a17ebeac2be9'>;
+  StorageHashBase<'5d5e21b651aa807330e6db3599f64737318a18eedcf3607abd46a30c059bd72e'>;
 export type ExecutionHash =
-  ExecutionHashBase<'4b098096733368d0c06cbbe6a54a1a8a21364144dcfaaabaf5be777b36dd23cd'>;
+  ExecutionHashBase<'14edecb9b1ec2439249159275776ee7bea16746ed17fedbf98c8c8211fdfb2c3'>;
 export type ProfileHash =
   ProfileHashBase<'3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2'>;
 
@@ -511,6 +511,17 @@ export type FieldOutputTypes = {
       readonly updatedAtMs: CodecTypes['pg/float8@1']['output'];
       readonly dataJson: CodecTypes['pg/text@1']['output'];
     };
+    readonly ProjectSource: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly orgId: CodecTypes['pg/text@1']['output'];
+      readonly projectId: CodecTypes['pg/text@1']['output'];
+      readonly layer: CodecTypes['pg/text@1']['output'];
+      readonly sha256: CodecTypes['pg/text@1']['output'];
+      readonly sizeBytes: CodecTypes['pg/float8@1']['output'];
+      readonly dataB64: CodecTypes['pg/text@1']['output'];
+      readonly createdAtMs: CodecTypes['pg/float8@1']['output'];
+      readonly expiresAtMs: CodecTypes['pg/float8@1']['output'];
+    };
     readonly RateLimitBucket: {
       readonly key: CodecTypes['pg/text@1']['output'];
       readonly count: CodecTypes['pg/int4@1']['output'];
@@ -940,6 +951,17 @@ export type FieldInputTypes = {
       readonly createdAtMs: CodecTypes['pg/float8@1']['input'];
       readonly updatedAtMs: CodecTypes['pg/float8@1']['input'];
       readonly dataJson: CodecTypes['pg/text@1']['input'];
+    };
+    readonly ProjectSource: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly orgId: CodecTypes['pg/text@1']['input'];
+      readonly projectId: CodecTypes['pg/text@1']['input'];
+      readonly layer: CodecTypes['pg/text@1']['input'];
+      readonly sha256: CodecTypes['pg/text@1']['input'];
+      readonly sizeBytes: CodecTypes['pg/float8@1']['input'];
+      readonly dataB64: CodecTypes['pg/text@1']['input'];
+      readonly createdAtMs: CodecTypes['pg/float8@1']['input'];
+      readonly expiresAtMs: CodecTypes['pg/float8@1']['input'];
     };
     readonly RateLimitBucket: {
       readonly key: CodecTypes['pg/text@1']['input'];
@@ -1371,6 +1393,17 @@ export type StorageColumnTypes = {
       readonly target: CodecTypes['pg/text@1']['output'];
       readonly updatedAtMs: CodecTypes['pg/float8@1']['output'];
     };
+    readonly projectSource: {
+      readonly createdAtMs: CodecTypes['pg/float8@1']['output'];
+      readonly dataB64: CodecTypes['pg/text@1']['output'];
+      readonly expiresAtMs: CodecTypes['pg/float8@1']['output'];
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly layer: CodecTypes['pg/text@1']['output'];
+      readonly orgId: CodecTypes['pg/text@1']['output'];
+      readonly projectId: CodecTypes['pg/text@1']['output'];
+      readonly sha256: CodecTypes['pg/text@1']['output'];
+      readonly sizeBytes: CodecTypes['pg/float8@1']['output'];
+    };
     readonly rateLimitBucket: {
       readonly count: CodecTypes['pg/int4@1']['output'];
       readonly expiresAtMs: CodecTypes['pg/float8@1']['output'];
@@ -1800,6 +1833,17 @@ export type StorageColumnInputTypes = {
       readonly status: CodecTypes['pg/text@1']['input'];
       readonly target: CodecTypes['pg/text@1']['input'];
       readonly updatedAtMs: CodecTypes['pg/float8@1']['input'];
+    };
+    readonly projectSource: {
+      readonly createdAtMs: CodecTypes['pg/float8@1']['input'];
+      readonly dataB64: CodecTypes['pg/text@1']['input'];
+      readonly expiresAtMs: CodecTypes['pg/float8@1']['input'];
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly layer: CodecTypes['pg/text@1']['input'];
+      readonly orgId: CodecTypes['pg/text@1']['input'];
+      readonly projectId: CodecTypes['pg/text@1']['input'];
+      readonly sha256: CodecTypes['pg/text@1']['input'];
+      readonly sizeBytes: CodecTypes['pg/float8@1']['input'];
     };
     readonly rateLimitBucket: {
       readonly count: CodecTypes['pg/int4@1']['input'];
@@ -4056,6 +4100,66 @@ type ContractBase = Omit<
               ];
               foreignKeys: readonly [];
             };
+            readonly projectSource: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly orgId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly projectId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly layer: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly sha256: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly sizeBytes: {
+                  readonly nativeType: 'float8';
+                  readonly codecId: 'pg/float8@1';
+                  readonly nullable: false;
+                };
+                readonly dataB64: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly createdAtMs: {
+                  readonly nativeType: 'float8';
+                  readonly codecId: 'pg/float8@1';
+                  readonly nullable: false;
+                };
+                readonly expiresAtMs: {
+                  readonly nativeType: 'float8';
+                  readonly codecId: 'pg/float8@1';
+                  readonly nullable: false;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [];
+              indexes: readonly [
+                {
+                  readonly name: 'projectSource_projectId_expiresAtMs_idx_981fcd13';
+                  readonly prefix: 'projectSource_projectId_expiresAtMs_idx';
+                  readonly columns: readonly ['projectId', 'expiresAtMs'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [];
+            };
             readonly rateLimitBucket: {
               columns: {
                 readonly key: {
@@ -5261,6 +5365,10 @@ type ContractBase = Omit<
     readonly projectRelease: {
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'ProjectRelease';
+    };
+    readonly projectSource: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'ProjectSource';
     };
   };
   readonly domain: {
@@ -7373,6 +7481,62 @@ type ContractBase = Omit<
               };
             };
           };
+          readonly ProjectSource: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly orgId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly projectId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly layer: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly sha256: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly sizeBytes: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/float8@1' };
+              };
+              readonly dataB64: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly createdAtMs: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/float8@1' };
+              };
+              readonly expiresAtMs: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/float8@1' };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: {
+              readonly table: 'projectSource';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly orgId: { readonly column: 'orgId' };
+                readonly projectId: { readonly column: 'projectId' };
+                readonly layer: { readonly column: 'layer' };
+                readonly sha256: { readonly column: 'sha256' };
+                readonly sizeBytes: { readonly column: 'sizeBytes' };
+                readonly dataB64: { readonly column: 'dataB64' };
+                readonly createdAtMs: { readonly column: 'createdAtMs' };
+                readonly expiresAtMs: { readonly column: 'expiresAtMs' };
+              };
+            };
+          };
           readonly RateLimitBucket: {
             readonly fields: {
               readonly key: {
@@ -8539,6 +8703,14 @@ type ContractBase = Omit<
           readonly ref: {
             readonly namespace: 'public';
             readonly table: 'projectRelease';
+            readonly column: 'id';
+          };
+          readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };
+        },
+        {
+          readonly ref: {
+            readonly namespace: 'public';
+            readonly table: 'projectSource';
             readonly column: 'id';
           };
           readonly onCreate: { readonly kind: 'generator'; readonly id: 'uuidv4' };

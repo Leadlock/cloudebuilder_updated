@@ -17,6 +17,7 @@ import { azureOpsForAccount } from '@/lib/deploy/project/accountOps';
 import { createTerraformInfraRunner } from '@/lib/deploy/project/infra';
 import { runRelease, type OrchestratorDeps } from '@/lib/deploy/project/orchestrator';
 import type { ReleaseStore } from '@/lib/deploy/project/releaseStore';
+import { PgSourceStore, type SourceStore } from '@/lib/deploy/project/sourceStore';
 
 export const PROJECT_RELEASE_QUEUE = 'project-release';
 
@@ -47,12 +48,13 @@ export async function enqueueReleaseJob(data: ProjectReleaseJobData): Promise<st
 /** Dependencies of a run, replaceable in tests. */
 export interface ReleaseJobDeps {
   store: ReleaseStore;
+  sources?: SourceStore;
   opsFor: typeof azureOpsForAccount;
   infra: OrchestratorDeps['infra'];
   killSwitch: () => boolean;
 }
 
-const defaultDeps = (): ReleaseJobDeps => ({ store: new PgReleaseStore(), opsFor: azureOpsForAccount, infra: createTerraformInfraRunner(), killSwitch: terraformExecutionDisabled });
+const defaultDeps = (): ReleaseJobDeps => ({ store: new PgReleaseStore(), sources: new PgSourceStore(), opsFor: azureOpsForAccount, infra: createTerraformInfraRunner(), killSwitch: terraformExecutionDisabled });
 
 /** Runs inside the worker process. Never throws: what went wrong is on the release. */
 export async function processReleaseJob(data: ProjectReleaseJobData, deps: ReleaseJobDeps = defaultDeps()): Promise<{ status: string; message: string }> {
@@ -69,7 +71,7 @@ export async function processReleaseJob(data: ProjectReleaseJobData, deps: Relea
       await recordTerraformAudit({ ...audit, planId: release.planId, planHash: release.planHash, outcome: 'failed', detail: `release ${release.id}: ${message}` });
       return { status: 'failed', message };
     }
-    const result = await runRelease({ store: deps.store, ops, infra: deps.infra, killSwitch: deps.killSwitch, log: (id, line) => console.info(`[project-release ${id}] ${line}`) }, data.releaseId);
+    const result = await runRelease({ store: deps.store, sources: deps.sources, ops, infra: deps.infra, killSwitch: deps.killSwitch, log: (id, line) => console.info(`[project-release ${id}] ${line}`) }, data.releaseId);
     const outcome = result.status === 'succeeded' ? 'succeeded' : result.status === 'waiting' || result.status === 'cancelled' ? 'allowed' : 'failed';
     await recordTerraformAudit({ ...audit, planId: result.planId, planHash: result.planHash, outcome, detail: `release ${result.id}: ${result.status}${result.error ? `: ${result.error}` : ''}` });
     return { status: result.status, message: result.error ?? result.status };

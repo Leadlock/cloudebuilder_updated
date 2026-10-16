@@ -17,7 +17,7 @@ let routes: Array<[RegExp, (c: Call) => { status?: number; data?: unknown; code?
 
 const stack = (() => { const p = defaultProject(); p.name = 'shop'; for (const l of LAYERS) p.layers[l].enabled = ['backend', 'api'].includes(l); p.layers.backend.config.env = [{ key: 'JWT_SECRET', value: '', secret: true }]; p.deploy.target = 'azure-vm'; return p; })();
 const STEPS = (states: Record<string, string> = {}) => ['infrastructure', 'secrets', 'build', 'publish', 'start', 'verify'].map((name) => ({ name, state: states[name] ?? 'pending', ...(states[`${name}_msg`] ? { message: states[`${name}_msg`] } : {}) }));
-const release = (over: Record<string, unknown> = {}) => ({ id: 'rel-1', project: 'shop', imageTag: 'v1', status: 'planned', steps: STEPS(), error: null, log: [], secrets: ['JWT_SECRET'], planId: 'plan-1', planHash: 'h'.repeat(64), outputs: null, ...over });
+const release = (over: Record<string, unknown> = {}) => ({ ownCode: [], id: 'rel-1', project: 'shop', imageTag: 'v1', status: 'planned', steps: STEPS(), error: null, log: [], secrets: ['JWT_SECRET'], planId: 'plan-1', planHash: 'h'.repeat(64), outputs: null, ...over });
 const PLAN = { release: release(), plan: { planId: 'plan-1', planHash: 'h'.repeat(64), summary: { toAdd: 18, toChange: 0, toDestroy: 0 }, expiresAt: 'later' }, cost: { monthlyUsd: 87.64 }, warnings: ['Azure VM: the "latest" tag is used.'] };
 
 beforeEach(() => {
@@ -222,5 +222,68 @@ describe('watching a release', () => {
       await act(async () => { jest.advanceTimersByTime(10_000); await Promise.resolve(); });
       expect(calls.length).toBe(before);       // it stopped asking once it was over
     } finally { jest.useRealTimers(); }
+  });
+});
+
+describe('your own code', () => {
+  const zipFile = (name = 'api.zip') => new File([new Uint8Array([80, 75, 3, 4])], name, { type: 'application/zip' });
+  let uploads: Array<{ path: string; layer: string; file: File | null }> = [];
+  const upload = async (layer: string, file = zipFile()) => {
+    fireEvent.change(await screen.findByLabelText(layer), { target: { files: [file] } });
+  };
+  beforeEach(() => {
+    uploads = [];
+    const base = (global as unknown as { fetch: jest.Mock }).fetch;
+    (global as unknown as { fetch: unknown }).fetch = jest.fn(async (path: string, init: RequestInit = {}) => {
+      if (path.endsWith('/releases/sources') && init.body instanceof FormData) {
+        uploads.push({ path, layer: String(init.body.get('layer')), file: init.body.get('file') as File });
+        const bad = (init.body.get('file') as File).name === 'bad.zip';
+        return bad
+          ? { ok: false, status: 400, json: async () => ({ ok: false, error: { code: 'BAD_REQUEST', message: 'An entry has a path that is not allowed: "../x"' } }) }
+          : { ok: true, status: 201, json: async () => ({ ok: true, data: { sourceId: 'src-9', layer: init.body instanceof FormData ? init.body.get('layer') : '', files: 12, bytes: 3400, replaced: ['Dockerfile'], skipped: 0 } }) };
+      }
+      return base(path, init);
+    });
+  });
+
+  test('offers an upload for each service that is built, and none for a database or a ready-made image', async () => {
+    mount();
+    expect(await screen.findByLabelText('Backend')).toBeTruthy();
+    expect(screen.getByLabelText('API')).toBeTruthy();
+    expect(screen.queryByLabelText('Frontend')).toBeNull();       // not ticked in this project
+    expect(screen.queryByLabelText('Database')).toBeNull();
+  });
+
+  test('sends the zip as a form with its service, shows what was read, and plans with its id', async () => {
+    routes.unshift([/POST \/api\/projects\/p1\/releases$/, () => ({ status: 201, data: { ...PLAN, release: release({ ownCode: ['api'] }) } })]);
+    mount();
+    await upload('API');
+    await screen.findByText(/api\.zip: 12 files \(Dockerfile from the zip is not used\)/);
+    expect(uploads).toEqual([{ path: '/api/projects/p1/releases/sources', layer: 'api', file: expect.any(File) }]);
+    await waitFor(() => expect((screen.getByLabelText('State: resource group') as HTMLInputElement).value).toBe('rg-state'));
+    fireEvent.click(screen.getByRole('button', { name: 'Plan the deployment' }));
+    await screen.findByTestId('release-plan');
+    expect(calls.find((c) => c.method === 'POST' && c.path === '/api/projects/p1/releases')!.body).toMatchObject({ sources: { api: 'src-9' } });
+    expect(screen.getByTestId('release-plan').textContent).toContain('Built from your code: api.');
+  });
+
+  test('a zip the server refuses shows why and is not used', async () => {
+    mount();
+    await upload('API', zipFile('bad.zip'));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/path that is not allowed/);
+    expect(screen.getByLabelText('API')).toBeTruthy();            // still asking for one
+  });
+
+  test('a zip can be taken back, and then the plan is made without it', async () => {
+    routes.unshift([/POST \/api\/projects\/p1\/releases$/, () => ({ status: 201, data: PLAN })]);
+    mount();
+    await upload('Backend');
+    await screen.findByText(/api\.zip: 12 files/);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(await screen.findByLabelText('Backend')).toBeTruthy();
+    await waitFor(() => expect((screen.getByLabelText('State: resource group') as HTMLInputElement).value).toBe('rg-state'));
+    fireEvent.click(screen.getByRole('button', { name: 'Plan the deployment' }));
+    await screen.findByTestId('release-plan');
+    expect(calls.find((c) => c.method === 'POST' && c.path === '/api/projects/p1/releases')!.body).not.toHaveProperty('sources');
   });
 });

@@ -22,6 +22,9 @@ import type { TerraformStateBackendConfig } from '@/lib/terraform/execution/type
 import { coerceProject, ProjectInputError } from '@/lib/deploy/project/projectInput';
 import { BundleError } from '@/lib/deploy/project/bundle';
 import { planRelease } from '@/lib/deploy/project/infra';
+import { PgSourceStore } from '@/lib/deploy/project/sourceStore';
+import { readZip, ZipError } from '@/lib/deploy/project/zip';
+import type { SourceInput } from '@/lib/deploy/project/bundle';
 import { newRelease } from '@/lib/deploy/project/orchestrator';
 import { PgReleaseStore } from '@/lib/deploy/project/pgReleaseStore';
 import { publicRelease, releaseGate } from '@/lib/deploy/project/routeGate';
@@ -34,6 +37,8 @@ const Body = z.object({
   stateBackend: StateBackendSchema,
   /** The project's settings. Checked and rebuilt from the project's own defaults by coerceProject; secrets never travel here. */
   project: z.unknown(),
+  /** Uploaded code per service built from it: the ids POST .../releases/sources returned. */
+  sources: z.record(z.string(), z.string().min(1).max(100)).refine((r) => Object.keys(r).every((k) => ['frontend', 'backend', 'api'].includes(k)), 'Uploaded code can be given for frontend, backend or api only').optional(),
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -59,16 +64,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return tooManyRequests(rl.retryAfterSeconds);
     }
 
+    // Uploaded code: it must be this project's, for that service, and not expired. Its bytes are read again here with the same checks as at upload.
+    const own: Record<string, SourceInput> = {};
+    const refs: Record<string, { id: string; sha256: string }> = {};
+    for (const [layer, id] of Object.entries(parsed.data.sources ?? {})) {
+      const stored = await new PgSourceStore().get(id);
+      if (!stored || stored.orgId !== orgId || stored.projectId !== projectId || stored.layer !== layer) return badRequest(`The uploaded code for the ${layer} was not found or has expired. Upload it again.`);
+      try { own[layer] = { sha256: stored.sha256, files: readZip(stored.zip).files }; } catch (err) { return badRequest(`The uploaded code for the ${layer} cannot be used: ${err instanceof ZipError ? err.message : 'it could not be read'}`); }
+      refs[layer] = { id, sha256: stored.sha256 };
+    }
+
     const store = new PgReleaseStore();
     try {
       const { bundle, plan } = await planRelease({
-        projectId, orgId, environment, cloudAccountId, stateBackend: stateBackend as TerraformStateBackendConfig, project,
+        projectId, orgId, environment, cloudAccountId, stateBackend: stateBackend as TerraformStateBackendConfig, project, sources: own,
         user: { id: identity.userId, name: 'Cloud Administrator', email: identity.email ?? 'admin@cloudcraft.io', role: identity.role ?? 'admin' },
       });
       const previous = await store.latestSucceeded(projectId, environment);
       const release = newRelease({
         id: randomUUID(), orgId, projectId, environment, cloudAccountId, project, bundle, createdBy: identity.userId,
-        previousReleaseId: previous?.id ?? null, planId: plan.planId, planHash: plan.planHash, now: Date.now(),
+        previousReleaseId: previous?.id ?? null, planId: plan.planId, planHash: plan.planHash, sources: refs, now: Date.now(),
       });
       await store.save(release);
       await recordTerraformAudit({ action: 'release', outcome: 'requested', orgId, projectId, userId: identity.userId, planId: plan.planId, planHash: plan.planHash, detail: `release ${release.id} planned: ${plan.summary.toAdd} to add, ${plan.summary.toChange} to change` });

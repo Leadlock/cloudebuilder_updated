@@ -29,7 +29,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (admin) {
-    if (ready) await admin.query(`DELETE FROM "projectRelease" WHERE "orgId" = $1`, [orgId]);
+    if (ready) { await admin.query(`DELETE FROM "projectRelease" WHERE "orgId" = $1`, [orgId]); await admin.query(`DELETE FROM "projectSource" WHERE "orgId" = $1`, [orgId]).catch(() => undefined); }
     await admin.end();
   }
   const { sharedDb } = await import('@/lib/api/sharedStore');
@@ -135,5 +135,24 @@ describe('a whole release against real Postgres (fake cloud)', () => {
     expect(stored.status).toBe('succeeded');
     expect(JSON.stringify(stored)).not.toContain('jwt-value_1');
     expect((await store.latestSucceeded(projectId, 'production'))!.id).toBe(id);
+  });
+});
+
+describe('uploaded code against real Postgres', () => {
+  maybe('a zip is stored and read back byte for byte, expires, and is pruned', async () => {
+    const { PgSourceStore, sha256Hex } = await import('@/lib/deploy/project/sourceStore');
+    const store = new PgSourceStore();
+    const zip = Buffer.from(Array.from({ length: 5000 }, (_, i) => (i * 7) % 256));
+    const saved = await store.put({ id: `it-${run}-s1`, orgId, projectId, layer: 'api', zip, expiresAtMs: Date.now() + 60_000 });
+    expect(saved.sha256).toBe(sha256Hex(zip));
+    const back = (await store.get(`it-${run}-s1`))!;
+    expect(back.zip.equals(zip)).toBe(true);
+    expect(back).toMatchObject({ orgId, projectId, layer: 'api', sizeBytes: 5000, sha256: sha256Hex(zip) });
+    await store.put({ id: `it-${run}-s2`, orgId, projectId, layer: 'api', zip: Buffer.from('old'), expiresAtMs: Date.now() - 1000 });
+    expect(await store.get(`it-${run}-s2`)).toBeNull();                     // expired: as if it were not there
+    await store.prune();
+    const left = await admin.query(`SELECT "id" FROM "projectSource" WHERE "orgId" = $1`, [orgId]);
+    expect(left.rows.map((r) => r.id)).toEqual([`it-${run}-s1`]);
+    expect(await store.get('nope')).toBeNull();
   });
 });

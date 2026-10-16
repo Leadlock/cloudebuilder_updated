@@ -7,7 +7,7 @@ import { generateKeyPairSync } from 'crypto';
 import { planBundle, runApply } from '@/lib/terraform/execution/TerraformExecutionService';
 import { runTerraform } from '@/lib/terraform/execution/cli';
 import type { PlanRecord, TerraformStateBackendConfig } from '@/lib/terraform/execution/types';
-import { buildAzureVmBundle, type ProjectBundle } from './bundle';
+import { buildAzureVmBundle, type ProjectBundle, type SourceInput } from './bundle';
 import type { InfraRunner } from './orchestrator';
 import type { ReleaseOutputs } from './types';
 import type { StackProject } from '@/lib/engines/containers/stackProject';
@@ -28,11 +28,13 @@ export interface PlanReleaseInput {
   stateBackend: TerraformStateBackendConfig;
   user: { id: string; name: string; email: string; role: string };
   project: StackProject;
+  /** Code the person uploaded for services built from it. */
+  sources?: Record<string, SourceInput>;
 }
 
 /** Generates the project's files on the server and plans their Terraform. */
 export async function planRelease(input: PlanReleaseInput, planner: typeof planBundle = planBundle): Promise<{ bundle: ProjectBundle; plan: PlanRecord }> {
-  const bundle = buildAzureVmBundle(input.project);
+  const bundle = buildAzureVmBundle(input.project, input.sources);
   const plan = await planner({
     projectId: input.projectId, orgId: input.orgId, environment: input.environment, cloudAccountId: input.cloudAccountId, stateBackend: input.stateBackend, user: input.user,
     files: bundle.terraform.filter((f) => f.filename.endsWith('.tf') || f.filename === 'cloud-init.sh' || f.filename === 'compose.deploy.yml'),

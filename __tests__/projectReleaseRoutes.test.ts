@@ -34,7 +34,15 @@ jest.mock('@/lib/deploy/project/pgReleaseStore', () => {
   return { PgReleaseStore: class { get(id: string) { return g.__relStore!.get(id); } save(r: unknown) { return g.__relStore!.save(r); } latestSucceeded(p: string, e: string) { return g.__relStore!.latestSucceeded(p, e); } async list(p: string, e: string) { return [...(g.__relStore as unknown as { rows: Map<string, { projectId: string; environment: string }> }).rows.values()].filter((r) => r.projectId === p && r.environment === e); } } };
 });
 
+jest.mock('@/lib/deploy/project/sourceStore', () => {
+  const actual = jest.requireActual('@/lib/deploy/project/sourceStore');
+  const g = globalThis as unknown as { __srcStore?: InstanceType<typeof actual.InMemorySourceStore> };
+  g.__srcStore ??= new actual.InMemorySourceStore();
+  return { ...actual, PgSourceStore: class { put(x: unknown) { return g.__srcStore!.put(x as never); } get(id: string) { return g.__srcStore!.get(id); } prune() { return g.__srcStore!.prune(); } } };
+});
+
 import { NextRequest } from 'next/server';
+import { POST as sourcePost } from '@/app/api/projects/[id]/releases/sources/route';
 import { GET as listGet, POST as planPost } from '@/app/api/projects/[id]/releases/route';
 import { GET as oneGet } from '@/app/api/projects/[id]/releases/[rid]/route';
 import { POST as runPost } from '@/app/api/projects/[id]/releases/[rid]/run/route';
@@ -47,6 +55,9 @@ import { defaultProject, LAYERS, type StackProject } from '@/lib/engines/contain
 import type { AzureOps } from '@/lib/deploy/project/azureOps';
 import type { Release } from '@/lib/deploy/project/types';
 import { PgReleaseStore } from '@/lib/deploy/project/pgReleaseStore';
+import { PgSourceStore } from '@/lib/deploy/project/sourceStore';
+import { deflateRawSync } from 'zlib';
+import { crc32 } from '@/lib/deploy/project/zip';
 
 let n = 0;
 let projectId = '';
@@ -69,6 +80,25 @@ const fakeOps = (vault: string[] = []): AzureOps & { put: Array<[string, string]
   const have = new Set(vault);
   const put: Array<[string, string]> = [];
   return { put, secretExists: async (_v, name) => have.has(name), putSecret: async (_v, name, value) => { have.add(name); put.push([name, value]); }, acrBuild: async () => undefined, setVmTag: async () => undefined, runShell: async () => '', httpOk: async () => true };
+};
+function zipOf(files: Record<string, string>): Buffer {
+  const parts: Buffer[] = []; const central: Buffer[] = []; let offset = 0;
+  for (const [path, text] of Object.entries(files)) {
+    const data = Buffer.from(text); const comp = deflateRawSync(data); const name = Buffer.from(path);
+    const l = Buffer.alloc(30); l.writeUInt32LE(0x04034b50, 0); l.writeUInt16LE(20, 4); l.writeUInt16LE(8, 8); l.writeUInt32LE(crc32(data), 14); l.writeUInt32LE(comp.length, 18); l.writeUInt32LE(data.length, 22); l.writeUInt16LE(name.length, 26);
+    parts.push(l, name, comp);
+    const c = Buffer.alloc(46); c.writeUInt32LE(0x02014b50, 0); c.writeUInt16LE((3 << 8) | 20, 4); c.writeUInt16LE(20, 6); c.writeUInt16LE(8, 10); c.writeUInt32LE(crc32(data), 16); c.writeUInt32LE(comp.length, 20); c.writeUInt32LE(data.length, 24); c.writeUInt16LE(name.length, 28); c.writeUInt32LE((0o100644 << 16) >>> 0, 38); c.writeUInt32LE(offset, 42);
+    central.push(c, name); offset += 30 + name.length + comp.length;
+  }
+  const cd = Buffer.concat(central); const e = Buffer.alloc(22);
+  e.writeUInt32LE(0x06054b50, 0); e.writeUInt16LE(central.length / 2, 8); e.writeUInt16LE(central.length / 2, 10); e.writeUInt32LE(cd.length, 12); e.writeUInt32LE(offset, 16);
+  return Buffer.concat([...parts, cd, e]);
+}
+const form = (layer: string, zip: Buffer | null, name = 'code.zip') => {
+  const fd = new FormData();
+  fd.set('layer', layer);
+  if (zip) fd.set('file', new File([new Uint8Array(zip)], name, { type: 'application/zip' }));
+  return new NextRequest(`http://localhost/api/projects/${projectId}/releases/sources`, { method: 'POST', body: fd });
 };
 const OUT = { resourceGroup: 'rg-shop', vmName: 'vm-shop', acrName: 'acrshop', vaultName: 'kvshop', url: 'http://203.0.113.9:8080/' };
 
@@ -96,6 +126,7 @@ describe('the gates in front of every release route', () => {
     ['run', () => runPost(req(`/api/projects/${projectId}/releases/x/run`, {}), ctx('x'))],
     ['secrets', () => secretsPost(req(`/api/projects/${projectId}/releases/x/secrets`, { values: { A: 'b' } }), ctx('x'))],
     ['cancel', () => cancelPost(req(`/api/projects/${projectId}/releases/x/cancel`, {}), ctx('x'))],
+    ['source upload', () => sourcePost(form('api', zipOf({ 'a.js': 'x' })), ctx())],
   ];
 
   test.each(calls)('%s: switched off by default', async (_n, call) => {
@@ -400,5 +431,90 @@ describe('POST cancel', () => {
     expect((await cancelPost(req(`/api/projects/${projectId}/releases/${r.id}/cancel`, {}), ctx(r.id))).status).toBe(409);
     const other = await seed({ orgId: 'org-2' }, `x-${n}`);
     expect((await cancelPost(req(`/api/projects/${projectId}/releases/${other.id}/cancel`, {}), ctx(other.id))).status).toBe(404);
+  });
+});
+
+describe('POST sources (uploading the code of a service)', () => {
+  const up = (layer: string, zip: Buffer | null, name?: string) => sourcePost(form(layer, zip, name), ctx());
+
+  test('reads the zip, keeps it for this project and service, and says what it found, without returning it', async () => {
+    const res = await up('api', zipOf({ 'app/package.json': '{}', 'app/server.js': 'x', 'app/Dockerfile': 'FROM evil', 'app/.DS_Store': 'j' }));
+    expect(res.status).toBe(201);
+    const d = (await json(res)).data!;
+    expect(d).toMatchObject({ layer: 'api', files: 3, skipped: 1, replaced: ['Dockerfile'] });
+    expect(d['sha256']).toMatch(/^[a-f0-9]{64}$/);
+    const stored = (await new PgSourceStore().get(d['sourceId']))!;
+    expect(stored).toMatchObject({ orgId: 'org-1', projectId, layer: 'api', sha256: d['sha256'] });
+    expect(JSON.stringify(d)).not.toContain('FROM evil');
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'allowed', detail: expect.stringContaining('uploaded code for api: 3 files') }));
+  });
+
+  test.each([['a layer that is not buildable', 'database'], ['no layer', '']])('%s is refused', async (_n, layer) => {
+    expect((await up(layer, zipOf({ 'a.js': 'x' }))).status).toBe(400);
+  });
+  test('no file is refused', async () => { expect((await up('api', null)).status).toBe(400); });
+  test('something that is not a zip, or an unsafe zip, is refused with the reason, audited, and not kept', async () => {
+    expect((await up('api', Buffer.from('not a zip'))).status).toBe(400);
+    const res = await up('api', zipOf({ '../evil.sh': 'x' }));
+    expect(res.status).toBe(400);
+    expect((await json(res)).error!.message).toMatch(/path that is not allowed/);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'blocked', detail: expect.stringContaining('refused') }));
+  });
+  test('a zip over the size limit is refused before it is read', async () => {
+    const res = await up('api', Buffer.alloc(5 * 1024 * 1024 + 1, 1));
+    expect(res.status).toBe(413);
+  });
+  test('uploads are limited per user', async () => {
+    mockRate.mockResolvedValue({ allowed: false, retryAfterSeconds: 30 });
+    expect((await up('api', zipOf({ 'a.js': 'x' }))).status).toBe(429);
+  });
+});
+
+describe('planning with uploaded code', () => {
+  const plan = (sources: Record<string, string>) => planPost(req(`/api/projects/${projectId}/releases`, { cloudAccountId: 'acct-1', stateBackend: BACKEND, project: project(), sources }), ctx());
+  const uploaded = async (layer = 'api', over: Record<string, unknown> = {}) => {
+    const { randomUUID } = await import('crypto');
+    const id = randomUUID();
+    await new PgSourceStore().put({ id, orgId: 'org-1', projectId, layer, zip: zipOf({ 'server.js': 'mine' }), expiresAtMs: Date.now() + 60_000, ...over });
+    return id;
+  };
+  const planned = () => mockPlanRelease.mockImplementation(async (i: { project: StackProject; sources: Record<string, never> }) => ({ bundle: buildAzureVmBundle(i.project, i.sources), plan: { planId: PLAN.planId, planHash: PLAN.planHash, expiresAt: 'later', summary: { toAdd: 9, toChange: 0, toDestroy: 0, resourceChanges: [] } } }));
+
+  test('the release records which code it was approved for, and the plan is made with it', async () => {
+    planned();
+    const id = await uploaded();
+    const res = await plan({ api: id });
+    expect(res.status).toBe(201);
+    const b = (await json(res)).data!;
+    expect(b['release'].ownCode).toEqual(['api']);
+    const saved = (await store().get(b['release']['id']))!;
+    expect(saved.sources['api']).toMatchObject({ id, sha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(Object.keys(mockPlanRelease.mock.calls[0]![0].sources)).toEqual(['api']);
+    // The hash of what is approved is not the hash without the code.
+    expect(saved.bundleHash).not.toBe(buildAzureVmBundle(project()).bundleHash);
+  });
+
+  test.each([
+    ['code that does not exist', async () => 'nope'],
+    ['code uploaded for another service', async () => uploaded('backend')],
+    ['code of another project', async () => uploaded('api', { projectId: 'someone-elses' })],
+    ['code of another organization', async () => uploaded('api', { orgId: 'org-2' })],
+    ['code that has expired', async () => uploaded('api', { expiresAtMs: Date.now() - 1 })],
+  ])('%s is refused and nothing is planned', async (_n, make) => {
+    planned();
+    const res = await plan({ api: await make() });
+    expect(res.status).toBe(400);
+    expect((await json(res)).error!.message).toMatch(/not found or has expired/);
+    expect(mockPlanRelease).not.toHaveBeenCalled();
+  });
+
+  test('a service that is not built from source cannot have uploaded code', async () => {
+    mockPlanRelease.mockRejectedValue(new (jest.requireActual('@/lib/deploy/project/bundle').BundleError)(['The frontend is not built from source, so it cannot have uploaded code.']));
+    const res = await plan({ frontend: await uploaded('frontend') });
+    expect(res.status).toBe(400);
+  });
+
+  test('only the three buildable services can be named', async () => {
+    expect((await plan({ database: 'x' })).status).toBe(400);
   });
 });

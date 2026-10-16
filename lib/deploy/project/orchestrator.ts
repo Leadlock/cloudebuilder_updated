@@ -13,10 +13,12 @@
  * leave the site down. A failure earlier stops and says which step; nothing created is removed automatically.
  * Nothing here handles a credential or logs a secret value.
  */
-import { buildAzureVmBundle, sourceArchive, type ProjectBundle } from './bundle';
+import { buildAzureVmBundle, sourceArchive, type ProjectBundle, type SourceInput } from './bundle';
 import type { AzureOps } from './azureOps';
 import { vaultName } from './azureOps';
 import type { ReleaseStore } from './releaseStore';
+import { sha256Hex, type SourceStore } from './sourceStore';
+import { readZip, ZipError } from './zip';
 import { STEP_ORDER, newSteps, type Release, type ReleaseOutputs, type StepName, type StepRecord } from './types';
 import type { StackProject } from '@/lib/engines/containers/stackProject';
 
@@ -29,6 +31,8 @@ export interface OrchestratorDeps {
   store: ReleaseStore;
   ops: AzureOps;
   infra: InfraRunner;
+  /** Where uploaded code is kept. Needed for a release that builds a service from the person's own code. */
+  sources?: SourceStore;
   /** True when the operator has switched Terraform execution off: honoured between steps, also for a release that was already queued. */
   killSwitch?: () => boolean;
   now?: () => number;
@@ -53,8 +57,20 @@ const SECRET_KEY = /^[A-Z][A-Z0-9_]{0,63}$/;
 
 const clean = (s: string) => s.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' ').slice(0, 300);
 
-function bundleOf(release: Release): ProjectBundle {
-  const bundle = buildAzureVmBundle(release.settings as StackProject);
+async function bundleOf(release: Release, sources?: SourceStore): Promise<ProjectBundle> {
+  const own: Record<string, SourceInput> = {};
+  for (const [layer, ref] of Object.entries(release.sources ?? {})) {
+    if (!sources) throw new ReleaseError('The uploaded code of this release cannot be read here.', 500);
+    const stored = await sources.get(ref.id);
+    if (!stored) throw new ReleaseError(`The uploaded code for the ${layer} has expired. Upload it again and plan the release again.`, 410);
+    // It must be the file that was approved, for this organization, project and service.
+    if (stored.orgId !== release.orgId || stored.projectId !== release.projectId || stored.layer !== layer || stored.sha256 !== ref.sha256 || sha256Hex(stored.zip) !== ref.sha256) {
+      throw new ReleaseError(`The uploaded code for the ${layer} is not the one that was approved. Plan the release again.`, 409);
+    }
+    try { own[layer] = { sha256: ref.sha256, files: readZip(stored.zip).files }; }
+    catch (err) { throw new ReleaseError(`The uploaded code for the ${layer} cannot be used: ${err instanceof ZipError ? err.message : 'it could not be read'}`); }
+  }
+  const bundle = buildAzureVmBundle(release.settings as StackProject, own);
   // What is run is what was approved: the files are generated again here and must hash to what the approval was for.
   if (bundle.bundleHash !== release.bundleHash) throw new ReleaseError('The deployment files no longer match what was approved. Plan the release again.', 409);
   return bundle;
@@ -74,13 +90,13 @@ export function writeComposeScript(project: string, compose: string): string {
 
 export function newRelease(input: {
   id: string; orgId: string; projectId: string; environment: string; cloudAccountId: string; project: StackProject; bundle: ProjectBundle; createdBy: string;
-  previousReleaseId: string | null; planId?: string | null; planHash?: string | null; now: number;
+  previousReleaseId: string | null; planId?: string | null; planHash?: string | null; sources?: Record<string, { id: string; sha256: string }>; now: number;
 }): Release {
   return {
     id: input.id, orgId: input.orgId, projectId: input.projectId, environment: input.environment, cloudAccountId: input.cloudAccountId, target: 'azure-vm',
     bundleHash: input.bundle.bundleHash, planId: input.planId ?? null, planHash: input.planHash ?? null,
     project: input.bundle.project, settings: structuredClone(input.project), imageTag: input.bundle.imageTag, compose: input.bundle.compose,
-    built: input.bundle.built, secrets: input.bundle.secrets, status: 'planned', steps: newSteps(input.bundle.built.length > 0), outputs: null,
+    built: input.bundle.built, secrets: input.bundle.secrets, sources: input.sources ?? {}, status: 'planned', steps: newSteps(input.bundle.built.length > 0), outputs: null,
     previousReleaseId: input.previousReleaseId, createdBy: input.createdBy, createdAt: input.now, updatedAt: input.now, error: null, log: [],
   };
 }
@@ -130,7 +146,7 @@ export async function provideSecrets(deps: Pick<OrchestratorDeps, 'store' | 'ops
   return { missing: await missingSecrets(r, deps.ops) };
 }
 
-const STEP_RUNNERS: Record<StepName, (release: Release, deps: Required<Pick<OrchestratorDeps, 'ops' | 'infra' | 'verifyWaitMs' | 'verifyEveryMs' | 'sleep'>> & { say: (l: string) => void; cancelled: () => Promise<boolean> }) => Promise<Outcome>> = {
+const STEP_RUNNERS: Record<StepName, (release: Release, deps: Required<Pick<OrchestratorDeps, 'ops' | 'infra' | 'verifyWaitMs' | 'verifyEveryMs' | 'sleep'>> & { sources?: SourceStore; say: (l: string) => void; cancelled: () => Promise<boolean> }) => Promise<Outcome>> = {
   async infrastructure(release, d) {
     release.outputs = await d.infra.apply(release, d.say);
     return { state: 'done', message: `Created ${release.outputs.resourceGroup}` };
@@ -145,7 +161,7 @@ const STEP_RUNNERS: Record<StepName, (release: Release, deps: Required<Pick<Orch
 
   async build(release, d) {
     const out = release.outputs!;
-    const bundle = bundleOf(release);
+    const bundle = await bundleOf(release, d.sources);
     for (const layer of release.built) {
       if (await d.cancelled()) return { state: 'done', message: 'Cancelled' };       // the run notices it right after this step
       d.say(`Building ${layer}`);
@@ -235,7 +251,7 @@ export async function runRelease(deps: OrchestratorDeps, releaseId: string): Pro
     say(`${name}: started`);
     try {
       const outcome = await STEP_RUNNERS[name](release, {
-        ops: deps.ops, infra: deps.infra, sleep, say, cancelled: async () => (await deps.store.get(releaseId))?.status === 'cancelled', verifyWaitMs: deps.verifyWaitMs ?? 10 * 60_000, verifyEveryMs: deps.verifyEveryMs ?? 10_000,
+        ops: deps.ops, infra: deps.infra, sources: deps.sources, sleep, say, cancelled: async () => (await deps.store.get(releaseId))?.status === 'cancelled', verifyWaitMs: deps.verifyWaitMs ?? 10 * 60_000, verifyEveryMs: deps.verifyEveryMs ?? 10_000,
       });
       rec.message = outcome.message ? clean(outcome.message) : undefined;
       // A cancel that arrived while the step ran must not be overwritten by this record.

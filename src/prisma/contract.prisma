@@ -764,3 +764,19 @@ model ProjectRelease {
   @@index([projectId, environment, updatedAtMs])
   @@index([orgId, status])
 }
+
+// The zip of a service's own code, uploaded to be built in a project release (lib/deploy/project/sourceStore.ts). Kept for a few days, then removed;
+// `dataB64` is the zip as the person uploaded it, read again with the same safety checks when it is used.
+model ProjectSource {
+  id          String @id @default(uuid())
+  orgId       String
+  projectId   String
+  layer       String
+  sha256      String
+  sizeBytes   Float
+  dataB64     String
+  createdAtMs Float
+  expiresAtMs Float
+
+  @@index([projectId, expiresAtMs])
+}

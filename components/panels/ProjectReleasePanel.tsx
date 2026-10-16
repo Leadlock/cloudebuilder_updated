@@ -10,12 +10,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { AlertTriangle, CheckCircle2, Loader2, XCircle, CircleDashed, Rocket } from 'lucide-react';
-import type { StackProject } from '@/lib/engines/containers/stackProject';
+import { LAYERS, LAYER_LABEL, type StackProject } from '@/lib/engines/containers/stackProject';
 
 interface Account { id: string; name: string; provider: string; identity?: { authMethod?: string } }
 interface Step { name: string; state: 'pending' | 'running' | 'done' | 'failed' | 'waiting' | 'skipped' | 'rolled_back'; message?: string }
 interface ReleaseView {
-  id: string; project: string; imageTag: string; status: string; steps: Step[]; error: string | null; log: string[]; secrets: string[]; planId: string | null; planHash: string | null;
+  ownCode: string[]; id: string; project: string; imageTag: string; status: string; steps: Step[]; error: string | null; log: string[]; secrets: string[]; planId: string | null; planHash: string | null;
   outputs: { url: string; resourceGroup: string; vmName: string } | null;
 }
 interface PlanView { planId: string; planHash: string; summary: { toAdd: number; toChange: number; toDestroy: number }; expiresAt: string }
@@ -54,6 +54,9 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
   const [code, setCode] = useState('');
   const [needsCode, setNeedsCode] = useState(false);
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
+  /** The zips of the person's own code, by service: what the server returned for each upload (never the file). */
+  const [sources, setSources] = useState<Record<string, { id: string; name: string; files: number; bytes: number; replaced: string[] }>>({});
+  const builtLayers = LAYERS.filter((l) => l !== 'database' && stack.layers[l].enabled && stack.layers[l].config.image === '');
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const base = projectId ? `/api/projects/${projectId}/releases` : '';
 
@@ -101,10 +104,25 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
 
   const fail = (m: string) => { setError(m); setBusy(false); };
 
+  async function upload(layer: string, file: File | undefined) {
+    if (!file) return;
+    setError(null); setBusy(true);
+    const form = new FormData();
+    form.set('layer', layer); form.set('file', file);
+    try {
+      const res = await fetch(`${base}/sources`, { method: 'POST', credentials: 'include', body: form });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) return fail(body?.error?.message ?? 'Could not upload the zip');
+      setSources((cur) => ({ ...cur, [layer]: { id: body.data.sourceId, name: file.name, files: body.data.files, bytes: body.data.bytes, replaced: body.data.replaced ?? [] } }));
+      setBusy(false);
+    } catch { fail('Could not reach the server'); }
+  }
+
   async function makePlan() {
     setBusy(true); setError(null); setPlan(null);
+    const useSources = Object.fromEntries(Object.entries(sources).filter(([layer]) => (builtLayers as string[]).includes(layer)).map(([layer, s]) => [layer, s.id]));
     const r = await api<{ release: ReleaseView; plan: PlanView; cost: { monthlyUsd: number } | null; warnings: string[] }>(base, {
-      method: 'POST', body: JSON.stringify({ environment, cloudAccountId: accountId, stateBackend: { provider: 'azure', ...backend }, project: stack }),
+      method: 'POST', body: JSON.stringify({ environment, cloudAccountId: accountId, stateBackend: { provider: 'azure', ...backend }, project: stack, ...(Object.keys(useSources).length > 0 ? { sources: useSources } : {}) }),
     });
     if (!r.ok) { if (r.status === 503) setOff(r.message); return fail(r.message); }
     setPlan(r.data); setRelease(null); setBusy(false);
@@ -168,6 +186,23 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
           <div><label className={label} htmlFor="rel-sa">State: storage account</label><input id="rel-sa" className={input} value={backend.storageAccountName} onChange={(e) => setBackend({ ...backend, storageAccountName: e.target.value })} /></div>
           <div><label className={label} htmlFor="rel-ct">State: container</label><input id="rel-ct" className={input} value={backend.containerName} onChange={(e) => setBackend({ ...backend, containerName: e.target.value })} /></div>
           <div><label className={label} htmlFor="rel-key">State: file name</label><input id="rel-key" className={input} value={backend.key} onChange={(e) => setBackend({ ...backend, key: e.target.value })} /></div>
+          <div className="col-span-2 space-y-2" data-testid="own-code">
+            <p className={label}>Your code (optional)</p>
+            <p className={clsx('text-[11px]', muted)}>Without it, each service is built from the generated sample app. Upload a zip (up to 5 MB) of a service&apos;s code to build that instead. CloudCraft&apos;s own Dockerfile is used, not one from the zip.</p>
+            {builtLayers.map((layer) => (
+              <div key={layer} className="flex flex-wrap items-center gap-2 text-xs">
+                <label className="font-medium w-20" htmlFor={`code-${layer}`}>{LAYER_LABEL[layer]}</label>
+                {sources[layer] ? (
+                  <>
+                    <span>{sources[layer]!.name}: {sources[layer]!.files} files{sources[layer]!.replaced.length ? ` (${sources[layer]!.replaced.join(', ')} from the zip is not used)` : ''}</span>
+                    <button type="button" className="text-rose-500" onClick={() => setSources(({ [layer]: _gone, ...rest }) => rest)}>Remove</button>
+                  </>
+                ) : (
+                  <input id={`code-${layer}`} type="file" accept=".zip,application/zip" disabled={busy} onChange={(e) => { void upload(layer, e.target.files?.[0]); e.target.value = ''; }} />
+                )}
+              </div>
+            ))}
+          </div>
           <p className={clsx('col-span-2 text-[11px]', muted)}>Terraform keeps a record of what it created in an Azure storage container you own. The Deploy tab can create one. This project uses its own file in it.</p>
           <div className="col-span-2">
             <button type="button" disabled={busy || !accountId || !backend.resourceGroupName || !backend.storageAccountName} onClick={() => void makePlan()}
@@ -184,6 +219,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
         <div className="space-y-3" data-testid="release-plan">
           <div className={clsx('rounded-lg border px-3 py-2 text-xs', isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900 border-slate-700')}>
             <p className="font-semibold">{plan.plan.summary.toAdd} to create, {plan.plan.summary.toChange} to change, 0 to destroy{plan.cost ? ` · about $${plan.cost.monthlyUsd.toFixed(2)} a month` : ''}</p>
+            {(plan.release.ownCode ?? []).length > 0 && <p className={muted}>Built from your code: {plan.release.ownCode.join(', ')}.</p>}
             <p className={muted}>Then: store the secrets{plan.release.secrets.length ? ` (${plan.release.secrets.join(', ')})` : ' (none are needed)'}, build the images, put the release on the VM, start it and check the address answers.</p>
           </div>
           {plan.warnings.length > 0 && <ul className={clsx('space-y-1 rounded-lg border px-3 py-2 text-xs', isLight ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-amber-500/10 border-amber-500/30 text-amber-200')}>{plan.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}

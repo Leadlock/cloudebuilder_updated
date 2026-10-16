@@ -57,6 +57,8 @@ export interface Release {
   built: string[];
   /** Every secret name the services read (never values). */
   secrets: string[];
+  /** Services built from the person's own code (an uploaded zip) instead of the generated sample: the stored source and the SHA-256 of the zip the approval covers. */
+  sources: Record<string, { id: string; sha256: string }>;
   status: ReleaseStatus;
   steps: StepRecord[];
   outputs: ReleaseOutputs | null;

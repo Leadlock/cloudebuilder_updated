@@ -40,7 +40,7 @@ export function publicRelease(r: Release) {
   return {
     id: r.id, project: r.project, environment: r.environment, target: r.target, imageTag: r.imageTag, status: r.status, steps: r.steps,
     outputs: r.outputs ? { url: r.outputs.url, resourceGroup: r.outputs.resourceGroup, vmName: r.outputs.vmName } : null,
-    error: r.error, log: r.log, secrets: r.secrets, built: r.built, bundleHash: r.bundleHash, planId: r.planId, planHash: r.planHash,
+    error: r.error, log: r.log, secrets: r.secrets, built: r.built, ownCode: Object.keys(r.sources ?? {}), bundleHash: r.bundleHash, planId: r.planId, planHash: r.planHash,
     previousReleaseId: r.previousReleaseId, createdAt: r.createdAt, updatedAt: r.updatedAt,
   };
 }

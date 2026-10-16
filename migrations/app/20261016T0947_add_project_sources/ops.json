@@ -1,0 +1,80 @@
+[
+  {
+    "id": "table.projectSource",
+    "label": "Create table \"projectSource\"",
+    "summary": "Creates table \"projectSource\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "projectSource"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"projectSource\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"projectSource\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"projectSource\"",
+        "sql": "CREATE TABLE \"public\".\"projectSource\" (\n  \"createdAtMs\" float8 NOT NULL,\n  \"dataB64\" text NOT NULL,\n  \"expiresAtMs\" float8 NOT NULL,\n  \"id\" text NOT NULL,\n  \"layer\" text NOT NULL,\n  \"orgId\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"sha256\" text NOT NULL,\n  \"sizeBytes\" float8 NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"projectSource\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"projectSource\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.projectSource.projectSource_projectId_expiresAtMs_idx_981fcd13",
+    "label": "Create index \"projectSource_projectId_expiresAtMs_idx_981fcd13\" on \"projectSource\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "projectSource_projectId_expiresAtMs_idx_981fcd13",
+        "table": "projectSource"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"projectSource_projectId_expiresAtMs_idx_981fcd13\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"projectSource_projectId_expiresAtMs_idx_981fcd13\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"projectSource_projectId_expiresAtMs_idx_981fcd13\"",
+        "sql": "CREATE INDEX \"projectSource_projectId_expiresAtMs_idx_981fcd13\" ON \"public\".\"projectSource\" (\"projectId\", \"expiresAtMs\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"projectSource_projectId_expiresAtMs_idx_981fcd13\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"projectSource_projectId_expiresAtMs_idx_981fcd13\""
+        ]
+      }
+    ]
+  }
+]

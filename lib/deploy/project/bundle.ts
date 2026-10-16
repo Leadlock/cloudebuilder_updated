@@ -6,7 +6,14 @@ import { createHash } from 'crypto';
 import { generateProjectFiles, enabledLayers, projectLayout, type StackProject } from '@/lib/engines/containers/stackProject';
 import type { GeneratedFile } from '@/lib/engines/containers/dockerTemplates';
 import { buildTar, type TarFile } from './tar';
+import type { ZipFile } from './zip';
 import type { ReleaseTarget } from './types';
+
+/** The code a person uploaded for a service, as read from their zip. */
+export interface SourceInput { sha256: string; files: ZipFile[] }
+
+/** What the generated folder of a service keeps when the person's own code is built instead: the Dockerfile and the settings around it are the hardened ones CloudCraft wrote. */
+export const KEPT_FROM_GENERATED = new Set(['Dockerfile', '.dockerignore', 'nginx.conf']);
 
 export interface ProjectBundle {
   target: ReleaseTarget;
@@ -20,6 +27,8 @@ export interface ProjectBundle {
   secrets: string[];
   /** The public service's port and health path on the VM (for the health check). */
   entry: { service: string; port: number; path: string };
+  /** The services built from the person's own code, by service. */
+  sources: Record<string, SourceInput>;
   bundleHash: string;
   warnings: string[];
   cost: { monthlyUsd: number } | null;
@@ -38,7 +47,7 @@ export function hashBundle(target: string, imageTag: string, files: Array<{ path
 }
 
 /** Builds the bundle for an Azure VM deployment. Throws BundleError with the reasons when the project cannot be deployed. */
-export function buildAzureVmBundle(project: StackProject): ProjectBundle {
+export function buildAzureVmBundle(project: StackProject, sources: Record<string, SourceInput> = {}): ProjectBundle {
   if (project.deploy.target !== 'azure-vm') throw new BundleError(['The project is not set to deploy to an Azure VM.']);
   if (enabledLayers(project).length < 2) throw new BundleError(['Deploying from CloudCraft needs a project of two or more services; one service has its own deployment.']);
   const r = generateProjectFiles(project);
@@ -50,6 +59,7 @@ export function buildAzureVmBundle(project: StackProject): ProjectBundle {
   const secrets = [...new Set(enabledLayers(project).flatMap((l) => project.layers[l].config.env.filter((v) => v.secret).map((v) => v.key)))];
   const entryLayer = enabledLayers(project).includes('frontend') ? 'frontend' : enabledLayers(project).includes('api') ? 'api' : 'backend';
   const entryPort = projectLayout(project).hostPort[entryLayer] ?? project.layers[entryLayer].config.port;
+  for (const layer of Object.keys(sources)) if (!built.includes(layer as never)) throw new BundleError([`The ${layer} is not built from source, so it cannot have uploaded code.`]);
   const imageTag = project.deploy.azvm.imageTag;
   return {
     target: 'azure-vm',
@@ -61,17 +71,24 @@ export function buildAzureVmBundle(project: StackProject): ProjectBundle {
     built,
     secrets,
     entry: { service: entryLayer, port: entryPort, path: project.layers[entryLayer].config.healthPath || '/' },
-    bundleHash: hashBundle('azure-vm', imageTag, r.files),
+    sources,
+    // The hash covers the uploaded code too: a different zip is a different release.
+    bundleHash: hashBundle('azure-vm', imageTag, [...r.files, ...Object.entries(sources).map(([layer, s]) => ({ path: `@source/${layer}`, content: s.sha256 }))]),
     warnings: r.warnings,
     cost: r.cost ? { monthlyUsd: r.cost.monthlyUsd } : null,
   };
 }
 
-/** The source of one built service as an archive for a registry build: its folder's files, relative to that folder. */
+/**
+ * The source of one built service as an archive for a registry build: the generated folder, or, when the person uploaded their code, that code with
+ * the generated Dockerfile (and .dockerignore and nginx.conf) in place of any of the same name in the zip.
+ */
 export function sourceArchive(bundle: ProjectBundle, layer: string): Buffer {
   const prefix = `${layer}/`;
-  const files: TarFile[] = bundle.files.filter((f) => f.path.startsWith(prefix)).map((f) => ({ path: f.path.slice(prefix.length), content: f.content }));
-  if (!files.some((f) => f.path === 'Dockerfile')) throw new BundleError([`The ${layer} has no Dockerfile to build.`]);
-  return buildTar(files);
+  const generated: TarFile[] = bundle.files.filter((f) => f.path.startsWith(prefix)).map((f) => ({ path: f.path.slice(prefix.length), content: f.content }));
+  if (!generated.some((f) => f.path === 'Dockerfile')) throw new BundleError([`The ${layer} has no Dockerfile to build.`]);
+  const own = bundle.sources[layer];
+  if (!own) return buildTar(generated);
+  const kept = generated.filter((f) => KEPT_FROM_GENERATED.has(f.path));
+  return buildTar([...kept, ...own.files.filter((f) => !KEPT_FROM_GENERATED.has(f.path)).map((f) => ({ path: f.path, content: f.content }))]);
 }
-

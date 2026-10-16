@@ -108,6 +108,10 @@
       "model": "ProjectRelease",
       "namespace": "public"
     },
+    "projectSource": {
+      "model": "ProjectSource",
+      "namespace": "public"
+    },
     "rateLimitBucket": {
       "model": "RateLimitBucket",
       "namespace": "public"
@@ -3625,6 +3629,107 @@
               },
               "namespaceId": "public",
               "table": "projectRelease"
+            }
+          },
+          "ProjectSource": {
+            "fields": {
+              "createdAtMs": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/float8@1",
+                  "kind": "scalar"
+                }
+              },
+              "dataB64": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "expiresAtMs": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/float8@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "layer": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "orgId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "projectId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "sha256": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "sizeBytes": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/float8@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "fields": {
+                "createdAtMs": {
+                  "column": "createdAtMs"
+                },
+                "dataB64": {
+                  "column": "dataB64"
+                },
+                "expiresAtMs": {
+                  "column": "expiresAtMs"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "layer": {
+                  "column": "layer"
+                },
+                "orgId": {
+                  "column": "orgId"
+                },
+                "projectId": {
+                  "column": "projectId"
+                },
+                "sha256": {
+                  "column": "sha256"
+                },
+                "sizeBytes": {
+                  "column": "sizeBytes"
+                }
+              },
+              "namespaceId": "public",
+              "table": "projectSource"
             }
           },
           "RateLimitBucket": {
@@ -7745,6 +7850,73 @@
               },
               "uniques": []
             },
+            "projectSource": {
+              "columns": {
+                "createdAtMs": {
+                  "codecId": "pg/float8@1",
+                  "nativeType": "float8",
+                  "nullable": false
+                },
+                "dataB64": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "expiresAtMs": {
+                  "codecId": "pg/float8@1",
+                  "nativeType": "float8",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "layer": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "orgId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "projectId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "sha256": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "sizeBytes": {
+                  "codecId": "pg/float8@1",
+                  "nativeType": "float8",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [],
+              "indexes": [
+                {
+                  "columns": [
+                    "projectId",
+                    "expiresAtMs"
+                  ],
+                  "name": "projectSource_projectId_expiresAtMs_idx_981fcd13",
+                  "prefix": "projectSource_projectId_expiresAtMs_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
             "rateLimitBucket": {
               "columns": {
                 "count": {
@@ -8961,10 +9133,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "7026e520b55815ed9b2dd462a902005bfc4ec6e2f94db01e5a69a17ebeac2be9"
+    "storageHash": "5d5e21b651aa807330e6db3599f64737318a18eedcf3607abd46a30c059bd72e"
   },
   "execution": {
-    "executionHash": "4b098096733368d0c06cbbe6a54a1a8a21364144dcfaaabaf5be777b36dd23cd",
+    "executionHash": "14edecb9b1ec2439249159275776ee7bea16746ed17fedbf98c8c8211fdfb2c3",
     "mutations": {
       "defaults": [
         {
@@ -9240,6 +9412,17 @@
             "column": "id",
             "namespace": "public",
             "table": "projectRelease"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "projectSource"
           }
         },
         {
