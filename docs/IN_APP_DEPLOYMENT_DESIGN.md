@@ -163,11 +163,18 @@ Phase 0 is not optional: the generated Terraform and start scripts have never ru
 - Security: zip bomb, zip-slip, symlink, oversized upload, hostile names; Git host allow-list and SSRF cases; log scrubbing; restricted-features and role gates on every new route.
 - Real (opt-in, behind an environment variable and a test subscription): the Phase 1 deployment, then destroy, checking the resource group is gone.
 
-## 11. Open questions for you
+## 11. Decisions (taken 2026-10-16)
 
-1. **Source in v1:** samples plus zip upload (recommended), or wait for Git?
-2. **AWS builds:** CodeBuild in the customer's account (recommended), or require them to push images themselves?
-3. **Who can deploy:** only `ajinkya@neozaar.com` as now, or a second approver for production environments (`required` mode)?
-4. **Environments:** one deployment per project, or per project environment (production, staging) as the Deploy tab does?
-5. **Cost guard:** a hard monthly cap per organisation that blocks a plan above it?
-6. **Worker:** reuse the apply worker process with a second queue (recommended), or a separate process for release steps?
+1. **Source in v1:** the generated sample apps plus zip upload. Git comes in phase 3.
+2. **AWS builds:** CodeBuild in the customer's account (phase 2).
+3. **Who can deploy:** only the restricted-features list (today `ajinkya@neozaar.com`), with the existing approval mode (password confirmation by default). Nothing new to configure.
+4. **Environments:** one deployment per project **environment**, as the Deploy tab does (the state key, the release record and the approval all carry the environment).
+5. **Cost cap:** none in v1. The estimate is shown and must be acknowledged before approval. A cap can be added later without changing the flow.
+6. **Worker:** the existing apply worker process, with a second queue `project-release`.
+
+## 12. Refinements made while starting the build
+
+- **Secrets come after the infrastructure, not at plan time.** The vault does not exist before Terraform creates it, so the release is a state machine that *pauses* at the `secrets` step ("waiting for secrets"), exactly where `deploy.sh` asks. The person enters the values in a write-only form; the API writes each one straight to the vault and the job is resumed. CloudCraft still never stores a value (no encrypted holding row, no queue payload).
+- **Azure calls use the cloud's REST APIs with `@azure/identity` tokens**, not new SDK packages (the registry-build and Key Vault data-plane SDKs are not dependencies yet). A small `AzureOps` interface wraps them, so every step is tested with a fake and the real implementation is one file.
+- **The release is behind a switch.** `CLOUDCRAFT_PROJECT_RELEASES=1` turns it on; it is off by default until phase 0 (a real test deployment from the terminal) has been done, because none of the generated Terraform or start scripts has run on a real cloud yet.
+- **Release records keep the compose file and tag of every release**, so a rollback needs no rebuild and no plan.
