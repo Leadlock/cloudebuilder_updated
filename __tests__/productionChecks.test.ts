@@ -11,12 +11,16 @@ const good = (): NodeJS.ProcessEnv => ({
   DATABASE_URL: 'postgresql://app:s3cret@db.internal:5432/cloudcraft?sslmode=require',
   APP_URL: 'https://cloudcraft.example.com',
   SMTP_HOST: 'smtp.example.com',
+  RESTRICTED_FEATURES_ALLOWED_EMAILS: 'admin@example.com',
+  SUPER_ADMIN_EMAILS: 'admin@example.com',
 });
+/** The two notices a correctly closed server always prints: who may use Deploy, and who approves reviews. */
+const NOTICES = [expect.stringContaining('open only to admin@example.com'), expect.stringContaining('Only admin@example.com can approve')];
 const errors = (env: NodeJS.ProcessEnv) => checkProductionConfig(env).errors.join(' | ');
 
 describe('production startup check', () => {
-  test('a properly configured server has no errors and no warnings', () => {
-    expect(checkProductionConfig(good())).toEqual({ errors: [], warnings: [] });
+  test('a properly configured server has no errors, and only says who has access', () => {
+    expect(checkProductionConfig(good())).toEqual({ errors: [], warnings: NOTICES });
   });
 
   test('outside production nothing is checked', () => {
@@ -66,7 +70,47 @@ describe('production startup check', () => {
   });
 
   test('a local database needs no TLS', () => {
-    expect(checkProductionConfig({ ...good(), DATABASE_URL: 'postgresql://a:b@localhost:5432/x' }).warnings).toEqual([]);
+    expect(checkProductionConfig({ ...good(), DATABASE_URL: 'postgresql://a:b@localhost:5432/x' }).warnings).toEqual(NOTICES);
+  });
+
+  describe('the access lock on Deploy, the AI Generator and Cloud Accounts', () => {
+    test('a production server without the list refuses to start, and says how to fix it', () => {
+      const env = good(); delete env['RESTRICTED_FEATURES_ALLOWED_EMAILS'];
+      const e = errors(env);
+      expect(e).toContain('RESTRICTED_FEATURES_ALLOWED_EMAILS is not set');
+      expect(e).toContain('RESTRICTED_FEATURES_OPEN_TO_ALL=1');
+      expect(() => assertProductionConfig(env)).toThrow(/will not start in production[\s\S]*RESTRICTED_FEATURES_ALLOWED_EMAILS/);
+    });
+    test('an empty or blank value is the same as missing', () => {
+      expect(errors({ ...good(), RESTRICTED_FEATURES_ALLOWED_EMAILS: '' })).toContain('is not set');
+      expect(errors({ ...good(), RESTRICTED_FEATURES_ALLOWED_EMAILS: '   ' })).toContain('is not set');
+    });
+    test('a list with no valid address is refused: it would lock everyone out', () => {
+      expect(errors({ ...good(), RESTRICTED_FEATURES_ALLOWED_EMAILS: 'REPLACE_WITH_THE_EMAIL_OF_WHO_MAY_USE_DEPLOY' })).toContain('no valid email address');
+    });
+    test('opening it to everyone has to be said out loud, and is then only a warning', () => {
+      const env = good(); delete env['RESTRICTED_FEATURES_ALLOWED_EMAILS'];
+      const r = checkProductionConfig({ ...env, RESTRICTED_FEATURES_OPEN_TO_ALL: '1' });
+      expect(r.errors).toEqual([]);
+      expect(r.warnings.join(' ')).toContain('open to everyone who can sign in');
+      expect(errors({ ...env, RESTRICTED_FEATURES_OPEN_TO_ALL: 'true' })).toContain('is not set');   // only the exact value 1
+    });
+    test('a listed person is a notice, and the open-to-all switch does not override a list', () => {
+      const r = checkProductionConfig({ ...good(), RESTRICTED_FEATURES_OPEN_TO_ALL: '1' });
+      expect(r.errors).toEqual([]);
+      expect(r.warnings.join(' ')).toContain('open only to admin@example.com');
+      expect(r.warnings.join(' ')).not.toContain('open to everyone');
+    });
+    test('development and test builds are not affected', () => {
+      expect(checkProductionConfig({ NODE_ENV: 'development' }).errors).toEqual([]);
+      expect(checkProductionConfig({ NODE_ENV: 'test' }).errors).toEqual([]);
+    });
+    test('no super administrator is a warning, not an error', () => {
+      const env = good(); delete env['SUPER_ADMIN_EMAILS'];
+      const r = checkProductionConfig(env);
+      expect(r.errors).toEqual([]);
+      expect(r.warnings.join(' ')).toContain('any organization admin can approve');
+    });
   });
 
   test('starting throws once, listing every problem and never printing a secret', () => {

@@ -69,12 +69,20 @@ export function checkProductionConfig(env: NodeJS.ProcessEnv = process.env): Sta
     const people = restrictedFeatureEmails(env);
     if (people.length === 0) errors.push('RESTRICTED_FEATURES_ALLOWED_EMAILS is set but has no valid email address, so nobody could use Deploy, the AI Generator or Cloud Accounts. Fix it or remove it.');
     else warnings.push(`Deploy, the AI Generator and Cloud Accounts are open only to ${people.length === 1 ? people[0] : `${people.length} listed accounts`} (RESTRICTED_FEATURES_ALLOWED_EMAILS).`);
+  } else if (env['RESTRICTED_FEATURES_OPEN_TO_ALL'] === '1') {
+    warnings.push('Deploy (Terraform plan, apply, destroy), the AI Generator and Cloud Accounts are open to everyone who can sign in (RESTRICTED_FEATURES_OPEN_TO_ALL=1).');
+  } else {
+    // An empty list means "open to everyone". On a production server that must be a decision, never what happens when a line is missing from the
+    // server's own environment (which is how a second person once got into Deploy).
+    errors.push('RESTRICTED_FEATURES_ALLOWED_EMAILS is not set, so everyone who can sign in could use Deploy (Terraform apply and destroy with real cloud credentials), the AI Generator and Cloud Accounts. Set it to the people who may (for example ajinkya@neozaar.com). If you really want it open to everyone, set RESTRICTED_FEATURES_OPEN_TO_ALL=1.');
   }
 
   if (superAdminsConfigured(env)) {
     const admins = superAdminEmails(env);
     if (admins.length === 0) errors.push('SUPER_ADMIN_EMAILS is set but has no valid email address, so nobody could approve an architecture review and nothing could be deployed. Fix it or remove it.');
     else warnings.push(`Only ${admins.join(', ')} can approve architecture reviews, and they are an owner of every organization they belong to (SUPER_ADMIN_EMAILS).`);
+  } else {
+    warnings.push('SUPER_ADMIN_EMAILS is not set, so any organization admin can approve an architecture review, and with it a Terraform plan and apply.');
   }
 
   const appUrl = env['APP_URL'];

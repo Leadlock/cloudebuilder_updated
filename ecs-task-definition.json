@@ -46,6 +46,10 @@
         {
           "name": "AWS_REGION",
           "value": "us-east-1"
+        },
+        {
+          "name": "RESTRICTED_FEATURES_ALLOWED_EMAILS",
+          "value": "REPLACE_WITH_THE_EMAIL_OF_WHO_MAY_USE_DEPLOY"
         }
       ],
       "secrets": [

@@ -179,7 +179,7 @@ describe('around it', () => {
     const prod = (v: string): NodeJS.ProcessEnv => ({
       NODE_ENV: 'production', SESSION_SECRET: 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90',
       ENCRYPTION_KEY: '0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f1', DATABASE_URL: 'postgresql://a:b@localhost:5432/x',
-      APP_URL: 'https://x.test', SMTP_HOST: 's', SUPER_ADMIN_EMAILS: v,
+      APP_URL: 'https://x.test', SMTP_HOST: 's', RESTRICTED_FEATURES_ALLOWED_EMAILS: 'ajinkya@neozaar.com', SUPER_ADMIN_EMAILS: v,
     });
     const ok = checkProductionConfig(prod(SUPER));
     expect(ok.errors).toEqual([]);
