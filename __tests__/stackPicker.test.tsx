@@ -74,17 +74,48 @@ describe('the Stack parts', () => {
     expect(include('Backend').checked).toBe(true);
   });
 
-  test('with several parts the app name, deployment and add-on services are not offered, and the project name is', () => {
+  test('with several parts the app name, the single-service deployments and the add-on services are not offered; the project name and a project deployment are', () => {
     render(<ContainerTemplatesPanel />);
     expect(screen.getByLabelText('Deploy to')).toBeTruthy();
+    expect([...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value)).toContain('ecs');
     fireEvent.click(include('Frontend'));
-    expect(screen.queryByLabelText('Deploy to')).toBeNull();
+    // The Deploy card of one service is replaced by the project's: none, or one EC2 server for everything.
+    expect([...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value)).toEqual(['none', 'ec2']);
     expect(screen.queryByLabelText('App name')).toBeNull();
     expect(screen.queryByText('Add PostgreSQL')).toBeNull();
     expect(screen.getByLabelText('Project name')).toBeTruthy();
     fireEvent.click(include('Frontend'));
-    expect(screen.getByLabelText('Deploy to')).toBeTruthy();
+    expect([...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value)).toContain('ecs');
     expect(screen.getByLabelText('App name')).toBeTruthy();
+  });
+
+  test('choosing EC2 for the project adds the deployment files for all of it, with its own settings and cost', () => {
+    render(<ContainerTemplatesPanel />);
+    fireEvent.click(include('Frontend')); fireEvent.click(include('API')); fireEvent.click(include('Database'));
+    expect(tabNames()).not.toContain('deploy.sh');
+    fireEvent.change(screen.getByLabelText('Deploy to'), { target: { value: 'ec2' } });
+    expect(tabNames()).toEqual(expect.arrayContaining(['deploy.sh', 'destroy.sh', 'ec2/main.tf', 'ec2/compose.deploy.yml', 'ec2/user_data.sh', 'docker-compose.yml']));
+    expect((screen.getByLabelText('Instance type') as HTMLInputElement).value).toBe('t3.medium');
+    expect(document.body.textContent).toMatch(/Estimated cost on AWS EC2: \$\d+/);
+    fireEvent.change(screen.getByLabelText('Instance type'), { target: { value: 'm5.large' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'ec2/variables.tf' }));
+    expect(document.body.textContent).toContain('m5.large');
+    fireEvent.change(screen.getByLabelText(/Who can connect/), { target: { value: 'everyone' } });
+    expect(screen.getByRole('alert').textContent).toMatch(/who can connect/);
+    fireEvent.change(screen.getByLabelText('Deploy to'), { target: { value: 'none' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(tabNames()).not.toContain('deploy.sh');
+  });
+
+  test('the project deployment is kept when parts are ticked and unticked, and one part alone goes back to its own deployment card', () => {
+    render(<ContainerTemplatesPanel />);
+    fireEvent.click(include('API'));
+    fireEvent.change(screen.getByLabelText('Deploy to'), { target: { value: 'ec2' } });
+    fireEvent.click(include('Database'));
+    expect((screen.getByLabelText('Deploy to') as HTMLSelectElement).value).toBe('ec2');
+    fireEvent.click(include('API')); fireEvent.click(include('Database'));
+    expect([...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value)).toContain('ecs');
+    expect(tabNames()).not.toContain('ec2/compose.deploy.yml');
   });
 
   test('"Edit settings" shows that part\'s form', () => {

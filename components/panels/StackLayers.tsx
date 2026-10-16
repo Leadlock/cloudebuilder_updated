@@ -75,7 +75,7 @@ export default function StackLayers({ stack, active, onToggle, onPick, onActive,
         <div>
           <label className={label} htmlFor="ct-project-name">Project name</label>
           <input id="ct-project-name" className={input} value={stack.name} onChange={(e) => onName(e.target.value)} />
-          <p className={clsx('text-[11px] mt-1', muted)}>Each part is named after it, for example <code>{stack.name || 'my-app'}-api</code>. {on.length} parts selected: the files below cover all of them. Deploying them to a server comes later; for now they run together with Docker Compose.</p>
+          <p className={clsx('text-[11px] mt-1', muted)}>Each part is named after it, for example <code>{stack.name || 'my-app'}-api</code>. {on.length} parts selected: the files below cover all of them. They run together with Docker Compose, or on one EC2 server (choose where to deploy below).</p>
         </div>
       )}
     </div>

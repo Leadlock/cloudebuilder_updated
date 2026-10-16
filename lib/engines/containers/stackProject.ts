@@ -18,6 +18,10 @@ import { databaseOf, dbAppEnv } from './databases';
 import { databaseServiceBlock } from './databaseFiles';
 import { currentOption, pickStackOption } from './stackOptions';
 import { yq } from './shared';
+import {
+  generateStackEc2Files, stackEc2Defaults, stackEc2Warnings, estimateStackEc2Cost, validateStackEc2, type StackDeploySpec,
+} from './stackEc2Deploy';
+import type { Ec2Config, Ec2Cost } from './ec2Deploy';
 import type { ContainerFinding } from './checks';
 
 export type Layer = 'frontend' | 'backend' | 'api' | 'database';
@@ -26,7 +30,12 @@ export const LAYERS: readonly Layer[] = ['frontend', 'backend', 'api', 'database
 export const LAYER_LABEL: Record<Layer, string> = { frontend: 'Frontend', backend: 'Backend', api: 'API', database: 'Database' };
 
 export interface LayerState { enabled: boolean; config: ContainerConfig }
-export interface StackProject { name: string; layers: Record<Layer, LayerState> }
+/** Where a project of several services is deployed. Docker Compose on your own machine is always possible; EC2 runs the whole compose file on one server. */
+export type ProjectTarget = 'none' | 'ec2';
+export interface ProjectDeploy { target: ProjectTarget; ec2: Ec2Config }
+export interface StackProject { name: string; layers: Record<Layer, LayerState>; deploy: ProjectDeploy }
+
+export const defaultProjectDeploy = (): ProjectDeploy => ({ target: 'none', ec2: stackEc2Defaults() });
 
 /** What each layer starts as when it is switched on. */
 const DEFAULT_OPTION: Record<Layer, string> = { frontend: 'spa', backend: 'node', api: 'fastapi', database: 'db-postgres' };
@@ -37,6 +46,7 @@ export const layerDefault = (layer: Layer): ContainerConfig => pickStackOption(d
 export function defaultProject(): StackProject {
   return {
     name: 'my-app',
+    deploy: defaultProjectDeploy(),
     layers: Object.fromEntries(LAYERS.map((l) => [l, { enabled: l === 'backend', config: layerDefault(l) }])) as Record<Layer, LayerState>,
   };
 }
@@ -54,6 +64,7 @@ export function projectFromConfig(c: ContainerConfig, base: StackProject = defau
   const layer = layerOf(c);
   return {
     name: base.name,
+    deploy: base.deploy,
     layers: Object.fromEntries(LAYERS.map((l) => [l, l === layer ? { enabled: true, config: c } : { enabled: false, config: base.layers[l].config }])) as Record<Layer, LayerState>,
   };
 }
@@ -155,16 +166,50 @@ export function generateProjectFiles(p: StackProject): GenerateResult {
   if (on.includes('frontend') && !upstreamLayer) warnings.push('The Frontend is not connected to anything: add an API or a Backend for it to talk to.');
   if (db && !on.includes('api') && !on.includes('backend')) warnings.push('Nothing uses the Database: add an API or a Backend, which are given its address.');
 
+  const entry = entryLayer(on);
+  const compose = composeFor(p, on, cfg, layout, { mode: 'local', entry, db, dbLines, upstreamLayer });
+
+  files.unshift(
+    { path: 'docker-compose.yml', content: compose },
+    { path: '.env.example', content: projectEnvExample(p, on, cfg) },
+    { path: 'README.md', content: projectReadme(p, on, cfg, layout) },
+  );
+  let cost: Ec2Cost | undefined;
+  if (p.deploy.target === 'ec2') {
+    const spec = deploySpec(p, on, cfg, layout, entry, composeFor(p, on, cfg, layout, { mode: 'deploy', entry, db, dbLines, upstreamLayer }));
+    const errors = validateStackEc2(spec);
+    if (errors.length > 0) return { ok: false, errors };
+    files.push(...generateStackEc2Files(spec));
+    warnings.push(...stackEc2Warnings(spec));
+    cost = estimateStackEc2Cost(spec);
+  }
+  return { ok: true, files, warnings, findings, ...(cost ? { cost } : {}) };
+}
+
+/** The service that is open to the network: the Frontend, else the API, else the Backend. */
+const entryLayer = (on: Layer[]): Layer => (on.includes('frontend') ? 'frontend' : on.includes('api') ? 'api' : 'backend');
+
+interface ComposeInput { mode: 'local' | 'deploy'; entry: Layer; db: ContainerConfig | null; dbLines: string[]; upstreamLayer: 'api' | 'backend' | null }
+
+/**
+ * The project's compose file. Locally every service is built from its folder and only the Frontend is published to the network. On a server
+ * every built service runs from the image repository (\${REGISTRY} and \${TAG} are filled in by the server), and the one public service is the Frontend,
+ * else the API, else the Backend.
+ */
+function composeFor(p: StackProject, on: Layer[], cfg: Record<Layer, ContainerConfig>, layout: ProjectLayout, i: ComposeInput): string {
+  const { db, dbLines, upstreamLayer } = i;
+  const deploy = i.mode === 'deploy';
   const dep = (layer: Layer) => ({ name: layer, condition: (hasHealthcheck(cfg[layer]) ? 'service_healthy' : 'service_started') as 'service_healthy' | 'service_started' });
-  const block = (layer: Layer, o: Omit<ServiceBlockOptions, 'key' | 'context' | 'hostPort'>) =>
-    composeServiceBlock(cfg[layer], { key: layer, context: `./${layer}`, hostPort: layout.hostPort[layer], ...o });
+  const image = (layer: Layer) => (deploy && !usesExistingImage(cfg[layer]) ? { image: `\${REGISTRY:?set REGISTRY}/${p.name}-${layer}:\${TAG:?set TAG}` } : {});
+  const exposure = (layer: Layer): 'public' | 'local' => (deploy ? (layer === i.entry ? 'public' : 'local') : (layer === 'frontend' ? 'public' : 'local'));
+  const block = (layer: Layer, o: Omit<ServiceBlockOptions, 'key' | 'context' | 'hostPort' | 'ports'>) =>
+    composeServiceBlock(cfg[layer], { key: layer, context: `./${layer}`, hostPort: layout.hostPort[layer], ports: exposure(layer), ...image(layer), ...o });
 
   const services: string[] = [];
   if (db) services.push(databaseServiceBlock(db, { key: 'database', hostPort: layout.hostPort.database }));
-  if (on.includes('backend')) services.push(block('backend', { ports: 'local', extraEnv: dbLines, deps: db ? [dep('database')] : [] }));
+  if (on.includes('backend')) services.push(block('backend', { extraEnv: dbLines, deps: db ? [dep('database')] : [] }));
   if (on.includes('api')) {
     services.push(block('api', {
-      ports: 'local',
       extraEnv: [...dbLines, ...(on.includes('backend') ? [line('BACKEND_URL', `http://backend:${cfg.backend.port}`)] : [])],
       deps: [...(db ? [dep('database')] : []), ...(on.includes('backend') ? [dep('backend')] : [])],
     }));
@@ -172,23 +217,33 @@ export function generateProjectFiles(p: StackProject): GenerateResult {
   if (on.includes('frontend')) {
     const staticSite = cfg.frontend.stack === 'static' && !usesExistingImage(cfg.frontend);
     services.push(block('frontend', {
-      ports: 'public',
       // A static site reaches the API through /api/ in its own nginx; any other frontend is told where it is.
       extraEnv: upstreamLayer && !staticSite ? [line('API_URL', `http://${upstreamLayer}:${cfg[upstreamLayer].port}`)] : [],
       deps: upstreamLayer ? [dep(upstreamLayer)] : [],
     }));
   }
-
-  const compose = `# Start everything with: docker compose up --build
+  return `${deploy ? '# The compose file the server runs (CloudCraft EC2 deployment). The server fills in REGISTRY and TAG.' : '# Start everything with: docker compose up --build'}
 services:
 ${services.join('')}${db ? `\nvolumes:\n  database-data:\n` : ''}`;
+}
 
-  files.unshift(
-    { path: 'docker-compose.yml', content: compose },
-    { path: '.env.example', content: projectEnvExample(p, on, cfg) },
-    { path: 'README.md', content: projectReadme(p, on, cfg, layout) },
-  );
-  return { ok: true, files, warnings, findings };
+/** Every secret of every service, once each, in the order the services are listed. */
+export function projectSecrets(on: Layer[], cfg: Record<Layer, ContainerConfig>): string[] {
+  return [...new Set(on.flatMap((l) => cfg[l].env.filter((v) => v.secret).map((v) => v.key)))];
+}
+
+function deploySpec(p: StackProject, on: Layer[], cfg: Record<Layer, ContainerConfig>, layout: ProjectLayout, entry: Layer, compose: string): StackDeploySpec {
+  const dbConfig = on.includes('database') ? cfg.database : null;
+  return {
+    name: p.name,
+    built: on.filter((l) => l !== 'database' && !usesExistingImage(cfg[l])),
+    entry: { service: LAYER_LABEL[entry], port: layout.hostPort[entry]!, path: cfg[entry].healthPath || '/' },
+    secrets: projectSecrets(on, cfg),
+    generated: dbConfig ? dbConfig.env.filter((v) => v.secret).map((v) => v.key) : [],
+    databaseLabel: dbConfig ? (databaseOf(dbConfig)?.label ?? 'Database') : null,
+    compose,
+    ec2: p.deploy.ec2,
+  };
 }
 
 /** The variables the person has to set: every secret of every service, once each. */
@@ -244,6 +299,6 @@ The data is in the Docker volume \`database-data\`. It survives \`docker compose
 ` : ''}
 ## Deploying
 
-A combined project runs with Docker Compose. To deploy a single service to a server, switch the others off in CloudCraft and choose where to deploy.
+${p.deploy.target === 'ec2' ? `All the services run on one EC2 server: see \`ec2/README.md\`, or just run \`bash deploy.sh\`.` : 'Run it on any machine with Docker Compose, or choose "AWS EC2 (one server)" for this project in CloudCraft to also get \`deploy.sh\`, \`destroy.sh\` and the Terraform that run all of it on one server.'}
 `;
 }

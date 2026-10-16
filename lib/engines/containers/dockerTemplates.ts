@@ -435,6 +435,8 @@ export interface ServiceBlockOptions {
   ports: PortExposure;
   /** The port on this machine when it differs from the container's. */
   hostPort?: number;
+  /** Run this image from a registry instead of building it (a project deployed to a server). Left out: the service is built, or uses its ready-made image. */
+  image?: string;
   /** Environment lines ("KEY: value") added after the service's own variables. */
   extraEnv?: string[];
   deps?: Array<{ name: string; condition: 'service_healthy' | 'service_started' }>;
@@ -454,7 +456,7 @@ export function composeServiceBlock(c: ContainerConfig, o: ServiceBlockOptions):
     : o.ports === 'local' ? `    ports:\n      - "127.0.0.1:${published}"\n`
       : o.ports === 'none' ? '' : `    ports:\n      - "${published}"\n`;
   return `  ${o.key}:
-${usesExistingImage(c) ? `    image: ${c.image}\n` : `    build: ${o.context}\n    image: ${c.appName}:latest\n`}    restart: ${c.restart}
+${o.image ? `    image: ${o.image}\n` : usesExistingImage(c) ? `    image: ${c.image}\n` : `    build: ${o.context}\n    image: ${c.appName}:latest\n`}    restart: ${c.restart}
 ${exposure}${envLines.length ? `    environment:\n${envLines.map((l) => `      ${l}`).join('\n')}\n` : ''}${deps.length ? `    depends_on:\n${deps.map((d) => `      ${d.name}:\n        condition: ${d.condition}`).join('\n')}\n` : ''}    mem_limit: ${c.memoryLimit}
     cpus: ${c.cpuLimit}
     security_opt:

@@ -23,6 +23,7 @@ import {
   defaultProject, enabledLayers, generateProjectFiles, LAYER_LABEL, layerOf, mapLayerConfigs, projectFromConfig, type Layer, type StackProject,
 } from '@/lib/engines/containers/stackProject';
 import StackLayers from './StackLayers';
+import StackDeployCard from './StackDeployCard';
 import { applyDatabase, databaseOf, DB_TARGETS } from '@/lib/engines/containers/databases';
 import { FARGATE_CPU, fargateMemoryOptions } from '@/lib/engines/containers/ecsDeploy';
 import { ACA_CPU } from '@/lib/engines/containers/containerAppsDeploy';
@@ -392,10 +393,11 @@ export default function ContainerTemplatesPanel() {
             </div>
 
             {multi && (
-              <div className={clsx(card, 'text-xs space-y-1')} data-testid="project-run-note">
-                <p className={clsx('text-sm font-semibold', isLight ? 'text-slate-900' : 'text-white')}>Run it</p>
-                <p className={muted}>The services are built and started together: <code>docker compose up --build</code> in the folder you download. Deploying a combined project to a server is not available yet; untick all but one service to get a deployment for it.</p>
-              </div>
+              <StackDeployCard
+                deploy={stack.deploy}
+                onTarget={(target) => { setStack((st) => ({ ...st, deploy: { ...st.deploy, target } })); setSelected('README.md'); }}
+                onEc2={(k, v) => setStack((st) => ({ ...st, deploy: { ...st.deploy, ec2: { ...st.deploy.ec2, [k]: v } } }))}
+              />
             )}
             {!multi && (
             <div className={clsx(card, 'space-y-3')}>
@@ -587,7 +589,7 @@ export default function ContainerTemplatesPanel() {
                 )}
                 {result.cost && (
                   <div className={clsx('mb-3 rounded-lg border px-3 py-2 text-xs', isLight ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-slate-900 border-slate-700 text-slate-200')}>
-                    <p className="font-semibold">Estimated cost on {DEPLOY_TARGET_LABEL[target].split(' (')[0]}: ${result.cost.monthlyUsd.toFixed(2)} a month</p>
+                    <p className="font-semibold">Estimated cost on {DEPLOY_TARGET_LABEL[multi ? (stack.deploy.target === 'ec2' ? 'ec2' : 'none') : target].split(' (')[0]}: ${result.cost.monthlyUsd.toFixed(2)} a month</p>
                     <p className={muted}>{result.cost.lines.map((l) => `${l.label} $${l.monthlyUsd.toFixed(2)}`).join(' · ')}</p>
                     {result.cost.notes.map((n) => <p key={n} className={muted}>{n}</p>)}
                   </div>
