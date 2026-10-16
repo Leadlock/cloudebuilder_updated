@@ -16,7 +16,7 @@ export interface ReleaseDriver {
   /** Builds `<project>-<layer>:<tag>` from the files inside the cloud's own registry and pushes it. */
   build(o: ReleaseOutputs, a: { project: string; layer: string; tag: string; files: ArchiveFile[]; onLog?: (line: string) => void }): Promise<void>;
   /** Puts the image tag and the compose file where the server reads them. */
-  publish(o: ReleaseOutputs, a: { project: string; tag: string; compose: string }): Promise<void>;
+  publish(o: ReleaseOutputs, a: { project: string; tag: string; compose: string; built: string[] }): Promise<void>;
   /** Restarts the services on the server. */
   start(o: ReleaseOutputs, a: { project: string }): Promise<void>;
   /** Whether what the release created is still there (a finished teardown leaves nothing). */

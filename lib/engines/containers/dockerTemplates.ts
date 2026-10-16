@@ -395,8 +395,8 @@ ${healthcheck(c, 'wget')}CMD ["nginx", "-g", "daemon off;"]
 }
 
 /** The static site's nginx configuration. With `upstream`, requests to /api/ are passed on to that service, so the page can call it on its own address. */
-export function nginxConf(c: ContainerConfig, upstream?: { host: string; port: number }): string {
-  const apiBlock = upstream ? `\n  location /api/ {\n    proxy_pass http://${upstream.host}:${upstream.port}/;\n    proxy_set_header Host $host;\n    proxy_set_header X-Real-IP $remote_addr;\n    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n    proxy_set_header X-Forwarded-Proto $scheme;\n  }\n` : '';
+export function nginxConf(c: ContainerConfig, upstream?: { host: string; port: number; /** Container Apps routes by Host, and listens on 80: the name is sent as Host and no port is written. */ byName?: boolean }): string {
+  const apiBlock = upstream ? `\n  location /api/ {\n    proxy_pass http://${upstream.host}${upstream.byName ? '' : `:${upstream.port}`}/;\n    proxy_set_header Host ${upstream.byName ? upstream.host : '$host'};\n    proxy_set_header X-Real-IP $remote_addr;\n    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n    proxy_set_header X-Forwarded-Proto $scheme;\n  }\n` : '';
   return `server {
   listen ${c.port};
   server_name _;

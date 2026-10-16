@@ -7,11 +7,12 @@ import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepositor
 import { resolveExecutionCredentials } from '@/lib/cloud/credentials/resolveExecutionCredentials';
 import { assertEnoughTimeLeft } from '@/lib/cloud/credentialLifetime';
 import { isAzureCredentials, isAwsCredentials, type CloudCredentials } from '@/lib/cloud/types';
-import { createAzureOps, type AzureOps } from './azureOps';
+import { createAzureOps, type AcaOps, type AzureOps } from './azureOps';
 import { createAwsClients, createAwsOps, type AwsOps } from './awsOps';
 import { azureDriver, type ReleaseDriver } from './driver';
 import { awsDriver } from './awsDriver';
 import { ecsDriver } from './ecsDriver';
+import { acaDriver } from './acaDriver';
 import { createEcsClient, createEcsOps } from './ecsOps';
 import type { Release } from './types';
 
@@ -20,7 +21,7 @@ export class AccountError extends Error {
 }
 
 /** Operations in the Azure subscription of a connected account. Throws AccountError when the account is missing or is not an Azure one. */
-export async function azureOpsForAccount(orgId: string, cloudAccountId: string): Promise<AzureOps> {
+export async function azureOpsForAccount(orgId: string, cloudAccountId: string): Promise<AzureOps & AcaOps> {
   const json = await cloudAccountRepository.getCredentials(cloudAccountId, orgId);
   if (!json) throw new AccountError('The cloud account was not found.', 404);
   const creds = JSON.parse(json) as CloudCredentials;
@@ -74,5 +75,6 @@ export async function releaseDriverFor(release: Pick<Release, 'orgId' | 'cloudAc
     const credentials = await awsCredentialProvider(release.orgId, release.cloudAccountId, 'AWS ECS');
     return ecsDriver(createAwsOps({ clients: createAwsClients(region, credentials) }), createEcsOps({ ecs: createEcsClient(region, credentials) }));
   }
+  if (release.target === 'container-apps') return acaDriver(await azureOpsForAccount(release.orgId, release.cloudAccountId));
   return azureDriver(await azureOpsForAccount(release.orgId, release.cloudAccountId));
 }

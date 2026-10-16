@@ -399,12 +399,13 @@ export default function ContainerTemplatesPanel() {
                 onTarget={(target) => { setStack((st) => ({ ...st, deploy: { ...st.deploy, target } })); setSelected('README.md'); }}
                 onEc2={(k, v) => setStack((st) => ({ ...st, deploy: { ...st.deploy, ec2: { ...st.deploy.ec2, [k]: v } } }))}
                 onEcs={(k, v) => setStack((st) => ({ ...st, deploy: { ...st.deploy, ecs: { ...st.deploy.ecs, [k]: v } } }))}
+                onAca={(k, v) => setStack((st) => ({ ...st, deploy: { ...st.deploy, aca: { ...st.deploy.aca, [k]: v } } }))}
                 onAzure={(k, v) => setStack((st) => ({ ...st, deploy: { ...st.deploy, azvm: { ...st.deploy.azvm, [k]: v } } }))}
                 onK8s={(k, v) => setStack((st) => ({ ...st, deploy: { ...st.deploy, k8s: { ...st.deploy.k8s, [k]: v } } }))}
                 onAks={(k, v) => setStack((st) => ({ ...st, deploy: { ...st.deploy, aks: { ...st.deploy.aks, [k]: v } } }))}
               />
             )}
-            {multi && (stack.deploy.target === 'azure-vm' || stack.deploy.target === 'ec2' || stack.deploy.target === 'ecs') && result.ok && (
+            {multi && (stack.deploy.target === 'azure-vm' || stack.deploy.target === 'ec2' || stack.deploy.target === 'ecs' || stack.deploy.target === 'container-apps') && result.ok && (
               <ProjectReleasePanel projectId={project?.id ?? null} environment={state.activeEnvironment} stack={stack} isLight={isLight} />
             )}
             {!multi && (

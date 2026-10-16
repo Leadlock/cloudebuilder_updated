@@ -97,3 +97,25 @@ and waits until every service has one finished deployment with all tasks running
 
 ## Cost
 Per service: a Fargate task (default 0.5 vCPU / 1 GB), plus one load balancer (about $22 a month), public IPv4 addresses and logs; at the default size the page shows the estimate (about $90 for three services with one task each, about $22 per extra task). Always finish with **Remove everything**.
+
+---
+
+# Azure Container Apps
+
+Pick **Azure Container Apps** as the project's deploy target. Same Azure account, role and state storage as the Azure VM target above (Owner, or Contributor + User Access Administrator).
+**No database**: tick Frontend, Backend and API only, and give the Backend/API a secret `DATABASE_URL` that points at Azure Database for PostgreSQL / MySQL. A release needs at least 1 minimum replica.
+
+## What happens
+Terraform creates the resource group, registry, Key Vault (with a *marker* in each secret, tagged `cloudcraft=placeholder`), identity, environment and one Container App per service, with **zero replicas** and a placeholder
+image. You then type the secrets (they replace the markers in Key Vault); the registry builds the images; CloudCraft points each built app at its new image (a new revision) and scales every app to the minimum replicas,
+waiting until each newest revision is ready and running; finally it checks the public address.
+
+## What to check
+- **The first apply**: Terraform writes the Key Vault markers right after assigning itself the Secrets Officer role; a 403 there is the role not having taken effect yet. Run the plan/apply again after a minute.
+- **App names**: the services call each other as `http://<project>-api` (no port; Container Apps ingress listens on 80), and the frontend's nginx sends that name as the Host header. If the frontend gets 404/502 from `/api/`, that is the first place to look.
+- A tag that does not build fails at `build`; one whose revision never becomes ready fails at `start`, and CloudCraft puts the previous images back.
+- **Put an earlier release back** points the built apps at the old tag and starts them; nothing is built.
+- **Remove everything** deletes the resource group's Terraform-made resources (including the Key Vault, purged).
+
+## Cost
+Per app: replicas billed by use after the monthly free grant, plus a Basic registry (about $5) and almost nothing for the vault and logs; the page shows the estimate.

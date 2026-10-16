@@ -13,12 +13,15 @@ import type { StackK8sConfig } from '@/lib/engines/containers/stackKubernetesDep
 import type { StackAksConfig } from '@/lib/engines/containers/stackAksDeploy';
 import { FARGATE_CPU, fargateMemoryOptions } from '@/lib/engines/containers/ecsDeploy';
 import type { StackEcsConfig } from '@/lib/engines/containers/stackEcsDeploy';
+import { ACA_CPU } from '@/lib/engines/containers/containerAppsDeploy';
+import type { StackAcaConfig } from '@/lib/engines/containers/stackAcaDeploy';
 
-export default function StackDeployCard({ deploy, onTarget, onEc2, onEcs, onAzure, onK8s, onAks }: {
+export default function StackDeployCard({ deploy, onTarget, onEc2, onEcs, onAca, onAzure, onK8s, onAks }: {
   deploy: ProjectDeploy;
   onTarget: (t: ProjectTarget) => void;
   onEc2: <K extends keyof Ec2Config>(k: K, v: Ec2Config[K]) => void;
   onEcs: <K extends keyof StackEcsConfig>(k: K, v: StackEcsConfig[K]) => void;
+  onAca: <K extends keyof StackAcaConfig>(k: K, v: StackAcaConfig[K]) => void;
   onAzure: <K extends keyof AzVmConfig>(k: K, v: AzVmConfig[K]) => void;
   onK8s: <K extends keyof StackK8sConfig>(k: K, v: StackK8sConfig[K]) => void;
   onAks: <K extends keyof StackAksConfig>(k: K, v: StackAksConfig[K]) => void;
@@ -30,6 +33,7 @@ export default function StackDeployCard({ deploy, onTarget, onEc2, onEcs, onAzur
   const input = clsx('w-full rounded-lg border px-3 py-2 text-sm', isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-950 border-slate-700 text-slate-100');
   const e = deploy.ec2;
   const c = deploy.ecs;
+  const ac = deploy.aca;
   const z = deploy.azvm;
   const k = deploy.k8s;
   const a = deploy.aks;
@@ -41,6 +45,7 @@ export default function StackDeployCard({ deploy, onTarget, onEc2, onEcs, onAzur
         <option value="ec2">AWS EC2 (one server runs everything)</option>
         <option value="ecs">AWS ECS Fargate (a service per service, behind a load balancer)</option>
         <option value="azure-vm">Azure VM (one server runs everything)</option>
+        <option value="container-apps">Azure Container Apps (an app per service)</option>
         <option value="kubernetes">Kubernetes (a Deployment per service)</option>
         <option value="aks">Azure Kubernetes Service (AKS cluster created for it)</option>
       </select>
@@ -89,6 +94,20 @@ export default function StackDeployCard({ deploy, onTarget, onEc2, onEcs, onAzur
             <div className="col-span-2"><label className={label} htmlFor="paz-cidr">Who can connect to the public service</label><input id="paz-cidr" className={input} value={z.allowedCidr} onChange={(ev) => onAzure('allowedCidr', ev.target.value)} /></div>
             <div><label className={label} htmlFor="paz-disk">Disk (GB)</label><input id="paz-disk" type="number" className={input} value={z.diskGb} onChange={(ev) => onAzure('diskGb', Number(ev.target.value))} /></div>
             <div><label className={label} htmlFor="paz-tag">Image tag</label><input id="paz-tag" className={input} value={z.imageTag} onChange={(ev) => onAzure('imageTag', ev.target.value)} /></div>
+          </div>
+        </>
+      )}
+      {deploy.target === 'container-apps' && (
+        <>
+          <p className={clsx('text-xs', muted)}>Every service runs as its own Container App in one environment: the public service (the Frontend, else the API, else the Backend) over HTTPS, the others reachable only from inside by app name. One registry, secrets in Key Vault, images built in Azure. A database is not run here: use Azure Database for PostgreSQL or MySQL and add a secret variable DATABASE_URL.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={label} htmlFor="paca-location">Location</label><input id="paca-location" className={input} value={ac.location} onChange={(ev) => onAca('location', ev.target.value)} /></div>
+            <div><label className={label} htmlFor="paca-tag">Image tag</label><input id="paca-tag" className={input} value={ac.imageTag} onChange={(ev) => onAca('imageTag', ev.target.value.trim())} /></div>
+            <div><label className={label} htmlFor="paca-cpu">CPU per replica</label>
+              <select id="paca-cpu" className={input} value={ac.cpu} onChange={(ev) => onAca('cpu', Number(ev.target.value))}>{ACA_CPU.map((n) => <option key={n} value={n}>{n} vCPU</option>)}</select></div>
+            <div><label className={label} htmlFor="paca-cidr">Who can connect</label><input id="paca-cidr" className={input} value={ac.allowedCidr} onChange={(ev) => onAca('allowedCidr', ev.target.value)} /></div>
+            <div><label className={label} htmlFor="paca-min">Minimum replicas</label><input id="paca-min" type="number" className={input} value={ac.minReplicas} onChange={(ev) => onAca('minReplicas', Number(ev.target.value))} /></div>
+            <div><label className={label} htmlFor="paca-max">Maximum replicas</label><input id="paca-max" type="number" className={input} value={ac.maxReplicas} onChange={(ev) => onAca('maxReplicas', Number(ev.target.value))} /></div>
           </div>
         </>
       )}

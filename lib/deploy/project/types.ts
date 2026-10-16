@@ -5,7 +5,7 @@
  * the compose file (which only references secrets) and the ids of the resources that were created. Credentials and secret values never appear here.
  */
 
-export type ReleaseTarget = 'azure-vm' | 'ec2' | 'ecs';
+export type ReleaseTarget = 'azure-vm' | 'ec2' | 'ecs' | 'container-apps';
 
 export const STEP_ORDER = ['infrastructure', 'secrets', 'build', 'publish', 'start', 'verify'] as const;
 export type StepName = (typeof STEP_ORDER)[number];
@@ -69,10 +69,26 @@ export interface EcsOutputs {
   url: string;
 }
 
-export type ReleaseOutputs = AzureOutputs | AwsOutputs | EcsOutputs;
+/** What Terraform created for a project on Azure Container Apps, as the steps need it. */
+export interface AcaOutputs {
+  kind: 'aca';
+  resourceGroup: string;
+  /** The Container Apps, one per service of the project (named `<project>-<service>`). */
+  apps: string[];
+  /** Replicas each app is given once started. */
+  minReplicas: number;
+  /** Registry name (without .azurecr.io). Empty when nothing is built. */
+  acrName: string;
+  /** Empty when there are no secrets. */
+  vaultName: string;
+  url: string;
+}
+
+export type ReleaseOutputs = AzureOutputs | AwsOutputs | EcsOutputs | AcaOutputs;
 export const isAwsOutputs = (o: ReleaseOutputs): o is AwsOutputs => o.kind === 'ec2';
 export const isEcsOutputs = (o: ReleaseOutputs): o is EcsOutputs => o.kind === 'ecs';
-export const isAzureOutputs = (o: ReleaseOutputs): o is AzureOutputs => o.kind !== 'ec2' && o.kind !== 'ecs';
+export const isAcaOutputs = (o: ReleaseOutputs): o is AcaOutputs => o.kind === 'aca';
+export const isAzureOutputs = (o: ReleaseOutputs): o is AzureOutputs => o.kind !== 'ec2' && o.kind !== 'ecs' && o.kind !== 'aca';
 
 export interface Release {
   id: string;

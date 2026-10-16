@@ -443,3 +443,16 @@ describe('on ECS Fargate', () => {
     expect(calls.find((c) => c.method === 'POST')!.body).toMatchObject({ cloudAccountId: 'aws-1', stateBackend: { provider: 'aws', bucket: 'my-state', region: 'eu-west-1' } });
   });
 });
+
+describe('on Container Apps', () => {
+  const acaStack = (() => { const p = defaultProject(); p.name = 'shop'; for (const l of LAYERS) p.layers[l].enabled = ['backend', 'api'].includes(l); p.deploy.target = 'container-apps'; return p; })();
+  test('asks for an Azure account and an Azure storage state, as for a VM', async () => {
+    routes.unshift([/POST \/api\/projects\/p1\/releases$/, () => ({ status: 201, data: PLAN })]);
+    render(<ProjectReleasePanel projectId="p1" environment="production" stack={acaStack} isLight />);
+    await waitFor(() => expect((screen.getByLabelText('State: resource group') as HTMLInputElement).value).toBe('rg-state'));
+    expect(screen.queryByLabelText('State: S3 bucket')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Plan the deployment' }));
+    await screen.findByTestId('release-plan');
+    expect(calls.find((c) => c.method === 'POST')!.body).toMatchObject({ cloudAccountId: 'acct-1', stateBackend: { provider: 'azure', resourceGroupName: 'rg-state' } });
+  });
+});

@@ -34,6 +34,9 @@ import {
 import {
   defaultStackEcs, estimateStackEcsCost, generateStackEcsFiles, stackEcsWarnings, validateStackEcs, type StackEcsConfig, type StackEcsSpec,
 } from './stackEcsDeploy';
+import {
+  acaAppName, defaultStackAca, estimateStackAcaCost, generateStackAcaFiles, stackAcaWarnings, validateStackAca, type StackAcaConfig, type StackAcaSpec,
+} from './stackAcaDeploy';
 import type { Ec2Config, Ec2Cost } from './ec2Deploy';
 import type { AzVmConfig } from './azureVmDeploy';
 import type { ContainerFinding } from './checks';
@@ -45,11 +48,11 @@ export const LAYER_LABEL: Record<Layer, string> = { frontend: 'Frontend', backen
 
 export interface LayerState { enabled: boolean; config: ContainerConfig }
 /** Where a project of several services is deployed. Docker Compose on your own machine is always possible; EC2 or an Azure VM runs the whole compose file on one server. */
-export type ProjectTarget = 'none' | 'ec2' | 'ecs' | 'azure-vm' | 'kubernetes' | 'aks';
-export interface ProjectDeploy { target: ProjectTarget; ec2: Ec2Config; ecs: StackEcsConfig; azvm: AzVmConfig; k8s: StackK8sConfig; aks: StackAksConfig }
+export type ProjectTarget = 'none' | 'ec2' | 'ecs' | 'azure-vm' | 'container-apps' | 'kubernetes' | 'aks';
+export interface ProjectDeploy { target: ProjectTarget; ec2: Ec2Config; ecs: StackEcsConfig; aca: StackAcaConfig; azvm: AzVmConfig; k8s: StackK8sConfig; aks: StackAksConfig }
 export interface StackProject { name: string; layers: Record<Layer, LayerState>; deploy: ProjectDeploy }
 
-export const defaultProjectDeploy = (): ProjectDeploy => ({ target: 'none', ec2: stackEc2Defaults(), ecs: defaultStackEcs(), azvm: stackAzureDefaults(), k8s: defaultStackK8s(), aks: defaultStackAks() });
+export const defaultProjectDeploy = (): ProjectDeploy => ({ target: 'none', ec2: stackEc2Defaults(), ecs: defaultStackEcs(), aca: defaultStackAca(), azvm: stackAzureDefaults(), k8s: defaultStackK8s(), aks: defaultStackAks() });
 
 /** What each layer starts as when it is switched on. */
 const DEFAULT_OPTION: Record<Layer, string> = { frontend: 'spa', backend: 'node', api: 'fastapi', database: 'db-postgres' };
@@ -168,7 +171,9 @@ export function generateProjectFiles(p: StackProject, opts: { forRelease?: boole
       if (['docker-compose.yml', '.env.example', 'README.md'].includes(f.path)) continue;
       let content = f.content;
       if (layer === 'frontend' && f.path === 'nginx.conf' && upstreamLayer) {
-        content = nginxConf(cfg.frontend, { host: upstreamLayer, port: cfg[upstreamLayer].port });
+        content = p.deploy.target === 'container-apps'
+          ? nginxConf(cfg.frontend, { host: acaAppName(p.name, upstreamLayer), port: 80, byName: true })
+          : nginxConf(cfg.frontend, { host: upstreamLayer, port: cfg[upstreamLayer].port });
       }
       files.push({ ...f, path: `${layer}/${f.path}` });
       files[files.length - 1]!.content = content;
@@ -197,6 +202,14 @@ export function generateProjectFiles(p: StackProject, opts: { forRelease?: boole
     files.push(...generateStackAksFiles(spec));
     warnings.push(...stackAksWarnings(spec));
     cost = estimateStackAksCost(spec);
+  } else if (p.deploy.target === 'container-apps') {
+    if (db) return { ok: false, errors: ['Container Apps: a Database is not run in Container Apps (it has no persistent disk these templates manage). Untick Database and use Azure Database for PostgreSQL or MySQL: add a secret variable named DATABASE_URL to the Backend and the API.'] };
+    const spec = acaSpec(p, on, cfg, entry);
+    const errors = validateStackAca(spec);
+    if (errors.length > 0) return { ok: false, errors };
+    files.push(...generateStackAcaFiles(spec, { forRelease: opts.forRelease === true }));
+    warnings.push(...stackAcaWarnings(spec));
+    cost = estimateStackAcaCost(spec);
   } else if (p.deploy.target === 'ecs') {
     if (db) return { ok: false, errors: ['ECS: a Database is not run on Fargate (it has no persistent disk these templates manage). Untick Database and use RDS or another managed database: add a secret variable named DATABASE_URL to the Backend and the API.'] };
     const spec = ecsSpec(p, on, cfg, entry);
@@ -296,6 +309,25 @@ function aksSpec(p: StackProject, on: Layer[], cfg: Record<Layer, ContainerConfi
   return { project: p.name, namespace: aksNamespace(p.name, a), aks: a, layers, entry, secrets: projectSecrets(apps, cfg) };
 }
 
+/** The project as the Container Apps generator wants it: like ECS, but the others are called by app name (`<project>-<service>`) and no port. */
+function acaSpec(p: StackProject, on: Layer[], cfg: Record<Layer, ContainerConfig>, entry: Layer): StackAcaSpec {
+  const apps = on.filter((l) => l !== 'database');
+  const upstream = on.includes('api') ? 'api' : on.includes('backend') ? 'backend' : null;
+  const staticSite = on.includes('frontend') && cfg.frontend.stack === 'static' && !usesExistingImage(cfg.frontend);
+  const layers = apps.map((l) => {
+    const wiring = [
+      ...(l === 'api' && on.includes('backend') ? [{ key: 'BACKEND_URL', value: `http://${acaAppName(p.name, 'backend')}` }] : []),
+      ...(l === 'frontend' && upstream && !staticSite ? [{ key: 'API_URL', value: `http://${acaAppName(p.name, upstream)}` }] : []),
+    ];
+    return {
+      name: l as string, port: cfg[l].port, built: !usesExistingImage(cfg[l]), image: usesExistingImage(cfg[l]) ? cfg[l].image : '',
+      env: [...cfg[l].env.filter((v) => !v.secret && !wiring.some((w) => w.key === v.key)).map((v) => ({ key: v.key, value: v.value })), ...wiring],
+      secrets: cfg[l].env.filter((v) => v.secret).map((v) => v.key), healthPath: cfg[l].healthPath || '/',
+    };
+  });
+  return { project: p.name, aca: p.deploy.aca, layers, entry, secrets: projectSecrets(apps, cfg) };
+}
+
 /** The project as the ECS generator wants it: each service with its container port, its variables (plus the addresses of the others) and its secrets. */
 function ecsSpec(p: StackProject, on: Layer[], cfg: Record<Layer, ContainerConfig>, entry: Layer): StackEcsSpec {
   const apps = on.filter((l) => l !== 'database');
@@ -393,6 +425,6 @@ The data is in the Docker volume \`database-data\`. It survives \`docker compose
 ` : ''}
 ## Deploying
 
-${p.deploy.target === 'ec2' ? `All the services run on one EC2 server: see \`ec2/README.md\`, or just run \`bash deploy.sh\`.` : p.deploy.target === 'ecs' ? `Every service runs on AWS ECS Fargate behind a load balancer: see \`ecs/README.md\`, or just run \`bash deploy.sh\`.` : p.deploy.target === 'azure-vm' ? `All the services run on one Azure VM: see \`azvm/README.md\`, or just run \`bash deploy.sh\`.` : 'Run it on any machine with Docker Compose, or choose "AWS EC2" or "Azure VM" (one server runs everything) for this project in CloudCraft to also get \`deploy.sh\`, \`destroy.sh\` and the Terraform that run all of it on one server.'}
+${p.deploy.target === 'ec2' ? `All the services run on one EC2 server: see \`ec2/README.md\`, or just run \`bash deploy.sh\`.` : p.deploy.target === 'container-apps' ? `Every service runs on Azure Container Apps: see \`aca/README.md\`, or just run \`bash deploy.sh\`.` : p.deploy.target === 'ecs' ? `Every service runs on AWS ECS Fargate behind a load balancer: see \`ecs/README.md\`, or just run \`bash deploy.sh\`.` : p.deploy.target === 'azure-vm' ? `All the services run on one Azure VM: see \`azvm/README.md\`, or just run \`bash deploy.sh\`.` : 'Run it on any machine with Docker Compose, or choose "AWS EC2" or "Azure VM" (one server runs everything) for this project in CloudCraft to also get \`deploy.sh\`, \`destroy.sh\` and the Terraform that run all of it on one server.'}
 `;
 }

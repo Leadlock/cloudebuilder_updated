@@ -608,6 +608,16 @@ describe('POST destroy (tearing down what a release created)', () => {
     expect(input.extraEnv).toBeUndefined();
   });
 
+  test('a Container Apps release previews with its own Terraform and no SSH key', async () => {
+    const r = await made();
+    const settings = JSON.parse(JSON.stringify(r.settings)); settings.deploy.target = 'container-apps';
+    const aca = await made({ settings });
+    expect((await call(aca)).status).toBe(200);
+    const input = mockPrepareDestroy.mock.calls.at(-1)![0];
+    expect(input.bundleFiles.map((f: { filename: string }) => f.filename).sort()).toEqual(['main.tf', 'outputs.tf', 'variables.tf']);
+    expect(input.extraEnv).toBeUndefined();
+  });
+
   test('previews with the release\'s own Terraform against its state, and lists what would go, with a token bound to that plan', async () => {
     const r = await made();
     const res = await call(r);

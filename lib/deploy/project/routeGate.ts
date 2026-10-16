@@ -39,7 +39,7 @@ export async function findRelease(store: ReleaseStore, gate: Extract<Gate, { ok:
 export function publicRelease(r: Release) {
   return {
     id: r.id, project: r.project, environment: r.environment, target: r.target, imageTag: r.imageTag, status: r.status, steps: r.steps,
-    outputs: r.outputs ? (r.outputs.kind === 'ecs' ? { url: r.outputs.url, region: r.outputs.region, cluster: r.outputs.cluster } : r.outputs.kind === 'ec2' ? { url: r.outputs.url, region: r.outputs.region, instanceId: r.outputs.instanceId } : { url: r.outputs.url, resourceGroup: r.outputs.resourceGroup, vmName: r.outputs.vmName }) : null,
+    outputs: r.outputs ? (r.outputs.kind === 'aca' ? { url: r.outputs.url, resourceGroup: r.outputs.resourceGroup, apps: r.outputs.apps.length } : r.outputs.kind === 'ecs' ? { url: r.outputs.url, region: r.outputs.region, cluster: r.outputs.cluster } : r.outputs.kind === 'ec2' ? { url: r.outputs.url, region: r.outputs.region, instanceId: r.outputs.instanceId } : { url: r.outputs.url, resourceGroup: r.outputs.resourceGroup, vmName: r.outputs.vmName }) : null,
     error: r.error, log: r.log, secrets: r.secrets, built: r.built, ownCode: Object.keys(r.sources ?? {}), bundleHash: r.bundleHash, planId: r.planId, planHash: r.planHash,
     previousReleaseId: r.previousReleaseId, createdAt: r.createdAt, updatedAt: r.updatedAt,
   };

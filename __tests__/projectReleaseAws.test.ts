@@ -271,7 +271,7 @@ describe('the AWS driver', () => {
     expect(await d.secretExists(OUT, 'JWT_SECRET')).toBe(true);
     expect(await d.secretExists(OUT, 'OTHER')).toBe(false);
     await d.build(OUT, { project: 'shop', layer: 'api', tag: 'v1', files: [{ path: 'Dockerfile', content: 'FROM scratch\n' }, { path: 'a.bin', content: Buffer.from([1, 2, 255]) }] });
-    await d.publish(OUT, { project: 'shop', tag: 'v1', compose: 'x' });
+    await d.publish(OUT, { project: 'shop', tag: 'v1', compose: 'x', built: [] });
     await d.start(OUT, { project: 'shop' });
     expect(r.calls).toEqual([
       'putSecret /shop/JWT_SECRET', `build ${OUT.registry}/shop-api:v1 shop-build shop-src-123456789012`, 'release shop-123456789012 v1', 'restart i-0abc123def456 shop',

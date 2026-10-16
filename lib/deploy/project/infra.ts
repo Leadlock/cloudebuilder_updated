@@ -23,11 +23,11 @@ export function throwawayPublicKey(): string {
   return `ssh-ed25519 ${Buffer.concat([str(Buffer.from('ssh-ed25519')), str(raw)]).toString('base64')}`;
 }
 
-export const providerOf = (target: ReleaseTarget): 'aws' | 'azure' => (target === 'azure-vm' ? 'azure' : 'aws');
+export const providerOf = (target: ReleaseTarget): 'aws' | 'azure' => (target === 'azure-vm' || target === 'container-apps' ? 'azure' : 'aws');
 
 /** The files Terraform needs from a bundle: its .tf files, and the two a configuration reads (the start-up script, the compose file). Never the generated deploy scripts or notes. */
 export function terraformFiles(bundle: ProjectBundle): Array<{ filename: string; content: string }> {
-  const read = bundle.target === 'ec2' ? ['user_data.sh', 'compose.deploy.yml'] : bundle.target === 'ecs' ? [] : ['cloud-init.sh', 'compose.deploy.yml'];
+  const read = bundle.target === 'ec2' ? ['user_data.sh', 'compose.deploy.yml'] : bundle.target === 'ecs' || bundle.target === 'container-apps' ? [] : ['cloud-init.sh', 'compose.deploy.yml'];
   return bundle.terraform.filter((f) => f.filename.endsWith('.tf') || read.includes(f.filename));
 }
 
@@ -63,6 +63,13 @@ export function outputsFrom(json: string, target: ReleaseTarget = 'azure-vm'): R
     if (required) throw new Error(`Terraform did not report ${k}.`);
     return '';
   };
+  if (target === 'container-apps') {
+    const apps = parsed['apps']?.value;
+    if (!Array.isArray(apps) || apps.length === 0 || !apps.every((x) => typeof x === 'string' && /^[a-z][a-z0-9-]{0,30}[a-z0-9]$/.test(x))) throw new Error('Terraform did not report apps.');
+    const count = parsed['min_replicas']?.value;
+    if (typeof count !== 'number' || !Number.isInteger(count) || count < 1) throw new Error('Terraform did not report min_replicas.');
+    return { kind: 'aca', resourceGroup: text('resource_group', true), apps: apps as string[], minReplicas: count, acrName: text('acr_name', false), vaultName: text('vault_name', false), url: text('app_url', true) };
+  }
   if (target === 'ecs') {
     const built = parsed['codebuild_project'] !== undefined;
     const services = parsed['services']?.value;

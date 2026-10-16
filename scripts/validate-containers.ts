@@ -24,7 +24,7 @@ const make = (target: Parameters<typeof withDeployTarget>[1], edit: (c: Containe
 };
 
 /** A project of several services deployed to one EC2 server or Azure VM (the compose file runs there). */
-const project = (on: Layer[], edit: (p: StackProject) => void = () => {}, target: 'ec2' | 'ecs' | 'azure-vm' | 'kubernetes' | 'aks' = 'ec2'): StackProject => {
+const project = (on: Layer[], edit: (p: StackProject) => void = () => {}, target: 'ec2' | 'ecs' | 'container-apps' | 'azure-vm' | 'kubernetes' | 'aks' = 'ec2'): StackProject => {
   const p = defaultProject();
   p.name = 'shop';
   for (const l of LAYERS) p.layers[l].enabled = on.includes(l);
@@ -41,6 +41,11 @@ const cases: Array<[string, Kind, string, ContainerConfig | StackProject]> = [
   ['project-ecs-three-services', 'terraform', 'ecs', project(['frontend', 'backend', 'api'], (p) => { p.layers.api.config.env = [{ key: 'STRIPE_KEY', value: '', secret: true }]; }, 'ecs')],
   ['project-ecs-https-private-range', 'terraform', 'ecs', project(['backend', 'api'], (p) => { Object.assign(p.deploy.ecs, { certificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/abc-123', allowedCidr: '203.0.113.0/24', cpu: 1024, memoryMb: 4096, desiredCount: 2, imageTag: 'v1.2.3' }); }, 'ecs')],
   ['project-ecs-ready-made-images', 'terraform', 'ecs', project(['frontend', 'api'], (p) => { for (const l of ['frontend', 'api'] as const) p.layers[l].config = { ...p.layers[l].config, image: 'nginxinc/nginx-unprivileged:1.27' }; p.layers.backend.config.env = []; }, 'ecs')],
+  ['release-aca-three-services', 'terraform', 'aca', project(['frontend', 'backend', 'api'], (p) => { p.layers.api.config.env = [{ key: 'STRIPE_KEY', value: '', secret: true }]; }, 'container-apps')],
+  ['release-aca-ready-made-images', 'terraform', 'aca', project(['frontend', 'api'], (p) => { for (const l of ['frontend', 'api'] as const) p.layers[l].config = { ...p.layers[l].config, image: 'nginxinc/nginx-unprivileged:1.27' }; p.layers.backend.config.env = []; }, 'container-apps')],
+  ['project-aca-three-services', 'terraform', 'aca', project(['frontend', 'backend', 'api'], (p) => { p.layers.api.config.env = [{ key: 'STRIPE_KEY', value: '', secret: true }]; }, 'container-apps')],
+  ['project-aca-restricted-scale-to-zero', 'terraform', 'aca', project(['backend', 'api'], (p) => { Object.assign(p.deploy.aca, { allowedCidr: '203.0.113.0/24', minReplicas: 0, cpu: 1, imageTag: 'v1.2.3', location: 'eastus2' }); }, 'container-apps')],
+  ['project-aca-no-secrets', 'terraform', 'aca', project(['frontend', 'api'], (p) => { p.layers.backend.config.env = []; }, 'container-apps')],
   ['project-aks-three-services-secrets', 'terraform+kustomize', 'aks', project(['frontend', 'backend', 'api'], (p) => { p.layers.api.config.env = [{ key: 'STRIPE_KEY', value: '', secret: true }]; }, 'aks')],
   ['project-aks-ingress-no-secrets', 'terraform+kustomize', 'aks', project(['frontend', 'api'], (p) => { Object.assign(p.deploy.aks, { ingressHost: 'shop.example.com', tlsSecret: 'shop-tls', namespace: 'prod', imageTag: 'v1.2.3', location: 'eastus2', nodeSize: 'Standard_D2s_v3', minNodes: 1, maxNodes: 3 }); p.layers.backend.config.env = []; }, 'aks')],
   ['project-aks-ready-made-images', 'terraform+kustomize', 'aks', project(['frontend', 'api'], (p) => { for (const l of ['frontend', 'api'] as const) p.layers[l].config = { ...p.layers[l].config, image: 'nginxinc/nginx-unprivileged:1.27' }; p.layers.backend.config.env = []; }, 'aks')],

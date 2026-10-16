@@ -20,6 +20,16 @@ export interface AzureOps {
   resourceGroupExists(resourceGroup: string): Promise<boolean>;
 }
 
+/** What a release on Azure Container Apps needs besides AzureOps. */
+export interface AcaOps {
+  /** Whether the secret holds a value somebody stored: a secret that is only the marker a release's Terraform leaves counts as not stored. */
+  secretHasValue(vault: string, name: string): Promise<boolean>;
+  /** Points a Container App at another image (a new revision) and waits until Azure has provisioned it. Nothing needs to run yet. */
+  containerAppSetImage(a: { resourceGroup: string; app: string; image: string }): Promise<void>;
+  /** Gives a Container App its minimum number of replicas and waits until its newest revision is ready and running. */
+  containerAppStart(a: { resourceGroup: string; app: string; minReplicas: number; onLog?: (line: string) => void }): Promise<void>;
+}
+
 export interface AzureOpsDeps {
   subscriptionId: string;
   /** An Azure AD access token for a resource, for example "https://management.azure.com/.default". */
@@ -39,6 +49,9 @@ const ARM_SCOPE = `${ARM}/.default`;
 const VAULT_SCOPE = 'https://vault.azure.net/.default';
 const REGISTRY_API = '2019-06-01-preview';
 const COMPUTE_API = '2024-03-01';
+const APP_API = '2024-03-01';
+const APP_NAME = /^[a-z][a-z0-9-]{0,30}[a-z0-9]$/;
+const APP_IMAGE = /^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$/;
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const VAULT_NAME = /^[A-Za-z][A-Za-z0-9-]{1,22}[A-Za-z0-9]$/;
 const SECRET_NAME = /^[A-Za-z0-9-]{1,127}$/;
@@ -61,7 +74,7 @@ function reason(body: unknown, fallback: string): string {
   return e?.message ? `${e.code ? `${e.code}: ` : ''}${String(e.message).slice(0, 300)}` : fallback;
 }
 
-export function createAzureOps(deps: AzureOpsDeps): AzureOps {
+export function createAzureOps(deps: AzureOpsDeps): AzureOps & AcaOps {
   const f = deps.fetchImpl ?? fetch;
   const sleep = deps.sleep ?? defaultSleep;
   const pollMs = deps.pollMs ?? 5000;
@@ -189,6 +202,36 @@ export function createAzureOps(deps: AzureOpsDeps): AzureOps {
       return output;
     },
 
+    async secretHasValue(vault, name) {
+      const r = await call(vaultUrl(vault, name), { scope: VAULT_SCOPE });
+      if (r.status === 404) return false;
+      if (!r.ok) throw new AzureError(`Could not read secret ${name}: ${reason(r.json, `HTTP ${r.status}`)}`, r.status);
+      return (r.json as { tags?: Record<string, string> } | null)?.tags?.['cloudcraft'] !== 'placeholder';
+    },
+
+    async containerAppSetImage({ resourceGroup, app, image }) {
+      if (!NAME.test(resourceGroup) || !APP_NAME.test(app) || !APP_IMAGE.test(image)) throw new AzureError('The resource group, app or image name is not valid.');
+      const url = appUrl(resourceGroup, app);
+      const cur = await readApp(url, app);
+      const template = cur.properties?.template as { containers?: Array<Record<string, unknown>> } | undefined;
+      if (!template?.containers?.length) throw new AzureError(`The app ${app} has no container.`);
+      const containers = template.containers.map((c, i) => (i === 0 ? { ...c, image } : c));
+      const r = await call(url, { method: 'PATCH', scope: ARM_SCOPE, body: { properties: { template: { ...template, containers } } } });
+      await finish(r, `Pointing ${app} at ${image}`, deps.commandTimeoutMs ?? 10 * 60_000);
+      await waitApp(url, app, false);
+    },
+
+    async containerAppStart({ resourceGroup, app, minReplicas, onLog }) {
+      if (!NAME.test(resourceGroup) || !APP_NAME.test(app) || !Number.isInteger(minReplicas) || minReplicas < 1 || minReplicas > 30) throw new AzureError('The resource group, app or replica count is not valid.');
+      const url = appUrl(resourceGroup, app);
+      const cur = await readApp(url, app);
+      const template = cur.properties?.template as { scale?: Record<string, unknown> } | undefined;
+      if (!template) throw new AzureError(`The app ${app} has no template.`);
+      const r = await call(url, { method: 'PATCH', scope: ARM_SCOPE, body: { properties: { template: { ...template, scale: { ...(template.scale ?? {}), minReplicas } } } } });
+      await finish(r, `Starting ${app}`, deps.commandTimeoutMs ?? 10 * 60_000);
+      await waitApp(url, app, true, onLog);
+    },
+
     async resourceGroupExists(resourceGroup) {
       if (!NAME.test(resourceGroup)) throw new AzureError('The resource group name is not valid.');
       const r = await call(`${base}/resourcegroups/${resourceGroup}?api-version=2021-04-01`, { scope: ARM_SCOPE });
@@ -204,6 +247,36 @@ export function createAzureOps(deps: AzureOpsDeps): AzureOps {
       } catch { return false; }
     },
   };
+
+  function appUrl(rg: string, app: string) {
+    if (!NAME.test(rg) || !APP_NAME.test(app)) throw new AzureError('The resource group or app name is not valid.');
+    return `${base}/resourceGroups/${rg}/providers/Microsoft.App/containerApps/${app}?api-version=${APP_API}`;
+  }
+
+  async function readApp(url: string, app: string): Promise<{ properties?: Record<string, unknown> }> {
+    const r = await call(url, { scope: ARM_SCOPE });
+    if (!r.ok) throw new AzureError(`Could not read the app ${app}: ${reason(r.json, `HTTP ${r.status}`)}`, r.status);
+    return r.json as { properties?: Record<string, unknown> };
+  }
+
+  /** Waits for Azure to finish provisioning the app and, when it must run, for its newest revision to be ready and running. */
+  async function waitApp(url: string, app: string, mustRun: boolean, onLog?: (line: string) => void) {
+    const started = Date.now();
+    const timeout = deps.buildTimeoutMs ?? 20 * 60_000;
+    let last = '';
+    for (;;) {
+      const p = (await readApp(url, app)).properties ?? {};
+      const state = String(p['provisioningState'] ?? '');
+      if (state === 'Failed') throw new AzureError(`Azure could not provision ${app}.`);
+      const running = String((p['runningStatus'] as { runningState?: string } | undefined)?.runningState ?? '');
+      const ready = p['latestReadyRevisionName'] && p['latestReadyRevisionName'] === p['latestRevisionName'];
+      const line = `${app}: ${state || 'provisioning'}${mustRun ? `, revision ${ready ? 'ready' : 'not ready'}${running ? `, ${running}` : ''}` : ''}`;
+      if (line !== last) { last = line; onLog?.(line); }
+      if (state === 'Succeeded' && (!mustRun || (ready && (running === '' || running === 'Running')))) return;
+      if (Date.now() - started > timeout) throw new AzureError(`${app} did not become ready in time (${line}).`);
+      await sleep(pollMs);
+    }
+  }
 
   async function logTail(reg: string, runId: string): Promise<string> {
     try {

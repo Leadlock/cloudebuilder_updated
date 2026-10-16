@@ -216,7 +216,7 @@ const STEP_RUNNERS: Record<StepName, (release: Release, deps: Required<Pick<Orch
 
   async publish(release, d) {
     const out = release.outputs!;
-    await d.driver.publish(out, { project: release.project, tag: release.imageTag, compose: release.compose });
+    await d.driver.publish(out, { project: release.project, tag: release.imageTag, compose: release.compose, built: release.built });
     return { state: 'done', message: `Tag ${release.imageTag} and the compose file are on the VM` };
   },
 
@@ -245,7 +245,7 @@ async function restorePrevious(current: Release, previous: Release, deps: Orches
   try {
     say(`Putting ${previous.imageTag} back`);
     const driver = driverOf(deps);
-    await driver.publish(out, { project: previous.project, tag: previous.imageTag, compose: previous.compose });
+    await driver.publish(out, { project: previous.project, tag: previous.imageTag, compose: previous.compose, built: previous.built });
     await driver.start(out, { project: previous.project });
     const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
     const end = Date.now() + (deps.verifyWaitMs ?? 10 * 60_000);
