@@ -1,6 +1,10 @@
 # Design: deploying a project from inside CloudCraft
 
-Status: proposal, not built. Written 2026-10-16 against commit `6df274b`.
+Status: phase 1 (Azure VM) is built and tested with fakes and, for the database and the zip reader, against real Postgres and hand-made hostile archives. It has **not** been
+run against a real Azure subscription. Switched off by default (`CLOUDCRAFT_PROJECT_RELEASES=1`). How to try it: [IN_APP_DEPLOYMENT_TEST.md](IN_APP_DEPLOYMENT_TEST.md).
+Built: release state machine with waiting-for-secrets, retry from the failed step, automatic and manual rollback, cancel and kill switch; Azure REST operations; the
+Terraform plan/approval/apply path through the existing machinery; routes; worker queue; the panel; uploaded code (zip); teardown. Phases 2 to 4 (EC2, AKS and Kubernetes, Git sources) are not built.
+Written 2026-10-16.
 
 ## 1. The problem
 

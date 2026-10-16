@@ -54,6 +54,8 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
   const [putBack, setPutBack] = useState<string | null>(null);
   const [teardown, setTeardown] = useState<{ preview: DestroyPreview | null; nothing: boolean; name: string; password: string; code: string; needsCode: boolean; runId: string | null; state: string | null; tail: string[]; elapsed: number } | null>(null);
   const [missing, setMissing] = useState<string[] | null>(null);
+  /** Whether the background worker that runs releases is up (the server says; undefined until it has). */
+  const [workerAlive, setWorkerAlive] = useState<boolean | undefined>(undefined);
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [needsCode, setNeedsCode] = useState(false);
@@ -92,9 +94,9 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
   useEffect(() => { setBackend((b) => (b.key ? b : { ...b, key: `cloudcraft/releases/${stack.name}-${environment}.tfstate` })); }, [stack.name, environment]);
 
   const refresh = useCallback(async (id: string) => {
-    const r = await api<{ release: ReleaseView; missing: string[] | null }>(`${base}/${id}`);
+    const r = await api<{ release: ReleaseView; missing: string[] | null; worker?: { alive: boolean } }>(`${base}/${id}`);
     if (!r.ok) return;
-    setRelease(r.data.release); setMissing(r.data.missing);
+    setRelease(r.data.release); setMissing(r.data.missing); setWorkerAlive(r.data.worker?.alive);
   }, [base]);
 
   // Follow a release that is going on.
@@ -318,6 +320,9 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
           {(release.status === 'failed') && release.error && <p className="text-xs text-rose-500">{release.error}</p>}
           {release.log.length > 0 && <pre className={clsx('rounded-lg p-3 text-[11px] leading-relaxed max-h-40 overflow-auto font-mono', isLight ? 'bg-slate-900 text-slate-100' : 'bg-slate-950 text-slate-200 border border-slate-800')}>{release.log.slice(-12).join('\n')}</pre>}
 
+          {(release.status === 'approved' || release.status === 'running') && workerAlive === false && (
+            <p role="alert" className="text-xs text-rose-500">The background worker that runs releases is not running, so nothing is happening. Start it on the server (<code>npm run worker:terraform-apply</code>, or restart <code>cloudcraft-tf-apply</code> in pm2); the release then continues.</p>
+          )}
           {release.status === 'destroyed' && <p className="text-xs text-amber-600">Everything this release created was removed. Plan a new deployment to create it again.</p>}
           <div className="flex flex-wrap gap-2">
             {ACTIVE.has(release.status) && <button type="button" disabled={busy} onClick={() => void act('cancel')} className="px-3 py-1.5 rounded-lg border text-xs font-medium border-rose-300 text-rose-600 disabled:opacity-40">Cancel</button>}

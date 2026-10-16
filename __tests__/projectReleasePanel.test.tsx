@@ -377,3 +377,23 @@ describe('earlier releases and removing everything', () => {
     expect(screen.queryByTestId('teardown')).toBeNull();
   });
 });
+
+describe('when the worker is not there', () => {
+  test('an approved release says nothing will happen until the worker runs, and says nothing when it does', async () => {
+    const r = release({ status: 'approved', steps: STEPS() });
+    routes.unshift([/GET \/api\/projects\/p1\/releases\?/, () => ({ data: { releases: [r] } })]);
+    let alive = false;
+    routes.unshift([/GET \/api\/projects\/p1\/releases\/rel-1$/, () => ({ data: { release: r, missing: null, worker: { alive } } })]);
+    jest.useFakeTimers();
+    try {
+      mount();
+      await act(async () => { await Promise.resolve(); });
+      await screen.findByTestId('release-status');
+      await act(async () => { jest.advanceTimersByTime(3100); await Promise.resolve(); });
+      await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/background worker .* is not running/));
+      alive = true;
+      await act(async () => { jest.advanceTimersByTime(3100); await Promise.resolve(); });
+      await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    } finally { jest.useRealTimers(); }
+  });
+});
