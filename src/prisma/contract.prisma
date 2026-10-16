@@ -739,3 +739,28 @@ model TerraformAccess {
   checksJson  String  @default("[]")
   updatedAt   String
 }
+
+// A deployment of a whole project run from inside CloudCraft (lib/deploy/project): one row per release. `dataJson` holds the release record
+// (steps, the project's settings, the compose file, the ids of what was created): never a credential and never a secret value.
+model ProjectRelease {
+  id            String  @id @default(uuid())
+  orgId         String
+  projectId     String
+  environment   String
+  // The project's name (it names the resource group, the VM and the images).
+  project       String
+  target        String
+  bundleHash    String
+  planId        String?
+  planHash      String?
+  imageTag      String
+  // planned | approved | running | waiting | succeeded | failed | rolled_back | cancelled
+  status        String
+  createdBy     String
+  createdAtMs   Float
+  updatedAtMs   Float
+  dataJson      String
+
+  @@index([projectId, environment, updatedAtMs])
+  @@index([orgId, status])
+}

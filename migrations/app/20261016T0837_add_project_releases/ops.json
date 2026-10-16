@@ -1,0 +1,119 @@
+[
+  {
+    "id": "table.projectRelease",
+    "label": "Create table \"projectRelease\"",
+    "summary": "Creates table \"projectRelease\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "projectRelease"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"projectRelease\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"projectRelease\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"projectRelease\"",
+        "sql": "CREATE TABLE \"public\".\"projectRelease\" (\n  \"bundleHash\" text NOT NULL,\n  \"createdAtMs\" float8 NOT NULL,\n  \"createdBy\" text NOT NULL,\n  \"dataJson\" text NOT NULL,\n  \"environment\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"imageTag\" text NOT NULL,\n  \"orgId\" text NOT NULL,\n  \"planHash\" text,\n  \"planId\" text,\n  \"project\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"status\" text NOT NULL,\n  \"target\" text NOT NULL,\n  \"updatedAtMs\" float8 NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"projectRelease\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"projectRelease\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.projectRelease.projectRelease_orgId_status_idx_f07aed73",
+    "label": "Create index \"projectRelease_orgId_status_idx_f07aed73\" on \"projectRelease\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "projectRelease_orgId_status_idx_f07aed73",
+        "table": "projectRelease"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"projectRelease_orgId_status_idx_f07aed73\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"projectRelease_orgId_status_idx_f07aed73\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"projectRelease_orgId_status_idx_f07aed73\"",
+        "sql": "CREATE INDEX \"projectRelease_orgId_status_idx_f07aed73\" ON \"public\".\"projectRelease\" (\"orgId\", \"status\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"projectRelease_orgId_status_idx_f07aed73\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"projectRelease_orgId_status_idx_f07aed73\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.projectRelease.projectRelease_projectId_environment_updatedAtMs_idx_6c402eb8",
+    "label": "Create index \"projectRelease_projectId_environment_updatedAtMs_idx_6c402eb8\" on \"projectRelease\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "projectRelease_projectId_environment_updatedAtMs_idx_6c402eb8",
+        "table": "projectRelease"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"projectRelease_projectId_environment_updatedAtMs_idx_6c402eb8\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"projectRelease_projectId_environment_updatedAtMs_idx_6c402eb8\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"projectRelease_projectId_environment_updatedAtMs_idx_6c402eb8\"",
+        "sql": "CREATE INDEX \"projectRelease_projectId_environment_updatedAtMs_idx_6c402eb8\" ON \"public\".\"projectRelease\" (\"projectId\", \"environment\", \"updatedAtMs\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"projectRelease_projectId_environment_updatedAtMs_idx_6c402eb8\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"projectRelease_projectId_environment_updatedAtMs_idx_6c402eb8\""
+        ]
+      }
+    ]
+  }
+]

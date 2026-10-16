@@ -144,6 +144,92 @@ async function handleStateLockAndRetry<T>(
   }
 }
 
+interface PlanInWorkDirInput {
+  /** A folder that already holds the Terraform files and backend.tf. */
+  workDir: string;
+  env: Record<string, string>;
+  provider: 'aws' | 'azure';
+  targets: string[];
+  /** Warnings from whoever generated the files, shown with the plan. */
+  notes: string[];
+  projectId: string; orgId: string; environment: string; cloudAccountId: string;
+  user: { id: string; name: string; email: string };
+}
+
+/**
+ * Initialises, validates and plans the Terraform in a folder, refuses a plan that destroys anything or fails the safety checks, and stores the
+ * plan for approval. Shared by the plan of an architecture and the plan of a project release. On failure the caller removes the folder.
+ */
+async function planInWorkDir(a: PlanInWorkDirInput): Promise<PlanRecord> {
+  await initWithRetry(a.workDir, a.env);
+  await validateConfiguration(a.workDir, a.env);   // a configuration Terraform will reject fails here, in seconds
+
+  // -detailed-exitcode: 0 = no changes, 2 = changes present, 1 = error (thrown by runTerraform).
+  await handleStateLockAndRetry(
+    () =>
+      retryPluginStartup(() => runTerraform(['plan', '-input=false', '-no-color', '-out=tfplan', '-detailed-exitcode', ...a.targets.map((t) => `-target=${t}`)], {
+        cwd: a.workDir,
+        env: a.env,
+        allowExitCodes: [0, 2],
+      }), sleep),
+    a.workDir,
+    a.env,
+    'plan',
+  );
+
+  const { stdout: planJsonRaw } = await retryPluginStartup(() => runTerraform(['show', '-json', '-no-color', 'tfplan'], { cwd: a.workDir, env: a.env }), sleep);
+  const planJson = JSON.parse(planJsonRaw) as TerraformPlanJson;
+
+  const resourceChanges = (planJson.resource_changes ?? [])
+    .filter((rc) => !rc.change.actions.includes('no-op') || rc.change.actions.length === 0)
+    .map((rc) => ({
+      address: rc.address,
+      type: rc.type,
+      actions: rc.change.actions as PlanResourceAction[],
+    }))
+    .filter((rc) => rc.actions.length > 0 && !(rc.actions.length === 1 && rc.actions[0] === 'no-op'));
+
+  const destroyed = resourceChanges.filter((rc) => rc.actions.includes('delete')).map((rc) => rc.address);
+  if (destroyed.length > 0) {
+    throw new PlanBlockedError(destroyed);
+  }
+
+  // Look at what Terraform would actually do before this plan can ever be approved.
+  const guardrails = evaluatePlanGuardrails(planJson);
+  if (!guardrails.passed) throw new PlanGuardrailError(guardrails);
+
+  const summary: PlanSummary = {
+    toAdd: resourceChanges.filter((rc) => rc.actions.includes('create')).length,
+    toChange: resourceChanges.filter((rc) => rc.actions.includes('update')).length,
+    toDestroy: 0,
+    resourceChanges,
+    // The generator's warnings, minus the one that is just the diagram's cloud outline (a drawing helper, not a resource).
+    notes: a.notes.filter((w) => !/^Unsupported AWS resource type: aws_cloud_boundary/.test(w)).slice(0, 8),
+    guardrails,
+    ...(a.targets.length > 0 ? { targets: a.targets } : {}),
+  };
+
+  const planFileBytes = await readFile(join(a.workDir, 'tfplan'));
+  const planHash = createHash('sha256').update(planFileBytes).digest('hex');
+
+  const record: PlanRecord = {
+    planId: randomUUID(),
+    planHash,
+    projectId: a.projectId,
+    orgId: a.orgId,
+    environment: a.environment,
+    cloudAccountId: a.cloudAccountId,
+    provider: a.provider,
+    workDir: a.workDir,
+    summary,
+    createdBy: { id: a.user.id, name: a.user.name, email: a.user.email },
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + planTtlMs()).toISOString(),
+  };
+  savePlan(record);
+  return record;
+}
+
 export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord> {
   const { resources, connections } = input;
   const { nodes, edges } = toResourceMap(resources, connections);
@@ -233,73 +319,63 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
       }
     }
 
-    await initWithRetry(workDir, env);
-    await validateConfiguration(workDir, env);   // a configuration Terraform will reject fails here, in seconds
+    return await planInWorkDir({
+      workDir, env, provider, targets, notes: generated.warnings,
+      projectId: input.projectId, orgId: input.orgId, environment: input.environment, cloudAccountId: input.cloudAccountId, user: input.user,
+    });
+  } catch (err) {
+    await rm(workDir, { recursive: true, force: true }).catch(() => {});
+    throw err;
+  }
+}
 
-    // -detailed-exitcode: 0 = no changes, 2 = changes present, 1 = error (thrown by runTerraform).
-    await handleStateLockAndRetry(
-      () =>
-        retryPluginStartup(() => runTerraform(['plan', '-input=false', '-no-color', '-out=tfplan', '-detailed-exitcode', ...targets.map((t) => `-target=${t}`)], {
-          cwd: workDir,
-          env,
-          allowExitCodes: [0, 2],
-        }), sleep),
-      workDir,
-      env,
-      'plan',
-    );
+export interface PlanBundleInput {
+  projectId: string; orgId: string; environment: string; cloudAccountId: string;
+  stateBackend: TerraformStateBackendConfig;
+  user: { id: string; name: string; email: string; role: string };
+  /** The Terraform project of a release (main.tf, variables.tf, ...; no backend.tf: the state backend is added here). */
+  files: Array<{ filename: string; content: string }>;
+  notes: string[];
+  /** Extra environment for Terraform, for example TF_VAR_... values. */
+  extraEnv?: Record<string, string>;
+  /** The cloud the Terraform is for: the connected account must be of it. */
+  provider: 'aws' | 'azure';
+}
 
-    const { stdout: planJsonRaw } = await retryPluginStartup(() => runTerraform(['show', '-json', '-no-color', 'tfplan'], { cwd: workDir, env }), sleep);
-    const planJson = JSON.parse(planJsonRaw) as TerraformPlanJson;
+const BUNDLE_FILE = /^[A-Za-z0-9._-]{1,64}$/;
 
-    const resourceChanges = (planJson.resource_changes ?? [])
-      .filter((rc) => !rc.change.actions.includes('no-op') || rc.change.actions.length === 0)
-      .map((rc) => ({
-        address: rc.address,
-        type: rc.type,
-        actions: rc.change.actions as PlanResourceAction[],
-      }))
-      .filter((rc) => rc.actions.length > 0 && !(rc.actions.length === 1 && rc.actions[0] === 'no-op'));
+/**
+ * Plans the Terraform project of a release (the files of a project's deployment) against a connected account. The gates of a plan that
+ * come from the Deploy tab's architecture review do not apply here: a release has its own approval, bound to its files and to this plan.
+ * What does apply is the same: administrators only, a connected account that can run Terraform, the mandatory remote state, no plan that
+ * destroys anything, and the plan safety checks.
+ */
+export async function planBundle(input: PlanBundleInput): Promise<PlanRecord> {
+  if (input.user.role !== 'admin') throw httpError('Forbidden: Only Administrators can generate a Terraform plan for a target environment.', 403);
+  if (!input.stateBackend?.provider) throw httpError('Plan blocked: a remote Terraform state backend configuration is required.', 400);
+  if (input.stateBackend.provider !== input.provider) throw httpError(`Plan blocked: the state backend is for ${input.stateBackend.provider}, the deployment is for ${input.provider}.`, 400);
+  for (const f of input.files) if (!BUNDLE_FILE.test(f.filename) || f.filename === 'backend.tf' || f.filename.startsWith('.')) throw httpError(`Plan blocked: ${JSON.stringify(f.filename.slice(0, 40))} is not an allowed file name.`, 400);
 
-    const destroyed = resourceChanges.filter((rc) => rc.actions.includes('delete')).map((rc) => rc.address);
-    if (destroyed.length > 0) {
-      throw new PlanBlockedError(destroyed);
-    }
+  const credentialsJson = await cloudAccountRepository.getCredentials(input.cloudAccountId, input.orgId);
+  if (!credentialsJson) throw httpError('CloudAccount credentials not found', 404);
+  const credentials = JSON.parse(credentialsJson) as CloudCredentials;
+  assertTerraformCapable(credentials);
+  const provider: 'aws' | 'azure' = 'tenantId' in credentials ? 'azure' : 'aws';
+  if (provider !== input.provider) throw httpError(`Plan blocked: this deployment is for ${input.provider}, but the connected account is ${provider}.`, 400);
 
-    // Look at what Terraform would actually do before this plan can ever be approved.
-    const guardrails = evaluatePlanGuardrails(planJson);
-    if (!guardrails.passed) throw new PlanGuardrailError(guardrails);
+  const backendHcl = renderBackendConfig(input.stateBackend);
+  assertSafeHcl([...input.files.filter((f) => f.filename.endsWith('.tf')), { filename: 'backend.tf', content: backendHcl }]);
 
-    const summary: PlanSummary = {
-      toAdd: resourceChanges.filter((rc) => rc.actions.includes('create')).length,
-      toChange: resourceChanges.filter((rc) => rc.actions.includes('update')).length,
-      toDestroy: 0,
-      resourceChanges,
-      // The generator's warnings, minus the one that is just the diagram's cloud outline (a drawing helper, not a resource).
-      notes: generated.warnings.filter((w) => !/^Unsupported AWS resource type: aws_cloud_boundary/.test(w)).slice(0, 8),
-      guardrails,
-      ...(targets.length > 0 ? { targets } : {}),
-    };
-
-    const planFileBytes = await readFile(join(workDir, 'tfplan'));
-    const planHash = createHash('sha256').update(planFileBytes).digest('hex');
-
-    const record: PlanRecord = {
-      planId: randomUUID(),
-      planHash,
-      projectId: input.projectId,
-      orgId: input.orgId,
-      environment: input.environment,
-      cloudAccountId: input.cloudAccountId,
-      provider,
-      workDir,
-      summary,
-      createdBy: { id: input.user.id, name: input.user.name, email: input.user.email },
-      createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + planTtlMs()).toISOString(),
-    };
-    savePlan(record);
-    return record;
+  const workDir = await mkdtemp(join(tmpdir(), 'cloudcraft-tf-release-'));
+  try {
+    for (const f of input.files) await writeFile(join(workDir, f.filename), f.content, 'utf-8');
+    await writeFile(join(workDir, 'backend.tf'), backendHcl, 'utf-8');
+    const rawEnv = await resolveExecutionCredentials(credentials);
+    const env: Record<string, string> = { ...(await terraformSecretVarsFor(input.orgId, input.cloudAccountId)), ...rawEnv, ...(input.extraEnv ?? {}) };
+    return await planInWorkDir({
+      workDir, env, provider, targets: [], notes: input.notes,
+      projectId: input.projectId, orgId: input.orgId, environment: input.environment, cloudAccountId: input.cloudAccountId, user: input.user,
+    });
   } catch (err) {
     await rm(workDir, { recursive: true, force: true }).catch(() => {});
     throw err;
@@ -339,7 +415,11 @@ export function verifyPlanForApply(planId: string, planHash: string): PlanRecord
  * directly from an API route — since this is the genuinely long-running,
  * infrastructure-mutating step.
  */
-export async function runApply(planId: string, orgId: string, onOutput?: (chunk: string) => void): Promise<{ message: string; outputTail: string }> {
+export async function runApply(
+  planId: string, orgId: string, onOutput?: (chunk: string) => void,
+  /** Runs after a successful apply, while the plan's folder and the account's environment still exist (to read Terraform's outputs, for instance). */
+  afterApply?: (ctx: { workDir: string; env: Record<string, string> }) => Promise<void>,
+): Promise<{ message: string; outputTail: string }> {
   const record = getPlan(planId);
   if (!record) {
     throw new Error('Plan not found or has expired — it may have already been applied, or the server restarted before apply ran.');
@@ -367,6 +447,7 @@ export async function runApply(planId: string, orgId: string, onOutput?: (chunk:
       env,
       'apply',
     );
+    if (afterApply) await afterApply({ workDir: record.workDir, env });
     const forgotten = await forgetCredentialsAfterSuccess(record.cloudAccountId, orgId);
     return {
       message: `Applied ${record.summary.toAdd} new and ${record.summary.toChange} changed resource(s).${forgotten ? ' As you asked, the credentials for this account were then deleted from CloudCraft.' : ''}`,

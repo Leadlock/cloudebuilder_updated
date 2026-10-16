@@ -46,6 +46,8 @@ export class ReleaseError extends Error {
 
 type Outcome = { state: 'done'; message?: string } | { state: 'waiting'; message: string };
 
+/** How many lines of progress a release keeps. */
+const LOG_LINES = 60;
 const SECRET_VALUE = /^[A-Za-z0-9._~-]{1,200}$/;
 const SECRET_KEY = /^[A-Z][A-Z0-9_]{0,63}$/;
 
@@ -71,15 +73,15 @@ export function writeComposeScript(project: string, compose: string): string {
 }
 
 export function newRelease(input: {
-  id: string; orgId: string; projectId: string; environment: string; project: StackProject; bundle: ProjectBundle; createdBy: string;
+  id: string; orgId: string; projectId: string; environment: string; cloudAccountId: string; project: StackProject; bundle: ProjectBundle; createdBy: string;
   previousReleaseId: string | null; planId?: string | null; planHash?: string | null; now: number;
 }): Release {
   return {
-    id: input.id, orgId: input.orgId, projectId: input.projectId, environment: input.environment, target: 'azure-vm',
+    id: input.id, orgId: input.orgId, projectId: input.projectId, environment: input.environment, cloudAccountId: input.cloudAccountId, target: 'azure-vm',
     bundleHash: input.bundle.bundleHash, planId: input.planId ?? null, planHash: input.planHash ?? null,
     project: input.bundle.project, settings: structuredClone(input.project), imageTag: input.bundle.imageTag, compose: input.bundle.compose,
     built: input.bundle.built, secrets: input.bundle.secrets, status: 'planned', steps: newSteps(input.bundle.built.length > 0), outputs: null,
-    previousReleaseId: input.previousReleaseId, createdBy: input.createdBy, createdAt: input.now, updatedAt: input.now, error: null,
+    previousReleaseId: input.previousReleaseId, createdBy: input.createdBy, createdAt: input.now, updatedAt: input.now, error: null, log: [],
   };
 }
 
@@ -209,7 +211,11 @@ export async function runRelease(deps: OrchestratorDeps, releaseId: string): Pro
   const release = await deps.store.get(releaseId);
   if (!release) throw new ReleaseError('Release not found.', 404);
   if (!['approved', 'running', 'waiting', 'failed'].includes(release.status)) throw new ReleaseError(`A ${release.status} release cannot be run.`, 409);
-  const say = (line: string) => deps.log?.(releaseId, clean(line));
+  const say = (line: string) => {
+    const safe = clean(line);
+    deps.log?.(releaseId, safe);
+    release.log = [...(release.log ?? []), safe].slice(-LOG_LINES);
+  };
   const save = async () => { release.updatedAt = now(); await deps.store.save(release); };
 
   release.status = 'running'; release.error = null;

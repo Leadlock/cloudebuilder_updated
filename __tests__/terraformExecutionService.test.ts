@@ -72,7 +72,7 @@ jest.mock('@/lib/services/ArchitectureReviewService', () => ({
 import { ArchitectureReviewService } from '@/lib/services/ArchitectureReviewService';
 import { cloudAccountRepository } from '@/lib/repositories/cloudAccountRepository';
 import {
-  generatePlan, verifyPlanForApply, runApply, PlanBlockedError,
+  generatePlan, verifyPlanForApply, runApply, planBundle, PlanBlockedError,
 } from '@/lib/terraform/execution/TerraformExecutionService';
 import { terraformGenerator } from '@/lib/engines/terraform/TerraformGenerator';
 import { getPlan, savePlan } from '@/lib/terraform/execution/planStore';
@@ -258,5 +258,84 @@ describe('TerraformExecutionService.runApply', () => {
 
   test('throws when the plan is missing (expired or server restarted before apply ran)', async () => {
     await expect(runApply('never-existed', 'org-1')).rejects.toThrow(/not found|expired/i);
+  });
+});
+
+describe('TerraformExecutionService.planBundle (the Terraform of a project release)', () => {
+  const azureCreds = JSON.stringify({ tenantId: 't', clientId: 'c', clientSecret: 's', subscriptionId: 'sub' });
+  const azureBackend: TerraformStateBackendConfig = { provider: 'azure', resourceGroupName: 'rg', storageAccountName: 'sa', containerName: 'tfstate', key: 'k.tfstate' };
+  const input = {
+    projectId: 'proj-1', orgId: 'org-1', environment: 'production', cloudAccountId: 'acct-1', stateBackend: azureBackend, provider: 'azure' as const,
+    user: adminUser, files: [{ filename: 'main.tf', content: 'resource "azurerm_resource_group" "app" {}' }, { filename: 'cloud-init.sh', content: '#!/bin/bash\n' }], notes: ['a note'],
+    extraEnv: { TF_VAR_admin_ssh_public_key: 'ssh-ed25519 AAAA' },
+  };
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFiles.clear();
+    (cloudAccountRepository.getCredentials as jest.Mock).mockResolvedValue(azureCreds);
+    mockRunTerraform.mockImplementation((args: string[], options: { cwd: string }) => {
+      if (args[0] === 'show') return Promise.resolve({ stdout: planJsonOutput([['create']]), stderr: '' });
+      if (args[0] === 'plan') mockFiles.set(join(options.cwd, 'tfplan'), Buffer.from('fake-tfplan-binary'));
+      return Promise.resolve({ stdout: '', stderr: '' });
+    });
+  });
+
+  test('plans the files it is given with the state backend added, and stores the plan with the notes', async () => {
+    const record = await planBundle(input);
+    expect(record.provider).toBe('azure');
+    expect(record.summary.toAdd).toBe(1);
+    expect(record.summary.notes).toEqual(['a note']);
+    expect(getPlan(record.planId)).not.toBeNull();
+    const written = [...mockFiles.keys()].map((k) => k.split('/').pop());
+    expect(written).toEqual(expect.arrayContaining(['main.tf', 'cloud-init.sh', 'backend.tf']));
+    expect(String(mockFiles.get([...mockFiles.keys()].find((k) => k.endsWith('backend.tf'))!))).toContain('azurerm');
+    const calls = mockRunTerraform.mock.calls.map((c) => (c[0] as string[])[0]);
+    expect(calls.indexOf('init')).toBeLessThan(calls.indexOf('plan'));
+  });
+
+  test('the extra environment reaches Terraform, next to the account\'s credentials', async () => {
+    await planBundle(input);
+    const planCall = mockRunTerraform.mock.calls.find((c) => (c[0] as string[])[0] === 'plan')!;
+    expect((planCall[1] as { env: Record<string, string> }).env['TF_VAR_admin_ssh_public_key']).toBe('ssh-ed25519 AAAA');
+  });
+
+  test('a plan that destroys anything is refused, as for any plan', async () => {
+    mockRunTerraform.mockImplementation((args: string[]) => Promise.resolve({ stdout: args[0] === 'show' ? planJsonOutput([['create'], ['delete']]) : '', stderr: '' }));
+    await expect(planBundle(input)).rejects.toBeInstanceOf(PlanBlockedError);
+  });
+
+  test('administrators only, a remote state backend of the same cloud, and an account of the same cloud', async () => {
+    await expect(planBundle({ ...input, user: { ...adminUser, role: 'member' } })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(planBundle({ ...input, stateBackend: awsBackend })).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('state backend is for aws') });
+    (cloudAccountRepository.getCredentials as jest.Mock).mockResolvedValue(JSON.stringify({ roleArn: 'arn:aws:iam::123456789012:role/x', externalId: 'e', region: 'us-east-1' }));
+    await expect(planBundle(input)).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('connected account is aws') });
+    (cloudAccountRepository.getCredentials as jest.Mock).mockResolvedValue(null);
+    await expect(planBundle(input)).rejects.toMatchObject({ statusCode: 404 });
+    expect(mockRunTerraform).not.toHaveBeenCalled();
+  });
+
+  test.each(['../evil.tf', 'a/b.tf', 'backend.tf', '.hidden.tf', 'x y.tf', ''])('the file name %j is refused, so nothing can be written outside the folder or replace the state backend', async (filename) => {
+    await expect(planBundle({ ...input, files: [{ filename, content: 'x' }] })).rejects.toMatchObject({ statusCode: 400 });
+    expect(mockRunTerraform).not.toHaveBeenCalled();
+  });
+
+  test('a plan that cannot be made leaves no folder behind', async () => {
+    const fsp = jest.requireMock('fs/promises') as { rm: jest.Mock };
+    mockRunTerraform.mockRejectedValueOnce(new Error('terraform init failed'));
+    await expect(planBundle(input)).rejects.toThrow(/init failed/);
+    expect(fsp.rm).toHaveBeenCalled();
+  });
+
+  test('runApply reads the outputs through the hook while the folder still exists, and only after a successful apply', async () => {
+    const record = await planBundle(input);
+    mockRunTerraform.mockClear();
+    const seen: string[] = [];
+    await runApply(record.planId, 'org-1', undefined, async ({ workDir }) => { seen.push(workDir); });
+    expect(seen).toEqual([record.workDir]);
+    const record2 = await planBundle(input);
+    mockRunTerraform.mockRejectedValueOnce(new Error('apply failed'));
+    const hook = jest.fn();
+    await expect(runApply(record2.planId, 'org-1', undefined, hook)).rejects.toThrow(/apply failed/);
+    expect(hook).not.toHaveBeenCalled();
   });
 });

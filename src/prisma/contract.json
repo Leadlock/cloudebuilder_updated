@@ -104,6 +104,10 @@
       "model": "Project",
       "namespace": "public"
     },
+    "projectRelease": {
+      "model": "ProjectRelease",
+      "namespace": "public"
+    },
     "rateLimitBucket": {
       "model": "RateLimitBucket",
       "namespace": "public"
@@ -3460,6 +3464,167 @@
               },
               "namespaceId": "public",
               "table": "project"
+            }
+          },
+          "ProjectRelease": {
+            "fields": {
+              "bundleHash": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAtMs": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/float8@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdBy": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "dataJson": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "environment": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "imageTag": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "orgId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "planHash": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "planId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "project": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "projectId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "status": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "target": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "updatedAtMs": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/float8@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "fields": {
+                "bundleHash": {
+                  "column": "bundleHash"
+                },
+                "createdAtMs": {
+                  "column": "createdAtMs"
+                },
+                "createdBy": {
+                  "column": "createdBy"
+                },
+                "dataJson": {
+                  "column": "dataJson"
+                },
+                "environment": {
+                  "column": "environment"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "imageTag": {
+                  "column": "imageTag"
+                },
+                "orgId": {
+                  "column": "orgId"
+                },
+                "planHash": {
+                  "column": "planHash"
+                },
+                "planId": {
+                  "column": "planId"
+                },
+                "project": {
+                  "column": "project"
+                },
+                "projectId": {
+                  "column": "projectId"
+                },
+                "status": {
+                  "column": "status"
+                },
+                "target": {
+                  "column": "target"
+                },
+                "updatedAtMs": {
+                  "column": "updatedAtMs"
+                }
+              },
+              "namespaceId": "public",
+              "table": "projectRelease"
             }
           },
           "RateLimitBucket": {
@@ -7473,6 +7638,113 @@
               },
               "uniques": []
             },
+            "projectRelease": {
+              "columns": {
+                "bundleHash": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "createdAtMs": {
+                  "codecId": "pg/float8@1",
+                  "nativeType": "float8",
+                  "nullable": false
+                },
+                "createdBy": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "dataJson": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "environment": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "imageTag": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "orgId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "planHash": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "planId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "project": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "projectId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "status": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "target": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "updatedAtMs": {
+                  "codecId": "pg/float8@1",
+                  "nativeType": "float8",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [],
+              "indexes": [
+                {
+                  "columns": [
+                    "orgId",
+                    "status"
+                  ],
+                  "name": "projectRelease_orgId_status_idx_f07aed73",
+                  "prefix": "projectRelease_orgId_status_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "projectId",
+                    "environment",
+                    "updatedAtMs"
+                  ],
+                  "name": "projectRelease_projectId_environment_updatedAtMs_idx_6c402eb8",
+                  "prefix": "projectRelease_projectId_environment_updatedAtMs_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
             "rateLimitBucket": {
               "columns": {
                 "count": {
@@ -8689,10 +8961,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "7167758b68498480ae8b67247dcd88f5f04cbab50f57ff8d1e97cd9713263e29"
+    "storageHash": "7026e520b55815ed9b2dd462a902005bfc4ec6e2f94db01e5a69a17ebeac2be9"
   },
   "execution": {
-    "executionHash": "9a04c7460656bcb28d5e8658ca2d0b60f090f024e49dfa8d3aa9e1d67dca7907",
+    "executionHash": "4b098096733368d0c06cbbe6a54a1a8a21364144dcfaaabaf5be777b36dd23cd",
     "mutations": {
       "defaults": [
         {
@@ -8957,6 +9229,17 @@
             "column": "id",
             "namespace": "public",
             "table": "project"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "projectRelease"
           }
         },
         {

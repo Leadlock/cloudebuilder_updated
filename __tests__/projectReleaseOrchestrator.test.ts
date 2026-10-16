@@ -50,7 +50,7 @@ function setup(over: { ops?: FakeOps; infraCalls?: { n: number }; killSwitch?: (
 
 async function plan(store: InMemoryReleaseStore, p = project(), id = 'r1', previousReleaseId: string | null = null): Promise<Release> {
   const bundle = buildAzureVmBundle(p);
-  const r = newRelease({ id, orgId: 'org', projectId: 'p1', environment: 'production', project: p, bundle, createdBy: 'u1', previousReleaseId, planId: 'plan-1', planHash: 'hash-1', now: 1 });
+  const r = newRelease({ id, orgId: 'org', projectId: 'p1', environment: 'production', cloudAccountId: 'acct-1', project: p, bundle, createdBy: 'u1', previousReleaseId, planId: 'plan-1', planHash: 'hash-1', now: 1 });
   await store.save(r);
   await approveRelease(store, id, { bundleHash: bundle.bundleHash, planHash: 'hash-1' }, 2);
   return (await store.get(id))!;
@@ -212,7 +212,7 @@ describe('a step that fails', () => {
   test('only an approved, running, waiting or failed release can be run', async () => {
     const { store, deps } = setup();
     const bundle = buildAzureVmBundle(project());
-    await store.save(newRelease({ id: 'r1', orgId: 'o', projectId: 'p1', environment: 'production', project: project(), bundle, createdBy: 'u', previousReleaseId: null, now: 1 }));
+    await store.save(newRelease({ id: 'r1', orgId: 'o', projectId: 'p1', environment: 'production', cloudAccountId: 'acct-1', project: project(), bundle, createdBy: 'u', previousReleaseId: null, now: 1 }));
     await expect(runRelease(deps, 'r1')).rejects.toThrow(/planned release cannot be run/);
     await expect(runRelease(deps, 'nope')).rejects.toThrow(/not found/);
   });
@@ -316,7 +316,7 @@ describe('approval', () => {
     const store = new InMemoryReleaseStore();
     const p = project();
     const bundle = buildAzureVmBundle(p);
-    await store.save(newRelease({ id: 'r1', orgId: 'o', projectId: 'p1', environment: 'production', project: p, bundle, createdBy: 'u', previousReleaseId: null, planId: 'x', planHash: 'h', now: 1 }));
+    await store.save(newRelease({ id: 'r1', orgId: 'o', projectId: 'p1', environment: 'production', cloudAccountId: 'acct-1', project: p, bundle, createdBy: 'u', previousReleaseId: null, planId: 'x', planHash: 'h', now: 1 }));
     await expect(approveRelease(store, 'r1', { bundleHash: 'other', planHash: 'h' }, 2)).rejects.toThrow(/different files or a different plan/);
     await expect(approveRelease(store, 'r1', { bundleHash: bundle.bundleHash, planHash: 'other' }, 2)).rejects.toThrow(/different files or a different plan/);
     await expect(approveRelease(store, 'nope', { bundleHash: bundle.bundleHash, planHash: 'h' }, 2)).rejects.toThrow(ReleaseError);
