@@ -24,6 +24,7 @@ import {
 } from '@/lib/engines/containers/stackProject';
 import StackLayers from './StackLayers';
 import StackDeployCard from './StackDeployCard';
+import ProjectReleasePanel from './ProjectReleasePanel';
 import { applyDatabase, databaseOf, DB_TARGETS } from '@/lib/engines/containers/databases';
 import { FARGATE_CPU, fargateMemoryOptions } from '@/lib/engines/containers/ecsDeploy';
 import { ACA_CPU } from '@/lib/engines/containers/containerAppsDeploy';
@@ -401,6 +402,9 @@ export default function ContainerTemplatesPanel() {
                 onK8s={(k, v) => setStack((st) => ({ ...st, deploy: { ...st.deploy, k8s: { ...st.deploy.k8s, [k]: v } } }))}
                 onAks={(k, v) => setStack((st) => ({ ...st, deploy: { ...st.deploy, aks: { ...st.deploy.aks, [k]: v } } }))}
               />
+            )}
+            {multi && stack.deploy.target === 'azure-vm' && result.ok && (
+              <ProjectReleasePanel projectId={project?.id ?? null} environment={state.activeEnvironment} stack={stack} isLight={isLight} />
             )}
             {!multi && (
             <div className={clsx(card, 'space-y-3')}>

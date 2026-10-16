@@ -97,3 +97,43 @@ describe('project releases on real Postgres', () => {
     expect(raw.rows[0]!.dataJson).toContain('JWT_SECRET');
   });
 });
+
+describe('a whole release against real Postgres (fake cloud)', () => {
+  maybe('runs through the database store: every step saved, a retry resumes, the cancel guard holds, the project is unlocked', async () => {
+    const { PgReleaseStore } = await import('@/lib/deploy/project/pgReleaseStore');
+    const { runRelease, newRelease, approveRelease, provideSecrets } = await import('@/lib/deploy/project/orchestrator');
+    const { buildAzureVmBundle } = await import('@/lib/deploy/project/bundle');
+    const { defaultProject, LAYERS } = await import('@/lib/engines/containers/stackProject');
+    const store = new PgReleaseStore();
+    const p = defaultProject(); p.name = 'shop';
+    for (const l of LAYERS) p.layers[l].enabled = ['backend', 'api'].includes(l);
+    p.layers.backend.config.env = [{ key: 'JWT_SECRET', value: '', secret: true }];
+    p.deploy.target = 'azure-vm';
+    const bundle = buildAzureVmBundle(p);
+    const id = `it-${run}-full`;
+    await store.save(newRelease({ id, orgId, projectId, environment: 'production', cloudAccountId: 'a', project: p, bundle, createdBy: 'u', previousReleaseId: null, planId: 'pl', planHash: 'h', now: Date.now() }));
+    await approveRelease(store, id, { bundleHash: bundle.bundleHash, planHash: 'h' }, Date.now());
+
+    const vault = new Set<string>(); const calls: string[] = [];
+    const ops = {
+      secretExists: async (_v: string, n: string) => vault.has(n), putSecret: async (_v: string, n: string) => { vault.add(n); },
+      acrBuild: async (a: { image: string }) => { calls.push(`build ${a.image}`); }, setVmTag: async (_r: string, _v: string, k: string, v: string) => { calls.push(`tag ${k}=${v}`); },
+      runShell: async () => '', httpOk: async () => true,
+    };
+    const infra = { apply: async () => ({ resourceGroup: 'rg-shop', vmName: 'vm-shop', acrName: 'acrshop', vaultName: 'kvshop', url: 'http://203.0.113.9:8080/' }) };
+    const deps = { store, ops, infra, sleep: async () => undefined, verifyWaitMs: 50, verifyEveryMs: 1 };
+
+    const first = await runRelease(deps, id);
+    expect(first.status).toBe('waiting');
+    // Read back from the database by a different store object (as the web server does while the worker runs).
+    expect((await new PgReleaseStore().get(id))!.steps.find((s) => s.name === 'secrets')!.state).toBe('waiting');
+    await provideSecrets(deps, id, { JWT_SECRET: 'jwt-value_1' });
+    const second = await runRelease(deps, id);
+    expect(second.status).toBe('succeeded');
+    expect(calls).toEqual(['build shop-backend:latest', 'build shop-api:latest', 'tag image_tag=latest']);
+    const stored = (await store.get(id))!;
+    expect(stored.status).toBe('succeeded');
+    expect(JSON.stringify(stored)).not.toContain('jwt-value_1');
+    expect((await store.latestSucceeded(projectId, 'production'))!.id).toBe(id);
+  });
+});
