@@ -25,6 +25,9 @@ import {
   generateStackAzureFiles, stackAzureDefaults, stackAzureWarnings, estimateStackAzureCost, validateStackAzure,
 } from './stackAzureDeploy';
 import type { StackDeployBase } from './stackEc2Deploy';
+import {
+  defaultStackK8s, generateStackK8sFiles, k8sLayerConfig, imageFor, namespaceOf, stackK8sWarnings, validateStackK8s, type StackK8sConfig, type StackK8sSpec,
+} from './stackKubernetesDeploy';
 import type { Ec2Config, Ec2Cost } from './ec2Deploy';
 import type { AzVmConfig } from './azureVmDeploy';
 import type { ContainerFinding } from './checks';
@@ -36,11 +39,11 @@ export const LAYER_LABEL: Record<Layer, string> = { frontend: 'Frontend', backen
 
 export interface LayerState { enabled: boolean; config: ContainerConfig }
 /** Where a project of several services is deployed. Docker Compose on your own machine is always possible; EC2 or an Azure VM runs the whole compose file on one server. */
-export type ProjectTarget = 'none' | 'ec2' | 'azure-vm';
-export interface ProjectDeploy { target: ProjectTarget; ec2: Ec2Config; azvm: AzVmConfig }
+export type ProjectTarget = 'none' | 'ec2' | 'azure-vm' | 'kubernetes';
+export interface ProjectDeploy { target: ProjectTarget; ec2: Ec2Config; azvm: AzVmConfig; k8s: StackK8sConfig }
 export interface StackProject { name: string; layers: Record<Layer, LayerState>; deploy: ProjectDeploy }
 
-export const defaultProjectDeploy = (): ProjectDeploy => ({ target: 'none', ec2: stackEc2Defaults(), azvm: stackAzureDefaults() });
+export const defaultProjectDeploy = (): ProjectDeploy => ({ target: 'none', ec2: stackEc2Defaults(), azvm: stackAzureDefaults(), k8s: defaultStackK8s() });
 
 /** What each layer starts as when it is switched on. */
 const DEFAULT_OPTION: Record<Layer, string> = { frontend: 'spa', backend: 'node', api: 'fastapi', database: 'db-postgres' };
@@ -180,7 +183,14 @@ export function generateProjectFiles(p: StackProject): GenerateResult {
     { path: 'README.md', content: projectReadme(p, on, cfg, layout) },
   );
   let cost: Ec2Cost | undefined;
-  if (p.deploy.target !== 'none') {
+  if (p.deploy.target === 'kubernetes') {
+    if (db) return { ok: false, errors: ['Kubernetes: a Database is not run in the cluster (it needs persistent storage and backups these templates do not set up). Untick Database and use your cloud\'s managed database: add a secret variable named DATABASE_URL to the Backend and the API.'] };
+    const spec = k8sSpec(p, on, cfg, entry);
+    const errors = validateStackK8s(spec);
+    if (errors.length > 0) return { ok: false, errors };
+    files.push(...generateStackK8sFiles(spec));
+    warnings.push(...stackK8sWarnings(spec));
+  } else if (p.deploy.target !== 'none') {
     const base = deployBase(p, on, cfg, layout, entry, composeFor(p, on, cfg, layout, { mode: 'deploy', entry, db, dbLines, upstreamLayer }));
     if (p.deploy.target === 'ec2') {
       const spec = { ...base, ec2: p.deploy.ec2 };
@@ -240,6 +250,23 @@ function composeFor(p: StackProject, on: Layer[], cfg: Record<Layer, ContainerCo
   return `${deploy ? '# The compose file the server runs (CloudCraft EC2 deployment). The server fills in REGISTRY and TAG.' : '# Start everything with: docker compose up --build'}
 services:
 ${services.join('')}${db ? `\nvolumes:\n  database-data:\n` : ''}`;
+}
+
+/** The project as the Kubernetes generator wants it: every service named after its layer, wired to the others by the same addresses as in compose. */
+function k8sSpec(p: StackProject, on: Layer[], cfg: Record<Layer, ContainerConfig>, entry: Layer): StackK8sSpec {
+  const k = p.deploy.k8s;
+  const apps = on.filter((l) => l !== 'database');
+  const upstream = on.includes('api') ? 'api' : on.includes('backend') ? 'backend' : null;
+  const staticSite = on.includes('frontend') && cfg.frontend.stack === 'static' && !usesExistingImage(cfg.frontend);
+  const extra = (l: Layer): Array<{ key: string; value: string }> => [
+    ...(l === 'api' && on.includes('backend') ? [{ key: 'BACKEND_URL', value: `http://backend:${cfg.backend.port}` }] : []),
+    ...(l === 'frontend' && upstream && !staticSite ? [{ key: 'API_URL', value: `http://${upstream}:${cfg[upstream].port}` }] : []),
+  ];
+  const layers = apps.map((l) => {
+    const config = k8sLayerConfig(p.name, k, l, cfg[l], l === entry, extra(l));
+    return { name: l as string, config, built: !usesExistingImage(cfg[l]), image: usesExistingImage(cfg[l]) ? cfg[l].image : imageFor(p.name, k, l), secrets: config.env.filter((v) => v.secret).map((v) => v.key) };
+  });
+  return { project: p.name, namespace: namespaceOf(p.name, k), k8s: k, layers, entry, secrets: projectSecrets(apps, cfg) };
 }
 
 /** Every secret of every service, once each, in the order the services are listed. */

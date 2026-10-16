@@ -80,7 +80,7 @@ describe('the Stack parts', () => {
     expect([...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value)).toContain('ecs');
     fireEvent.click(include('Frontend'));
     // The Deploy card of one service is replaced by the project's: none, or one server (EC2 or an Azure VM) for everything.
-    expect([...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value)).toEqual(['none', 'ec2', 'azure-vm']);
+    expect([...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value)).toEqual(['none', 'ec2', 'azure-vm', 'kubernetes']);
     expect(screen.queryByLabelText('App name')).toBeNull();
     expect(screen.queryByText('Add PostgreSQL')).toBeNull();
     expect(screen.getByLabelText('Project name')).toBeTruthy();
@@ -122,6 +122,25 @@ describe('the Stack parts', () => {
     expect(screen.getByRole('alert').textContent).toMatch(/who can connect/);
     fireEvent.change(screen.getByLabelText('Deploy to'), { target: { value: 'ec2' } });
     expect((screen.getByLabelText(/Who can connect/) as HTMLInputElement).value).toBe('0.0.0.0/0');   // the other cloud's setting is not carried over
+  });
+
+  test('choosing Kubernetes for the project adds a folder of manifests per service, asks for the registry first, and refuses a database with the way out', () => {
+    render(<ContainerTemplatesPanel />);
+    fireEvent.click(include('Frontend')); fireEvent.click(include('API'));
+    fireEvent.change(screen.getByLabelText('Deploy to'), { target: { value: 'kubernetes' } });
+    expect(screen.getByRole('alert').textContent).toMatch(/registry/);
+    fireEvent.change(screen.getByLabelText('Image registry'), { target: { value: 'ghcr.io/acme' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(tabNames()).toEqual(expect.arrayContaining(['deploy.sh', 'k8s/kustomization.yaml', 'k8s/namespace.yaml', 'k8s/frontend/deployment.yaml', 'k8s/api/service.yaml']));
+    expect(tabNames()).not.toContain('ec2/main.tf');
+    fireEvent.change(screen.getByLabelText('Ingress host (optional)'), { target: { value: 'shop.example.com' } });
+    expect(tabNames()).toContain('k8s/frontend/ingress.yaml');
+    expect(tabNames()).not.toContain('k8s/api/ingress.yaml');
+    fireEvent.click(include('Database'));
+    expect(screen.getByRole('alert').textContent).toMatch(/Database is not run in the cluster/);
+    expect(screen.getByRole('alert').textContent).toMatch(/DATABASE_URL/);
+    fireEvent.click(include('Database'));
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   test('the project deployment is kept when parts are ticked and unticked, and one part alone goes back to its own deployment card', () => {

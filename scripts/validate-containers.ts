@@ -24,7 +24,7 @@ const make = (target: Parameters<typeof withDeployTarget>[1], edit: (c: Containe
 };
 
 /** A project of several services deployed to one EC2 server or Azure VM (the compose file runs there). */
-const project = (on: Layer[], edit: (p: StackProject) => void = () => {}, target: 'ec2' | 'azure-vm' = 'ec2'): StackProject => {
+const project = (on: Layer[], edit: (p: StackProject) => void = () => {}, target: 'ec2' | 'azure-vm' | 'kubernetes' = 'ec2'): StackProject => {
   const p = defaultProject();
   p.name = 'shop';
   for (const l of LAYERS) p.layers[l].enabled = on.includes(l);
@@ -34,8 +34,12 @@ const project = (on: Layer[], edit: (p: StackProject) => void = () => {}, target
   return p;
 };
 
-type Kind = 'terraform' | 'kubernetes' | 'both';
+type Kind = 'terraform' | 'kubernetes' | 'both' | 'kustomize';
 const cases: Array<[string, Kind, string, ContainerConfig | StackProject]> = [
+  ['project-k8s-three-services', 'kustomize', 'k8s', project(['frontend', 'backend', 'api'], (p) => { p.deploy.k8s.registry = 'ghcr.io/acme'; }, 'kubernetes')],
+  ['project-k8s-ingress-tls-private-registry', 'kustomize', 'k8s', project(['frontend', 'api'], (p) => { Object.assign(p.deploy.k8s, { registry: 'myregistry.azurecr.io/team', namespace: 'prod', ingressHost: 'shop.example.com', tlsSecret: 'shop-tls', imageTag: 'v1.2.3', replicas: 3 }); }, 'kubernetes')],
+  ['project-k8s-loadbalancer-no-secrets', 'kustomize', 'k8s', project(['backend', 'api'], (p) => { p.deploy.k8s.registry = 'ghcr.io/acme'; p.deploy.k8s.serviceType = 'LoadBalancer'; p.layers.backend.config.env = []; }, 'kubernetes')],
+  ['project-k8s-ready-made-images', 'kustomize', 'k8s', project(['frontend', 'api'], (p) => { for (const l of ['frontend', 'api'] as const) p.layers[l].config = { ...p.layers[l].config, image: 'nginxinc/nginx-unprivileged:1.27' }; p.layers.backend.config.env = []; }, 'kubernetes')],
   ['project-ec2-all-four', 'terraform', 'ec2', project(['frontend', 'backend', 'api', 'database'])],
   ['project-ec2-no-database', 'terraform', 'ec2', project(['frontend', 'api'])],
   ['project-ec2-elastic-ip-private-range', 'terraform', 'ec2', project(['backend', 'api', 'database'], (p) => { p.deploy.ec2.elasticIp = true; p.deploy.ec2.allowedCidr = '203.0.113.0/24'; p.deploy.ec2.instanceType = 'm5.large'; p.deploy.ec2.imageTag = 'v1.2.3'; })],
@@ -91,6 +95,11 @@ for (const [name, kind, dir, cfg] of cases) {
     const v = run(tf, ['validate', '-no-color'], cwd);
     if (v.status !== 0) { fail(name, 'terraform validate', v); continue; }
     console.log(`${name}: terraform valid (${res.files.length} files)`);
+  }
+  if (kind === 'kustomize') {
+    const k = run('kubectl', ['kustomize', 'k8s'], base);
+    if (k.status !== 0) { fail(name, 'kubectl kustomize', k); continue; }
+    console.log(`${name}: kustomize OK (${k.stdout.split('\n---').length} objects)`);
   }
   if (kind === 'kubernetes' || kind === 'both') {
     const k = run('kubectl', ['kustomize', 'k8s'], base);

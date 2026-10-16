@@ -398,6 +398,7 @@ export default function ContainerTemplatesPanel() {
                 onTarget={(target) => { setStack((st) => ({ ...st, deploy: { ...st.deploy, target } })); setSelected('README.md'); }}
                 onEc2={(k, v) => setStack((st) => ({ ...st, deploy: { ...st.deploy, ec2: { ...st.deploy.ec2, [k]: v } } }))}
                 onAzure={(k, v) => setStack((st) => ({ ...st, deploy: { ...st.deploy, azvm: { ...st.deploy.azvm, [k]: v } } }))}
+                onK8s={(k, v) => setStack((st) => ({ ...st, deploy: { ...st.deploy, k8s: { ...st.deploy.k8s, [k]: v } } }))}
               />
             )}
             {!multi && (

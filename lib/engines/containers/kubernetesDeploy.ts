@@ -276,7 +276,7 @@ ${secrets.map((k) => `        - objectName: ${kvName(k)}\n          key: ${k}`).
 `;
 }
 
-function serviceYaml(c: ContainerConfig): string {
+function serviceYaml(c: ContainerConfig, servicePort = 80): string {
   const k = c.k8s;
   return `apiVersion: v1
 kind: Service
@@ -291,7 +291,7 @@ spec:
 ${selector(c, 4)}
   ports:
     - name: http
-      port: 80
+      port: ${servicePort}
       targetPort: http
 `;
 }
@@ -362,7 +362,7 @@ ${selector(c, 6)}
 `;
 }
 
-const namespaceYaml = (c: ContainerConfig) => `apiVersion: v1
+export const namespaceYaml = (c: ContainerConfig) => `apiVersion: v1
 kind: Namespace
 metadata:
   name: ${c.k8s.namespace}
@@ -372,9 +372,9 @@ ${labels(c, 4)}
 
 const wantsPdb = (c: ContainerConfig) => (c.k8s.autoscaling ? c.k8s.minReplicas : c.k8s.replicas) > 1;
 
-function kustomizationYaml(c: ContainerConfig): string {
+function kustomizationYaml(c: ContainerConfig, withNamespace = true): string {
   const k = c.k8s;
-  const res = [...(k.namespace !== 'default' ? ['namespace.yaml'] : []), ...(usesKeyVault(c) ? ['serviceaccount.yaml', 'secretproviderclass.yaml'] : []), 'deployment.yaml', 'service.yaml', ...(k.ingressHost ? ['ingress.yaml'] : []), ...(k.autoscaling ? ['hpa.yaml'] : []), ...(wantsPdb(c) ? ['pdb.yaml'] : [])];
+  const res = [...(withNamespace && k.namespace !== 'default' ? ['namespace.yaml'] : []), ...(usesKeyVault(c) ? ['serviceaccount.yaml', 'secretproviderclass.yaml'] : []), 'deployment.yaml', 'service.yaml', ...(k.ingressHost ? ['ingress.yaml'] : []), ...(k.autoscaling ? ['hpa.yaml'] : []), ...(wantsPdb(c) ? ['pdb.yaml'] : [])];
   return `apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -808,19 +808,25 @@ kubectl -n ${k.namespace} describe deployment ${c.appName}
 `;
 }
 
-/** The manifests, the Helm chart and the README, without the deploy scripts or workflow (other targets that run Kubernetes bring their own). */
-export function generateK8sManifestFiles(c0: ContainerConfig): Array<{ path: string; content: string }> {
+/**
+ * The manifests, the Helm chart and the README, without the deploy scripts or workflow (other targets that run Kubernetes bring their own).
+ * `withNamespace: false` leaves the Namespace object out: a project of several services writes it once for all of them.
+ * `servicePort: 'container'` gives the Service the container's own port instead of 80, so services reach each other at the same address
+ * (api:8000) as in docker compose.
+ */
+export function generateK8sManifestFiles(c0: ContainerConfig, opts: { withNamespace?: boolean; servicePort?: 'http' | 'container' } = {}): Array<{ path: string; content: string }> {
   const c = withImage(c0);
   const k = c.k8s;
+  const withNamespace = opts.withNamespace ?? true;
   return [
-    ...(k.namespace !== 'default' ? [{ path: 'k8s/namespace.yaml', content: namespaceYaml(c) }] : []),
+    ...(withNamespace && k.namespace !== 'default' ? [{ path: 'k8s/namespace.yaml', content: namespaceYaml(c) }] : []),
     { path: 'k8s/deployment.yaml', content: deploymentYaml(c) },
-    { path: 'k8s/service.yaml', content: serviceYaml(c) },
+    { path: 'k8s/service.yaml', content: serviceYaml(c, opts.servicePort === 'container' ? c.port : 80) },
     ...(usesKeyVault(c) ? [{ path: 'k8s/serviceaccount.yaml', content: serviceAccountYaml(c) }, { path: 'k8s/secretproviderclass.yaml', content: secretProviderClassYaml(c) }] : []),
     ...(k.ingressHost ? [{ path: 'k8s/ingress.yaml', content: ingressYaml(c) }] : []),
     ...(k.autoscaling ? [{ path: 'k8s/hpa.yaml', content: hpaYaml(c) }] : []),
     ...(wantsPdb(c) ? [{ path: 'k8s/pdb.yaml', content: pdbYaml(c) }] : []),
-    { path: 'k8s/kustomization.yaml', content: kustomizationYaml(c) },
+    { path: 'k8s/kustomization.yaml', content: kustomizationYaml(c, withNamespace) },
     ...(k.helm ? helmChart(c) : []),
   ];
 }
