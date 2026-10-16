@@ -24,7 +24,7 @@ const make = (target: Parameters<typeof withDeployTarget>[1], edit: (c: Containe
 };
 
 /** A project of several services deployed to one EC2 server or Azure VM (the compose file runs there). */
-const project = (on: Layer[], edit: (p: StackProject) => void = () => {}, target: 'ec2' | 'azure-vm' | 'kubernetes' | 'aks' = 'ec2'): StackProject => {
+const project = (on: Layer[], edit: (p: StackProject) => void = () => {}, target: 'ec2' | 'ecs' | 'azure-vm' | 'kubernetes' | 'aks' = 'ec2'): StackProject => {
   const p = defaultProject();
   p.name = 'shop';
   for (const l of LAYERS) p.layers[l].enabled = on.includes(l);
@@ -36,6 +36,11 @@ const project = (on: Layer[], edit: (p: StackProject) => void = () => {}, target
 
 type Kind = 'terraform' | 'kubernetes' | 'both' | 'kustomize' | 'terraform+kustomize';
 const cases: Array<[string, Kind, string, ContainerConfig | StackProject]> = [
+  ['release-ecs-three-services', 'terraform', 'ecs', project(['frontend', 'backend', 'api'], (p) => { p.layers.api.config.env = [{ key: 'STRIPE_KEY', value: '', secret: true }]; }, 'ecs')],
+  ['release-ecs-ready-made-images', 'terraform', 'ecs', project(['frontend', 'api'], (p) => { for (const l of ['frontend', 'api'] as const) p.layers[l].config = { ...p.layers[l].config, image: 'nginxinc/nginx-unprivileged:1.27' }; p.layers.backend.config.env = []; }, 'ecs')],
+  ['project-ecs-three-services', 'terraform', 'ecs', project(['frontend', 'backend', 'api'], (p) => { p.layers.api.config.env = [{ key: 'STRIPE_KEY', value: '', secret: true }]; }, 'ecs')],
+  ['project-ecs-https-private-range', 'terraform', 'ecs', project(['backend', 'api'], (p) => { Object.assign(p.deploy.ecs, { certificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/abc-123', allowedCidr: '203.0.113.0/24', cpu: 1024, memoryMb: 4096, desiredCount: 2, imageTag: 'v1.2.3' }); }, 'ecs')],
+  ['project-ecs-ready-made-images', 'terraform', 'ecs', project(['frontend', 'api'], (p) => { for (const l of ['frontend', 'api'] as const) p.layers[l].config = { ...p.layers[l].config, image: 'nginxinc/nginx-unprivileged:1.27' }; p.layers.backend.config.env = []; }, 'ecs')],
   ['project-aks-three-services-secrets', 'terraform+kustomize', 'aks', project(['frontend', 'backend', 'api'], (p) => { p.layers.api.config.env = [{ key: 'STRIPE_KEY', value: '', secret: true }]; }, 'aks')],
   ['project-aks-ingress-no-secrets', 'terraform+kustomize', 'aks', project(['frontend', 'api'], (p) => { Object.assign(p.deploy.aks, { ingressHost: 'shop.example.com', tlsSecret: 'shop-tls', namespace: 'prod', imageTag: 'v1.2.3', location: 'eastus2', nodeSize: 'Standard_D2s_v3', minNodes: 1, maxNodes: 3 }); p.layers.backend.config.env = []; }, 'aks')],
   ['project-aks-ready-made-images', 'terraform+kustomize', 'aks', project(['frontend', 'api'], (p) => { for (const l of ['frontend', 'api'] as const) p.layers[l].config = { ...p.layers[l].config, image: 'nginxinc/nginx-unprivileged:1.27' }; p.layers.backend.config.env = []; }, 'aks')],
@@ -82,7 +87,7 @@ const cases: Array<[string, Kind, string, ContainerConfig | StackProject]> = [
 ];
 
 const run = (cmd: string, args: string[], cwd: string, env: Record<string, string> = {}) =>
-  spawnSync(cmd, args, { cwd, encoding: 'utf8', env: { ...process.env, TF_IN_AUTOMATION: '1', TF_PLUGIN_CACHE_DIR: join(root, '.plugins'), ...env } });
+  spawnSync(cmd, args, { cwd, encoding: 'utf8', env: { ...process.env, TF_IN_AUTOMATION: '1', TF_PLUGIN_CACHE_DIR: process.env.TF_PLUGIN_CACHE_DIR ?? join(root, '.plugins'), ...env } });
 
 rmSync(root, { recursive: true, force: true });
 mkdirSync(join(root, '.plugins'), { recursive: true });
@@ -90,6 +95,7 @@ let failed = 0;
 const fail = (name: string, what: string, out: { stdout: string; stderr: string }) => { failed++; console.log(`${name}: ${what} FAILED\n${(out.stderr || out.stdout).slice(0, 2500)}`); };
 
 for (const [name, kind, dir, cfg] of cases) {
+  if (process.env.ONLY && !new RegExp(process.env.ONLY).test(name)) continue;
   // A project a release runs on AWS also gets the CodeBuild resources that build its images in the account.
   const res = 'layers' in cfg ? generateProjectFiles(cfg, { forRelease: name.startsWith('release-') }) : generateContainerFiles(cfg);
   if (!res.ok) { failed++; console.log(`${name}: not generated: ${res.errors.join('; ')}`); continue; }

@@ -73,3 +73,27 @@ pushed to ECR; the release files are written to the bucket and the service is re
 
 ## Cost
 A small instance, Elastic IP (if ticked), ECR storage and CodeBuild minutes: roughly $15 to $40 a month plus builds. Always finish with **Remove everything**.
+
+---
+
+# ECS Fargate (AWS)
+
+Pick **AWS ECS Fargate** as the project's deploy target. It needs the same AWS account, role and S3 state bucket as the EC2 target above, plus ECS permissions
+(`ecs:*` on the cluster, `elasticloadbalancing:*`, `servicediscovery:*`, `iam:PassRole` for the two task roles). Same caveat: only `terraform validate` and fakes so far.
+**No database**: tick Frontend, Backend and API only, and give the Backend/API a secret `DATABASE_URL` that points at RDS.
+
+## What happens
+Terraform creates the cluster, an ECR repository per built service, a load balancer that reaches the public service, a Service Connect namespace (so `api` and `backend`
+resolve as in Docker Compose), the task definitions and the services with **zero tasks**, and the CodeBuild project. You then type the secrets (Parameter Store,
+`/<project>/<NAME>`); CodeBuild builds the images; CloudCraft registers a new task definition revision per service with the new tag, starts the services with the task count
+and waits until every service has one finished deployment with all tasks running; finally it checks the load balancer address.
+
+## What to check
+- The release reaches `succeeded`; the address (the load balancer's DNS name) answers a minute or so after the services are steady.
+- **Service Connect names**: from the frontend, `api` / `backend` must resolve (a static frontend's nginx proxies to them). If a frontend fails at start with "host not found", tell me: that is the first thing to look at.
+- A tag that does not build fails at `build`; one whose tasks cannot start fails at `start` (ECS's circuit breaker rolls the service back, then CloudCraft puts the previous images back).
+- **Put an earlier release back** registers a revision with the old tag and starts the services on it; nothing is built.
+- **Remove everything** deletes the Terraform-made resources. Parameter Store secrets stay, and old task definition revisions stay registered (they are free).
+
+## Cost
+Per service: a Fargate task (default 0.5 vCPU / 1 GB), plus one load balancer (about $22 a month), public IPv4 addresses and logs; at the default size the page shows the estimate (about $90 for three services with one task each, about $22 per extra task). Always finish with **Remove everything**.

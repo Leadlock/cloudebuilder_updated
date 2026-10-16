@@ -75,7 +75,7 @@ describe('the EC2 bundle of a release', () => {
 
   test('a project that goes nowhere, or has one service, is not a release', () => {
     const p = project(); p.deploy.target = 'none';
-    expect(() => buildBundle(p)).toThrow(/Azure VM or AWS EC2/);
+    expect(() => buildBundle(p)).toThrow(/Azure VM, AWS EC2/);
     expect(() => buildBundle(project(['backend']))).toThrow(/two or more/);
   });
 

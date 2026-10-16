@@ -81,7 +81,7 @@ export function estimateStackEc2Cost(s: StackDeploySpec): DeployCost {
 // ─── Terraform ───────────────────────────────────────────────────────────────
 
 /** Builds images inside the AWS account (CodeBuild), for a deployment CloudCraft runs: no Docker is needed anywhere. Not part of the files a person downloads. */
-function codeBuildTf(s: StackDeploySpec): string {
+export function codeBuildTf(s: { built: string[] }): string {
   if (s.built.length === 0) return '';
   return `
 # ── Builds inside this account (CodeBuild): CloudCraft puts a service's source here and starts a build that pushes to its repository ──

@@ -31,6 +31,9 @@ import {
 import {
   defaultStackK8s, generateStackK8sFiles, k8sLayerConfig, imageFor, namespaceOf, stackK8sWarnings, validateStackK8s, type StackK8sConfig, type StackK8sSpec,
 } from './stackKubernetesDeploy';
+import {
+  defaultStackEcs, estimateStackEcsCost, generateStackEcsFiles, stackEcsWarnings, validateStackEcs, type StackEcsConfig, type StackEcsSpec,
+} from './stackEcsDeploy';
 import type { Ec2Config, Ec2Cost } from './ec2Deploy';
 import type { AzVmConfig } from './azureVmDeploy';
 import type { ContainerFinding } from './checks';
@@ -42,11 +45,11 @@ export const LAYER_LABEL: Record<Layer, string> = { frontend: 'Frontend', backen
 
 export interface LayerState { enabled: boolean; config: ContainerConfig }
 /** Where a project of several services is deployed. Docker Compose on your own machine is always possible; EC2 or an Azure VM runs the whole compose file on one server. */
-export type ProjectTarget = 'none' | 'ec2' | 'azure-vm' | 'kubernetes' | 'aks';
-export interface ProjectDeploy { target: ProjectTarget; ec2: Ec2Config; azvm: AzVmConfig; k8s: StackK8sConfig; aks: StackAksConfig }
+export type ProjectTarget = 'none' | 'ec2' | 'ecs' | 'azure-vm' | 'kubernetes' | 'aks';
+export interface ProjectDeploy { target: ProjectTarget; ec2: Ec2Config; ecs: StackEcsConfig; azvm: AzVmConfig; k8s: StackK8sConfig; aks: StackAksConfig }
 export interface StackProject { name: string; layers: Record<Layer, LayerState>; deploy: ProjectDeploy }
 
-export const defaultProjectDeploy = (): ProjectDeploy => ({ target: 'none', ec2: stackEc2Defaults(), azvm: stackAzureDefaults(), k8s: defaultStackK8s(), aks: defaultStackAks() });
+export const defaultProjectDeploy = (): ProjectDeploy => ({ target: 'none', ec2: stackEc2Defaults(), ecs: defaultStackEcs(), azvm: stackAzureDefaults(), k8s: defaultStackK8s(), aks: defaultStackAks() });
 
 /** What each layer starts as when it is switched on. */
 const DEFAULT_OPTION: Record<Layer, string> = { frontend: 'spa', backend: 'node', api: 'fastapi', database: 'db-postgres' };
@@ -194,6 +197,14 @@ export function generateProjectFiles(p: StackProject, opts: { forRelease?: boole
     files.push(...generateStackAksFiles(spec));
     warnings.push(...stackAksWarnings(spec));
     cost = estimateStackAksCost(spec);
+  } else if (p.deploy.target === 'ecs') {
+    if (db) return { ok: false, errors: ['ECS: a Database is not run on Fargate (it has no persistent disk these templates manage). Untick Database and use RDS or another managed database: add a secret variable named DATABASE_URL to the Backend and the API.'] };
+    const spec = ecsSpec(p, on, cfg, entry);
+    const errors = validateStackEcs(spec);
+    if (errors.length > 0) return { ok: false, errors };
+    files.push(...generateStackEcsFiles(spec, { forRelease: opts.forRelease === true }));
+    warnings.push(...stackEcsWarnings(spec));
+    cost = estimateStackEcsCost(spec);
   } else if (p.deploy.target === 'kubernetes') {
     if (db) return { ok: false, errors: ['Kubernetes: a Database is not run in the cluster (it needs persistent storage and backups these templates do not set up). Untick Database and use your cloud\'s managed database: add a secret variable named DATABASE_URL to the Backend and the API.'] };
     const spec = k8sSpec(p, on, cfg, entry);
@@ -285,6 +296,20 @@ function aksSpec(p: StackProject, on: Layer[], cfg: Record<Layer, ContainerConfi
   return { project: p.name, namespace: aksNamespace(p.name, a), aks: a, layers, entry, secrets: projectSecrets(apps, cfg) };
 }
 
+/** The project as the ECS generator wants it: each service with its container port, its variables (plus the addresses of the others) and its secrets. */
+function ecsSpec(p: StackProject, on: Layer[], cfg: Record<Layer, ContainerConfig>, entry: Layer): StackEcsSpec {
+  const apps = on.filter((l) => l !== 'database');
+  const layers = apps.map((l) => {
+    const wiring = wiringEnv(on, cfg, l);
+    return {
+      name: l as string, port: cfg[l].port, built: !usesExistingImage(cfg[l]), image: usesExistingImage(cfg[l]) ? cfg[l].image : '',
+      env: [...cfg[l].env.filter((v) => !v.secret && !wiring.some((w) => w.key === v.key)).map((v) => ({ key: v.key, value: v.value })), ...wiring],
+      secrets: cfg[l].env.filter((v) => v.secret).map((v) => v.key), healthPath: cfg[l].healthPath || '/',
+    };
+  });
+  return { project: p.name, ecs: p.deploy.ecs, layers, entry, secrets: projectSecrets(apps, cfg) };
+}
+
 /** The project as the Kubernetes generator wants it: every service named after its layer, wired to the others by the same addresses as in compose. */
 function k8sSpec(p: StackProject, on: Layer[], cfg: Record<Layer, ContainerConfig>, entry: Layer): StackK8sSpec {
   const k = p.deploy.k8s;
@@ -368,6 +393,6 @@ The data is in the Docker volume \`database-data\`. It survives \`docker compose
 ` : ''}
 ## Deploying
 
-${p.deploy.target === 'ec2' ? `All the services run on one EC2 server: see \`ec2/README.md\`, or just run \`bash deploy.sh\`.` : p.deploy.target === 'azure-vm' ? `All the services run on one Azure VM: see \`azvm/README.md\`, or just run \`bash deploy.sh\`.` : 'Run it on any machine with Docker Compose, or choose "AWS EC2" or "Azure VM" (one server runs everything) for this project in CloudCraft to also get \`deploy.sh\`, \`destroy.sh\` and the Terraform that run all of it on one server.'}
+${p.deploy.target === 'ec2' ? `All the services run on one EC2 server: see \`ec2/README.md\`, or just run \`bash deploy.sh\`.` : p.deploy.target === 'ecs' ? `Every service runs on AWS ECS Fargate behind a load balancer: see \`ecs/README.md\`, or just run \`bash deploy.sh\`.` : p.deploy.target === 'azure-vm' ? `All the services run on one Azure VM: see \`azvm/README.md\`, or just run \`bash deploy.sh\`.` : 'Run it on any machine with Docker Compose, or choose "AWS EC2" or "Azure VM" (one server runs everything) for this project in CloudCraft to also get \`deploy.sh\`, \`destroy.sh\` and the Terraform that run all of it on one server.'}
 `;
 }

@@ -427,3 +427,19 @@ describe('on AWS (EC2)', () => {
     expect((screen.getByRole('button', { name: 'Plan the deployment' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+describe('on ECS Fargate', () => {
+  const ecsStack = (() => { const p = defaultProject(); p.name = 'shop'; for (const l of LAYERS) p.layers[l].enabled = ['backend', 'api'].includes(l); p.deploy.target = 'ecs'; return p; })();
+  beforeEach(() => {
+    routes.unshift([/GET \/api\/cloud-accounts\?provider=aws/, () => ({ data: [{ id: 'aws-1', name: 'Test AWS', provider: 'aws' }] })]);
+    localStorage.setItem('cloudcraft_tf_backend_p1', JSON.stringify({ awsBackend: { bucket: 'my-state', region: 'eu-west-1' } }));
+  });
+  test('asks for an AWS account and an S3 state, plans with them, and describes the steps for a cluster', async () => {
+    routes.unshift([/POST \/api\/projects\/p1\/releases$/, () => ({ status: 201, data: { ...PLAN, release: release({ steps: STEPS() }) } })]);
+    render(<ProjectReleasePanel projectId="p1" environment="production" stack={ecsStack} isLight />);
+    await waitFor(() => expect((screen.getByLabelText('State: S3 bucket') as HTMLInputElement).value).toBe('my-state'));
+    fireEvent.click(screen.getByRole('button', { name: 'Plan the deployment' }));
+    await screen.findByTestId('release-plan');
+    expect(calls.find((c) => c.method === 'POST')!.body).toMatchObject({ cloudAccountId: 'aws-1', stateBackend: { provider: 'aws', bucket: 'my-state', region: 'eu-west-1' } });
+  });
+});

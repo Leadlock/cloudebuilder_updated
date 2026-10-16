@@ -5,7 +5,7 @@
  * the compose file (which only references secrets) and the ids of the resources that were created. Credentials and secret values never appear here.
  */
 
-export type ReleaseTarget = 'azure-vm' | 'ec2';
+export type ReleaseTarget = 'azure-vm' | 'ec2' | 'ecs';
 
 export const STEP_ORDER = ['infrastructure', 'secrets', 'build', 'publish', 'start', 'verify'] as const;
 export type StepName = (typeof STEP_ORDER)[number];
@@ -52,8 +52,27 @@ export interface AwsOutputs {
   url: string;
 }
 
-export type ReleaseOutputs = AzureOutputs | AwsOutputs;
+/** What Terraform created on AWS ECS Fargate, as the steps need it. */
+export interface EcsOutputs {
+  kind: 'ecs';
+  region: string;
+  cluster: string;
+  /** The ECS services, one per service of the project. Their task definitions are `<project>-<service>`. */
+  services: string[];
+  /** Tasks per service once started. */
+  desiredCount: number;
+  /** Empty when nothing is built. */
+  sourceBucket: string;
+  codebuildProject: string;
+  registry: string;
+  ssmPrefix: string;
+  url: string;
+}
+
+export type ReleaseOutputs = AzureOutputs | AwsOutputs | EcsOutputs;
 export const isAwsOutputs = (o: ReleaseOutputs): o is AwsOutputs => o.kind === 'ec2';
+export const isEcsOutputs = (o: ReleaseOutputs): o is EcsOutputs => o.kind === 'ecs';
+export const isAzureOutputs = (o: ReleaseOutputs): o is AzureOutputs => o.kind !== 'ec2' && o.kind !== 'ecs';
 
 export interface Release {
   id: string;

@@ -1,6 +1,6 @@
 'use client';
 /**
- * Where a project of several services is deployed: nowhere (run it with Docker Compose), one AWS EC2 server or Azure VM that runs the whole compose file,
+ * Where a project of several services is deployed: nowhere (run it with Docker Compose), one AWS EC2 server or Azure VM that runs the whole compose file, AWS ECS Fargate (a service per service),
  * a Kubernetes cluster (a Deployment per service), or an Azure Kubernetes Service cluster that is created for it.
  * A single service keeps its own Deploy card with every target; this card appears only when two or more services are ticked.
  */
@@ -11,11 +11,14 @@ import type { AzVmConfig } from '@/lib/engines/containers/azureVmDeploy';
 import type { ProjectDeploy, ProjectTarget } from '@/lib/engines/containers/stackProject';
 import type { StackK8sConfig } from '@/lib/engines/containers/stackKubernetesDeploy';
 import type { StackAksConfig } from '@/lib/engines/containers/stackAksDeploy';
+import { FARGATE_CPU, fargateMemoryOptions } from '@/lib/engines/containers/ecsDeploy';
+import type { StackEcsConfig } from '@/lib/engines/containers/stackEcsDeploy';
 
-export default function StackDeployCard({ deploy, onTarget, onEc2, onAzure, onK8s, onAks }: {
+export default function StackDeployCard({ deploy, onTarget, onEc2, onEcs, onAzure, onK8s, onAks }: {
   deploy: ProjectDeploy;
   onTarget: (t: ProjectTarget) => void;
   onEc2: <K extends keyof Ec2Config>(k: K, v: Ec2Config[K]) => void;
+  onEcs: <K extends keyof StackEcsConfig>(k: K, v: StackEcsConfig[K]) => void;
   onAzure: <K extends keyof AzVmConfig>(k: K, v: AzVmConfig[K]) => void;
   onK8s: <K extends keyof StackK8sConfig>(k: K, v: StackK8sConfig[K]) => void;
   onAks: <K extends keyof StackAksConfig>(k: K, v: StackAksConfig[K]) => void;
@@ -26,6 +29,7 @@ export default function StackDeployCard({ deploy, onTarget, onEc2, onAzure, onK8
   const label = clsx('block text-xs font-medium mb-1', isLight ? 'text-slate-700' : 'text-slate-300');
   const input = clsx('w-full rounded-lg border px-3 py-2 text-sm', isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-950 border-slate-700 text-slate-100');
   const e = deploy.ec2;
+  const c = deploy.ecs;
   const z = deploy.azvm;
   const k = deploy.k8s;
   const a = deploy.aks;
@@ -35,6 +39,7 @@ export default function StackDeployCard({ deploy, onTarget, onEc2, onAzure, onK8
       <select id="ct-project-target" className={input} value={deploy.target} onChange={(ev) => onTarget(ev.target.value as ProjectTarget)}>
         <option value="none">No deployment files (run with Docker Compose)</option>
         <option value="ec2">AWS EC2 (one server runs everything)</option>
+        <option value="ecs">AWS ECS Fargate (a service per service, behind a load balancer)</option>
         <option value="azure-vm">Azure VM (one server runs everything)</option>
         <option value="kubernetes">Kubernetes (a Deployment per service)</option>
         <option value="aks">Azure Kubernetes Service (AKS cluster created for it)</option>
@@ -52,6 +57,26 @@ export default function StackDeployCard({ deploy, onTarget, onEc2, onAzure, onK8
             <div><label className={label} htmlFor="pec2-disk">Disk (GB)</label><input id="pec2-disk" type="number" className={input} value={e.volumeGb} onChange={(ev) => onEc2('volumeGb', Number(ev.target.value))} /></div>
             <div><label className={label} htmlFor="pec2-tag">Image tag</label><input id="pec2-tag" className={input} value={e.imageTag} onChange={(ev) => onEc2('imageTag', ev.target.value)} /></div>
             <label className="flex items-center gap-2 text-xs col-span-2"><input type="checkbox" checked={e.elasticIp} onChange={(ev) => onEc2('elasticIp', ev.target.checked)} />Keep the same public address (Elastic IP)</label>
+          </div>
+        </>
+      )}
+      {deploy.target === 'ecs' && (
+        <>
+          <p className={clsx('text-xs', muted)}>Every service runs as its own ECS Fargate service (no servers), behind one load balancer that reaches the public service (the Frontend, else the API, else the Backend). The services find each other by name, as in Docker Compose. One image repository per built service, secrets in SSM Parameter Store. A database is not run on Fargate: use RDS and add a secret variable DATABASE_URL.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={label} htmlFor="pecs-region">Region</label><input id="pecs-region" className={input} value={c.region} onChange={(ev) => onEcs('region', ev.target.value)} /></div>
+            <div><label className={label} htmlFor="pecs-tag">Image tag</label><input id="pecs-tag" className={input} value={c.imageTag} onChange={(ev) => onEcs('imageTag', ev.target.value.trim())} /></div>
+            <div><label className={label} htmlFor="pecs-cpu">CPU per task</label>
+              <select id="pecs-cpu" className={input} value={c.cpu} onChange={(ev) => { const cpu = Number(ev.target.value); onEcs('cpu', cpu); if (!fargateMemoryOptions(cpu).includes(c.memoryMb)) onEcs('memoryMb', fargateMemoryOptions(cpu)[0]!); }}>
+                {FARGATE_CPU.map((n) => <option key={n} value={n}>{n / 1024} vCPU</option>)}
+              </select></div>
+            <div><label className={label} htmlFor="pecs-mem">Memory per task</label>
+              <select id="pecs-mem" className={input} value={c.memoryMb} onChange={(ev) => onEcs('memoryMb', Number(ev.target.value))}>
+                {fargateMemoryOptions(c.cpu).map((n) => <option key={n} value={n}>{n / 1024} GB</option>)}
+              </select></div>
+            <div><label className={label} htmlFor="pecs-count">Tasks per service</label><input id="pecs-count" type="number" className={input} value={c.desiredCount} onChange={(ev) => onEcs('desiredCount', Number(ev.target.value))} /></div>
+            <div><label className={label} htmlFor="pecs-cidr">Who can connect</label><input id="pecs-cidr" className={input} value={c.allowedCidr} onChange={(ev) => onEcs('allowedCidr', ev.target.value)} /></div>
+            <div className="col-span-2"><label className={label} htmlFor="pecs-cert">ACM certificate ARN (optional, turns on HTTPS)</label><input id="pecs-cert" className={input} value={c.certificateArn} onChange={(ev) => onEcs('certificateArn', ev.target.value.trim())} /></div>
           </div>
         </>
       )}

@@ -1,6 +1,6 @@
 # Design: deploying a project from inside CloudCraft
 
-Status: phase 1 (Azure VM) and phase 2 (AWS EC2: CodeBuild, Parameter Store, S3 release bucket, SSM restart) are built and tested with fakes and, for the database and the zip reader, against real Postgres and hand-made hostile archives. Neither has been
+Status: phase 1 (Azure VM) and phase 2 (AWS EC2: CodeBuild, Parameter Store, S3 release bucket, SSM restart) and ECS Fargate (a service per service behind one load balancer, Service Connect, task definition revisions per release) are built and tested with fakes and, for the database and the zip reader, against real Postgres and hand-made hostile archives. Neither has been
 run against a real cloud account. Switched off by default (`CLOUDCRAFT_PROJECT_RELEASES=1`). How to try it: [IN_APP_DEPLOYMENT_TEST.md](IN_APP_DEPLOYMENT_TEST.md).
 Built: release state machine with waiting-for-secrets, retry from the failed step, automatic and manual rollback, cancel and kill switch; Azure REST operations; the
 Terraform plan/approval/apply path through the existing machinery; routes; worker queue; the panel; uploaded code (zip); teardown. Phases 2 to 4 (EC2, AKS and Kubernetes, Git sources) are not built.

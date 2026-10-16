@@ -80,7 +80,7 @@ describe('the Stack parts', () => {
     expect([...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value)).toContain('ecs');
     fireEvent.click(include('Frontend'));
     // The Deploy card of one service is replaced by the project's: none, or one server (EC2 or an Azure VM) for everything.
-    expect([...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value)).toEqual(['none', 'ec2', 'azure-vm', 'kubernetes', 'aks']);
+    expect([...(screen.getByLabelText('Deploy to') as HTMLSelectElement).options].map((o) => o.value)).toEqual(['none', 'ec2', 'ecs', 'azure-vm', 'kubernetes', 'aks']);
     expect(screen.queryByLabelText('App name')).toBeNull();
     expect(screen.queryByText('Add PostgreSQL')).toBeNull();
     expect(screen.getByLabelText('Project name')).toBeTruthy();

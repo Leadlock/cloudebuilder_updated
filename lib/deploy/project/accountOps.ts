@@ -11,6 +11,8 @@ import { createAzureOps, type AzureOps } from './azureOps';
 import { createAwsClients, createAwsOps, type AwsOps } from './awsOps';
 import { azureDriver, type ReleaseDriver } from './driver';
 import { awsDriver } from './awsDriver';
+import { ecsDriver } from './ecsDriver';
+import { createEcsClient, createEcsOps } from './ecsOps';
 import type { Release } from './types';
 
 export class AccountError extends Error {
@@ -37,22 +39,26 @@ export async function azureOpsForAccount(orgId: string, cloudAccountId: string):
   });
 }
 
-/** Operations in the AWS account of a connected account, in a region. The role is assumed again whenever the credentials are about to run out. */
-export async function awsOpsForAccount(orgId: string, cloudAccountId: string, region: string): Promise<AwsOps> {
+/** Credentials for a connected AWS account: the role is assumed again whenever the credentials are about to run out. */
+async function awsCredentialProvider(orgId: string, cloudAccountId: string, what: string) {
   const json = await cloudAccountRepository.getCredentials(cloudAccountId, orgId);
   if (!json) throw new AccountError('The cloud account was not found.', 404);
   const creds = JSON.parse(json) as CloudCredentials;
-  if (!isAwsCredentials(creds)) throw new AccountError('A deployment to AWS EC2 needs an AWS account.');
+  if (!isAwsCredentials(creds)) throw new AccountError(`A deployment to ${what} needs an AWS account.`);
   assertEnoughTimeLeft((creds as { expiresAt?: string }).expiresAt);
   // The first look also refuses an account that is for discovery only.
   let cached = { at: Date.now(), env: await resolveExecutionCredentials(creds) };
-  const provider = async () => {
+  return async () => {
     if (Date.now() - cached.at > 10 * 60_000) cached = { at: Date.now(), env: await resolveExecutionCredentials(creds) };
     const e = cached.env;
     if (!e['AWS_ACCESS_KEY_ID'] || !e['AWS_SECRET_ACCESS_KEY']) throw new AccountError('AWS did not give credentials for this account. Check its role.', 502);
     return { accessKeyId: e['AWS_ACCESS_KEY_ID'], secretAccessKey: e['AWS_SECRET_ACCESS_KEY'], ...(e['AWS_SESSION_TOKEN'] ? { sessionToken: e['AWS_SESSION_TOKEN'] } : {}) };
   };
-  return createAwsOps({ clients: createAwsClients(region, provider) });
+}
+
+/** Operations in the AWS account of a connected account, in a region. */
+export async function awsOpsForAccount(orgId: string, cloudAccountId: string, region: string): Promise<AwsOps> {
+  return createAwsOps({ clients: createAwsClients(region, await awsCredentialProvider(orgId, cloudAccountId, 'AWS EC2')) });
 }
 
 /** The driver for a release: the cloud it runs in, with the connected account's credentials. */
@@ -61,6 +67,12 @@ export async function releaseDriverFor(release: Pick<Release, 'orgId' | 'cloudAc
     const region = release.outputs && release.outputs.kind === 'ec2' ? release.outputs.region : ((release.settings as { deploy?: { ec2?: { region?: string } } }).deploy?.ec2?.region ?? '');
     if (!/^[a-z]{2}(-[a-z]+)+-\d$/.test(region)) throw new AccountError('The AWS region of this release is not known.');
     return awsDriver(await awsOpsForAccount(release.orgId, release.cloudAccountId, region));
+  }
+  if (release.target === 'ecs') {
+    const region = release.outputs && release.outputs.kind === 'ecs' ? release.outputs.region : ((release.settings as { deploy?: { ecs?: { region?: string } } }).deploy?.ecs?.region ?? '');
+    if (!/^[a-z]{2}(-[a-z]+)+-\d$/.test(region)) throw new AccountError('The AWS region of this release is not known.');
+    const credentials = await awsCredentialProvider(release.orgId, release.cloudAccountId, 'AWS ECS');
+    return ecsDriver(createAwsOps({ clients: createAwsClients(region, credentials) }), createEcsOps({ ecs: createEcsClient(region, credentials) }));
   }
   return azureDriver(await azureOpsForAccount(release.orgId, release.cloudAccountId));
 }

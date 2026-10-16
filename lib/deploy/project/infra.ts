@@ -23,11 +23,11 @@ export function throwawayPublicKey(): string {
   return `ssh-ed25519 ${Buffer.concat([str(Buffer.from('ssh-ed25519')), str(raw)]).toString('base64')}`;
 }
 
-export const providerOf = (target: ReleaseTarget): 'aws' | 'azure' => (target === 'ec2' ? 'aws' : 'azure');
+export const providerOf = (target: ReleaseTarget): 'aws' | 'azure' => (target === 'azure-vm' ? 'azure' : 'aws');
 
 /** The files Terraform needs from a bundle: its .tf files, and the two a configuration reads (the start-up script, the compose file). Never the generated deploy scripts or notes. */
 export function terraformFiles(bundle: ProjectBundle): Array<{ filename: string; content: string }> {
-  const read = bundle.target === 'ec2' ? ['user_data.sh', 'compose.deploy.yml'] : ['cloud-init.sh', 'compose.deploy.yml'];
+  const read = bundle.target === 'ec2' ? ['user_data.sh', 'compose.deploy.yml'] : bundle.target === 'ecs' ? [] : ['cloud-init.sh', 'compose.deploy.yml'];
   return bundle.terraform.filter((f) => f.filename.endsWith('.tf') || read.includes(f.filename));
 }
 
@@ -63,6 +63,17 @@ export function outputsFrom(json: string, target: ReleaseTarget = 'azure-vm'): R
     if (required) throw new Error(`Terraform did not report ${k}.`);
     return '';
   };
+  if (target === 'ecs') {
+    const built = parsed['codebuild_project'] !== undefined;
+    const services = parsed['services']?.value;
+    if (!Array.isArray(services) || services.length === 0 || !services.every((x) => typeof x === 'string' && /^[a-z][a-z0-9-]{0,30}$/.test(x))) throw new Error('Terraform did not report services.');
+    const count = parsed['desired_count']?.value;
+    if (typeof count !== 'number' || !Number.isInteger(count) || count < 1) throw new Error('Terraform did not report desired_count.');
+    return {
+      kind: 'ecs', region: text('region', true), cluster: text('cluster', true), services: services as string[], desiredCount: count, registry: text('registry', true), ssmPrefix: text('ssm_prefix', true), url: text('app_url', true),
+      sourceBucket: text('source_bucket', built), codebuildProject: text('codebuild_project', built),
+    };
+  }
   if (target === 'ec2') {
     const built = parsed['codebuild_project'] !== undefined;
     return {

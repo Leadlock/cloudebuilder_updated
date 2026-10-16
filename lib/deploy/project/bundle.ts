@@ -50,23 +50,25 @@ export function hashBundle(target: string, imageTag: string, files: Array<{ path
 const TARGETS = {
   'azure-vm': { dir: 'azvm', label: 'an Azure VM', tag: (p: StackProject) => p.deploy.azvm.imageTag },
   ec2: { dir: 'ec2', label: 'AWS EC2', tag: (p: StackProject) => p.deploy.ec2.imageTag },
+  ecs: { dir: 'ecs', label: 'AWS ECS Fargate', tag: (p: StackProject) => p.deploy.ecs.imageTag },
 } as const;
 
 /** Builds the bundle for the project's deployment target. Throws BundleError with the reasons when the project cannot be deployed. */
 export function buildBundle(project: StackProject, sources: Record<string, SourceInput> = {}): ProjectBundle {
   const target = project.deploy.target;
-  if (target !== 'azure-vm' && target !== 'ec2') throw new BundleError(['Deploying from CloudCraft is for a project that goes to an Azure VM or AWS EC2.']);
+  if (target !== 'azure-vm' && target !== 'ec2' && target !== 'ecs') throw new BundleError(['Deploying from CloudCraft is for a project that goes to an Azure VM, AWS EC2 or AWS ECS Fargate.']);
   const t = TARGETS[target];
   if (enabledLayers(project).length < 2) throw new BundleError(['Deploying from CloudCraft needs a project of two or more services; one service has its own deployment.']);
   // On AWS the images are built in the account (CodeBuild), which a person who downloads the files does not need: it is part of the release's Terraform only.
   const r = generateProjectFiles(project, { forRelease: true });
   if (!r.ok) throw new BundleError(r.errors);
-  const compose = r.files.find((f) => f.path === `${t.dir}/compose.deploy.yml`)?.content;
-  if (!compose) throw new BundleError(['The deployment files are missing the compose file.']);
+  // ECS has no compose file: every service is an ECS service, and a release changes the images its task definitions run.
+  const compose = target === 'ecs' ? '' : r.files.find((f) => f.path === `${t.dir}/compose.deploy.yml`)?.content;
+  if (compose === undefined) throw new BundleError(['The deployment files are missing the compose file.']);
   const built = enabledLayers(project).filter((l) => l !== 'database' && project.layers[l].config.image === '');
   const secrets = [...new Set(enabledLayers(project).flatMap((l) => project.layers[l].config.env.filter((v) => v.secret).map((v) => v.key)))];
   const entryLayer = enabledLayers(project).includes('frontend') ? 'frontend' : enabledLayers(project).includes('api') ? 'api' : 'backend';
-  const entryPort = projectLayout(project).hostPort[entryLayer] ?? project.layers[entryLayer].config.port;
+  const entryPort = target === 'ecs' ? project.layers[entryLayer].config.port : (projectLayout(project).hostPort[entryLayer] ?? project.layers[entryLayer].config.port);
   for (const layer of Object.keys(sources)) if (!built.includes(layer as never)) throw new BundleError([`The ${layer} is not built from source, so it cannot have uploaded code.`]);
   const imageTag = t.tag(project);
   return {

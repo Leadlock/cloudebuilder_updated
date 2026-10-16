@@ -5,7 +5,7 @@
  */
 import { buildTar } from './tar';
 import { vaultName, type AzureOps } from './azureOps';
-import type { AzureOutputs, ReleaseOutputs } from './types';
+import { isAzureOutputs, type AzureOutputs, type ReleaseOutputs } from './types';
 
 export interface ArchiveFile { path: string; content: string | Buffer }
 
@@ -35,7 +35,7 @@ export function writeComposeScript(project: string, compose: string): string {
 }
 
 const az = (o: ReleaseOutputs): AzureOutputs => {
-  if (o.kind === 'ec2') throw new Error('These are the outputs of an AWS deployment, not an Azure one.');
+  if (!isAzureOutputs(o)) throw new Error('These are the outputs of an AWS deployment, not an Azure one.');
   return o;
 };
 
@@ -51,7 +51,7 @@ export function azureDriver(ops: AzureOps): ReleaseDriver {
     },
     async start(o, a) { await ops.runShell(az(o).resourceGroup, az(o).vmName, `systemctl restart ${a.project}.service`); },
     exists: (o) => ops.resourceGroupExists(az(o).resourceGroup),
-    same: (a, b) => a.kind !== 'ec2' && b.kind !== 'ec2' && a.resourceGroup === b.resourceGroup,
+    same: (a, b) => isAzureOutputs(a) && isAzureOutputs(b) && a.resourceGroup === b.resourceGroup,
     describe: (o) => az(o).resourceGroup,
     httpOk: (url) => ops.httpOk(url),
   };

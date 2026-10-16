@@ -21,10 +21,14 @@ interface ReleaseView {
 interface DestroyPreview { confirmationToken: string; planId: string; planHash: string; resourceCount: number; resources: Array<{ address: string; type: string }>; project: string }
 interface PlanView { planId: string; planHash: string; summary: { toAdd: number; toChange: number; toDestroy: number }; expiresAt: string }
 
-const STEP_LABEL: Record<'azure' | 'aws', Record<string, string>> = {
+const STEP_LABEL: Record<'azure' | 'aws' | 'ecs', Record<string, string>> = {
   azure: {
     infrastructure: 'Create the resource group, registry, vault and VM', secrets: 'Store the secrets', build: 'Build the images in Azure',
     publish: 'Put the release on the VM', start: 'Start the services', verify: 'Check the address answers',
+  },
+  ecs: {
+    infrastructure: 'Create the cluster, load balancer, registry and build project', secrets: 'Store the secrets', build: 'Build the images in CodeBuild',
+    publish: 'Point the services at the new images', start: 'Start the services and wait until they are steady', verify: 'Check the address answers',
   },
   aws: {
     infrastructure: 'Create the instance, registry, build project and buckets', secrets: 'Store the secrets', build: 'Build the images in CodeBuild',
@@ -50,7 +54,8 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
 
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [accountId, setAccountId] = useState('');
-  const cloud: 'azure' | 'aws' = stack.deploy.target === 'ec2' ? 'aws' : 'azure';
+  const kind: 'azure' | 'aws' | 'ecs' = stack.deploy.target === 'ecs' ? 'ecs' : stack.deploy.target === 'ec2' ? 'aws' : 'azure';
+  const cloud: 'azure' | 'aws' = kind === 'azure' ? 'azure' : 'aws';
   const [backend, setBackend] = useState({ resourceGroupName: '', storageAccountName: '', containerName: 'tfstate', key: '' });
   const [awsState, setAwsState] = useState({ bucket: '', region: 'eu-north-1', dynamodbTable: '', key: '' });
   const [off, setOff] = useState<string | null>(null);
@@ -324,7 +329,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
           <p className="text-xs font-semibold">Release {release.imageTag} of {release.project}: <span data-testid="release-state">{release.status.replace('_', ' ')}</span></p>
           <ul className="space-y-1.5">
             {release.steps.filter((s) => s.state !== 'skipped').map((s) => (
-              <li key={s.name} className="flex items-start gap-2 text-xs">{stateIcon(s.state)}<span><span className="font-medium">{STEP_LABEL[cloud][s.name] ?? s.name}</span>{s.message && <span className={muted}> · {s.message}</span>}</span></li>
+              <li key={s.name} className="flex items-start gap-2 text-xs">{stateIcon(s.state)}<span><span className="font-medium">{STEP_LABEL[kind][s.name] ?? s.name}</span>{s.message && <span className={muted}> · {s.message}</span>}</span></li>
             ))}
           </ul>
 
@@ -380,7 +385,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
         <div className={clsx('rounded-lg border p-3 space-y-2', isLight ? 'border-rose-200' : 'border-rose-500/30')} data-testid="teardown">
           <p className="text-xs font-semibold">Remove everything</p>
           {!teardown && <>
-            <p className={clsx('text-[11px]', muted)}>{cloud === 'aws' ? 'Deletes what this release created: the instance (and the database data on its disk), the registry with its images, the buckets and the build project. The secrets in Parameter Store stay until you delete them. You see the list first.' : 'Deletes the resource group this release created: the VM (and the database data on its disk), the registry with its images, the vault with its secrets and the network. You see the list first.'}</p>
+            <p className={clsx('text-[11px]', muted)}>{cloud === 'aws' ? (kind === 'ecs' ? 'Deletes what this release created: the cluster and its services, the load balancer, the registry with its images, the bucket and the build project. The secrets in Parameter Store stay until you delete them. You see the list first.' : 'Deletes what this release created: the instance (and the database data on its disk), the registry with its images, the buckets and the build project. The secrets in Parameter Store stay until you delete them. You see the list first.') : 'Deletes the resource group this release created: the VM (and the database data on its disk), the registry with its images, the vault with its secrets and the network. You see the list first.'}</p>
             <button type="button" disabled={busy || !stateReady} onClick={() => void previewTeardown()} className="px-3 py-1.5 rounded-lg border text-xs font-medium border-rose-300 text-rose-600 disabled:opacity-40">Preview what would be removed</button>
           </>}
           {teardown?.nothing && <p className={clsx('text-xs', muted)}>Terraform&apos;s record holds nothing to remove.</p>}
