@@ -406,7 +406,9 @@ export default function ContainerTemplatesPanel() {
               />
             )}
             {multi && (stack.deploy.target === 'azure-vm' || stack.deploy.target === 'ec2' || stack.deploy.target === 'ecs' || stack.deploy.target === 'container-apps') && result.ok && (
-              <ProjectReleasePanel projectId={project && project.id !== 'draft-project' ? project.id : null} environment={state.activeEnvironment} stack={stack} isLight={isLight} />
+              <ProjectReleasePanel projectId={project && project.id !== 'draft-project' && !/^proj-\d+$/.test(project.id) ? project.id : null} environment={state.activeEnvironment} stack={stack} isLight={isLight}
+                draftName={project?.name} saving={!!project && /^proj-\d+$/.test(project.id)}
+                onSaveProject={project && project.id === 'draft-project' ? () => dispatch({ type: 'CREATE_PROJECT', name: project.name || 'My project', provider: project.provider, nodes: project.nodes, edges: project.edges }) : undefined} />
             )}
             {!multi && (
             <div className={clsx(card, 'space-y-3')}>

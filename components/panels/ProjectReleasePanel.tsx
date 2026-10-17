@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { AlertTriangle, CheckCircle2, Loader2, XCircle, CircleDashed, Rocket } from 'lucide-react';
 import { LAYERS, LAYER_LABEL, type StackProject } from '@/lib/engines/containers/stackProject';
+import { AwsBackendSchema, AzureBackendSchema } from '@/lib/terraform/execution/backendSchema';
 
 interface Account { id: string; name: string; provider: string; identity?: { authMethod?: string } }
 interface Step { name: string; state: 'pending' | 'running' | 'done' | 'failed' | 'waiting' | 'skipped' | 'rolled_back'; message?: string }
@@ -41,16 +42,28 @@ const STEP_LABEL: Record<'azure' | 'aws' | 'ecs' | 'aca', Record<string, string>
 };
 const ACTIVE = new Set(['approved', 'running', 'waiting']);
 
+/** The server's message, with the reasons behind a "Validation failed" (which field, what is wrong) when it gave them. */
+function explain(e: { message?: string; details?: { formErrors?: string[]; fieldErrors?: Record<string, string[]> } } | undefined): string {
+  const base = e?.message ?? 'Could not reach the server';
+  const d = e?.details;
+  const reasons = [...(d?.formErrors ?? []), ...Object.values(d?.fieldErrors ?? {}).flat()];
+  return reasons.length > 0 ? `${base}: ${[...new Set(reasons)].join('; ')}` : base;
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<{ ok: true; data: T } | { ok: false; status: number; code: string; message: string }> {
   try {
     const res = await fetch(path, { credentials: 'include', ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, status: res.status, code: body?.error?.code ?? 'ERROR', message: body?.error?.message ?? 'Could not reach the server' };
+    if (!res.ok) return { ok: false, status: res.status, code: body?.error?.code ?? 'ERROR', message: explain(body?.error) };
     return { ok: true, data: body.data as T };
   } catch { return { ok: false, status: 0, code: 'NETWORK', message: 'Could not reach the server' }; }
 }
 
-export default function ProjectReleasePanel({ projectId, environment, stack, isLight }: { projectId: string | null; environment: string; stack: StackProject; isLight: boolean }) {
+export default function ProjectReleasePanel({ projectId, environment, stack, isLight, draftName, onSaveProject, saving }: {
+  projectId: string | null; environment: string; stack: StackProject; isLight: boolean;
+  /** Set when the open project is an unsaved draft: the name it would be saved under. */
+  draftName?: string; onSaveProject?: () => void; saving?: boolean;
+}) {
   const muted = isLight ? 'text-slate-500' : 'text-slate-400';
   const label = clsx('block text-xs font-medium mb-1', isLight ? 'text-slate-700' : 'text-slate-300');
   const input = clsx('w-full rounded-lg border px-3 py-2 text-sm', isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-950 border-slate-700 text-slate-100');
@@ -65,6 +78,8 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
   const [off, setOff] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [creatingState, setCreatingState] = useState(false);
+  const [stateNote, setStateNote] = useState<string | null>(null);
   const [plan, setPlan] = useState<{ release: ReleaseView; plan: PlanView; cost: { monthlyUsd: number } | null; warnings: string[] } | null>(null);
   const [release, setRelease] = useState<ReleaseView | null>(null);
   const [history, setHistory] = useState<ReleaseView[]>([]);
@@ -150,7 +165,18 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
     return () => clearInterval(id);
   }, [teardown?.runId, teardown?.state, release?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!projectId) return <div className={card}><p className={clsx('text-xs', muted)}>Open or create a saved project first (the &quot;Draft Architecture&quot; is not saved anywhere): pick one in the Projects list on the left, or save this one. A deployment from CloudCraft belongs to a project.</p></div>;
+  if (!projectId) {
+    return (
+      <div className={card} data-testid="release-needs-project">
+        <div className="flex items-center gap-2"><Rocket className="w-4 h-4 text-cyan-500" /><p className="text-sm font-semibold">Deploy from CloudCraft</p></div>
+        <p className={clsx('text-xs', muted)}>{saving ? 'Saving the project…' : 'A deployment belongs to a saved project, and this one is still a draft that is kept only in your browser.'}</p>
+        {onSaveProject && !saving && (
+          <button type="button" onClick={onSaveProject} className="px-4 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white">Save as a project{draftName ? ` (${draftName})` : ''}</button>
+        )}
+        {!onSaveProject && !saving && <p className={clsx('text-xs', muted)}>Open or create a saved project: pick one in the Projects list on the left.</p>}
+      </div>
+    );
+  }
   if (off) return <div className={card}><p className="text-sm font-semibold">Deploy from CloudCraft</p><p className={clsx('text-xs', muted)}>{off} You can still download the files and run <code>bash deploy.sh</code> yourself.</p></div>;
 
   const fail = (m: string) => { setError(m); setBusy(false); };
@@ -225,7 +251,27 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
   const stateBackend = () => (cloud === 'aws'
     ? { provider: 'aws', bucket: awsState.bucket, key: awsState.key, region: awsState.region, ...(awsState.dynamodbTable ? { dynamodbTable: awsState.dynamodbTable } : {}) }
     : { provider: 'azure', ...backend });
-  const stateReady = cloud === 'aws' ? Boolean(awsState.bucket && awsState.region && awsState.key) : Boolean(backend.resourceGroupName && backend.storageAccountName);
+  const stateFilled = cloud === 'aws' ? Boolean(awsState.bucket && awsState.region && awsState.key) : Boolean(backend.resourceGroupName && backend.storageAccountName);
+  // The same rules the server applies, so a typo is shown here, next to the fields, and nothing is sent.
+  const stateProblems: string[] = (() => {
+    if (!stateFilled) return [];
+    const r = (cloud === 'aws' ? AwsBackendSchema : AzureBackendSchema).safeParse(stateBackend());
+    return r.success ? [] : [...new Set(r.error.issues.map((i) => i.message))];
+  })();
+  const stateReady = stateFilled && stateProblems.length === 0;
+
+  /** Creates the state storage in the chosen account (nothing is changed if it exists). An empty AWS bucket name lets CloudCraft pick a unique one. */
+  async function createState() {
+    setCreatingState(true); setStateNote(null); setError(null);
+    const body = cloud === 'aws'
+      ? { provider: 'aws', region: awsState.region, ...(awsState.bucket.trim() && !AwsBackendSchema.shape.bucket.safeParse(awsState.bucket).error ? { bucket: awsState.bucket.trim() } : {}), ...(awsState.key ? { key: awsState.key } : {}), ...(awsState.dynamodbTable ? { dynamodbTable: awsState.dynamodbTable } : {}) }
+      : { provider: 'azure', resourceGroupName: backend.resourceGroupName, storageAccountName: backend.storageAccountName, containerName: backend.containerName || 'tfstate', key: backend.key, location: String((stack.deploy.target === 'container-apps' ? stack.deploy.aca.location : stack.deploy.azvm.location) || 'eastus') };
+    const r = await api<{ bucket?: string; dynamodbTable?: string; steps: Array<{ what: string; outcome: string }> }>(`/api/projects/${projectId}/terraform/state-backend`, { method: 'POST', body: JSON.stringify({ cloudAccountId: accountId, stateBackend: body }) });
+    setCreatingState(false);
+    if (!r.ok) { setError(r.message); return; }
+    if (cloud === 'aws' && r.data.bucket) setAwsState((b) => ({ ...b, bucket: r.data.bucket!, ...(r.data.dynamodbTable ? { dynamodbTable: r.data.dynamodbTable } : {}) }));
+    setStateNote(r.data.steps.map((x) => `${x.what}: ${x.outcome === 'created' ? 'created' : 'already there'}`).join('; ') || 'State storage is ready.');
+  }
 
   async function previewTeardown() {
     if (!release) return;
@@ -270,6 +316,15 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
               {(accounts ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </div>
+          <ul className="col-span-2 space-y-1 text-xs" data-testid="release-checklist">
+            {([
+              ['A saved project', true, ''],
+              [`${cloud === 'aws' ? 'An AWS' : 'An Azure'} account that can deploy`, !!accountId, cloud === 'aws' ? 'Connect one in Cloud Accounts with the Simple (access key) or Safer (role) option.' : 'Connect a service principal in Cloud Accounts.'],
+              ['Somewhere for Terraform to keep its record', stateReady, stateProblems.length > 0 ? 'Fix the highlighted field.' : 'Press "Create state storage for me", or fill in storage you already have.'],
+            ] as const).map(([what, done, how]) => (
+              <li key={what} className="flex items-start gap-2">{done ? <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> : <XCircle className="w-4 h-4 text-rose-500 shrink-0" />}<span>{what}{!done && how ? <span className={muted}> · {how}</span> : null}</span></li>
+            ))}
+          </ul>
           {cloud === 'aws' ? <>
           <div><label className={label} htmlFor="rel-bucket">State: S3 bucket</label><input id="rel-bucket" className={input} value={awsState.bucket} onChange={(e) => setAwsState({ ...awsState, bucket: e.target.value })} /></div>
           <div><label className={label} htmlFor="rel-region">State: region</label><input id="rel-region" className={input} value={awsState.region} onChange={(e) => setAwsState({ ...awsState, region: e.target.value })} /></div>
@@ -281,6 +336,15 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
           <div><label className={label} htmlFor="rel-ct">State: container</label><input id="rel-ct" className={input} value={backend.containerName} onChange={(e) => setBackend({ ...backend, containerName: e.target.value })} /></div>
           <div><label className={label} htmlFor="rel-key">State: file name</label><input id="rel-key" className={input} value={backend.key} onChange={(e) => setBackend({ ...backend, key: e.target.value })} /></div>
           </>}
+          {stateProblems.length > 0 && <ul role="alert" className="col-span-2 text-xs text-rose-500 space-y-0.5">{stateProblems.map((m) => <li key={m}>{m}</li>)}</ul>}
+          <div className="col-span-2 space-y-1">
+            <button type="button" disabled={busy || creatingState || !accountId || (cloud === 'aws' ? !awsState.region : !(backend.resourceGroupName && backend.storageAccountName))} onClick={() => void createState()}
+              className={clsx('px-3 py-1.5 rounded-lg border text-xs font-medium disabled:opacity-40', isLight ? 'border-slate-300 text-slate-700 bg-slate-100' : 'border-slate-600 text-slate-200 bg-slate-800')}>
+              {creatingState ? 'Creating state storage…' : 'Create state storage for me'}
+            </button>
+            <p className={clsx('text-[11px]', muted)}>{cloud === 'aws' ? 'Makes a private, encrypted, versioned bucket in this account. Leave the bucket name empty and CloudCraft picks a unique one. Nothing changes if it already exists.' : 'Makes the resource group, storage account and container if they do not exist. Nothing changes if they do.'}</p>
+            {stateNote && <p className="text-[11px] text-emerald-500">{stateNote}</p>}
+          </div>
           <div className="col-span-2 space-y-2" data-testid="own-code">
             <p className={label}>Your code (optional)</p>
             <p className={clsx('text-[11px]', muted)}>Without it, each service is built from the generated sample app. Upload a zip (up to 5 MB) of a service&apos;s code to build that instead. CloudCraft&apos;s own Dockerfile is used, not one from the zip.</p>
@@ -298,7 +362,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
               </div>
             ))}
           </div>
-          <p className={clsx('col-span-2 text-[11px]', muted)}>{cloud === 'aws' ? 'Terraform keeps a record of what it created in an S3 bucket you own (the bucket must already exist; the Deploy tab can create one). This project uses its own file in it.' : 'Terraform keeps a record of what it created in an Azure storage container you own. The Deploy tab can create one. This project uses its own file in it.'}</p>
+          <p className={clsx('col-span-2 text-[11px]', muted)}>{cloud === 'aws' ? 'Terraform keeps a record of what it created in an S3 bucket you own (the button above creates it). This project uses its own file in it.' : 'Terraform keeps a record of what it created in an Azure storage container you own. The button above can create it. This project uses its own file in it.'}</p>
           <div className="col-span-2">
             <button type="button" disabled={busy || !accountId || !stateReady} onClick={() => void makePlan()}
               className="px-4 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-40">

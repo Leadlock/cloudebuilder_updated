@@ -92,7 +92,18 @@ describe('planning', () => {
 
   test('without a project there is nothing to deploy from', () => {
     render(<ProjectReleasePanel projectId={null} environment="production" stack={stack} isLight />);
-    expect(screen.getByText(/Open or create a saved project first/)).toBeTruthy();
+    expect(screen.getByText(/Open or create a saved project/)).toBeTruthy();
+    expect(calls).toEqual([]);
+  });
+
+  test('a draft offers to be saved as a project, with one click, and says so while it is saving', () => {
+    const save = jest.fn();
+    const { rerender } = render(<ProjectReleasePanel projectId={null} environment="production" stack={stack} isLight draftName="My app" onSaveProject={save} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Save as a project (My app)' }));
+    expect(save).toHaveBeenCalledTimes(1);
+    rerender(<ProjectReleasePanel projectId={null} environment="production" stack={stack} isLight draftName="My app" onSaveProject={save} saving />);
+    expect(screen.getByText('Saving the project…')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Save as a project/ })).toBeNull();
     expect(calls).toEqual([]);
   });
 });
@@ -454,5 +465,64 @@ describe('on Container Apps', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Plan the deployment' }));
     await screen.findByTestId('release-plan');
     expect(calls.find((c) => c.method === 'POST')!.body).toMatchObject({ cloudAccountId: 'acct-1', stateBackend: { provider: 'azure', resourceGroupName: 'rg-state' } });
+  });
+});
+
+describe('the state storage', () => {
+  const awsStack = (() => { const p = defaultProject(); p.name = 'shop'; for (const l of LAYERS) p.layers[l].enabled = ['backend', 'api'].includes(l); p.deploy.target = 'ec2'; return p; })();
+  beforeEach(() => {
+    localStorage.clear();
+    routes.unshift([/GET \/api\/cloud-accounts\?provider=aws/, () => ({ data: [{ id: 'aws-1', name: 'Test AWS', provider: 'aws' }] })]);
+  });
+  const mountAws = async () => { render(<ProjectReleasePanel projectId="p1" environment="production" stack={awsStack} isLight />); await waitFor(() => expect(screen.getByRole('option', { name: 'Test AWS' })).toBeTruthy()); };
+
+  test('a bucket name S3 would refuse is explained next to the fields, and nothing can be planned or sent', async () => {
+    await mountAws();
+    fireEvent.change(screen.getByLabelText('State: S3 bucket'), { target: { value: 'cloudcraft-state-AJ-123456' } });
+    expect(screen.getByRole('alert').textContent).toContain('Invalid S3 bucket name');
+    expect((screen.getByRole('button', { name: 'Plan the deployment' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([]);
+    fireEvent.change(screen.getByLabelText('State: S3 bucket'), { target: { value: 'cloudcraft-state-aj-123456' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Plan the deployment' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test('the checklist says what is missing and how to fix it', async () => {
+    await mountAws();
+    const list = screen.getByTestId('release-checklist').textContent!;
+    expect(list).toContain('Press "Create state storage for me"');
+    fireEvent.change(screen.getByLabelText('State: S3 bucket'), { target: { value: 'my-state-bucket' } });
+    expect(screen.getByTestId('release-checklist').textContent).not.toContain('Press "Create state storage for me"');
+  });
+
+  test('"Create state storage for me" with the bucket left empty lets CloudCraft pick one, and fills it in', async () => {
+    routes.unshift([/POST \/api\/projects\/p1\/terraform\/state-backend$/, () => ({ data: { bucket: 'cloudcraft-state-123456789012-eu-north-1', steps: [{ what: 'S3 bucket cloudcraft-state-123456789012-eu-north-1', outcome: 'created' }] } })]);
+    await mountAws();
+    fireEvent.click(screen.getByRole('button', { name: 'Create state storage for me' }));
+    await waitFor(() => expect((screen.getByLabelText('State: S3 bucket') as HTMLInputElement).value).toBe('cloudcraft-state-123456789012-eu-north-1'));
+    const post = calls.find((c) => c.method === 'POST')!;
+    expect(post.body).toEqual({ cloudAccountId: 'aws-1', stateBackend: { provider: 'aws', region: 'eu-north-1', key: 'cloudcraft/releases/shop-production.tfstate' } });
+    expect(screen.getByText(/S3 bucket cloudcraft-state-123456789012-eu-north-1: created/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Plan the deployment' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test('a typed bucket name that is valid is created as typed; an invalid one is not sent', async () => {
+    routes.unshift([/POST \/api\/projects\/p1\/terraform\/state-backend$/, () => ({ data: { bucket: 'my-state-bucket', steps: [{ what: 'S3 bucket', outcome: 'already-exists' }] } })]);
+    await mountAws();
+    fireEvent.change(screen.getByLabelText('State: S3 bucket'), { target: { value: 'my-state-bucket' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create state storage for me' }));
+    await waitFor(() => expect(screen.getByText(/already there/)).toBeTruthy());
+    expect((calls.find((c) => c.method === 'POST')!.body as { stateBackend: { bucket: string } }).stateBackend.bucket).toBe('my-state-bucket');
+  });
+
+  test('a refusal says which field and why, not just "Validation failed"', async () => {
+    routes.unshift([/POST \/api\/projects\/p1\/releases$/, () => ({ status: 400, code: 'BAD_REQUEST', message: 'Validation failed' })]);
+    // The server's reasons arrive as zod's flattened details; the panel shows them after the message.
+    (global as unknown as { fetch: jest.Mock }).fetch.mockImplementationOnce(async () => ({ ok: true, status: 200, json: async () => ({ ok: true, data: [{ id: 'aws-1', name: 'Test AWS', provider: 'aws' }] }) }));
+    await mountAws();
+    fireEvent.change(screen.getByLabelText('State: S3 bucket'), { target: { value: 'my-state-bucket' } });
+    (global as unknown as { fetch: jest.Mock }).fetch.mockImplementation(async () => ({ ok: false, status: 400, json: async () => ({ ok: false, error: { code: 'BAD_REQUEST', message: 'Validation failed', details: { formErrors: [], fieldErrors: { stateBackend: ['Invalid AWS region (for example eu-north-1)'] } } } }) }));
+    fireEvent.click(screen.getByRole('button', { name: 'Plan the deployment' }));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('Validation failed: Invalid AWS region (for example eu-north-1)'));
   });
 });
