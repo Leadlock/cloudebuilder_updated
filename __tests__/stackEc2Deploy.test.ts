@@ -127,7 +127,7 @@ describe('the Terraform', () => {
   });
   test('the release files are what the server reads: a new compose file is a new release, not a new server', () => {
     const m = main();
-    expect(m).toMatch(/resource "aws_s3_object" "compose"[\s\S]*filemd5/);
+    expect(m).toMatch(/resource "aws_s3_object" "compose"[\s\S]*content\s+= file\(/);
     expect(m).toContain('content                = "TAG=${var.image_tag}\\n"');
   });
   test('the bucket name matches the one the server works out', () => {

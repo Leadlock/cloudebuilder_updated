@@ -342,8 +342,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "release" {
 resource "aws_s3_object" "compose" {
   bucket                 = aws_s3_bucket.release.id
   key                    = "compose.yml"
-  source                 = "\${path.module}/compose.deploy.yml"
-  etag                   = filemd5("\${path.module}/compose.deploy.yml")
+  content                = file("\${path.module}/compose.deploy.yml") # not "source": CloudCraft refuses any generated Terraform with a source = line
   server_side_encryption = "AES256"
 }
 

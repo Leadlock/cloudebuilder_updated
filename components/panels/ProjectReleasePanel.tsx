@@ -379,7 +379,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
           <div className={clsx('rounded-lg border px-3 py-2 text-xs', isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900 border-slate-700')}>
             <p className="font-semibold">{plan.plan.summary.toAdd} to create, {plan.plan.summary.toChange} to change, 0 to destroy{plan.cost ? ` · about $${plan.cost.monthlyUsd.toFixed(2)} a month` : ''}</p>
             {(plan.release.ownCode ?? []).length > 0 && <p className={muted}>Built from your code: {plan.release.ownCode.join(', ')}.</p>}
-            <p className={muted}>Then: store the secrets{plan.release.secrets.length ? ` (${plan.release.secrets.join(', ')})` : ' (none are needed)'}, build the images, put the release on the VM, start it and check the address answers.</p>
+            <p className={muted}>Then: store the secrets{plan.release.secrets.length ? ` (${plan.release.secrets.join(', ')})` : ' (none are needed)'}, build the images, put the release on the {kind === 'azure' || kind === 'aws' ? 'server' : 'services'}, start it and check the address answers.</p>
           </div>
           {plan.warnings.length > 0 && <ul className={clsx('space-y-1 rounded-lg border px-3 py-2 text-xs', isLight ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-amber-500/10 border-amber-500/30 text-amber-200')}>{plan.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
           <div className="grid grid-cols-2 gap-3">

@@ -83,7 +83,9 @@ describe('plan guardrails', () => {
 describe('allowed resource types stay in step with the generator', () => {
   it('lists exactly the Terraform resource types the generators can emit', () => {
     // The generator proper plus the Azure managed-service generators it calls.
-    const src = ['lib/engines/terraform/TerraformGenerator.ts', 'lib/engines/terraform/azureServices.ts', 'lib/engines/terraform/containerService.ts', 'lib/engines/terraform/azureContainerService.ts'].map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+    const src = ['lib/engines/terraform/TerraformGenerator.ts', 'lib/engines/terraform/azureServices.ts', 'lib/engines/terraform/containerService.ts', 'lib/engines/terraform/azureContainerService.ts',
+      // The Terraform of a project deployed from CloudCraft (stack targets that a release plans and applies).
+      'lib/engines/containers/stackEc2Deploy.ts', 'lib/engines/containers/stackEcsDeploy.ts', 'lib/engines/containers/stackAzureDeploy.ts', 'lib/engines/containers/stackAcaDeploy.ts'].map((f) => fs.readFileSync(f, 'utf8')).join('\n');
     const emitted = new Set([...src.matchAll(/resource "((?:aws|azurerm)_[a-z0-9_]+)"/g)].map((m) => m[1]!));
     for (const d of [...src.matchAll(/const resourceType\s*=\s*([^;]+);/g)].map((m) => m[1]!)) {
       for (const m of d.matchAll(/'((?:aws|azurerm)_[a-z0-9_]+)'/g)) emitted.add(m[1]!);
