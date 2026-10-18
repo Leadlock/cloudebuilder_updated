@@ -525,4 +525,34 @@ describe('the state storage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Plan the deployment' }));
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('Validation failed: Invalid AWS region (for example eu-north-1)'));
   });
+
+  test('the state bucket can be deleted: a link, the name typed again, then it is cleared from the box', async () => {
+    routes.unshift([/DELETE \/api\/projects\/p1\/terraform\/state-backend$/, () => ({ data: { bucket: 'cloudcraft-tfstate-1-eu-north-1', steps: [{ what: 'S3 bucket cloudcraft-tfstate-1-eu-north-1 and its 2 stored objects', outcome: 'deleted' }] } })]);
+    await mountAws();
+    expect(screen.queryByText('Delete this state storage…')).toBeNull();           // nothing to delete yet
+    fireEvent.change(screen.getByLabelText('State: S3 bucket'), { target: { value: 'cloudcraft-tfstate-1-eu-north-1' } });
+    fireEvent.click(screen.getByText('Delete this state storage…'));
+    const go = screen.getByRole('button', { name: 'Delete permanently' }) as HTMLButtonElement;
+    expect(go.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Type the bucket name to confirm'), { target: { value: 'something-else' } });
+    expect(go.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Type the bucket name to confirm'), { target: { value: 'cloudcraft-tfstate-1-eu-north-1' } });
+    expect(go.disabled).toBe(false);
+    fireEvent.click(go);
+    await waitFor(() => expect((screen.getByLabelText('State: S3 bucket') as HTMLInputElement).value).toBe(''));
+    const del = calls.find((c) => c.method === 'DELETE')!;
+    expect(del.body).toEqual({ cloudAccountId: 'aws-1', stateBackend: { provider: 'aws', bucket: 'cloudcraft-tfstate-1-eu-north-1', region: 'eu-north-1' }, confirmName: 'cloudcraft-tfstate-1-eu-north-1' });
+    expect(screen.getByText(/2 stored objects: deleted/)).toBeTruthy();
+  });
+
+  test('a refusal (the record still lists resources) is shown and the bucket name stays', async () => {
+    routes.unshift([/DELETE \/api\/projects\/p1\/terraform\/state-backend$/, () => ({ status: 409, code: 'CONFLICT', message: 'Not deleted: Terraform\'s record still lists what it created' })]);
+    await mountAws();
+    fireEvent.change(screen.getByLabelText('State: S3 bucket'), { target: { value: 'cloudcraft-tfstate-1-eu-north-1' } });
+    fireEvent.click(screen.getByText('Delete this state storage…'));
+    fireEvent.change(screen.getByLabelText('Type the bucket name to confirm'), { target: { value: 'cloudcraft-tfstate-1-eu-north-1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete permanently' }));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('still lists what it created'));
+    expect((screen.getByLabelText('State: S3 bucket') as HTMLInputElement).value).toBe('cloudcraft-tfstate-1-eu-north-1');
+  });
 });

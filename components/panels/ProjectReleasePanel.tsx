@@ -80,6 +80,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
   const [busy, setBusy] = useState(false);
   const [creatingState, setCreatingState] = useState(false);
   const [stateNote, setStateNote] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<{ typed: string; busy: boolean } | null>(null);
   const [plan, setPlan] = useState<{ release: ReleaseView; plan: PlanView; cost: { monthlyUsd: number } | null; warnings: string[] } | null>(null);
   const [release, setRelease] = useState<ReleaseView | null>(null);
   const [history, setHistory] = useState<ReleaseView[]>([]);
@@ -260,6 +261,19 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
   })();
   const stateReady = stateFilled && stateProblems.length === 0;
 
+  /** Deletes the state bucket CloudCraft made (the server refuses one that is not CloudCraft's or that still records resources). */
+  async function deleteState() {
+    if (!deleting) return;
+    setDeleting({ ...deleting, busy: true }); setError(null); setStateNote(null);
+    const r = await api<{ steps: Array<{ what: string; outcome: string }> }>(`/api/projects/${projectId}/terraform/state-backend`, {
+      method: 'DELETE', body: JSON.stringify({ cloudAccountId: accountId, stateBackend: { provider: 'aws', bucket: awsState.bucket.trim(), region: awsState.region.trim() }, confirmName: deleting.typed }),
+    });
+    if (!r.ok) { setDeleting({ ...deleting, busy: false }); setError(r.message); return; }
+    setDeleting(null);
+    setAwsState((b) => ({ ...b, bucket: '' }));
+    setStateNote(r.data.steps.map((x) => `${x.what}: ${x.outcome === 'deleted' ? 'deleted' : 'already gone'}`).join('; '));
+  }
+
   /** Creates the state storage in the chosen account (nothing is changed if it exists). An empty AWS bucket name lets CloudCraft pick a unique one. */
   async function createState() {
     setCreatingState(true); setStateNote(null); setError(null);
@@ -344,6 +358,20 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
             </button>
             <p className={clsx('text-[11px]', muted)}>{cloud === 'aws' ? 'Makes a private, encrypted, versioned bucket in this account. Leave the bucket name empty and CloudCraft picks a unique one. Nothing changes if it already exists.' : 'Makes the resource group, storage account and container if they do not exist. Nothing changes if they do.'}</p>
             {stateNote && <p className="text-[11px] text-emerald-500">{stateNote}</p>}
+            {cloud === 'aws' && stateReady && accountId && !(release && infraDone && release.status !== 'destroyed') && !deleting && (
+              <button type="button" disabled={busy || creatingState} onClick={() => setDeleting({ typed: '', busy: false })} className="text-[11px] text-rose-500 underline disabled:opacity-40">Delete this state storage…</button>
+            )}
+            {deleting && (
+              <div className={clsx('rounded-lg border p-3 space-y-2', isLight ? 'border-rose-200' : 'border-rose-500/30')} data-testid="delete-state">
+                <p className="text-[11px]">Permanently deletes the bucket <strong>{awsState.bucket}</strong> and everything in it. Only a bucket CloudCraft created is deleted, and only when its Terraform record lists no resources: if something is still deployed, use Remove everything first.</p>
+                <label className={label} htmlFor="rel-delete-bucket">Type the bucket name to confirm</label>
+                <input id="rel-delete-bucket" className={input} value={deleting.typed} onChange={(e) => setDeleting({ ...deleting, typed: e.target.value })} autoComplete="off" />
+                <div className="flex gap-2">
+                  <button type="button" disabled={deleting.busy || deleting.typed.trim() !== awsState.bucket.trim()} onClick={() => void deleteState()} className="px-3 py-1.5 rounded-lg border text-xs font-medium border-rose-300 text-rose-600 disabled:opacity-40">{deleting.busy ? 'Deleting…' : 'Delete permanently'}</button>
+                  <button type="button" disabled={deleting.busy} onClick={() => setDeleting(null)} className="px-3 py-1.5 rounded-lg border text-xs">Cancel</button>
+                </div>
+              </div>
+            )}
           </div>
           <div className="col-span-2 space-y-2" data-testid="own-code">
             <p className={label}>Your code (optional)</p>

@@ -7,11 +7,13 @@
  * modified or replaced. The state holds resource ids and sometimes secrets, so what is created is locked down: private, encrypted,
  * versioned (so a bad run can be rolled back), and reachable only over TLS.
  *
- * Nothing here ever deletes anything.
+ * Creating never deletes anything. Deleting (deleteAwsStateBackend, below) is a separate, deliberate action that refuses unless the bucket is one
+ * CloudCraft made and its state no longer records any resource.
  */
 import {
   S3Client, HeadBucketCommand, CreateBucketCommand, PutBucketVersioningCommand, PutBucketEncryptionCommand,
-  PutPublicAccessBlockCommand, PutBucketPolicyCommand, PutBucketTaggingCommand,
+  PutPublicAccessBlockCommand, PutBucketPolicyCommand, PutBucketTaggingCommand, GetBucketTaggingCommand, ListObjectVersionsCommand, GetObjectCommand,
+  DeleteObjectsCommand, DeleteBucketCommand,
 } from '@aws-sdk/client-s3';
 import { DynamoDBClient, DescribeTableCommand, CreateTableCommand, waitUntilTableExists } from '@aws-sdk/client-dynamodb';
 import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
@@ -158,6 +160,84 @@ export async function ensureAwsStateBackend(
   }
 
   return { bucket, ...(table ? { dynamodbTable: table } : {}), steps };
+}
+
+export interface StateDeleteResult { bucket: string; deletedObjects: number; steps: { what: string; outcome: 'deleted' | 'already-gone' }[] }
+
+const BUCKET_NAME = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
+const MAX_STATE_BYTES = 20 * 1024 * 1024;
+
+/**
+ * Deletes a state bucket CloudCraft created, with everything in it (every version of every object). It refuses, and deletes nothing, unless
+ *  - the name carries CloudCraft's prefix and the bucket is tagged ManagedBy=CloudCraft, Purpose=terraform-state (so it is never a bucket somebody else made), and
+ *  - no Terraform state file in it still records a resource (deleting it would orphan what that state created: remove those with "Remove everything" first).
+ * An already-missing bucket is a success.
+ */
+export async function deleteAwsStateBackend(backend: { bucket: string }, clients: Pick<AwsClients, 's3'>): Promise<StateDeleteResult> {
+  const bucket = backend.bucket.trim();
+  if (!BUCKET_NAME.test(bucket) || !bucket.startsWith(STATE_BUCKET_PREFIX)) {
+    throw new StateBackendError(`Only buckets named ${STATE_BUCKET_PREFIX}* are deleted here. Delete any other bucket in the AWS console.`);
+  }
+  const s3 = clients.s3;
+  try { await s3.send(new HeadBucketCommand({ Bucket: bucket })); }
+  catch (e) {
+    if (errStatus(e) === 404 || errName(e) === 'NotFound') return { bucket, deletedObjects: 0, steps: [{ what: `S3 bucket ${bucket}`, outcome: 'already-gone' }] };
+    if (errStatus(e) === 403) throw new StateBackendError(`AWS does not let this role look at ${bucket}, so it was not deleted.`, 403);
+    throw e;
+  }
+
+  let tags: Array<{ Key?: string; Value?: string }> = [];
+  try { tags = ((await s3.send(new GetBucketTaggingCommand({ Bucket: bucket }))) as { TagSet?: typeof tags }).TagSet ?? []; }
+  catch (e) {
+    if (errName(e) === 'AccessDenied' || errStatus(e) === 403) throw explainDeleteDenied('s3:GetBucketTagging');
+    if (errName(e) !== 'NoSuchTagSet') throw e;
+  }
+  const tag = (k: string) => tags.find((t) => t.Key === k)?.Value;
+  if (tag('ManagedBy') !== 'CloudCraft' || tag('Purpose') !== 'terraform-state') {
+    throw new StateBackendError(`${bucket} was not created by CloudCraft's "Create state storage" (it has no ManagedBy=CloudCraft tag), so it is not deleted here. Delete it in the AWS console if you are sure.`);
+  }
+
+  // Everything in it, every version and delete marker; and a look at each state file for resources it still records.
+  const targets: Array<{ Key: string; VersionId?: string }> = [];
+  const holding: string[] = [];
+  let keyMarker: string | undefined; let versionMarker: string | undefined;
+  for (;;) {
+    let page: { Versions?: Array<{ Key?: string; VersionId?: string; IsLatest?: boolean; Size?: number }>; DeleteMarkers?: Array<{ Key?: string; VersionId?: string }>; IsTruncated?: boolean; NextKeyMarker?: string; NextVersionIdMarker?: string };
+    try { page = await s3.send(new ListObjectVersionsCommand({ Bucket: bucket, KeyMarker: keyMarker, VersionIdMarker: versionMarker })) as typeof page; }
+    catch (e) { if (errName(e) === 'AccessDenied' || errStatus(e) === 403) throw explainDeleteDenied('s3:ListBucketVersions'); throw e; }
+    for (const v of page.Versions ?? []) {
+      if (!v.Key) continue;
+      targets.push({ Key: v.Key, VersionId: v.VersionId });
+      if (v.IsLatest && /\.tfstate$/.test(v.Key)) {
+        if ((v.Size ?? 0) > MAX_STATE_BYTES) { holding.push(`${v.Key} (too large to check)`); continue; }
+        const body = (await s3.send(new GetObjectCommand({ Bucket: bucket, Key: v.Key, VersionId: v.VersionId }))) as { Body?: { transformToString(): Promise<string> } };
+        let n = 0;
+        try { n = ((JSON.parse(await body.Body!.transformToString()) as { resources?: unknown[] }).resources ?? []).length; } catch { n = 1; }       // a file that is not readable state is not assumed empty
+        if (n > 0) holding.push(`${v.Key} (${n} resource${n === 1 ? '' : 's'})`);
+      }
+    }
+    for (const m of page.DeleteMarkers ?? []) if (m.Key) targets.push({ Key: m.Key, VersionId: m.VersionId });
+    if (!page.IsTruncated) break;
+    keyMarker = page.NextKeyMarker; versionMarker = page.NextVersionIdMarker;
+  }
+  if (holding.length > 0) {
+    throw new StateBackendError(`Not deleted: Terraform's record in ${bucket} still lists what it created — ${holding.join('; ')}. Use "Remove everything" (or terraform destroy) first; deleting the record would leave those resources running and unmanaged.`, 409);
+  }
+
+  try {
+    for (let i = 0; i < targets.length; i += 1000) {
+      await s3.send(new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: targets.slice(i, i + 1000), Quiet: true } }));
+    }
+    await s3.send(new DeleteBucketCommand({ Bucket: bucket }));
+  } catch (e) {
+    if (errName(e) === 'AccessDenied' || errStatus(e) === 403) throw explainDeleteDenied('s3:DeleteObjectVersion / s3:DeleteBucket');
+    throw e;
+  }
+  return { bucket, deletedObjects: targets.length, steps: [{ what: `S3 bucket ${bucket}${targets.length ? ` and its ${targets.length} stored object${targets.length === 1 ? '' : 's'}` : ''}`, outcome: 'deleted' }] };
+}
+
+function explainDeleteDenied(action: string): StateBackendError {
+  return new StateBackendError(`AWS refused "${action}". The default role policy for state storage cannot delete a bucket on purpose. Use a role that may (an administrator), or delete the bucket in the AWS console.`, 403);
 }
 
 /** Real AWS clients signed with the short-lived credentials Terraform itself would run on (see resolveExecutionCredentials). */
