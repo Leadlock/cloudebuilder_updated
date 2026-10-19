@@ -6,7 +6,7 @@
  *  - LIVE:              returned by the official provider API in this request.
  *  - CACHED_LIVE:       a previously retrieved official API value served from cache
  *                       (`isStale` is true once past its expiry).
- *  - FALLBACK_ESTIMATE: CloudCraft's static list-price tables or a computed baseline;
+ *  - FALLBACK_ESTIMATE: CloudBuilder's static list-price tables or a computed baseline;
  *                       the official API was not queried or did not answer.
  *  - UNAVAILABLE:       no price or rate could be determined. Never shown as 0-cost.
  */

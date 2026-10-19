@@ -67,7 +67,7 @@ describe('GitOps commit route', () => {
 
   it('accepts a blank commit message by using a default', async () => {
     expect((await call({ ...base, commitMessage: '' })).status).toBe(200);
-    expect((mockCommit.mock.calls[0]![0] as { commitMessage: string }).commitMessage).toMatch(/CloudCraft/);
+    expect((mockCommit.mock.calls[0]![0] as { commitMessage: string }).commitMessage).toMatch(/CloudBuilder/);
   });
 
   it('commits escaped Terraform: a crafted label cannot add a provisioner to the repository', async () => {

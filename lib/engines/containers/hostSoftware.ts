@@ -20,7 +20,7 @@ export function hostSoftwareSh(ids: unknown, o: { family: PackageFamily; loginUs
   if (items.length === 0) return '';
   const body = softwareScript(items, o);
   return `
-# Software chosen in CloudCraft: ${items.map((i) => i.label).join(', ')}. Its log is /var/log/cloudcraft-setup.log.
+# Software chosen in CloudBuilder: ${items.map((i) => i.label).join(', ')}. Its log is /var/log/cloudcraft-setup.log.
 cat > /usr/local/bin/cloudcraft-software <<'CLOUDCRAFT_SOFTWARE'
 ${body}CLOUDCRAFT_SOFTWARE
 chmod 755 /usr/local/bin/cloudcraft-software

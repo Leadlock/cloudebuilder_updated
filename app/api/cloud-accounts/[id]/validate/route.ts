@@ -70,10 +70,10 @@ export async function POST(
     const newStatus = validationResult.valid ? 'active' : 'invalid';
     // When it fails, keep the reason (in plain words) with the account so the list can show it without checking again.
     const why = validationResult.valid ? null : explainValidationFailure(account.provider, validationResult.error, validationResult.missingPermissions ?? [], authMethodOf(credentials));
-    if (why && authMethodOf(credentials) === 'role' && /refused to let CloudCraft assume/i.test(why.reason)) {
+    if (why && authMethodOf(credentials) === 'role' && /refused to let CloudBuilder assume/i.test(why.reason)) {
       // The usual cause is a trust policy that names a different identity — so say which one the server really is.
       const server = await getServerAwsIdentity();
-      if (server.configured) why.fix += ` The CloudCraft server is signed in as ${server.arn} — the role must trust that identity.`;
+      if (server.configured) why.fix += ` The CloudBuilder server is signed in as ${server.arn} — the role must trust that identity.`;
     }
     const identityJson = JSON.stringify({
       ...(validationResult.identity ?? {}),

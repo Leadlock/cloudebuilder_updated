@@ -1,7 +1,7 @@
 /**
  * AI-proposed equivalents for resource types the hand-written AWS<->Azure table does not cover (EKS, ECS, SQS, App Service, Bastion ...).
  *
- * The model only chooses a resource TYPE from CloudCraft's own catalogue for the other cloud; it cannot invent a type, and it does not
+ * The model only chooses a resource TYPE from CloudBuilder's own catalogue for the other cloud; it cannot invent a type, and it does not
  * translate settings or produce a price. The matched resource is priced from its default sizing by the normal pricing path, and the
  * cost screen marks it as an AI match so the user knows to check it.
  */

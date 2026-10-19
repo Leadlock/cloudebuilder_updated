@@ -91,7 +91,7 @@ export default function CostInsightsCard({ nodes }: { nodes: CanvasNode[] }) {
                     {s.rationale && <p className={`text-xs mt-0.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>{s.rationale}</p>}
                     <p className={`text-xs mt-1 flex items-center gap-1.5 font-medium ${isLight ? 'text-emerald-700' : 'text-emerald-300'}`}>
                       <TrendingDown className="w-3.5 h-3.5" />
-                      saves {formatCurrency(s.savingUsd, 'USD')}/mo ({formatCurrency(s.currentMonthlyUsd, 'USD')} → {formatCurrency(s.newMonthlyUsd, 'USD')}), re-priced by CloudCraft
+                      saves {formatCurrency(s.savingUsd, 'USD')}/mo ({formatCurrency(s.currentMonthlyUsd, 'USD')} → {formatCurrency(s.newMonthlyUsd, 'USD')}), re-priced by CloudBuilder
                     </p>
                   </li>
                 ))}

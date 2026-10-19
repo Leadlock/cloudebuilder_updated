@@ -29,7 +29,7 @@ export default function TerraformPermissionHelp({ message, resourceTypes }: { me
     }`} data-testid="permission-help">
       <p className={`flex items-center gap-2 font-semibold ${isLight ? 'text-amber-900' : ''}`}><ShieldAlert className={`w-4 h-4 shrink-0 ${isLight ? 'text-amber-600' : 'text-amber-400'}`} /> Your AWS role can only look, not create</p>
       <p className={`mt-1.5 leading-relaxed ${isLight ? 'text-slate-700' : 'text-amber-100/90'}`}>
-        The role <span className={`font-mono font-semibold ${isLight ? 'text-slate-900' : ''}`}>{roleName}</span> was set up to read your account, so AWS refused to create anything (nothing was created). To let CloudCraft deploy, give that role more access:
+        The role <span className={`font-mono font-semibold ${isLight ? 'text-slate-900' : ''}`}>{roleName}</span> was set up to read your account, so AWS refused to create anything (nothing was created). To let CloudBuilder deploy, give that role more access:
       </p>
 
       <div className={`mt-2 rounded-md border p-2.5 ${isLight ? 'bg-white border-amber-200 shadow-sm' : 'border-amber-600/40 bg-black/30'}`}>
@@ -45,7 +45,7 @@ export default function TerraformPermissionHelp({ message, resourceTypes }: { me
       </div>
 
       <p className={`mt-2 text-[11px] leading-relaxed ${isLight ? 'text-slate-600' : 'text-amber-200/90'}`}>
-        <strong>Or skip the role entirely:</strong> attach <strong>AdministratorAccess</strong> to your IAM <em>user</em> instead, then in <strong>Cloud Accounts → Connect an AWS account → Simple</strong> connect that user&apos;s access key. CloudCraft then deploys as that user, with no role involved.
+        <strong>Or skip the role entirely:</strong> attach <strong>AdministratorAccess</strong> to your IAM <em>user</em> instead, then in <strong>Cloud Accounts → Connect an AWS account → Simple</strong> connect that user&apos;s access key. CloudBuilder then deploys as that user, with no role involved.
       </p>
 
       <details className="mt-2">
@@ -68,7 +68,7 @@ export default function TerraformPermissionHelp({ message, resourceTypes }: { me
             </p>
           )}
           {policy.unknownTypes.length > 0 && (
-            <p className={`mt-1 text-[11px] ${isLight ? 'text-slate-500' : 'text-amber-200/80'}`}>CloudCraft could not work out the permissions for: {policy.unknownTypes.join(', ')}. If the next apply is refused for these, add what the error names.</p>
+            <p className={`mt-1 text-[11px] ${isLight ? 'text-slate-500' : 'text-amber-200/80'}`}>CloudBuilder could not work out the permissions for: {policy.unknownTypes.join(', ')}. If the next apply is refused for these, add what the error names.</p>
           )}
         </div>
       </details>

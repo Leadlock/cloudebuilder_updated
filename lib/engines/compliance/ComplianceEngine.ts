@@ -44,7 +44,7 @@ export interface ComplianceAssessmentResult {
 }
 
 export const COMPLIANCE_DISCLAIMER =
-  'Technical indicator mapping only. CloudCraft is not an auditor, QSA or assessor and does not determine SOC 2, HIPAA or PCI DSS compliance. ' +
+  'Technical indicator mapping only. CloudBuilder is not an auditor, QSA or assessor and does not determine SOC 2, HIPAA or PCI DSS compliance. ' +
   '"Technical indicators passed" means the mapped architecture checks that could be evaluated did not fail; organizational, procedural and ' +
   'operating-effectiveness requirements are not assessed.';
 
@@ -71,7 +71,7 @@ export function evaluateControls(rules: ComplianceRule[], evaluations: Evaluatio
         ? `Resolve the ${failing.length} failing technical check(s) listed as evidence.`
         : status === 'pass' ? 'No failing technical indicators. Organizational controls still require assessor review.'
           : 'Provide the evidence listed under "Not evaluated" to assess this control area.',
-      remediation: 'See the linked CloudCraft findings for resource-specific remediation and Auto-Fix availability.',
+      remediation: 'See the linked CloudBuilder findings for resource-specific remediation and Auto-Fix availability.',
       reference: rule.reference,
       providers: Array.from(new Set(evals.map((e) => e.provider))),
       mappedAssessmentRules: rule.assessmentRules,

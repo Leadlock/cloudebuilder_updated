@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Redeploy CloudCraft to the server from your own computer.
+# Redeploy CloudBuilder to the server from your own computer.
 #
 #   scripts/deploy.sh                 deploy what is on origin/main (asks you to confirm)
 #   scripts/deploy.sh --dry-run       show what would be sent; changes nothing on the server
@@ -10,7 +10,7 @@
 # Settings (environment): DEPLOY_HOST (default root@72.61.244.75), DEPLOY_DIR (default /root/CloudCraft)
 #
 # What it does: checks your copy is clean and equal to origin/main and CI is green; backs up the running version on the server; copies the new
-# source (never .env, never node_modules); installs, builds, restarts only the CloudCraft processes and checks they are healthy and stay up;
+# source (never .env, never node_modules); installs, builds, restarts only the CloudBuilder processes and checks they are healthy and stay up;
 # and goes back to the backup by itself if anything fails. The server's own .env (including the access lock) is never touched.
 set -euo pipefail
 
@@ -55,7 +55,7 @@ if [ "$ROLLBACK" = 1 ]; then
 fi
 
 cd "$REPO"
-[ -f package.json ] && [ -f "$REMOTE_SH" ] || die "run this from the CloudCraft repository."
+[ -f package.json ] && [ -f "$REMOTE_SH" ] || die "run this from the CloudBuilder repository."
 
 # 1. Only a clean, published, green commit goes to the server.
 [ -z "$(git status --porcelain)" ] || die "you have uncommitted changes. Commit or stash them: what is deployed must be a commit anyone can get back."

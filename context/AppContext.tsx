@@ -264,7 +264,7 @@ export function reducer(state: AppState, action: Action): AppState {
       }
       // Login, logout, or switching accounts on the same tab: wipe every
       // slice of state scoped to "whoever is currently signed in" so the
-      // next account starts on a genuinely brand-new CloudCraft instead of
+      // next account starts on a genuinely brand-new CloudBuilder instead of
       // inheriting the previous session's projects/canvas/draft. Real data
       // for the new account is re-fetched by the API-load effects below,
       // keyed off currentUser.

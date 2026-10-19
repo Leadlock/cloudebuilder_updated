@@ -1,5 +1,5 @@
 /**
- * POST /api/cloud-accounts/[id]/lifetime — change how long CloudCraft keeps an account's credentials, without sending the key again.
+ * POST /api/cloud-accounts/[id]/lifetime — change how long CloudBuilder keeps an account's credentials, without sending the key again.
  *
  *   { action: 'extend', hours: 8 | null }        keep for that long from now (null: no time limit)
  *   { action: 'forgetAfterDeploy', value: bool } erase the credentials after the next successful deployment

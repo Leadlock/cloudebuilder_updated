@@ -121,7 +121,7 @@ describe('WellArchitectedRuleEngine — AWS Pillar Analysis', () => {
         position: { x: 0, y: 0 },
         config: {
           bucketName: 'customer-data',
-          // Real CloudCraft S3 keys (the previous test used keys that do not exist).
+          // Real CloudBuilder S3 keys (the previous test used keys that do not exist).
           publicAccess: true,
           blockPublicAcls: false,
           blockPublicPolicy: false,

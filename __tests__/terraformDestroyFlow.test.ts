@@ -1,6 +1,6 @@
 /**
  * Teardown orchestration: PREVIEW with a real `plan -destroy`, then RUN exactly that saved plan in the background.
- * The terraform CLI and the filesystem are mocked; CloudCraft's own logic is what is tested.
+ * The terraform CLI and the filesystem are mocked; CloudBuilder's own logic is what is tested.
  */
 import { join } from 'path';
 

@@ -1,5 +1,5 @@
 /**
- * The routes that deploy a project from inside CloudCraft: the gates in front of every one, planning (what is generated and where), running (only with
+ * The routes that deploy a project from inside CloudBuilder: the gates in front of every one, planning (what is generated and where), running (only with
  * an approval for exactly this plan), the secrets form (names in, values straight to the vault, none kept) and cancelling.
  */
 const mockIdentity = jest.fn();

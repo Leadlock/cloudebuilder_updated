@@ -1,7 +1,7 @@
 /**
  * Well-Architected questionnaire: the questions a diagram cannot answer.
  *
- * CloudCraft's automated checks read the architecture as drawn, which says almost nothing about how a workload is run: deployment
+ * CloudBuilder's automated checks read the architecture as drawn, which says almost nothing about how a workload is run: deployment
  * habits, on-call, backups that have actually been restored, who owns the budget. A real Well-Architected review is mostly about those
  * things, so four of the six pillars rested on one to five automated checks. These questions fill that gap.
  *
@@ -60,7 +60,7 @@ export const QUESTIONS: readonly QuestionDefinition[] = [
     why: 'Hand-made changes cannot be reviewed, repeated or rolled back, and they drift away from what the design says.',
     gap: 'Deployments are not fully automated',
     risk: 'Changes that nobody reviewed, environments that differ from each other, and slow, error-prone releases.',
-    recommendation: 'Deploy through a pipeline from version-controlled infrastructure as code (the Terraform CloudCraft generates is a starting point).',
+    recommendation: 'Deploy through a pipeline from version-controlled infrastructure as code (the Terraform CloudBuilder generates is a starting point).',
     steps: ['Keep the infrastructure code in version control and require review of changes.', 'Run plan and apply from a pipeline, not from a laptop or the console.'],
     practice: 'Design for operations — automate deployment',
   },

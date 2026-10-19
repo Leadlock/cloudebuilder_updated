@@ -1,5 +1,5 @@
 /**
- * Tells the user when a request names cloud services CloudCraft cannot model — instead of the generator
+ * Tells the user when a request names cloud services CloudBuilder cannot model — instead of the generator
  * quietly substituting other services (or failing with a generic message).
  *
  * "Supported" is never hard-coded: each service lists the resource type(s) that would model it, and it counts
@@ -109,14 +109,14 @@ export function detectServiceNotices(prompt: string, designTypes?: string[], cat
 }
 
 /** Plain sentences for the UI. */
-/** Display names of services CloudCraft cannot model yet — used to keep them out of questions and suggestions. */
+/** Display names of services CloudBuilder cannot model yet — used to keep them out of questions and suggestions. */
 export function unsupportedServiceNames(catalog: ReadonlySet<string> = new Set(CATALOG_TYPES)): string[] {
   return SERVICES.filter((svc) => !svc.types.some((t) => catalog.has(t))).map((svc) => svc.name);
 }
 
 export function describeNotices(n: ServiceNotices): string[] {
   return [
-    ...n.unsupported.map((u) => `${u.service} isn't supported by CloudCraft yet${u.nearest.length ? ` — closest available: ${u.nearest.join(', ')}` : ''}.`),
+    ...n.unsupported.map((u) => `${u.service} isn't supported by CloudBuilder yet${u.nearest.length ? ` — closest available: ${u.nearest.join(', ')}` : ''}.`),
     ...n.missing.map((m) => `You asked for ${m.service}, but it isn't in the design.`),
   ];
 }

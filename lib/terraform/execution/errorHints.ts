@@ -36,8 +36,8 @@ export function explainTerraformError(raw: string | null | undefined): Terraform
     return {
       kind: 'not-installed', title: why ? 'Terraform could not be set up on the server' : 'Terraform is not installed on the server',
       summary: why
-        ? `CloudCraft downloads Terraform by itself the first time it needs it, and that did not work: ${why}`
-        : 'CloudCraft runs the Terraform program to plan, apply and destroy, and could not find it.',
+        ? `CloudBuilder downloads Terraform by itself the first time it needs it, and that did not work: ${why}`
+        : 'CloudBuilder runs the Terraform program to plan, apply and destroy, and could not find it.',
       steps: [
         ...(why ? ['Check that the server can reach releases.hashicorp.com (a firewall or proxy may be blocking it), then try again.', 'On a network with no internet access, point CLOUDCRAFT_TERRAFORM_MIRROR at an internal copy of the same release files.'] : []),
         'Or install Terraform yourself from developer.hashicorp.com/terraform/install on the machine running the server.',
@@ -53,8 +53,8 @@ export function explainTerraformError(raw: string | null | undefined): Terraform
     return {
       kind: 'invalid-configuration', title: ssh ? 'This design needs an SSH public key' : `This design needs a value for "${name}"`,
       summary: ssh
-        ? 'A Linux virtual machine in the design is created with an SSH key for its admin user. CloudCraft never uses a built-in key, and it cannot generate one for you, because you must be the one who holds the private half.'
-        : `Terraform has no value for "${name}", and CloudCraft never uses a built-in default for secrets.`,
+        ? 'A Linux virtual machine in the design is created with an SSH key for its admin user. CloudBuilder never uses a built-in key, and it cannot generate one for you, because you must be the one who holds the private half.'
+        : `Terraform has no value for "${name}", and CloudBuilder never uses a built-in default for secrets.`,
       steps: ssh
         ? ['Create a key pair on your machine (ssh-keygen -t ed25519) and keep the private key.', 'Set TF_VAR_admin_ssh_public_key in the server environment to the contents of the .pub file, then try again.']
         : [`Set TF_VAR_${name} in the server environment, then try again.`],
@@ -70,7 +70,7 @@ export function explainTerraformError(raw: string | null | undefined): Terraform
       summary: `Another Terraform run${holder}${since} holds the lock on the shared state, so this one could not start. Terraform locks the state so two runs never write it at once.`,
       steps: [
         'If it is a teammate or a pipeline, wait for it to finish, or ask them.',
-        'If it is a run from this machine that was interrupted (for example the internet dropped), use "Check lock" below — CloudCraft can release it safely when nothing is running.',
+        'If it is a run from this machine that was interrupted (for example the internet dropped), use "Check lock" below — CloudBuilder can release it safely when nothing is running.',
         'Never release a lock while its run might still be going: that can corrupt the state.',
       ],
       lockId: info?.id,
@@ -82,7 +82,7 @@ export function explainTerraformError(raw: string | null | undefined): Terraform
     const left = leftoverResources(message);
     return {
       kind: 'resource-group-not-empty', title: `Azure still has resources in resource group "${group?.[1] ?? 'the group'}"`,
-      summary: `Everything CloudCraft manages was removed, but the group still holds ${left.length > 0 ? left.length : 'other'} resource${left.length === 1 ? '' : 's'} it did not create${left.length > 0 ? `: ${left.join(', ')}` : ''}. Terraform refuses to delete a group that contains things outside its state.`,
+      summary: `Everything CloudBuilder manages was removed, but the group still holds ${left.length > 0 ? left.length : 'other'} resource${left.length === 1 ? '' : 's'} it did not create${left.length > 0 ? `: ${left.join(', ')}` : ''}. Terraform refuses to delete a group that contains things outside its state.`,
       steps: [
         'Check whether those resources are still needed. If not, delete them in the Azure portal (or with the az command line).',
         'Then press Try again — the group itself is then quick to remove.',
@@ -107,8 +107,8 @@ export function explainTerraformError(raw: string | null | undefined): Terraform
   if (/Reference to undeclared resource|rejected the generated configuration|Invalid reference|Unsupported argument|Missing required argument/i.test(message)) {
     return {
       kind: 'invalid-configuration', title: 'Terraform rejected the generated configuration',
-      summary: 'The Terraform files CloudCraft generated for this architecture are not valid, so nothing was changed. This is a CloudCraft or design problem, not a cloud problem.',
-      steps: ['Open the details to see which file and line Terraform objected to.', 'Check the resource named there (an imported or unusual setting is the usual cause), fix or remove it, and generate the plan again.', 'If it looks like a CloudCraft bug, report it with the details text.'],
+      summary: 'The Terraform files CloudBuilder generated for this architecture are not valid, so nothing was changed. This is a CloudBuilder or design problem, not a cloud problem.',
+      steps: ['Open the details to see which file and line Terraform objected to.', 'Check the resource named there (an imported or unusual setting is the usual cause), fix or remove it, and generate the plan again.', 'If it looks like a CloudBuilder bug, report it with the details text.'],
     };
   }
 
@@ -157,7 +157,7 @@ export function explainTerraformError(raw: string | null | undefined): Terraform
   if (/timed out after \d+ minutes/i.test(message)) {
     return {
       kind: 'timeout', title: 'The Terraform run took too long and was stopped',
-      summary: 'Terraform did not finish within the time CloudCraft allows for this step. The cloud may still be finishing some work.',
+      summary: 'Terraform did not finish within the time CloudBuilder allows for this step. The cloud may still be finishing some work.',
       steps: ['Check the cloud console for what was created or removed.', 'Generate a fresh plan: it will show only what is still left to do.'],
     };
   }

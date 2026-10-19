@@ -1,4 +1,4 @@
-# Design: deploying a project from inside CloudCraft
+# Design: deploying a project from inside CloudBuilder
 
 Status: phase 1 (Azure VM) and phase 2 (AWS EC2: CodeBuild, Parameter Store, S3 release bucket, SSM restart) and ECS Fargate (a service per service behind one load balancer, Service Connect, task definition revisions per release) are built and tested with fakes and, for the database and the zip reader, against real Postgres and hand-made hostile archives. Neither has been
 run against a real cloud account. Switched off by default (`CLOUDCRAFT_PROJECT_RELEASES=1`). How to try it: [IN_APP_DEPLOYMENT_TEST.md](IN_APP_DEPLOYMENT_TEST.md).
@@ -8,7 +8,7 @@ Written 2026-10-16.
 
 ## 1. The problem
 
-Container Templates can already produce a complete deployment for a project of several services (Frontend, Backend, API, Database): Terraform plus a `deploy.sh` for an EC2 server, an Azure VM, any Kubernetes cluster, or AKS. Today the person downloads the files and runs `bash deploy.sh` in their own terminal. The goal is a **Deploy** button that does this from inside CloudCraft, against a connected cloud account, with the safety rules the Deploy tab already has.
+Container Templates can already produce a complete deployment for a project of several services (Frontend, Backend, API, Database): Terraform plus a `deploy.sh` for an EC2 server, an Azure VM, any Kubernetes cluster, or AKS. Today the person downloads the files and runs `bash deploy.sh` in their own terminal. The goal is a **Deploy** button that does this from inside CloudBuilder, against a connected cloud account, with the safety rules the Deploy tab already has.
 
 ## 2. What already exists and is reused unchanged
 
@@ -42,7 +42,7 @@ Terraform steps go through the existing plan/approve/apply machinery. The rest b
 Running the generated script on the worker would be the fastest build, and I recommend **against** it:
 
 - It runs `terraform apply` itself, which bypasses the plan hash and approval gate.
-- It needs `az`, `docker`, `kubectl` and `aws` installed on the CloudCraft host and signed in as someone.
+- It needs `az`, `docker`, `kubectl` and `aws` installed on the CloudBuilder host and signed in as someone.
 - It prompts for secrets on a terminal, so secrets would have to be fed through stdin and shell variables on a shared host.
 - Its inputs end up inside shell source (even though they are validated), a bigger surface than function arguments.
 
@@ -51,7 +51,7 @@ Instead, each step is a TypeScript function with a fixed signature and injected 
 ## 5. Architecture
 
 ```
-Browser (Container Templates, "Deploy from CloudCraft")
+Browser (Container Templates, "Deploy from CloudBuilder")
    │  1. choose account, state backend, source, secrets, image tag
    ▼
 API  POST /api/projects/:id/releases/plan
@@ -60,7 +60,7 @@ API  POST /api/projects/:id/releases/plan
    │  - bundleHash = SHA-256 over every generated file + target + tag + source digest
    │  - terraform plan (existing) → planHash
    │  - secrets: names only are recorded; values are written to the cloud's secret store NOW,
-   │    by the API, over the connected account, and are never kept by CloudCraft
+   │    by the API, over the connected account, and are never kept by CloudBuilder
    │  returns: releaseId, plan summary, step list, cost estimate
    ▼
 Person reviews, confirms with their password (approval bound to releaseId + bundleHash + planHash)
@@ -101,9 +101,9 @@ Container Templates produces Dockerfiles and an optional sample app; real code i
 | Zip upload per service | 1 | Size cap, zip-slip and symlink rejection, no executable bits needed, stored encrypted with a short TTL |
 | Git repository + branch/commit | 3 | Read-only deploy token stored encrypted, host allow-list, SSRF checks, shallow clone in an isolated temp dir |
 
-### 6.2 Building images without Docker on the CloudCraft host
+### 6.2 Building images without Docker on the CloudBuilder host
 
-Builds must run **in the customer's cloud**, not on CloudCraft's machines (untrusted code, CPU, disk):
+Builds must run **in the customer's cloud**, not on CloudBuilder's machines (untrusted code, CPU, disk):
 
 - **Azure:** ACR Tasks: upload the source to the registry and call `scheduleRun` (a `DockerBuildRequest`). No Docker anywhere.
 - **AWS:** AWS CodeBuild. Terraform creates a small CodeBuild project and an S3 source bucket for the release; the step uploads the source and starts the build, which pushes to ECR. This adds resources to the EC2 bundle.
@@ -111,7 +111,7 @@ Builds must run **in the customer's cloud**, not on CloudCraft's machines (untru
 
 ### 6.3 Secrets
 
-- Entered in a write-only form, sent over TLS to the API, **written straight to Key Vault / SSM by the API** with the account's credentials, then dropped. CloudCraft's database, queue payloads, logs and progress records never contain a value.
+- Entered in a write-only form, sent over TLS to the API, **written straight to Key Vault / SSM by the API** with the account's credentials, then dropped. CloudBuilder's database, queue payloads, logs and progress records never contain a value.
 - The database password can be generated server-side with `crypto.randomBytes` and written the same way, never returned.
 - Same character rule as the scripts (`[A-Za-z0-9._~-]`) because the value is embedded in a connection URL.
 - Log lines are scrubbed of any value that was just written (belt and braces: the steps never print values).
@@ -178,7 +178,7 @@ Phase 0 is not optional: the generated Terraform and start scripts have never ru
 
 ## 12. Refinements made while starting the build
 
-- **Secrets come after the infrastructure, not at plan time.** The vault does not exist before Terraform creates it, so the release is a state machine that *pauses* at the `secrets` step ("waiting for secrets"), exactly where `deploy.sh` asks. The person enters the values in a write-only form; the API writes each one straight to the vault and the job is resumed. CloudCraft still never stores a value (no encrypted holding row, no queue payload).
+- **Secrets come after the infrastructure, not at plan time.** The vault does not exist before Terraform creates it, so the release is a state machine that *pauses* at the `secrets` step ("waiting for secrets"), exactly where `deploy.sh` asks. The person enters the values in a write-only form; the API writes each one straight to the vault and the job is resumed. CloudBuilder still never stores a value (no encrypted holding row, no queue payload).
 - **Azure calls use the cloud's REST APIs with `@azure/identity` tokens**, not new SDK packages (the registry-build and Key Vault data-plane SDKs are not dependencies yet). A small `AzureOps` interface wraps them, so every step is tested with a fake and the real implementation is one file.
 - **The release is behind a switch.** `CLOUDCRAFT_PROJECT_RELEASES=1` turns it on; it is off by default until phase 0 (a real test deployment from the terminal) has been done, because none of the generated Terraform or start scripts has run on a real cloud yet.
 - **Release records keep the compose file and tag of every release**, so a rollback needs no rebuild and no plan.

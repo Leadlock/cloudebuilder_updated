@@ -1,5 +1,5 @@
 /**
- * Connecting an AWS account with a read-only access key: the quick method that needs no AWS identity on the CloudCraft server.
+ * Connecting an AWS account with a read-only access key: the quick method that needs no AWS identity on the CloudBuilder server.
  * It is for DISCOVERY ONLY — a stored key must never run Terraform, root keys are refused, and the secret never comes back out.
  */
 const mockStsSend = jest.fn();

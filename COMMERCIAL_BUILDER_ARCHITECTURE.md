@@ -1,14 +1,14 @@
-# CloudCraft Commercial Builder Architecture & Technical Specification
+# CloudBuilder Commercial Builder Architecture & Technical Specification
 
 > **Document Status**: Complete Architecture Audit & Strategic Implementation Plan  
-> **Target Version**: CloudCraft Commercial MVP  
+> **Target Version**: CloudBuilder Commercial MVP  
 > **Scope**: Resource Definition Engine, Deep Configuration, Multi-Cloud Catalog, Validation Graph, Terraform Generation, Security, Cost, and Enterprise UX
 
 ---
 
 ## Executive Summary
 
-CloudCraft currently possesses a functional proof-of-concept canvas with basic node drag-and-drop, rudimentary configuration fields, static Terraform generation, and mock-free integration with PostgreSQL. However, **the current resource model cannot support a commercial-grade cloud infrastructure builder.**
+CloudBuilder currently possesses a functional proof-of-concept canvas with basic node drag-and-drop, rudimentary configuration fields, static Terraform generation, and mock-free integration with PostgreSQL. However, **the current resource model cannot support a commercial-grade cloud infrastructure builder.**
 
 Key findings from this audit:
 1. **Toy Resource Configuration**: Resources like AWS EC2 and Azure VM provide only 3–4 primitive fields (name, instance type, static AMI string, key pair). Crucial production attributes (EBS storage volumes, IAM instance profiles, user data/cloud-init, network interfaces, VPC/subnet bindings, detailed monitoring, IMDSv2) are completely absent.
@@ -54,7 +54,7 @@ graph TD
 | **Security Engine** | `lib/engines/security/awsRules.ts`<br>`lib/engines/security/azureRules.ts` | 9 AWS rules, 7 Azure rules in static arrays. Checks single resource `configJson`. | Very limited multi-resource context; rules evaluate against simplistic booleans rather than real infrastructure topologies. |
 | **Cost Engine** | `lib/engines/cost/awsPricing.ts`<br>`lib/engines/cost/azurePricing.ts` | Hardcoded static pricing tables for a handful of instance types and regions. | No real-time API query; ignores storage IOPS, throughput, data transfer, and multi-disk setups. |
 | **Database Model** | `src/prisma/contract.prisma` | `ArchitectureResource` stores `configJson` as a plain string, `groupId` as nullable string. | No schema versioning; no native parent-child relational hierarchy; no typed indexing on configurations. |
-| **Discovery Normalizer** | `lib/cloud/normalizer.ts` | `RESOURCE_TYPE_MAP` maps discovered strings to CloudCraft types, laying out in a fixed 4-column grid. | Drops unmapped configurations into `_metadata`; lacks reverse fidelity with user-created canvas nodes. |
+| **Discovery Normalizer** | `lib/cloud/normalizer.ts` | `RESOURCE_TYPE_MAP` maps discovered strings to CloudBuilder types, laying out in a fixed 4-column grid. | Drops unmapped configurations into `_metadata`; lacks reverse fidelity with user-created canvas nodes. |
 
 ---
 
@@ -62,7 +62,7 @@ graph TD
 
 Evaluation of all AWS resources currently present in `lib/resources/aws.ts`:
 
-| Resource Type | CloudCraft Identifier | Canvas Support | Config Support | Validation Support | Security Support | Cost Support | Terraform Support | Discovery Support | Maturity Tier |
+| Resource Type | CloudBuilder Identifier | Canvas Support | Config Support | Validation Support | Security Support | Cost Support | Terraform Support | Discovery Support | Maturity Tier |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **VPC** | `aws_vpc` | B | B | B | B (1 rule) | A (Free) | B | B | **B** |
 | **Subnet** | `aws_subnet` | B | B | B | B (1 rule) | A (Free) | B | B | **B** |
@@ -95,7 +95,7 @@ Evaluation of all AWS resources currently present in `lib/resources/aws.ts`:
 
 Evaluation of all Azure resources currently present in `lib/resources/azure.ts`:
 
-| Resource Type | CloudCraft Identifier | Canvas Support | Config Support | Validation Support | Security Support | Cost Support | Terraform Support | Discovery Support | Maturity Tier |
+| Resource Type | CloudBuilder Identifier | Canvas Support | Config Support | Validation Support | Security Support | Cost Support | Terraform Support | Discovery Support | Maturity Tier |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Resource Group** | `azure_resource_group` | B | B (Name, Location) | D | D (None) | A (Free) | B | B | **B** |
 | **Virtual Network** | `azure_vnet` | B | B (CIDR) | D | B (1 rule) | A (Free) | B | B | **B** |
@@ -109,7 +109,7 @@ Evaluation of all Azure resources currently present in `lib/resources/azure.ts`:
 
 ### Provider-Specific Differences Between AWS and Azure:
 1. **Resource Group Scoping**: Every Azure resource *must* be scoped inside an `azurerm_resource_group`. AWS resources exist within a Region and Account without a resource-group parent container.
-2. **Network Interface Mandate**: Unlike AWS EC2 (where `subnet_id` can be specified directly on `aws_instance`), Azure VMs **cannot attach directly to a subnet**. An `azurerm_network_interface` (NIC) *must* be created and connected to the subnet, and the VM references the NIC ID. CloudCraft's current Terraform generator produces `network_interface_ids = []`, which causes `terraform apply` to fail immediately.
+2. **Network Interface Mandate**: Unlike AWS EC2 (where `subnet_id` can be specified directly on `aws_instance`), Azure VMs **cannot attach directly to a subnet**. An `azurerm_network_interface` (NIC) *must* be created and connected to the subnet, and the VM references the NIC ID. CloudBuilder's current Terraform generator produces `network_interface_ids = []`, which causes `terraform apply` to fail immediately.
 3. **OS Disks & Managed Disks**: Azure VMs mandate explicit `os_disk` blocks with caching and storage account types (`Standard_LRS`, `Premium_LRS`), whereas AWS defaults root EBS volumes if omitted.
 4. **VNet vs VPC Structure**: Azure VNets define multiple disjoint `address_prefixes`, whereas AWS VPCs specify a primary CIDR block and optional secondary CIDRs.
 
@@ -117,9 +117,9 @@ Evaluation of all Azure resources currently present in `lib/resources/azure.ts`:
 
 ## 4. EC2 Deep-Dive: Commercial vs Current Implementation
 
-The table below benchmarks CloudCraft's current EC2 resource against commercial infrastructure platform requirements:
+The table below benchmarks CloudBuilder's current EC2 resource against commercial infrastructure platform requirements:
 
-| Category | Property / Requirement | Commercial Standard | Current CloudCraft Implementation | Status |
+| Category | Property / Requirement | Commercial Standard | Current CloudBuilder Implementation | Status |
 | :--- | :--- | :--- | :--- | :--- |
 | **Identity** | Name Tag | Configurable string with standard regex validation | Text input (`name: 'my-ec2'`) | **Partially supported** |
 | | Tags Map | Arbitrary Key/Value pairs (`Environment`, `CostCenter`, `Owner`) | Completely absent | **Missing** |
@@ -154,7 +154,7 @@ The table below benchmarks CloudCraft's current EC2 resource against commercial 
 
 ## 5. AMI Selection Architecture
 
-A commercial cloud builder cannot require users to memorize or look up 21-character AWS AMI IDs in the AWS Console. CloudCraft must provide an intelligent, region-aware, architecture-aware image selection engine.
+A commercial cloud builder cannot require users to memorize or look up 21-character AWS AMI IDs in the AWS Console. CloudBuilder must provide an intelligent, region-aware, architecture-aware image selection engine.
 
 ### 5.1 Architecture Diagram
 
@@ -209,7 +209,7 @@ sequenceDiagram
 
 ## 6. Resource Definition Engine (RDE) Design
 
-The **Resource Definition Engine** is the core foundational architecture for CloudCraft. Instead of writing ad-hoc code across 6 different subsystems, **a single declarative definition specifies everything about a cloud resource.**
+The **Resource Definition Engine** is the core foundational architecture for CloudBuilder. Instead of writing ad-hoc code across 6 different subsystems, **a single declarative definition specifies everything about a cloud resource.**
 
 ### 6.1 Unified Resource Definition Interface (`lib/rde/types.ts`)
 
@@ -333,7 +333,7 @@ In the current implementation, dependencies are purely visual lines drawn by the
 
 ### 8.1 Unified Topology Graph
 
-CloudCraft must maintain an in-memory **Directed Acyclic Graph (DAG)** representing infrastructure relationships:
+CloudBuilder must maintain an in-memory **Directed Acyclic Graph (DAG)** representing infrastructure relationships:
 
 ```mermaid
 graph TD

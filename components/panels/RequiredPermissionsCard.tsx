@@ -85,12 +85,12 @@ export default function RequiredPermissionsCard({ projectId, environment, cloudA
         <div className="mt-2 space-y-2.5">
           {azure ? (
             <p className={`leading-relaxed ${muted}`}>
-              CloudCraft signs in to Azure as the service principal <span className="font-mono font-semibold">{info.clientId || 'you connected'}</span>. Azure gives access by <em>role</em> on a subscription,
+              CloudBuilder signs in to Azure as the service principal <span className="font-mono font-semibold">{info.clientId || 'you connected'}</span>. Azure gives access by <em>role</em> on a subscription,
               so to create the approved design it needs the role{(info.roles?.length ?? 0) === 1 ? '' : 's'} below on subscription <span className="font-mono">{info.subscriptionId || 'your subscription'}</span>. Give {(info.roles?.length ?? 0) === 1 ? 'it' : 'them'} <em>before</em> you plan.
             </p>
           ) : (
             <p className={`leading-relaxed ${muted}`}>
-              CloudCraft connected <span className="font-mono font-semibold">{roleName}</span> to read your account. To create the approved design it also needs write access to
+              CloudBuilder connected <span className="font-mono font-semibold">{roleName}</span> to read your account. To create the approved design it also needs write access to
               the {info.services?.length ?? 0} service{(info.services?.length ?? 0) === 1 ? '' : 's'} below, and nothing else. Attach this policy to the role <em>before</em> you plan.
             </p>
           )}
@@ -125,7 +125,7 @@ export default function RequiredPermissionsCard({ projectId, environment, cloudA
           )}
           {(info.unknownTypes?.length ?? 0) > 0 && (
             <p className={`leading-relaxed ${muted}`}>
-              CloudCraft could not map these to a {azure ? 'resource provider' : 'service'}, so they may need more access than listed: <span className="font-mono">{info.unknownTypes!.join(', ')}</span>. If {azure ? 'Azure' : 'AWS'} refuses one, the deploy page will tell you exactly which permission.
+              CloudBuilder could not map these to a {azure ? 'resource provider' : 'service'}, so they may need more access than listed: <span className="font-mono">{info.unknownTypes!.join(', ')}</span>. If {azure ? 'Azure' : 'AWS'} refuses one, the deploy page will tell you exactly which permission.
             </p>
           )}
 

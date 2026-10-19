@@ -1,5 +1,5 @@
 /**
- * Designs the AI gets slightly wrong are fixed with CloudCraft's own verified remediations, and a design that still cannot pass is
+ * Designs the AI gets slightly wrong are fixed with CloudBuilder's own verified remediations, and a design that still cannot pass is
  * returned flagged for review instead of an error.
  */
 import { readFileSync } from 'fs';

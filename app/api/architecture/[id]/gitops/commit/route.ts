@@ -48,7 +48,7 @@ const RequestSchema = z.object({
   branch: z.string().min(1).max(200).regex(/^[A-Za-z0-9._\/-]+$/, 'Invalid branch name')
     .refine((b) => !b.startsWith('/') && !b.startsWith('-') && !b.endsWith('/') && !b.endsWith('.lock') && !b.includes('..') && !b.includes('//'), 'Invalid branch name'),
   // An empty message falls back to a default rather than failing the request.
-  commitMessage: z.string().trim().max(500).optional().transform((m) => m || 'Update infrastructure from CloudCraft'),
+  commitMessage: z.string().trim().max(500).optional().transform((m) => m || 'Update infrastructure from CloudBuilder'),
   createPullRequest: z.boolean().default(false),
   githubToken: z.string().min(20).max(255).regex(/^[A-Za-z0-9_-]+$/, 'Invalid GitHub token format'),
   nodes: z.array(NodeSchema).max(500),
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     try {
       tfResult = new TerraformGenerator().generate({ architectureId, projectId, resources, connections, projectName: 'cloudcraft-deployment' });
     } catch (err) {
-      if (err instanceof TerraformSafetyError) return fail('The generated Terraform was refused by CloudCraft\'s safety checks, so nothing was committed.', 422);
+      if (err instanceof TerraformSafetyError) return fail('The generated Terraform was refused by CloudBuilder\'s safety checks, so nothing was committed.', 422);
       throw err;
     }
 

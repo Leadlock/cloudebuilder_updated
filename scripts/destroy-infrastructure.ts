@@ -1,5 +1,5 @@
 /**
- * Dedicated CLI script to safely destroy infrastructure provisioned by CloudCraft.
+ * Dedicated CLI script to safely destroy infrastructure provisioned by CloudBuilder.
  *
  * Usage:
  *   npx tsx scripts/destroy-infrastructure.ts
@@ -40,7 +40,7 @@ function runCommandStream(binary: string, args: string[], cwd: string, env: Reco
 
 async function main() {
   console.log('====================================================');
-  console.log('  CloudCraft Infrastructure Teardown / Destroy Tool ');
+  console.log('  CloudBuilder Infrastructure Teardown / Destroy Tool ');
   console.log('====================================================\n');
 
   // 1. Get Dev Context & Accounts

@@ -1,5 +1,5 @@
 /**
- * Deleting a state bucket CloudCraft made: only its own, only when its Terraform record is empty, every version removed, nothing deleted otherwise.
+ * Deleting a state bucket CloudBuilder made: only its own, only when its Terraform record is empty, every version removed, nothing deleted otherwise.
  */
 import { deleteAwsStateBackend, StateBackendError } from '@/lib/terraform/execution/stateBackendProvisioner';
 
@@ -35,20 +35,20 @@ describe('deleting a state bucket', () => {
     expect(t.log.map((l) => l.name)).toEqual(['HeadBucketCommand']);
   });
 
-  test('a name that is not CloudCraft\'s, or not a bucket name, is refused before any request', async () => {
+  test('a name that is not CloudBuilder\'s, or not a bucket name, is refused before any request', async () => {
     const t = base();
     for (const bad of ['my-company-data', 'cloudcraft-tfstate-', 'CLOUDCRAFT-tfstate-x', 'cloudcraft-tfstate-../x']) await expect(deleteAwsStateBackend({ bucket: bad }, { s3: t.s3 })).rejects.toThrow(StateBackendError);
     expect(t.log).toHaveLength(0);
   });
 
-  test('a bucket without CloudCraft\'s tags is never deleted, even with the right prefix', async () => {
+  test('a bucket without CloudBuilder\'s tags is never deleted, even with the right prefix', async () => {
     for (const tags of [{ TagSet: [] }, { TagSet: [{ Key: 'ManagedBy', Value: 'someone' }, { Key: 'Purpose', Value: 'terraform-state' }] }]) {
       const t = base({ GetBucketTaggingCommand: () => tags });
-      await expect(deleteAwsStateBackend({ bucket: B }, { s3: t.s3 })).rejects.toThrow(/was not created by CloudCraft/);
+      await expect(deleteAwsStateBackend({ bucket: B }, { s3: t.s3 })).rejects.toThrow(/was not created by CloudBuilder/);
       expect(t.log.some((l) => /Delete/.test(l.name))).toBe(false);
     }
     const untagged = base({ GetBucketTaggingCommand: () => { throw err('NoSuchTagSet', 404); } });
-    await expect(deleteAwsStateBackend({ bucket: B }, { s3: untagged.s3 })).rejects.toThrow(/was not created by CloudCraft/);
+    await expect(deleteAwsStateBackend({ bucket: B }, { s3: untagged.s3 })).rejects.toThrow(/was not created by CloudBuilder/);
   });
 
   test('state that still records resources blocks it, says which, and deletes nothing', async () => {

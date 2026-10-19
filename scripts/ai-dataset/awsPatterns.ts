@@ -1,6 +1,6 @@
 /**
  * AWS blueprints. Each returns a spec that follows the AWS Well-Architected security,
- * reliability and operational-excellence guidance as implemented by CloudCraft's rules:
+ * reliability and operational-excellence guidance as implemented by CloudBuilder's rules:
  * workloads in private subnets, data in isolated data subnets, two AZs, WAF on every
  * internet-facing entry point, TLS everywhere, monitoring wired to the workload.
  *

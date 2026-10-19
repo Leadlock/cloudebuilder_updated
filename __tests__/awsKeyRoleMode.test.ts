@@ -1,5 +1,5 @@
 /**
- * Connecting an AWS account with the user's OWN access key and the user's OWN role: no AWS account or identity of CloudCraft's is
+ * Connecting an AWS account with the user's OWN access key and the user's OWN role: no AWS account or identity of CloudBuilder's is
  * involved anywhere. The key signs in and assumes the role, so discovery AND Terraform run on temporary role credentials.
  */
 const mockStsSend = jest.fn();

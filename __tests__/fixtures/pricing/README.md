@@ -1,6 +1,6 @@
 # Pricing / FX response fixtures
 
-These files reproduce the **response shape** of the official APIs CloudCraft calls, so
+These files reproduce the **response shape** of the official APIs CloudBuilder calls, so
 adapter tests are deterministic and never touch the network:
 
 | File | API | Shape reference |

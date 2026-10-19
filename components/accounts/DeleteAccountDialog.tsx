@@ -39,7 +39,7 @@ export default function DeleteAccountDialog({ account, onClose, onDeleted }: {
           <div className="space-y-1">
             <h3 id="delete-account-title" className={`${isLight ? 'text-slate-900' : 'text-white'} font-semibold text-sm`}>Delete “{account.name}”?</h3>
             <p className={`${isLight ? 'text-slate-600' : 'text-gray-400'} text-xs leading-relaxed`}>
-              CloudCraft will forget this {account.provider.toUpperCase()} account: its stored connection details are deleted and so is its discovery history.
+              CloudBuilder will forget this {account.provider.toUpperCase()} account: its stored connection details are deleted and so is its discovery history.
               Terraform plans and applies that use it will stop working until you connect it again.
             </p>
             <p className={`${isLight ? 'text-slate-400' : 'text-gray-500'} text-xs leading-relaxed`}>Nothing in your cloud account is touched, and designs you already imported stay as they are.</p>

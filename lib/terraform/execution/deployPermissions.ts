@@ -1,7 +1,7 @@
 /**
  * What the AWS role needs in order to DEPLOY, built from the resources in the plan, and a reader for "not authorized" errors.
  *
- * CloudCraft's role is read-only by default (it only needs to look at your account to import it). Terraform has to create things, so
+ * CloudBuilder's role is read-only by default (it only needs to look at your account to import it). Terraform has to create things, so
  * the first apply fails with "User: …assumed-role/CloudCraft/… is not authorized to perform: ec2:CreateVpc". Pure (no Node imports) so the
  * panel can use it in the browser.
  */
@@ -9,7 +9,7 @@
 export interface AccessDenied {
   /** Distinct IAM actions AWS refused, in the order they appeared. */
   actions: string[];
-  /** The role Terraform ran as ("CloudCraft"), when the message names it. */
+  /** The role Terraform ran as ("CloudBuilder"), when the message names it. */
   roleName?: string;
   accountId?: string;
 }
@@ -47,7 +47,7 @@ const IAM_ACTIONS = [
   'iam:CreateServiceLinkedRole',
 ];
 
-/** The IAM service(s) a Terraform resource type needs, or null when CloudCraft does not know the type. */
+/** The IAM service(s) a Terraform resource type needs, or null when CloudBuilder does not know the type. */
 export function servicesForResourceType(type: string): string[] | null {
   let best: [string, string[]] | null = null;
   for (const entry of SERVICE_BY_PREFIX) if (type.startsWith(entry[0]) && (!best || entry[0].length > best[0].length)) best = entry;
@@ -59,7 +59,7 @@ export interface DeployPolicy {
   json: string;
   /** IAM services covered, e.g. ["ec2", "ecs", "iam", "logs"]. */
   services: string[];
-  /** Resource types the plan contains that CloudCraft could not map to a service (they may still be denied). */
+  /** Resource types the plan contains that CloudBuilder could not map to a service (they may still be denied). */
   unknownTypes: string[];
   /** True when the policy lets the role create IAM roles: needed for this plan, and powerful. */
   includesIam: boolean;

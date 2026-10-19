@@ -3,7 +3,7 @@
  *
  * No AI and no network here. Each line gets one status:
  *  - verified: the price came from the official price list in this run (or a cached copy of it) and passed every check.
- *  - estimate: the price is CloudCraft's built-in table, not the official list. It is kept in the total but named as an estimate.
+ *  - estimate: the price is CloudBuilder's built-in table, not the official list. It is kept in the total but named as an estimate.
  *  - check:    something is wrong or not comparable (a meter counted twice, a different size on the other side, an implausible
  *              amount). The line says what, so the person can judge it.
  *  - unpriced: no usable price. It is never counted as zero.

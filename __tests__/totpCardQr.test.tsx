@@ -13,7 +13,7 @@ jest.mock('qrcode', () => ({ __esModule: true, default: { toDataURL: (...a: unkn
 
 import TotpCard from '@/components/accounts/TotpCard';
 
-const URI = 'otpauth://totp/CloudCraft:me%40x.test?secret=TXV4IOLZD2NYADGYQ6I2HMDIBM2KYM7R&issuer=CloudCraft';
+const URI = 'otpauth://totp/CloudBuilder:me%40x.test?secret=TXV4IOLZD2NYADGYQ6I2HMDIBM2KYM7R&issuer=CloudBuilder';
 const SECRET = 'TXV4IOLZD2NYADGYQ6I2HMDIBM2KYM7R';
 
 function fakeServer() {
@@ -41,7 +41,7 @@ describe('authenticator setup', () => {
     mockToDataUrl.mockResolvedValue('data:image/png;base64,AAAA');
     const requested = fakeServer();
     await openSetup();
-    const img = await screen.findByAltText('QR code that adds CloudCraft to your authenticator app');
+    const img = await screen.findByAltText('QR code that adds CloudBuilder to your authenticator app');
     expect(img.getAttribute('src')).toBe('data:image/png;base64,AAAA');
     expect(mockToDataUrl).toHaveBeenCalledWith(URI, expect.objectContaining({ margin: 2, width: 200 }));
     expect(screen.getByText(/Scan a QR code/)).toBeTruthy();

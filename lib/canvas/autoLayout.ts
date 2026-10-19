@@ -1,5 +1,5 @@
 /**
- * Architecture Auto-Layout Engine for CloudCraft
+ * Architecture Auto-Layout Engine for CloudBuilder
  *
  * Organizes cloud resources into logical architectural tiers:
  * 1. External Ingress / Gateways (Internet, Route53, CloudFront, WAF, IGW, Front Door)

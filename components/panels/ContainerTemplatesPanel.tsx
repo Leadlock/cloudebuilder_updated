@@ -293,7 +293,7 @@ export default function ContainerTemplatesPanel() {
                   <p className={clsx('text-[11px]', muted)}>A public image, named like Docker names it. Nothing is built: the server or container service pulls and runs it as it is. Images in a private AWS (ECR) or Azure (ACR) registry are not supported here.</p>
                 </>
               ) : (
-                <p className={clsx('text-[11px]', muted)}>CloudCraft writes the Dockerfile, builds the image and, with a deployment target, pushes it to a registry it creates for you.</p>
+                <p className={clsx('text-[11px]', muted)}>CloudBuilder writes the Dockerfile, builds the image and, with a deployment target, pushes it to a registry it creates for you.</p>
               )}
             </div>
             )}

@@ -6,7 +6,7 @@
 import { foundryClient, FOUNDRY_MODEL, foundryBaseURL } from '../lib/ai/foundryClient.js';
 
 async function testAzureFoundry() {
-  console.log('--- CloudCraft Azure AI Foundry Diagnostic ---');
+  console.log('--- CloudBuilder Azure AI Foundry Diagnostic ---');
   
   const endpoint = process.env.AZURE_AI_FOUNDRY_ENDPOINT;
   const key = process.env.AZURE_AI_FOUNDRY_API_KEY;

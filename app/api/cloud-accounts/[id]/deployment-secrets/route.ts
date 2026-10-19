@@ -1,7 +1,7 @@
 /**
- * GET /api/cloud-accounts/[id]/deployment-secrets — the database / admin passwords CloudCraft generated for this account's
+ * GET /api/cloud-accounts/[id]/deployment-secrets — the database / admin passwords CloudBuilder generated for this account's
  * deployments, so an owner or admin can connect to what was created. Passwords the operator set in the server environment are not
- * included (CloudCraft does not hold them). Never cached; every read is logged (who and which account, never the values).
+ * included (CloudBuilder does not hold them). Never cached; every read is logged (who and which account, never the values).
  */
 import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { NextRequest, NextResponse } from 'next/server';

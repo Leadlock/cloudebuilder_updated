@@ -162,7 +162,7 @@ export default function Sidebar() {
           </div>
           {(!sidebarCollapsed || isMobile) && (
             <div className="min-w-0">
-              <span className={clsx("font-bold text-base leading-none block truncate", isLight ? "text-slate-900" : "text-white")}>CloudCraft</span>
+              <span className={clsx("font-bold text-base leading-none block truncate", isLight ? "text-slate-900" : "text-white")}>CloudBuilder</span>
               <p className={clsx("text-[10px] mt-0.5 truncate font-medium", isLight ? "text-slate-500" : "text-gray-500")}>Infrastructure Platform</p>
             </div>
           )}

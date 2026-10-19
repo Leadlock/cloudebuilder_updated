@@ -72,12 +72,12 @@ export async function POST(req: NextRequest) {
 
     if (!result.ok || !result.graph) {
       // Never hand back a design that failed a gate — say what is still wrong instead.
-      // If the request names services CloudCraft cannot model, that is the real reason — say so plainly.
+      // If the request names services CloudBuilder cannot model, that is the real reason — say so plainly.
       const names = result.notices.unsupported.map((u) => u.service);
       return NextResponse.json({
         error: names.length
-          ? `CloudCraft can't model ${names.join(', ')} yet, so it couldn't build a design that passes validation. Remove ${names.length === 1 ? 'it' : 'them'} from the request, or ask for the closest supported services.`
-          : 'The AI could not produce an architecture that passes CloudCraft\'s validation. Try describing the workload more specifically (cloud, region, database, scale).',
+          ? `CloudBuilder can't model ${names.join(', ')} yet, so it couldn't build a design that passes validation. Remove ${names.length === 1 ? 'it' : 'them'} from the request, or ask for the closest supported services.`
+          : 'The AI could not produce an architecture that passes CloudBuilder\'s validation. Try describing the workload more specifically (cloud, region, database, scale).',
         unsupported: result.notices.unsupported,
         issues: result.issues.slice(0, 8),
         stage: result.stage,
@@ -87,12 +87,12 @@ export async function POST(req: NextRequest) {
 
     const warnings = [
       ...(result.verifiedFallback
-        ? [`CloudCraft could not make the AI's own design pass its checks, so this is the closest verified pattern: ${result.basedOnPattern}. It passes every check but may not reflect everything you asked for: adapt it on the canvas.`]
+        ? [`CloudBuilder could not make the AI's own design pass its checks, so this is the closest verified pattern: ${result.basedOnPattern}. It passes every check but may not reflect everything you asked for: adapt it on the canvas.`]
         : result.basedOnPattern
-          ? [`The AI's first design did not pass CloudCraft's checks, so it was rebuilt from the verified pattern ${result.basedOnPattern} with your changes.`]
+          ? [`The AI's first design did not pass CloudBuilder's checks, so it was rebuilt from the verified pattern ${result.basedOnPattern} with your changes.`]
           : []),
       ...(result.needsReview
-        ? [`Review before deploying: the AI's design still has ${result.issues.length} point(s) CloudCraft's checks flag — ${result.issues.slice(0, 4).join('; ')}${result.issues.length > 4 ? '; …' : ''}. Fix them on the canvas (the Security and Validate panels show how) before deploying.`]
+        ? [`Review before deploying: the AI's design still has ${result.issues.length} point(s) CloudBuilder's checks flag — ${result.issues.slice(0, 4).join('; ')}${result.issues.length > 4 ? '; …' : ''}. Fix them on the canvas (the Security and Validate panels show how) before deploying.`]
         : []),
       ...describeNotices(result.notices),
       ...describeSanitized(result.sanitized),

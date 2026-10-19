@@ -12,8 +12,8 @@
  *    parameters only; the tasks have an empty role; images are scanned on push; a failing deployment rolls back (circuit breaker).
  *  - A database is not run on Fargate (it has no persistent disk these templates manage): use RDS and a DATABASE_URL secret.
  *
- * For a release CloudCraft runs (`forRelease`), the images are built inside the account (CodeBuild) and the services are created with no tasks;
- * CloudCraft then points each service at the new images and starts them, so Terraform never replaces what a release changed.
+ * For a release CloudBuilder runs (`forRelease`), the images are built inside the account (CodeBuild) and the services are created with no tasks;
+ * CloudBuilder then points each service at the new images and starts them, so Terraform never replaces what a release changed.
  */
 import { REGION, TAG, q, validCidr, type DeployCost } from './ec2Deploy';
 import { FARGATE_CPU, fargateMemoryOptions } from './ecsDeploy';
@@ -480,7 +480,7 @@ resource "aws_ecs_service" "svc" {
   cluster         = aws_ecs_cluster.app.id
   task_definition = aws_ecs_task_definition.svc[each.key].arn
   launch_type     = "FARGATE"
-  desired_count   = ${release ? '0 # CloudCraft starts the services once their images are built and their secrets are stored' : 'var.desired_count'}
+  desired_count   = ${release ? '0 # CloudBuilder starts the services once their images are built and their secrets are stored' : 'var.desired_count'}
 ${release ? '' : '  wait_for_steady_state = true\n'}
   health_check_grace_period_seconds = each.key == local.entry ? 60 : null
 

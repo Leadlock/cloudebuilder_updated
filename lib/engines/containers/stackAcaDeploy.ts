@@ -10,8 +10,8 @@
  *  - Secrets live in Key Vault; each app reads them through its identity (a Key Vault reference). Values never enter Terraform or its state.
  *  - A database is not run in Container Apps: use Azure Database for PostgreSQL / MySQL and a DATABASE_URL secret.
  *
- * For a release CloudCraft runs (`forRelease`), Terraform creates the apps with no replicas and a placeholder image, and a placeholder in each Key Vault
- * secret (marked as such); CloudCraft stores the real secrets, builds the images, points each app at them and scales it up, so Terraform never undoes it.
+ * For a release CloudBuilder runs (`forRelease`), Terraform creates the apps with no replicas and a placeholder image, and a placeholder in each Key Vault
+ * secret (marked as such); CloudBuilder stores the real secrets, builds the images, points each app at them and scales it up, so Terraform never undoes it.
  */
 import { LOCATION } from './shared';
 import { TAG, q, validCidr, type DeployCost } from './ec2Deploy';
@@ -57,7 +57,7 @@ export interface StackAcaSpec {
 export const acaAppName = (project: string, layer: string) => `${project}-${layer}`;
 /** What a release's Terraform runs before its own image exists: nothing starts on it, because the app has no replicas. */
 export const ACA_PLACEHOLDER_IMAGE = 'mcr.microsoft.com/k8se/quickstart:latest';
-/** The tag Terraform puts on the Key Vault secrets of a release until CloudCraft stores the real value. */
+/** The tag Terraform puts on the Key Vault secrets of a release until CloudBuilder stores the real value. */
 export const PLACEHOLDER_TAG = 'placeholder';
 
 /** Lowercase letters, digits and single hyphens, starting with a letter. The longest suffix is "-frontend" (9), and an app name is at most 32. */
@@ -155,7 +155,7 @@ ${needsAcr ? `
   }`).join('\n')}
 
   template {
-    min_replicas = ${release ? '0 # CloudCraft scales the app up once its image is built and its secrets are stored' : 'var.min_replicas'}
+    min_replicas = ${release ? '0 # CloudBuilder scales the app up once its image is built and its secrets are stored' : 'var.min_replicas'}
     max_replicas = var.max_replicas
 
     container {
@@ -307,7 +307,7 @@ ${built ? `resource "azurerm_role_assignment" "acr_pull" {
   principal_id         = azurerm_user_assigned_identity.app.principal_id
 }
 
-` : ''}${secrets.length ? `# Secrets live here. ${release ? 'CloudCraft' : 'deploy.sh'} stores them; the apps' identity can only read them.
+` : ''}${secrets.length ? `# Secrets live here. ${release ? 'CloudBuilder' : 'deploy.sh'} stores them; the apps' identity can only read them.
 resource "azurerm_key_vault" "app" {
   name                       = local.vault_name
   location                   = azurerm_resource_group.app.location
@@ -333,7 +333,7 @@ resource "azurerm_role_assignment" "vault_read" {
   principal_id         = azurerm_user_assigned_identity.app.principal_id
 }
 
-${release ? secrets.map((k) => `# Not a secret: a marker that says no value has been stored yet. CloudCraft replaces it; Terraform never looks at the value again.
+${release ? secrets.map((k) => `# Not a secret: a marker that says no value has been stored yet. CloudBuilder replaces it; Terraform never looks at the value again.
 resource "azurerm_key_vault_secret" "${secretName(k)}" {
   name         = "${vaultSecretName(k)}"
   value        = "not-set-yet"

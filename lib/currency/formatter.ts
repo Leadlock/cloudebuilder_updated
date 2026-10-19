@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Currency Formatting Utilities
+ * CloudBuilder — Currency Formatting Utilities
  *
  * Provides locale-aware monetary formatting using Intl.NumberFormat.
  * Complies with currency decimal rules (e.g. JPY has 0 decimals, INR uses lakh/crore group separators).

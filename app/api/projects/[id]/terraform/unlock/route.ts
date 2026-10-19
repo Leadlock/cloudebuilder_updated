@@ -2,7 +2,7 @@
  * POST /api/projects/[id]/terraform/unlock — look at, and (when it is provably safe) release, a Terraform state lock
  * that an interrupted run left behind.
  *
- *   action "inspect"  who holds the lock, since when, and whether CloudCraft is willing to release it (changes nothing)
+ *   action "inspect"  who holds the lock, since when, and whether CloudBuilder is willing to release it (changes nothing)
  *   action "release"  releases the lock with the given id, after re-checking that it is still that lock and still safe
  *
  * Same access rules as plan/apply/destroy. The safety rules themselves live in lib/terraform/execution/lockRelease.ts.

@@ -22,7 +22,7 @@ const port = Number(process.env.PORT) || ${c.port};
 http
   .createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ app: ${JSON.stringify(c.appName)}, message: 'Hello from CloudCraft', path: req.url, time: new Date().toISOString() }));
+    res.end(JSON.stringify({ app: ${JSON.stringify(c.appName)}, message: 'Hello from CloudBuilder', path: req.url, time: new Date().toISOString() }));
   })
   .listen(port, '0.0.0.0', () => console.log('listening on ' + port));
 `;
@@ -50,7 +50,7 @@ app = FastAPI()
 
 @app.get("/")
 def root():
-    return {"app": ${JSON.stringify(c.appName)}, "message": "Hello from CloudCraft"}
+    return {"app": ${JSON.stringify(c.appName)}, "message": "Hello from CloudBuilder"}
 
 
 @app.get("/health")
@@ -74,7 +74,7 @@ ${attr} = Flask(__name__)
 
 @${attr}.get("/")
 def root():
-    return jsonify(app=${JSON.stringify(c.appName)}, message="Hello from CloudCraft")
+    return jsonify(app=${JSON.stringify(c.appName)}, message="Hello from CloudBuilder")
 
 
 @${attr}.get("/health")
@@ -143,7 +143,7 @@ public class Application {
 
   @GetMapping("/")
   public Map<String, String> root() {
-    return Map.of("app", ${JSON.stringify(c.appName)}, "message", "Hello from CloudCraft");
+    return Map.of("app", ${JSON.stringify(c.appName)}, "message", "Hello from CloudBuilder");
   }
 }
 `;
@@ -169,7 +169,7 @@ function staticSample(c: ContainerConfig): SampleResult {
   </head>
   <body>
     <h1>${c.appName}</h1>
-    <p>Hello from CloudCraft.</p>
+    <p>Hello from CloudBuilder.</p>
   </body>
 </html>
 `;
@@ -204,7 +204,7 @@ func main() {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"app": ${JSON.stringify(c.appName)}, "message": "Hello from CloudCraft", "path": r.URL.Path, "time": time.Now().UTC().Format(time.RFC3339),
+			"app": ${JSON.stringify(c.appName)}, "message": "Hello from CloudBuilder", "path": r.URL.Path, "time": time.Now().UTC().Format(time.RFC3339),
 		})
 	})
 	log.Println("listening on " + port)
@@ -229,7 +229,7 @@ function dotnetSample(c: ContainerConfig): SampleResult {
   const program = `var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-app.MapGet("/", (HttpRequest request) => Results.Json(new { app = ${JSON.stringify(c.appName)}, message = "Hello from CloudCraft", path = request.Path.Value, time = DateTime.UtcNow }));
+app.MapGet("/", (HttpRequest request) => Results.Json(new { app = ${JSON.stringify(c.appName)}, message = "Hello from CloudBuilder", path = request.Path.Value, time = DateTime.UtcNow }));
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 app.Run();
@@ -248,7 +248,7 @@ gem "puma", "~> 6.4"
   const ru = `require "json"
 
 run lambda { |env|
-  body = JSON.generate(app: ${JSON.stringify(c.appName)}, message: "Hello from CloudCraft", path: env["PATH_INFO"], time: Time.now.utc.iso8601)
+  body = JSON.generate(app: ${JSON.stringify(c.appName)}, message: "Hello from CloudBuilder", path: env["PATH_INFO"], time: Time.now.utc.iso8601)
   [200, { "content-type" => "application/json" }, [body]]
 }
 `;

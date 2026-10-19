@@ -1,6 +1,6 @@
 'use client';
 /**
- * Per-account controls for how long CloudCraft keeps the credentials: keep for longer (or without a limit), erase after the next
+ * Per-account controls for how long CloudBuilder keeps the credentials: keep for longer (or without a limit), erase after the next
  * successful deployment, or erase now. Nothing secret is shown or sent: the server changes the stored credentials in place.
  */
 import { useState } from 'react';
@@ -43,7 +43,7 @@ export default function CredentialLifetimeControls({ accountId, forgetAfterDeplo
 
   return (
     <div className="mt-2.5 rounded-lg border border-gray-700 bg-gray-900/40 px-3 py-2 space-y-2 text-xs" data-testid="lifetime-controls">
-      <p className="text-gray-400 font-medium">How long CloudCraft keeps this key</p>
+      <p className="text-gray-400 font-medium">How long CloudBuilder keeps this key</p>
       {!temporary && (
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-gray-400">Keep it for</span>
@@ -63,7 +63,7 @@ export default function CredentialLifetimeControls({ accountId, forgetAfterDeplo
       </label>
       {confirmErase ? (
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-amber-300">Delete the key from CloudCraft now? You will have to connect again.</span>
+          <span className="text-amber-300">Delete the key from CloudBuilder now? You will have to connect again.</span>
           <button type="button" className={`${button} !border-red-700 text-red-200`} disabled={busy !== null} onClick={() => void send('erase', { action: 'erase' })}>
             {busy === 'erase' ? <Loader2 className="w-3 h-3 animate-spin inline" /> : 'Yes, delete it'}
           </button>

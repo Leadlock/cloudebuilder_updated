@@ -3,7 +3,7 @@
  *
  * The client sends the live canvas (nodes + edges), like the cost-comparison route does, so the review
  * reflects what the user is looking at rather than the last autosave. Scores and findings come from
- * CloudCraft's own analysis engine; the model only explains and prioritises them (see AiReviewService).
+ * CloudBuilder's own analysis engine; the model only explains and prioritises them (see AiReviewService).
  */
 import { refuseRestrictedFeature } from '@/lib/api/restrictedFeatureGuard';
 import { NextRequest } from 'next/server';

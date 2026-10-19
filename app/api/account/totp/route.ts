@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
 
     if (body.action === 'begin') {
       const checked = await check(body.password);
-      if (checked === 'none') return forbidden('Your account has no password CloudCraft can check, so an authenticator app cannot be added to it.');
+      if (checked === 'none') return forbidden('Your account has no password CloudBuilder can check, so an authenticator app cannot be added to it.');
       if (checked === 'unavailable') return apiError('SERVICE_UNAVAILABLE', 'Could not check your password right now. Try again in a minute.', 503);
       if (checked !== 'ok') return fail('That password is not right.');
       const user = await orgRepository.findUser(userId);

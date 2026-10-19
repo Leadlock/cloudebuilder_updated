@@ -335,7 +335,7 @@ export default function CanvasStartModal({ isOpen, onClose, onStart }: CanvasSta
                 <div>
                   <div className={clsx('text-sm font-semibold', isLight ? 'text-slate-900' : 'text-white')}>AI-Assisted</div>
                   <div className={clsx('text-[11px] leading-snug mt-0.5', isLight ? 'text-slate-500' : 'text-gray-400')}>
-                    {aiLocked ? RESTRICTED_FEATURE_LABEL : 'CloudCraft derives workload and suggests validated canonical topology.'}
+                    {aiLocked ? RESTRICTED_FEATURE_LABEL : 'CloudBuilder derives workload and suggests validated canonical topology.'}
                   </div>
                 </div>
               </button>

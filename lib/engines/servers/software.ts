@@ -1,5 +1,5 @@
 /**
- * "Server software": programs CloudCraft installs on an EC2 instance or Azure VM the first time it starts (a web server, a runtime, a database),
+ * "Server software": programs CloudBuilder installs on an EC2 instance or Azure VM the first time it starts (a web server, a runtime, a database),
  * so the server is ready to use without anyone logging in to it.
  *
  * Only what is in this catalog can be installed: the script is built from the package names and commands below, never from text a person
@@ -74,7 +74,7 @@ export interface SoftwarePlan {
   warnings: string[];
 }
 
-/** The package family of an AWS instance, from its operating system label. Null when CloudCraft cannot install software on it. */
+/** The package family of an AWS instance, from its operating system label. Null when CloudBuilder cannot install software on it. */
 export function awsFamily(os: unknown): PackageFamily | null {
   const v = String(os ?? '');
   if (/Amazon Linux 2023/i.test(v)) return 'dnf';
@@ -82,7 +82,7 @@ export function awsFamily(os: unknown): PackageFamily | null {
   return null;
 }
 
-/** The package family of an Azure VM, from its image. Null for Windows and for images CloudCraft has not been taught. */
+/** The package family of an Azure VM, from its image. Null for Windows and for images CloudBuilder has not been taught. */
 export function azureFamily(cfg: Record<string, unknown>): PackageFamily | null {
   if (cfg['osType'] === 'Windows') return null;
   const publisher = String(cfg['imagePublisher'] ?? 'Canonical');
@@ -96,7 +96,7 @@ export function planSoftware(ids: unknown): SoftwarePlan {
   const items: SoftwareItem[] = [];
   for (const id of asked) {
     const item = SOFTWARE_BY_ID.get(id);
-    if (!item) { warnings.push(`"${id.slice(0, 40)}" is not in the list of software CloudCraft can install, so it was left out.`); continue; }
+    if (!item) { warnings.push(`"${id.slice(0, 40)}" is not in the list of software CloudBuilder can install, so it was left out.`); continue; }
     if (items.some((i) => i.id === id)) continue;
     const clash = items.find((i) => i.conflictsWith?.includes(id));
     if (clash) { warnings.push(`${item.label} was left out: it cannot run together with ${clash.label} (both use port 80). Choose one.`); continue; }
@@ -131,12 +131,12 @@ export function softwareScript(items: readonly SoftwareItem[], o: ScriptOptions)
   const apt = o.family === 'apt';
   const lines: string[] = [
     '#!/bin/bash',
-    `# Installed by CloudCraft the first time this server starts: ${items.map((i) => i.label).join(', ')}.`,
+    `# Installed by CloudBuilder the first time this server starts: ${items.map((i) => i.label).join(', ')}.`,
     '# Safe to run twice. Progress is logged to /var/log/cloudcraft-setup.log.',
     'set -euo pipefail',
     'exec > >(tee -a /var/log/cloudcraft-setup.log) 2>&1',
     'MARKER=/var/lib/cloudcraft-setup.done',
-    'if [ -f "$MARKER" ]; then echo "CloudCraft setup already done."; exit 0; fi',
+    'if [ -f "$MARKER" ]; then echo "CloudBuilder setup already done."; exit 0; fi',
     ...(apt ? ['export DEBIAN_FRONTEND=noninteractive'] : []),
     '',
     '# The network can take a moment to come up: try a few times before giving up.',
@@ -158,7 +158,7 @@ export function softwareScript(items: readonly SoftwareItem[], o: ScriptOptions)
     }
     if (item.service) lines.push(`start_service ${item.service[o.family]}`);
   }
-  lines.push('', 'touch "$MARKER"', 'echo "CloudCraft setup finished."', '');
+  lines.push('', 'touch "$MARKER"', 'echo "CloudBuilder setup finished."', '');
   return lines.join('\n');
 }
 

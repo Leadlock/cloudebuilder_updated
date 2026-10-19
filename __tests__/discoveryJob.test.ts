@@ -4,7 +4,7 @@
  * previously run by app/api/cloud-accounts/[id]/discover/route.ts.
  *
  * pg-boss itself needs a live Postgres connection, so it's mocked here —
- * these tests verify CloudCraft's own logic: what gets enqueued, what the
+ * these tests verify CloudBuilder's own logic: what gets enqueued, what the
  * worker does with a job, and critically, that decrypted credentials never
  * appear in the job payload sent to pg-boss (they'd otherwise sit in the
  * pgboss.job table in Postgres for as long as the job is queued).

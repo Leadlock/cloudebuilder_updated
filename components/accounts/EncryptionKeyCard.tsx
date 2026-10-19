@@ -86,14 +86,14 @@ export default function EncryptionKeyCard() {
       </div>
       {newKey && (
         <div className="text-xs space-y-1.5 rounded-lg border border-amber-800/40 bg-amber-950/20 p-3" data-testid="new-key">
-          <p className="text-amber-200">New key (shown once, not stored by CloudCraft):</p>
+          <p className="text-amber-200">New key (shown once, not stored by CloudBuilder):</p>
           <div className="flex items-center gap-2">
             <code className="font-mono text-gray-100 break-all select-all">{newKey}</code>
             <button type="button" aria-label="Copy the key" className="p-1 text-gray-400 hover:text-white" onClick={() => void navigator.clipboard?.writeText(newKey)}><Copy className="w-3.5 h-3.5" /></button>
           </div>
           <ol className="text-gray-300 list-decimal pl-5 space-y-0.5 leading-relaxed">
             <li>In the server&apos;s <code>.env</code>, move the current <code>ENCRYPTION_KEY</code> value to <code>ENCRYPTION_KEYS_PREVIOUS</code> (comma separated if there are several).</li>
-            <li>Put the new key in <code>ENCRYPTION_KEY</code> and restart CloudCraft.</li>
+            <li>Put the new key in <code>ENCRYPTION_KEY</code> and restart CloudBuilder.</li>
             <li>Come back here and press <strong>Re-encrypt with the current key</strong>. Then the old key can be removed.</li>
           </ol>
           <button type="button" className="text-gray-500 hover:text-gray-300" onClick={() => setNewKey(null)}>Hide the key</button>

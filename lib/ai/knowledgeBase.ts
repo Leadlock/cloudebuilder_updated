@@ -1,9 +1,9 @@
 /**
- * Retrieval over CloudCraft's generated knowledge base (datasets/ai-architect/knowledge-base).
+ * Retrieval over CloudBuilder's generated knowledge base (datasets/ai-architect/knowledge-base).
  *
  * The chunks are produced by scripts/ai-dataset/build-knowledge-base.ts from the code that enforces the
  * rules (resource catalog, containment/connection rules, the 115 assessment rules, verified patterns), so
- * what the model reads here cannot drift from what CloudCraft validates.
+ * what the model reads here cannot drift from what CloudBuilder validates.
  *
  * Search is semantic (Azure AI Foundry embeddings, vectors precomputed by scripts/ai-dataset/build-kb-embeddings.ts)
  * with an automatic keyword fallback, so the AI features keep working — just less precisely — if the
@@ -219,7 +219,7 @@ export async function buildGenerationContext(prompt: string, fallbackProvider: '
   const extra = await searchKnowledgeBase(prompt, { kinds: ['resource'], providers, k: 3 });
   const guidelines = await searchKnowledgeBase(prompt, { kinds: ['guideline'], k: 3 });
   return assemble(
-    'Reference material from CloudCraft\'s knowledge base: a verified example, the exact resource settings and the placement rules. Use the exact type and setting names shown here. Adapt the example to the request (name, region, scale, database) rather than copying it.',
+    'Reference material from CloudBuilder\'s knowledge base: a verified example, the exact resource settings and the placement rules. Use the exact type and setting names shown here. Adapt the example to the request (name, region, scale, database) rather than copying it.',
     [
       { heading: 'Verified example', chunks: pattern ? [pattern] : [] },
       { heading: 'Placement and connection guidelines', chunks: guidelines },
@@ -241,7 +241,7 @@ export async function buildReviewContext(input: { ruleIds: string[]; resourceTyp
   const guidelines = await searchKnowledgeBase(input.question ?? 'architecture review placement security availability', { kinds: ['guideline'], k: 3 });
   const asked = input.question ? await searchKnowledgeBase(input.question, { kinds: ['rule', 'resource', 'connections', 'pattern'], k: 4 }) : [];
   return assemble(
-    'Reference material from CloudCraft\'s knowledge base. Rules below are the exact text of the checks that ran.',
+    'Reference material from CloudBuilder\'s knowledge base. Rules below are the exact text of the checks that ran.',
     [
       { heading: 'Rules that fired', chunks: rules },
       { heading: 'Resource settings', chunks: catalog },

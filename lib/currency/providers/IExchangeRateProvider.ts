@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Exchange Rate Provider Interface
+ * CloudBuilder — Exchange Rate Provider Interface
  *
  * Allows plugging in different exchange rate sources without changing
  * the core pricing or cost engine.

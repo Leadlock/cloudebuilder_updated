@@ -24,7 +24,7 @@ export default function GitOpsPanel({ projectId, architectureId, nodes, edges, o
   const [githubOrg, setGithubOrg] = useState('cloudcraft-deployments');
   const [githubRepo, setGithubRepo] = useState('infrastructure-live');
   const [branch, setBranch] = useState('main');
-  const [commitMessage, setCommitMessage] = useState('feat: update architecture from CloudCraft');
+  const [commitMessage, setCommitMessage] = useState('feat: update architecture from CloudBuilder');
   const [createPullRequest, setCreatePullRequest] = useState(true);
   const [githubToken, setGithubToken] = useState('');
 
@@ -133,7 +133,7 @@ export default function GitOpsPanel({ projectId, architectureId, nodes, edges, o
               "border rounded-lg p-3 text-xs mb-6 leading-relaxed",
               isLight ? "bg-blue-50 border-blue-200 text-blue-800" : "bg-blue-900/20 border-blue-500/30 text-blue-200"
             )}>
-              CloudCraft generates compliant Terraform HCL and pushes it directly to your organization&apos;s infrastructure repository via GitHub API.
+              CloudBuilder generates compliant Terraform HCL and pushes it directly to your organization&apos;s infrastructure repository via GitHub API.
             </div>
 
             {error && (

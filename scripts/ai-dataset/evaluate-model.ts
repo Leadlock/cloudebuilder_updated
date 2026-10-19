@@ -1,5 +1,5 @@
 /**
- * Scores a model against the held-out prompts using CloudCraft's real gates.
+ * Scores a model against the held-out prompts using CloudBuilder's real gates.
  *
  * Offline (no network): score responses you already collected
  *   npx tsx --tsconfig tsconfig.json scripts/ai-dataset/evaluate-model.ts --responses responses.jsonl

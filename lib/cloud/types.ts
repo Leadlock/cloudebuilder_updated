@@ -15,7 +15,7 @@ export type CloudProviderKey = 'aws' | 'azure';
 
 /**
  * AWS cross-account role assumption credentials.
- * The external ID is a shared secret CloudCraft uses to prevent confused-deputy attacks.
+ * The external ID is a shared secret CloudBuilder uses to prevent confused-deputy attacks.
  */
 export interface AwsRoleCredentials {
   roleArn: string;
@@ -27,8 +27,8 @@ export interface AwsRoleCredentials {
 
 /**
  * The user's OWN access key plus the user's OWN role: the key belongs to an IAM user in their account whose only permission is to
- * assume that role, and the role carries the real permissions (read-only for discovery, more for Terraform). CloudCraft signs in with
- * the key and assumes the role, so everything it does runs on short-lived role credentials — and no AWS account of CloudCraft's own
+ * assume that role, and the role carries the real permissions (read-only for discovery, more for Terraform). CloudBuilder signs in with
+ * the key and assumes the role, so everything it does runs on short-lived role credentials — and no AWS account of CloudBuilder's own
  * is involved anywhere. This is how accounts are connected.
  */
 export interface AwsKeyRoleCredentials {
@@ -40,7 +40,7 @@ export interface AwsKeyRoleCredentials {
   region: string;
   /** Optional: additional regions to discover in */
   additionalRegions?: string[];
-  /** When CloudCraft must stop using (and erase) this key. Set by the server from the lifetime the person chose. */
+  /** When CloudBuilder must stop using (and erase) this key. Set by the server from the lifetime the person chose. */
   expiresAt?: string;
   /** Erase the key after a deployment succeeds. */
   forgetAfterDeploy?: true;
@@ -64,7 +64,7 @@ export interface AwsKeyCredentials {
   allowDeploy?: true;
   /** Temporary credentials (AWS access key ids starting ASIA) come with a session token. */
   sessionToken?: string;
-  /** When CloudCraft must stop using (and erase) this key. Always set for temporary credentials. */
+  /** When CloudBuilder must stop using (and erase) this key. Always set for temporary credentials. */
   expiresAt?: string;
   /** Erase the key after a deployment succeeds. */
   forgetAfterDeploy?: true;
@@ -83,7 +83,7 @@ export interface AzureSpCredentials {
 export type AwsCredentials = AwsRoleCredentials | AwsKeyRoleCredentials | AwsKeyCredentials;
 export type CloudCredentials = AwsCredentials | AzureSpCredentials;
 
-/** Legacy: a role assumed with the CloudCraft server's own AWS identity (no key in the credentials). */
+/** Legacy: a role assumed with the CloudBuilder server's own AWS identity (no key in the credentials). */
 export const isAwsRoleCredentials = (c: CloudCredentials): c is AwsRoleCredentials => 'roleArn' in c && !('accessKeyId' in c);
 /** The user's own key + the user's own role (how accounts are connected now). */
 export const isAwsKeyRoleCredentials = (c: CloudCredentials): c is AwsKeyRoleCredentials => 'accessKeyId' in c && 'roleArn' in c;
@@ -129,7 +129,7 @@ export type DiscoveredResourceType =
 export interface DiscoveredResource {
   /** Provider-assigned resource ID (e.g. ARN, Azure resource ID) */
   providerResourceId: string;
-  /** CloudCraft semantic type */
+  /** CloudBuilder semantic type */
   resourceType: DiscoveredResourceType;
   /** Cloud provider */
   provider: CloudProviderKey;

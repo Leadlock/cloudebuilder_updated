@@ -33,7 +33,7 @@ describe('explainValidationFailure â€” AWS', () => {
     ['InvalidClientTokenId', /access key .* not valid/i],
     ['The request signature we calculated does not match: SignatureDoesNotMatch', /access key .* not valid/i],
     ['ExpiredToken: The provided token has expired.', /have expired/i],
-    ['User: [arn] is not authorized to perform: sts:AssumeRole on resource: [arn]', /refused to let CloudCraft assume your role/i],
+    ['User: [arn] is not authorized to perform: sts:AssumeRole on resource: [arn]', /refused to let CloudBuilder assume your role/i],
     ['Invalid length for parameter RoleArn, value: 3, valid min length: 20', /role ARN does not look valid/i],
     ['getaddrinfo ENOTFOUND sts.us-east-1.amazonaws.com', /could not reach AWS/i],
   ])('"%s"', (msg, expected) => {

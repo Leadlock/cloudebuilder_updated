@@ -1,7 +1,7 @@
 /**
  * What the AWS role needs to deploy THIS architecture, worked out before anything is planned or deployed.
  *
- * The services come from the Terraform CloudCraft would actually generate for the saved design (every resource and data type it
+ * The services come from the Terraform CloudBuilder would actually generate for the saved design (every resource and data type it
  * writes), not from a hand-kept list of canvas types, so the policy follows the design and cannot drift from the generator. The state
  * storage (S3 bucket, and DynamoDB for locking) is always included because every deployment keeps its state there.
  *
@@ -38,7 +38,7 @@ export function selfCheckStatement(roleArn: string | null | undefined): object {
 }
 
 /**
- * Lets CloudCraft read AWS's official price list through this role (lib/cloud/pricing/awsPricingAccess.ts), so cost figures do not fall back to
+ * Lets CloudBuilder read AWS's official price list through this role (lib/cloud/pricing/awsPricingAccess.ts), so cost figures do not fall back to
  * the built-in table. Read-only: list prices are public and the call touches no resource in the account.
  */
 export const PRICE_LIST_STATEMENT = { Sid: 'CloudCraftReadPrices', Effect: 'Allow', Action: ['pricing:GetProducts'], Resource: '*' };

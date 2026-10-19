@@ -355,8 +355,8 @@ export class CostEstimator {
     const liveCount = counts.LIVE + counts.CACHED_LIVE;
     const sourceNote = items.length === 0 ? 'No billable resources.'
       : liveCount === items.length ? 'All prices are official list prices from the AWS Price List API / Azure Retail Prices API (USD).'
-      : liveCount === 0 ? 'No live provider prices were available: all figures are CloudCraft fallback estimates from static list-price tables (USD), not live prices.'
-      : `${liveCount} of ${items.length} prices are official live/cached list prices; ${counts.FALLBACK_ESTIMATE} are CloudCraft fallback estimates${counts.UNAVAILABLE ? ` and ${counts.UNAVAILABLE} are unavailable` : ''} (USD).`;
+      : liveCount === 0 ? 'No live provider prices were available: all figures are CloudBuilder fallback estimates from static list-price tables (USD), not live prices.'
+      : `${liveCount} of ${items.length} prices are official live/cached list prices; ${counts.FALLBACK_ESTIMATE} are CloudBuilder fallback estimates${counts.UNAVAILABLE ? ` and ${counts.UNAVAILABLE} are unavailable` : ''} (USD).`;
 
     const globalAssumptions = [
       sourceNote,

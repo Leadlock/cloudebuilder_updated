@@ -108,7 +108,7 @@ export interface ValidatedGeneration {
   /** Account-specific values (ACM certificate ARN, container image…) the user must supply before deploying. */
   deploymentInputs: DeploymentInput[];
   attempts: RepairAttempt[];
-  /** Services the request named that CloudCraft cannot model, or that are missing from the design. */
+  /** Services the request named that CloudBuilder cannot model, or that are missing from the design. */
   notices: ServiceNotices;
   /** Setting names the AI got wrong in the accepted design: `renamed` were fixed losslessly, `dropped` fell back to defaults. */
   sanitized: SanitizeReport;
@@ -120,7 +120,7 @@ export interface ValidatedGeneration {
   basedOnPattern?: string;
   /** The verified pattern itself was returned (the AI could not adapt it either). */
   verifiedFallback?: boolean;
-  /** What CloudCraft's own verified fixes changed in the design after the AI wrote it. */
+  /** What CloudBuilder's own verified fixes changed in the design after the AI wrote it. */
   autoRepairs?: string[];
   stage: string;
   historyId: string;
@@ -273,7 +273,7 @@ function getHeuristicQuestionnaire(prompt: string, provider: 'aws' | 'azure'): Q
       },
       {
         id: 'opt-comp-serverless',
-        // Only services CloudCraft can model: an option naming one it cannot (API Gateway / API Management) would end in
+        // Only services CloudBuilder can model: an option naming one it cannot (API Gateway / API Management) would end in
         // an "unsupported service" warning after the user picked it.
         label: isAws ? 'Serverless (AWS Lambda functions)' : 'Serverless (Azure Functions)',
         description: 'Event-driven, zero idle cost, instant scale per request.',
@@ -354,7 +354,7 @@ function getHeuristicQuestionnaire(prompt: string, provider: 'aws' | 'azure'): Q
 
 /**
  * The model is told not to, but the questionnaire is the last thing the user sees before a design is generated: an option
- * naming a service CloudCraft cannot model would only turn into an "unsupported" warning after they chose it. Such options
+ * naming a service CloudBuilder cannot model would only turn into an "unsupported" warning after they chose it. Such options
  * are removed; a question left with nothing to choose from is removed too, and a default that was removed is re-pointed.
  */
 export function dropUnsupportedOptions(questions: ArchitectureQuestion[]): ArchitectureQuestion[] {
@@ -425,7 +425,7 @@ Output MUST be a single valid JSON object strictly matching this schema:
 }
 
 Provide 4 to 6 questions. Ensure exactly one option per question has "isRecommended": true, and "defaultOptionId" matches that option.
-CloudCraft cannot model these services yet, so NEVER offer them as options (not even inside a description): ${unsupportedServiceNames().join(', ')}. Offer only services that exist in the ${provider.toUpperCase()} catalog.`;
+CloudBuilder cannot model these services yet, so NEVER offer them as options (not even inside a description): ${unsupportedServiceNames().join(', ')}. Offer only services that exist in the ${provider.toUpperCase()} catalog.`;
 
       const response = await foundryClient().responses.create({
         model: FOUNDRY_MODEL,
@@ -650,7 +650,7 @@ Connection & Topology Rules:
 4. Set parentId correctly for nested resources (e.g. subnets inside VPCs, instances inside subnets).
 5. Generate realistic, production-like configurations.
 
-Architecture quality guidelines (violating these lowers the design's security/reliability score in CloudCraft's own review engine — follow them by default unless the user's prompt explicitly asks for something less secure or a minimal/dev-only setup):
+Architecture quality guidelines (violating these lowers the design's security/reliability score in CloudBuilder's own review engine — follow them by default unless the user's prompt explicitly asks for something less secure or a minimal/dev-only setup):
 ${buildQualityGuidelines(provider)}
 
 Gold Standard Reference Example (AWS Multi-Tier HA Pattern):

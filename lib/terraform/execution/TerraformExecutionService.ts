@@ -12,7 +12,7 @@
  *    ArchitectureReviewService's existing gates verbatim; plan generation
  *    is refused unless the exact current architecture has an approved review.
  * 2. Remote state backend — required on every call; there is no "local
- *    backend" code path. CloudCraft does not provision the backend
+ *    backend" code path. CloudBuilder does not provision the backend
  *    (S3 bucket / Azure Storage container) itself, only requires one.
  * 3. Destroy actions are blocked entirely — any plan containing so much as
  *    one resource `delete` action throws PlanBlockedError and the plan
@@ -60,7 +60,7 @@ export class PlanBlockedError extends Error {
     super(
       `Plan blocked: contains ${destroyedAddresses.length} resource destroy action(s) ` +
       `(${destroyedAddresses.slice(0, 5).join(', ')}${destroyedAddresses.length > 5 ? ', …' : ''}). ` +
-      'CloudCraft does not apply plans that destroy infrastructure. This usually means the design changed after an earlier deployment, so something that was already built is no longer in the design. ' +
+      'CloudBuilder does not apply plans that destroy infrastructure. This usually means the design changed after an earlier deployment, so something that was already built is no longer in the design. ' +
       'To start over cleanly, use Teardown to remove the earlier deployment, then generate a new plan; or review and run this manually with the Terraform CLI if the destroy is intentional.',
     );
     this.name = 'PlanBlockedError';
@@ -450,7 +450,7 @@ export async function runApply(
     if (afterApply) await afterApply({ workDir: record.workDir, env });
     const forgotten = await forgetCredentialsAfterSuccess(record.cloudAccountId, orgId);
     return {
-      message: `Applied ${record.summary.toAdd} new and ${record.summary.toChange} changed resource(s).${forgotten ? ' As you asked, the credentials for this account were then deleted from CloudCraft.' : ''}`,
+      message: `Applied ${record.summary.toAdd} new and ${record.summary.toChange} changed resource(s).${forgotten ? ' As you asked, the credentials for this account were then deleted from CloudBuilder.' : ''}`,
       outputTail: stdout.slice(-4000),
     };
   } finally {
@@ -566,7 +566,7 @@ export async function prepareDestroy(input: ExecuteDestroyInput, onOutput?: (chu
         usable = true;
       } catch (err) {
         if (input.stateBackend.provider !== 'aws') throw err;   // the fallback below is for AWS
-        onOutput?.(`\n[CloudCraft] The saved design cannot be used as it is (${err instanceof Error ? err.message.slice(0, 160) : 'error'}). The teardown will work from what Terraform recorded instead.\n`);
+        onOutput?.(`\n[CloudBuilder] The saved design cannot be used as it is (${err instanceof Error ? err.message.slice(0, 160) : 'error'}). The teardown will work from what Terraform recorded instead.\n`);
       }
     }
     if (!usable) {
@@ -579,10 +579,10 @@ export async function prepareDestroy(input: ExecuteDestroyInput, onOutput?: (chu
     }
 
     await handleStateLockAndRetry(
-      () => retryPluginStartup(() => runTerraform(['plan', '-destroy', '-input=false', '-no-color', '-out=tfplan'], { cwd: workDir, env, timeoutMs: 15 * 60 * 1000, onOutput }), sleep, 3, () => onOutput?.('\n[CloudCraft] The AWS plugin was slow to start; trying again.\n')),
+      () => retryPluginStartup(() => runTerraform(['plan', '-destroy', '-input=false', '-no-color', '-out=tfplan'], { cwd: workDir, env, timeoutMs: 15 * 60 * 1000, onOutput }), sleep, 3, () => onOutput?.('\n[CloudBuilder] The AWS plugin was slow to start; trying again.\n')),
       workDir, env, 'destroy',
     );
-    const { stdout } = await retryPluginStartup(() => runTerraform(['show', '-json', '-no-color', 'tfplan'], { cwd: workDir, env }), sleep, 3, () => onOutput?.('\n[CloudCraft] The AWS plugin was slow to start; trying again.\n'));
+    const { stdout } = await retryPluginStartup(() => runTerraform(['show', '-json', '-no-color', 'tfplan'], { cwd: workDir, env }), sleep, 3, () => onOutput?.('\n[CloudBuilder] The AWS plugin was slow to start; trying again.\n'));
     const planJson = JSON.parse(stdout) as PlanJsonForGuardrails;
     const resources = (planJson.resource_changes ?? [])
       .filter((rc) => (rc.mode ?? 'managed') === 'managed' && rc.change.actions.includes('delete'))
@@ -639,13 +639,13 @@ async function runDestroyPlan(args: { run: RunHandle; prepared: PreparedDestroyP
   const { run, prepared, env, userId, disableProtection } = args;
   const audit = { action: 'destroy' as const, orgId: prepared.orgId, projectId: prepared.projectId, userId, planId: prepared.planId, planHash: prepared.planHash };
   try {
-    run.append(`[CloudCraft] Destroying ${prepared.resources.length} resource(s) from the plan you reviewed.\n`);
+    run.append(`[CloudBuilder] Destroying ${prepared.resources.length} resource(s) from the plan you reviewed.\n`);
     // AWS refuses to delete a protected load balancer, database or table: switch protection off on exactly those the plan deletes.
     if (prepared.protectedResources && prepared.protectedResources.length > 0 && !disableProtection) {
-      run.append(`[CloudCraft] You chose to leave deletion protection on for ${prepared.protectedResources.length} resource(s): ${prepared.protectedResources.map((p) => p.address).join(', ')}. AWS will refuse to delete them; everything else is deleted.\n`);
+      run.append(`[CloudBuilder] You chose to leave deletion protection on for ${prepared.protectedResources.length} resource(s): ${prepared.protectedResources.map((p) => p.address).join(', ')}. AWS will refuse to delete them; everything else is deleted.\n`);
     }
     if (prepared.protectedResources && prepared.protectedResources.length > 0 && disableProtection && env['AWS_ACCESS_KEY_ID']) {
-      run.append(`[CloudCraft] ${prepared.protectedResources.length} resource(s) have deletion protection on; switching it off so they can be removed.\n`);
+      run.append(`[CloudBuilder] ${prepared.protectedResources.length} resource(s) have deletion protection on; switching it off so they can be removed.\n`);
       await disableDeletionProtection(prepared.protectedResources, protectionClients(env, prepared.region ?? env['AWS_DEFAULT_REGION'] ?? 'us-east-1'), run.append);
     }
     const maxAttempts = 3;
@@ -659,7 +659,7 @@ async function runDestroyPlan(args: { run: RunHandle; prepared: PreparedDestroyP
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (attempt < maxAttempts && isTransientInUse(msg)) {
-          run.append('\n[CloudCraft] A dependent resource is still shutting down. Waiting 20 seconds, then planning what is left and trying again.\n');
+          run.append('\n[CloudBuilder] A dependent resource is still shutting down. Waiting 20 seconds, then planning what is left and trying again.\n');
           await sleep(20_000);
           await runTerraform(['plan', '-destroy', '-input=false', '-no-color', '-out=tfplan'], { cwd: prepared.workDir, env, timeoutMs: 15 * 60 * 1000, onOutput: run.append });
           continue;
@@ -668,7 +668,7 @@ async function runDestroyPlan(args: { run: RunHandle; prepared: PreparedDestroyP
       }
     }
     const forgotten = await forgetCredentialsAfterSuccess(prepared.cloudAccountId, prepared.orgId);
-    if (forgotten) run.append('[CloudCraft] As you asked, the credentials for this account were deleted from CloudCraft.\n');
+    if (forgotten) run.append('[CloudBuilder] As you asked, the credentials for this account were deleted from CloudBuilder.\n');
     run.finish(true, 'The planned resources were destroyed.');
     await recordTerraformAudit({ ...audit, outcome: 'succeeded' });
   } catch (err) {

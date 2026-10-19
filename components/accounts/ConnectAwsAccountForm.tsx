@@ -1,7 +1,7 @@
 'use client';
 /**
  * Connect an AWS account the way it is done in the user's own account: their access key signs in and assumes their role.
- * No AWS account or identity of CloudCraft's is involved. Used by the Cloud Accounts tab and by the Import screen.
+ * No AWS account or identity of CloudBuilder's is involved. Used by the Cloud Accounts tab and by the Import screen.
  *
  * Secrets go straight to the server and are cleared from the form as soon as they have been sent — they are never kept in React
  * state beyond typing, never shown again, and never stored in the browser.
@@ -26,7 +26,7 @@ export default function ConnectAwsAccountForm({ onConnected, initialMode = 'dire
   }`;
 
   const [form, setForm] = useState({ accessKeyId: '', secretAccessKey: '', roleArn: '', externalId: '', sessionToken: '', region: 'us-east-1' });
-  // How long CloudCraft may keep the key (a stored key is a standing risk, so the default is short), and whether to erase it after a deployment.
+  // How long CloudBuilder may keep the key (a stored key is a standing risk, so the default is short), and whether to erase it after a deployment.
   const [keepFor, setKeepFor] = useState<string>('8h');
   const [forgetAfterDeploy, setForgetAfterDeploy] = useState(false);
   const [validHours, setValidHours] = useState<number>(12);   // temporary (ASIA) credentials: how long they are still valid
@@ -114,7 +114,7 @@ export default function ConnectAwsAccountForm({ onConnected, initialMode = 'dire
             <li>Paste the Access key ID and the Secret access key below.</li>
           </ol>
           <p className={`${isLight ? 'text-amber-800' : 'text-amber-200/90'} leading-relaxed`}>
-            CloudCraft will then be able to create and delete anything in this AWS account, using that key. It is stored encrypted and never shown again.
+            CloudBuilder will then be able to create and delete anything in this AWS account, using that key. It is stored encrypted and never shown again.
             Use this for a <strong>test or sandbox account</strong>, never with the account&apos;s root key, and delete the key in AWS when you are finished.
             For a real account use <strong>Safer</strong>.
           </p>
@@ -149,7 +149,7 @@ export default function ConnectAwsAccountForm({ onConnected, initialMode = 'dire
           </label>
         ) : (
           <label className="flex items-center justify-between gap-3">
-            <span>Keep this key in CloudCraft for</span>
+            <span>Keep this key in CloudBuilder for</span>
             <select value={keepFor} onChange={(e) => setKeepFor(e.target.value)} aria-label="Keep the key for" className={isLight ? 'bg-white border border-slate-300 rounded px-2 py-1 text-slate-900' : 'bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white'}>
               {LIFETIME_CHOICES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
             </select>
@@ -157,9 +157,9 @@ export default function ConnectAwsAccountForm({ onConnected, initialMode = 'dire
         )}
         <label className="flex items-start gap-2">
           <input type="checkbox" checked={forgetAfterDeploy} onChange={(e) => setForgetAfterDeploy(e.target.checked)} className="mt-0.5" />
-          <span>Delete the key from CloudCraft after a deployment succeeds</span>
+          <span>Delete the key from CloudBuilder after a deployment succeeds</span>
         </label>
-        <p className={`leading-relaxed ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>When the time is up CloudCraft erases the secret and you connect again. Also delete the key in AWS when you no longer need it.</p>
+        <p className={`leading-relaxed ${isLight ? 'text-slate-500' : 'text-gray-500'}`}>When the time is up CloudBuilder erases the secret and you connect again. Also delete the key in AWS when you no longer need it.</p>
       </div>
 
       {error && <p className={`text-xs border rounded-lg px-3 py-2 ${isLight ? 'text-rose-700 bg-rose-50 border-rose-200' : 'text-red-400 bg-red-950/40 border-red-900/50'}`} role="alert">{error}</p>}

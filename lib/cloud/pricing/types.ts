@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Normalized Cloud Pricing Types
+ * CloudBuilder — Normalized Cloud Pricing Types
  *
  * Provider-independent pricing contract for AWS and Azure.
  * Standardizes official API outputs (Azure Retail Prices API, AWS Price List API)

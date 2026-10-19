@@ -4,7 +4,7 @@
  * The input checks in hclSafety.ts keep user text out of the generated code; these checks look at what Terraform would
  * actually do, so they still protect if something unexpected gets through:
  *
- *  - unexpected-types   only resource types CloudCraft's generator can produce
+ *  - unexpected-types   only resource types CloudBuilder's generator can produce
  *  - iam-admin          no administrator-style IAM (`*` on `*`, AdministratorAccess)
  *  - public-exposure    no world-open admin ports, public databases or public buckets
  *  - region             provider region within CLOUDCRAFT_TERRAFORM_ALLOWED_REGIONS (when that is set)
@@ -128,7 +128,7 @@ export function evaluatePlanGuardrails(plan: PlanJsonForGuardrails, options: Gua
   const size = touched > max ? [`${touched} resources would be created or changed; the limit is ${max}`] : [];
 
   const checks = [
-    check('unexpected-types', 'Only resource types CloudCraft generates', unexpected),
+    check('unexpected-types', 'Only resource types CloudBuilder generates', unexpected),
     check('iam-admin', 'No administrator-style IAM', iam),
     check('public-exposure', 'No public admin ports, databases or buckets', exposure),
     check('region', 'Allowed regions only', region),

@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Multi-Currency & Live Exchange Rate Domain Types
+ * CloudBuilder — Multi-Currency & Live Exchange Rate Domain Types
  *
  * Provides a strong contract for money amounts, exchange rate queries,
  * normalized results, and currency definitions.

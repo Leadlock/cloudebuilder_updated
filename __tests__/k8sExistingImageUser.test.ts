@@ -26,7 +26,7 @@ describe('ready-made image on Kubernetes', () => {
     expect(dep).toContain('drop: ["ALL"]');
   });
 
-  test('an image built by CloudCraft still runs as its fixed user', () => {
+  test('an image built by CloudBuilder still runs as its fixed user', () => {
     const c = make('');
     expect(gen(c).get('k8s/deployment.yaml')).toMatch(/runAsUser: 1001/);
   });

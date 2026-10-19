@@ -4,20 +4,20 @@ import { CATALOG_TYPES } from '@/lib/ai/architectureSpec';
 const names = (p: string, design?: string[]) => detectServiceNotices(p, design).unsupported.map((u) => u.service);
 
 describe('unsupported services', () => {
-  it('flags every service CloudCraft cannot model, however the request is worded', () => {
+  it('flags every service CloudBuilder cannot model, however the request is worded', () => {
     expect(names('Design a real-time data pipeline on AWS using Kinesis, Glue and Redshift.')).toEqual(['Kinesis', 'Glue', 'Redshift']);
     expect(names('Build an API Gateway and Step Functions workflow on AWS')).toEqual(['API Gateway', 'Step Functions']);
     expect(names('azure logic apps + stream analytics + cognitive search')).toEqual(['Logic Apps']);
     expect(names('we use apigateway with cognito')).toEqual(['API Gateway', 'Cognito']);
   });
 
-  it('offers the closest services that DO exist, by their CloudCraft names', () => {
+  it('offers the closest services that DO exist, by their CloudBuilder names', () => {
     const [apigw] = detectServiceNotices('API Gateway in front of Lambda').unsupported;
     expect(apigw!.nearest).toEqual(['Load Balancer', 'Lambda']);
-    expect(describeNotices({ unsupported: [apigw!], missing: [] })[0]).toBe("API Gateway isn't supported by CloudCraft yet — closest available: Load Balancer, Lambda.");
+    expect(describeNotices({ unsupported: [apigw!], missing: [] })[0]).toBe("API Gateway isn't supported by CloudBuilder yet — closest available: Load Balancer, Lambda.");
   });
 
-  it('does not flag services CloudCraft models, including Aurora (an RDS engine option)', () => {
+  it('does not flag services CloudBuilder models, including Aurora (an RDS engine option)', () => {
     expect(names('Lambda, DynamoDB, S3, CloudFront, SQS, EKS and Aurora PostgreSQL on AWS')).toEqual([]);
     expect(names('Azure Functions with Cosmos DB, Key Vault and Front Door')).toEqual([]);
   });

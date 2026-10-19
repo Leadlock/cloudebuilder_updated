@@ -1,4 +1,4 @@
-# CloudCraft Roadmap — Policy, Governance & Operations
+# CloudBuilder Roadmap — Policy, Governance & Operations
 
 > Status: proposal · Source: competitive review of codly.ai (website + 7 demo videos) against the current codebase.
 > Effort key: **S** ≈ days · **M** ≈ 1–2 weeks · **L** ≈ multiple weeks. Estimates are rough and unvalidated.
@@ -6,7 +6,7 @@
 ## 1. Positioning
 
 Codly is a **Day-2 operations** product (compliance scanning, FinOps, runbook execution on running accounts) for regulated enterprises.
-CloudCraft is a **Day-0/1 design** product (canvas → Terraform → review → deploy).
+CloudBuilder is a **Day-0/1 design** product (canvas → Terraform → review → deploy).
 
 We should not chase Codly's breadth (ITSM, log analytics, inventory, air-gapped, autonomous agents). We should borrow the
 **ideas that make design and deployment governed**, and extend our existing review/drift machinery toward ongoing operation:

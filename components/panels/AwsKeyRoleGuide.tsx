@@ -1,7 +1,7 @@
 'use client';
 /**
  * Setup help for connecting an AWS account: the user's OWN access key signs in and assumes the user's OWN role. Everything lives in
- * the user's AWS account — CloudCraft has no AWS account of its own that anyone has to trust. The guide writes the three pieces of
+ * the user's AWS account — CloudBuilder has no AWS account of its own that anyone has to trust. The guide writes the three pieces of
  * IAM the user needs, ready to paste:
  *   1. the role's trust policy (trusts the user's own account; only the user created in step 3 can use it);
  *   2. the role's permissions (read-only for discovery; more only if Terraform will run);
@@ -52,11 +52,11 @@ export default function AwsKeyRoleGuide({ roleArn, externalId, onExternalId }: {
   return (
     <div className="space-y-3" data-testid="aws-key-role-guide">
       <div className={`p-3 rounded-lg border text-xs space-y-1.5 ${isLight ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950' : 'bg-emerald-950/20 border-emerald-700/40 text-gray-300'}`}>
-        <p className={`flex items-center gap-2 font-medium ${isLight ? 'text-emerald-900' : 'text-emerald-300'}`}><ShieldCheck className={`w-4 h-4 shrink-0 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`} /> Connect your own AWS account — nothing of CloudCraft&apos;s is involved</p>
+        <p className={`flex items-center gap-2 font-medium ${isLight ? 'text-emerald-900' : 'text-emerald-300'}`}><ShieldCheck className={`w-4 h-4 shrink-0 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`} /> Connect your own AWS account — nothing of CloudBuilder&apos;s is involved</p>
         <ul className={`${isLight ? 'text-slate-700' : 'text-gray-300'} leading-relaxed list-disc pl-5 space-y-0.5`}>
           <li>You create a role and an IAM user in <strong>your</strong> account. The user&apos;s access key is stored encrypted and can only do one thing: assume that role.</li>
-          <li>Everything CloudCraft does then runs on <strong>temporary role credentials</strong> — read-only for discovery, and more only if you give the role permissions for Terraform.</li>
-          <li>You decide what the role may do, and you can delete the user or the role in AWS at any time to cut CloudCraft off.</li>
+          <li>Everything CloudBuilder does then runs on <strong>temporary role credentials</strong> — read-only for discovery, and more only if you give the role permissions for Terraform.</li>
+          <li>You decide what the role may do, and you can delete the user or the role in AWS at any time to cut CloudBuilder off.</li>
         </ul>
       </div>
 
@@ -101,8 +101,8 @@ export default function AwsKeyRoleGuide({ roleArn, externalId, onExternalId }: {
             </p>
             <CopyBlock label="Read-only policy for discovery" text={buildDiscoveryPolicy()} isLight={isLight} />
             <p className={`${isLight ? 'text-slate-600' : 'text-gray-500'} leading-relaxed pt-1`}>
-              <strong>Optional — let CloudCraft create the Terraform state storage for you.</strong> The &ldquo;Create state storage for me&rdquo; button needs this extra inline policy on the role.
-              It only covers buckets named <span className={`font-mono ${isLight ? 'text-slate-900 font-semibold' : 'text-gray-300'}`}>{STATE_BUCKET_PREFIX}*</span> and lock tables named <span className={`font-mono ${isLight ? 'text-slate-900 font-semibold' : 'text-gray-300'}`}>{STATE_LOCK_TABLE_PREFIX}*</span> (leave the bucket name empty and CloudCraft picks a matching one); it cannot touch any other bucket or table and cannot delete either.
+              <strong>Optional — let CloudBuilder create the Terraform state storage for you.</strong> The &ldquo;Create state storage for me&rdquo; button needs this extra inline policy on the role.
+              It only covers buckets named <span className={`font-mono ${isLight ? 'text-slate-900 font-semibold' : 'text-gray-300'}`}>{STATE_BUCKET_PREFIX}*</span> and lock tables named <span className={`font-mono ${isLight ? 'text-slate-900 font-semibold' : 'text-gray-300'}`}>{STATE_LOCK_TABLE_PREFIX}*</span> (leave the bucket name empty and CloudBuilder picks a matching one); it cannot touch any other bucket or table and cannot delete either.
             </p>
             <CopyBlock label="Extra policy for state storage (optional)" text={buildStateStoragePolicy()} isLight={isLight} />
           </div>

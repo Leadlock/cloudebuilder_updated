@@ -66,7 +66,7 @@ export function verifyTotp(secretBase32: string, typed: string, nowMs: number, l
 }
 
 /** The address an authenticator app understands (as a QR code or a link). */
-export function otpauthUri(secretBase32: string, account: string, issuer = 'CloudCraft'): string {
+export function otpauthUri(secretBase32: string, account: string, issuer = 'CloudBuilder'): string {
   const label = encodeURIComponent(`${issuer}:${account}`);
   return `otpauth://totp/${label}?secret=${secretBase32}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=${TOTP_DIGITS}&period=${TOTP_STEP_SECONDS}`;
 }

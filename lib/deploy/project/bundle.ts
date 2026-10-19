@@ -12,7 +12,7 @@ import type { ReleaseTarget } from './types';
 /** The code a person uploaded for a service, as read from their zip. */
 export interface SourceInput { sha256: string; files: ZipFile[] }
 
-/** What the generated folder of a service keeps when the person's own code is built instead: the Dockerfile and the settings around it are the hardened ones CloudCraft wrote. */
+/** What the generated folder of a service keeps when the person's own code is built instead: the Dockerfile and the settings around it are the hardened ones CloudBuilder wrote. */
 export const KEPT_FROM_GENERATED = new Set(['Dockerfile', '.dockerignore', 'nginx.conf']);
 
 export interface ProjectBundle {
@@ -57,10 +57,10 @@ const TARGETS = {
 /** Builds the bundle for the project's deployment target. Throws BundleError with the reasons when the project cannot be deployed. */
 export function buildBundle(project: StackProject, sources: Record<string, SourceInput> = {}): ProjectBundle {
   const target = project.deploy.target;
-  if (target !== 'azure-vm' && target !== 'ec2' && target !== 'ecs' && target !== 'container-apps') throw new BundleError(['Deploying from CloudCraft is for a project that goes to an Azure VM, AWS EC2, AWS ECS Fargate or Azure Container Apps.']);
+  if (target !== 'azure-vm' && target !== 'ec2' && target !== 'ecs' && target !== 'container-apps') throw new BundleError(['Deploying from CloudBuilder is for a project that goes to an Azure VM, AWS EC2, AWS ECS Fargate or Azure Container Apps.']);
   const t = TARGETS[target];
-  if (target === 'container-apps' && project.deploy.aca.minReplicas < 1) throw new BundleError(['Deploying from CloudCraft to Container Apps needs at least 1 minimum replica: it starts the apps by giving them replicas.']);
-  if (enabledLayers(project).length < 2) throw new BundleError(['Deploying from CloudCraft needs a project of two or more services; one service has its own deployment.']);
+  if (target === 'container-apps' && project.deploy.aca.minReplicas < 1) throw new BundleError(['Deploying from CloudBuilder to Container Apps needs at least 1 minimum replica: it starts the apps by giving them replicas.']);
+  if (enabledLayers(project).length < 2) throw new BundleError(['Deploying from CloudBuilder needs a project of two or more services; one service has its own deployment.']);
   // On AWS the images are built in the account (CodeBuild), which a person who downloads the files does not need: it is part of the release's Terraform only.
   const r = generateProjectFiles(project, { forRelease: true });
   if (!r.ok) throw new BundleError(r.errors);

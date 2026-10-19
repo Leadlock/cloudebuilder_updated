@@ -1,5 +1,5 @@
 /**
- * CloudCraft — 240 Template Catalog (8 Categories × 3 Providers × 10 Templates)
+ * CloudBuilder — 240 Template Catalog (8 Categories × 3 Providers × 10 Templates)
  *
  * Full authoritative architecture pattern library covering:
  * 1. Web Applications (10 AWS, 10 Azure, 10 Multi-Cloud)

@@ -35,7 +35,7 @@ export default function TerraformWorkerNotice({ projectId, environment }: { proj
     }`} data-testid="worker-notice">
       <p className={`flex items-center gap-2 font-semibold ${isLight ? 'text-amber-900' : ''}`}><AlertTriangle className={`w-4 h-4 shrink-0 ${isLight ? 'text-amber-600' : 'text-amber-400'}`} /> The deployment worker is not running</p>
       <p className={`mt-1 leading-relaxed ${isLight ? 'text-slate-700' : 'text-amber-200/90'}`}>
-        Applying runs in a separate worker process. Without it, &ldquo;Confirm &amp; Apply&rdquo; will queue your deployment and nothing will happen. In a terminal, in the CloudCraft folder, run:
+        Applying runs in a separate worker process. Without it, &ldquo;Confirm &amp; Apply&rdquo; will queue your deployment and nothing will happen. In a terminal, in the CloudBuilder folder, run:
       </p>
       <pre className={`mt-1.5 px-2 py-1 rounded border font-mono select-all ${
         isLight ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-black/50 border-amber-900/50 text-amber-100'

@@ -1,5 +1,5 @@
 /**
- * Canonical Architecture Model — CloudCraft Commercial Standard
+ * Canonical Architecture Model — CloudBuilder Commercial Standard
  *
  * Serves as the single authoritative domain representation of cloud architectures.
  * Every visual placement, relationship, dependency, validation, security analysis,

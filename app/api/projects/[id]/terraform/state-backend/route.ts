@@ -23,7 +23,7 @@ import { isAwsCredentials, isAzureCredentials, type CloudCredentials } from '@/l
 
 export const dynamic = 'force-dynamic';
 
-// The bucket and key may be left empty: CloudCraft then picks a unique bucket name.
+// The bucket and key may be left empty: CloudBuilder then picks a unique bucket name.
 const AwsCreate = AwsBackendSchema.partial({ bucket: true, key: true });
 const AzureCreate = AzureBackendSchema.partial({ key: true }).extend({ location: z.string().regex(/^[a-z0-9]{3,30}$/, 'Invalid Azure region').default('eastus') });
 const RequestSchema = z.object({
@@ -39,8 +39,8 @@ const DeleteSchema = z.object({
 });
 
 /**
- * DELETE — remove a state bucket CloudCraft created, with everything in it. Administrators only, behind the same Terraform access checks.
- * It refuses (and deletes nothing) for a bucket CloudCraft did not tag as its own, or one whose Terraform state still records resources.
+ * DELETE — remove a state bucket CloudBuilder created, with everything in it. Administrators only, behind the same Terraform access checks.
+ * It refuses (and deletes nothing) for a bucket CloudBuilder did not tag as its own, or one whose Terraform state still records resources.
  */
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {

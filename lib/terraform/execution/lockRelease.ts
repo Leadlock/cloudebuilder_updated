@@ -33,9 +33,9 @@ export type ReleaseDecision = { allowed: true } | { allowed: false; reason: stri
 export function decideManualRelease(info: LockInfo, ctx: LockCheckContext): ReleaseDecision {
   if (!isLockFromThisMachine(info, ctx.host)) return { allowed: false, reason: `The lock was taken by ${info.who ?? 'another machine'}, not by this server. Ask whoever runs it, or check that machine or pipeline, before releasing it from there.` };
   if (ctx.projectBusy) return { allowed: false, reason: 'An apply or teardown is running right now for this project on this server. Wait for it to finish.' };
-  if (ctx.processRunning === null) return { allowed: false, reason: 'CloudCraft could not check whether Terraform is running on this machine, so it will not release the lock.' };
+  if (ctx.processRunning === null) return { allowed: false, reason: 'CloudBuilder could not check whether Terraform is running on this machine, so it will not release the lock.' };
   if (ctx.processRunning) return { allowed: false, reason: 'A Terraform process is running on this machine right now. Wait for it to finish — releasing its lock would let two runs write the state at once.' };
-  if (!info.created) return { allowed: false, reason: 'The lock has no readable creation time, so CloudCraft cannot tell whether it is stale.' };
+  if (!info.created) return { allowed: false, reason: 'The lock has no readable creation time, so CloudBuilder cannot tell whether it is stale.' };
   const ageMs = ctx.now - info.created.getTime();
   if (ageMs < MANUAL_RELEASE_MIN_AGE_MS) return { allowed: false, reason: `The lock is only ${Math.max(0, Math.round(ageMs / 1000))} seconds old. Give a run that just started a moment, then check again.` };
   return { allowed: true };
@@ -104,7 +104,7 @@ export async function inspectStateLock(target: LockTarget, deps: LockDeps = {}):
     }
     if (!message || !isStateLockError(message)) return { locked: false };
     const info = parseLockInfo(message);
-    if (!info) return { locked: true, releasable: false, reason: 'The state is locked, but CloudCraft could not read the lock details.' };
+    if (!info) return { locked: true, releasable: false, reason: 'The state is locked, but CloudBuilder could not read the lock details.' };
 
     const now = (deps.now ?? Date.now)();
     const decision = decideManualRelease(info, {

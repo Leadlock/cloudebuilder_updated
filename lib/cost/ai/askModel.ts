@@ -1,6 +1,6 @@
 /**
  * One JSON-returning model call, injectable so every AI cost feature can be tested without the network.
- * Uses the same Azure AI Foundry deployment as the rest of CloudCraft's AI (lib/ai/foundryClient.ts).
+ * Uses the same Azure AI Foundry deployment as the rest of CloudBuilder's AI (lib/ai/foundryClient.ts).
  */
 import { foundryClient, FOUNDRY_MODEL } from '@/lib/ai/foundryClient';
 import { extractJson } from '@/lib/ai/architectRepair';

@@ -1,4 +1,4 @@
-# CloudCraft — Visual Cloud Infrastructure Builder
+# CloudBuilder — Visual Cloud Infrastructure Builder
 
 A production-quality SaaS web app for visually designing AWS and Azure infrastructure, generating Terraform, running security scans, and estimating costs.
 

@@ -28,7 +28,7 @@ const INSTANCE_DOWNSIZE: Record<string, string> = {
 // ─── Mock Implementation ──────────────────────────────────────────────────────
 class MockCostService implements ICostService {
   /**
-   * Offline estimate from CloudCraft's static tables. Used only when the pricing API is
+   * Offline estimate from CloudBuilder's static tables. Used only when the pricing API is
    * unreachable, so every item is a FALLBACK_ESTIMATE. No exchange rate is invented: a
    * non-USD request returns USD figures with the conversion marked UNAVAILABLE.
    */

@@ -1,5 +1,5 @@
 /**
- * CloudCraft — AWS Pricing Provider
+ * CloudBuilder — AWS Pricing Provider
  *
  * Integrates with AWS's official Price List Query API
  * (https://docs.aws.amazon.com/awspricelist/latest/) via @aws-sdk/client-pricing

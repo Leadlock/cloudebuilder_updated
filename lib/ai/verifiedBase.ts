@@ -1,7 +1,7 @@
 /**
  * Verified starting designs.
  *
- * CloudCraft's knowledge base holds a handful of complete designs that pass every deploy-readiness gate (three-tier on EC2, ECS,
+ * CloudBuilder's knowledge base holds a handful of complete designs that pass every deploy-readiness gate (three-tier on EC2, ECS,
  * serverless, static site, the Azure equivalents, multi-cloud…). When the model cannot produce a design of its own that passes, the
  * closest of these is the dependable answer: either as the starting point the model is asked to change as little as possible, or,
  * as a last resort, as the design itself. Either way it is checked here with the same gates before it is used.
@@ -44,5 +44,5 @@ export async function closestVerifiedDesign(prompt: string, fallbackProvider: 'a
 
 /** The request for the "change this verified design as little as possible" pass. */
 export function adjustPrompt(request: string, base: VerifiedBase): string {
-  return `${request}\n\nStart from this verified design (${base.title}). It already passes every CloudCraft check. Return the COMPLETE design as one JSON object, changing only what the request needs (names, region, sizes, database engine, extra or removed services). Keep everything else exactly as it is: the ids, parents, availability zones, security groups and connections. Every resource you add must be connected and placed like its neighbours.\n\nVerified design:\n${JSON.stringify(base.spec)}`;
+  return `${request}\n\nStart from this verified design (${base.title}). It already passes every CloudBuilder check. Return the COMPLETE design as one JSON object, changing only what the request needs (names, region, sizes, database engine, extra or removed services). Keep everything else exactly as it is: the ids, parents, availability zones, security groups and connections. Every resource you add must be connected and placed like its neighbours.\n\nVerified design:\n${JSON.stringify(base.spec)}`;
 }

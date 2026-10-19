@@ -1,6 +1,6 @@
 'use client';
 /**
- * Cloud Accounts — the one place to connect, check and remove the AWS and Azure accounts CloudCraft works with.
+ * Cloud Accounts — the one place to connect, check and remove the AWS and Azure accounts CloudBuilder works with.
  *
  *   AWS:   an IAM role (recommended; discovery and Terraform) or a read-only access key (discovery only)
  *   Azure: a service principal
@@ -76,7 +76,7 @@ function AccountRow({ account, checking, isLight, onRecheck, onEdit, onDelete, o
           </p>
           <p className={clsx("flex items-center gap-1 text-[11px]", isLight ? "text-slate-600" : "text-gray-400")}>
             <ShieldCheck className={clsx("w-3 h-3", isLight ? "text-slate-500" : "text-gray-400")} />
-            {expired ? 'Credentials were erased from CloudCraft' : terraform ? 'Discovery and Terraform' : 'Discovery only — reconnect with an access key and an IAM role to run Terraform'}
+            {expired ? 'Credentials were erased from CloudBuilder' : terraform ? 'Discovery and Terraform' : 'Discovery only — reconnect with an access key and an IAM role to run Terraform'}
           </p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -98,13 +98,13 @@ function AccountRow({ account, checking, isLight, onRecheck, onEdit, onDelete, o
             <RefreshCw className={clsx('w-3.5 h-3.5', checking && 'animate-spin')} />{checking ? 'Checking…' : 'Re-check'}
           </button>
           {account.status !== 'expired' && (
-            <button type="button" onClick={() => setShowKeepTime((v) => !v)} aria-expanded={showKeepTime} title="How long CloudCraft keeps the key" aria-label={`Key time for account ${account.name}`}
+            <button type="button" onClick={() => setShowKeepTime((v) => !v)} aria-expanded={showKeepTime} title="How long CloudBuilder keeps the key" aria-label={`Key time for account ${account.name}`}
               className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs text-gray-400 hover:text-amber-300 hover:bg-amber-950/30 transition-colors">
               <Clock className="w-3.5 h-3.5" />Key time
             </button>
           )}
           {account.provider === 'aws' && (
-            <button type="button" onClick={() => setShowPasswords((v) => !v)} aria-expanded={showPasswords} title="Passwords CloudCraft generated for deployments" aria-label={`Deployment passwords for account ${account.name}`}
+            <button type="button" onClick={() => setShowPasswords((v) => !v)} aria-expanded={showPasswords} title="Passwords CloudBuilder generated for deployments" aria-label={`Deployment passwords for account ${account.name}`}
               className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs text-gray-400 hover:text-amber-300 hover:bg-amber-950/30 transition-colors">
               <KeyRound className="w-3.5 h-3.5" />Passwords
             </button>
@@ -133,8 +133,8 @@ function AccountRow({ account, checking, isLight, onRecheck, onEdit, onDelete, o
       {expired && (
         <p className="mt-2.5 text-xs text-amber-300 leading-relaxed" data-testid="account-expired">
           {timeText === 'expired'
-            ? 'The time limit passed, so CloudCraft deleted the key. Click Edit and enter a new key to use it again.'
-            : 'CloudCraft deleted the key after your last successful deployment, as you asked. Click Edit and enter a key to deploy again.'}
+            ? 'The time limit passed, so CloudBuilder deleted the key. Click Edit and enter a new key to use it again.'
+            : 'CloudBuilder deleted the key after your last successful deployment, as you asked. Click Edit and enter a key to deploy again.'}
         </p>
       )}
       {showKeepTime && account.status !== 'expired' && (
@@ -148,7 +148,7 @@ function AccountRow({ account, checking, isLight, onRecheck, onEdit, onDelete, o
         </div>
       )}
       {account.status === 'pending' && <p className={clsx("mt-2.5 text-xs", isLight ? "text-slate-500" : "text-gray-500")}>Not checked yet. Click Re-check.</p>}
-      {account.status === 'active' && <p className={clsx("mt-2.5 flex items-center gap-1 text-xs font-medium", isLight ? "text-emerald-700" : "text-emerald-400")}><CheckCircle2 className="w-3.5 h-3.5" /> CloudCraft can read this account.</p>}
+      {account.status === 'active' && <p className={clsx("mt-2.5 flex items-center gap-1 text-xs font-medium", isLight ? "text-emerald-700" : "text-emerald-400")}><CheckCircle2 className="w-3.5 h-3.5" /> CloudBuilder can read this account.</p>}
     </div>
   );
 }
@@ -215,7 +215,7 @@ export default function CloudAccountsPanel() {
             </div>
             <div>
               <h2 className={clsx("font-bold text-lg", isLight ? "text-slate-900" : "text-white")}>Cloud Accounts</h2>
-              <p className={clsx("text-xs mt-0.5", isLight ? "text-slate-500" : "text-gray-400")}>Connect the AWS and Azure accounts CloudCraft reads from and deploys to.</p>
+              <p className={clsx("text-xs mt-0.5", isLight ? "text-slate-500" : "text-gray-400")}>Connect the AWS and Azure accounts CloudBuilder reads from and deploys to.</p>
             </div>
           </div>
           {!showForm && (

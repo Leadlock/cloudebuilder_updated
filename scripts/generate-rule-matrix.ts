@@ -68,7 +68,7 @@ for (const r of ALL_RULES) {
   rows.push(`| ${r.id} | ${r.provider.toUpperCase()} | ${cell((r.resourceTypes ?? []).join(', ') || (r.scope === 'account' ? 'Account' : 'Architecture'))} | ${cell(framework)} | ${cell(source)} | ${cell(r.title)} | ${cell(required)} | ${r.severity} | ${cell(r.remediation.recommendation)} | ${af} | ${explicit ? 'Rule-specific' : 'Registry only'} | ${refVerification} | ${status} |`);
 }
 
-const HEADER = `# CloudCraft Assessment Rule Matrix
+const HEADER = `# CloudBuilder Assessment Rule Matrix
 
 Generated from the rule registry (\`lib/engines/assessment/rules\`) for ruleset **${RULESET_VERSION}** by
 \`npm run docs:rule-matrix\`. The generator also validates every rule (reference keys, resource types, evidence,
@@ -77,7 +77,7 @@ recommendation, and a classification for any rule that cannot be evaluated) and 
 Totals: ${ALL_RULES.length} rules (${ALL_RULES.filter((r) => r.provider === 'aws').length} AWS, ${ALL_RULES.filter((r) => r.provider === 'azure').length} Azure). ${Object.entries(counts).map(([k, v]) => `${k}: ${v}`).join('; ')}.
 
 **Columns**
-- **RESOURCE**: CloudCraft resource types the rule evaluates, or architecture/account scope.
+- **RESOURCE**: CloudBuilder resource types the rule evaluates, or architecture/account scope.
 - **FRAMEWORK**: control references. FSBP = AWS Security Hub Foundational Security Best Practices;
   MCSB = Microsoft cloud security benchmark; Azure Policy = built-in definition (GUID prefix); WA = Well-Architected pillar.
 - **SOURCE**: the publication the reference comes from.

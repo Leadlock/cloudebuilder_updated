@@ -60,7 +60,7 @@ export function AutoFixPreviewModal({ plan, onApply, onCancel, busy }: { plan: A
             I have reviewed this change and its impact on connectivity, cost and deployment.
           </label>
         )}
-        <p className={`${isLight ? 'text-slate-500' : 'text-gray-500'} text-[11px]`}>After applying, CloudCraft re-validates the architecture, re-runs this rule, re-assesses all rules for regressions and regenerates Terraform. The change is kept only if every check passes; otherwise the architecture is left unchanged and the fix is reported as failed.</p>
+        <p className={`${isLight ? 'text-slate-500' : 'text-gray-500'} text-[11px]`}>After applying, CloudBuilder re-validates the architecture, re-runs this rule, re-assesses all rules for regressions and regenerates Terraform. The change is kept only if every check passes; otherwise the architecture is left unchanged and the fix is reported as failed.</p>
         <div className="flex justify-end gap-2">
           <button onClick={onCancel} className={`px-4 py-2 rounded-lg text-xs transition-colors ${
             isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200' : 'bg-gray-800 hover:bg-gray-700 text-gray-200'

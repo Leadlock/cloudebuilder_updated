@@ -6,7 +6,7 @@
  *
  * Honesty rules:
  *  - evidence is dated, and is only used for seven days: an old reading says "check again", it does not keep passing;
- *  - a control the account refused to let CloudCraft read is NOT EVALUATED with the reason, never a pass;
+ *  - a control the account refused to let CloudBuilder read is NOT EVALUATED with the reason, never a pass;
  *  - nothing is assumed for a control that was not read.
  */
 export type AccountEvidenceStatus = 'PASS' | 'WARNING' | 'FAIL' | 'UNAVAILABLE';

@@ -1,5 +1,5 @@
 /**
- * The read-only AWS permissions CloudCraft's discovery uses, and the IAM policy built from them. Plain data (no AWS SDK), so the
+ * The read-only AWS permissions CloudBuilder's discovery uses, and the IAM policy built from them. Plain data (no AWS SDK), so the
  * connect screen can show it. Derived from the calls lib/cloud/adapters/awsAdapter.ts makes: list/describe/get-settings only —
  * nothing here can read S3 objects, DynamoDB items, SQS messages or secrets, or change anything.
  *
@@ -32,7 +32,7 @@ export const AWS_DISCOVERY_ACTIONS: readonly string[] = [
   'iam:GetAccountSummary', 'config:DescribeConfigurationRecorders', 'config:DescribeConfigurationRecorderStatus',
 ];
 
-/** The inline policy to attach to the read-only IAM user (or role) CloudCraft connects with. */
+/** The inline policy to attach to the read-only IAM user (or role) CloudBuilder connects with. */
 export function buildDiscoveryPolicy(): string {
   return JSON.stringify({
     Version: '2012-10-17',

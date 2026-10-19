@@ -19,7 +19,7 @@ const q = (v: string) => JSON.stringify(v);
 export function azureContainerServiceBlocks(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string, subnetRef: string | null): string[] {
   const problems = nodeProblemsFor('azure_container_service', cfg);
   if (problems.length > 0) {
-    return [`# CloudCraft: the container service "${name}" was not generated. Fix: ${problems.join(' ').replace(/[\r\n]+/g, ' ')}`];
+    return [`# CloudBuilder: the container service "${name}" was not generated. Fix: ${problems.join(' ').replace(/[\r\n]+/g, ' ')}`];
   }
   const c = containerConfigFromAzureNode(cfg);
   const app = c.appName;

@@ -1,5 +1,5 @@
 /**
- * The Terraform resource types CloudCraft's generator can emit. A plan that would create or change anything else is
+ * The Terraform resource types CloudBuilder's generator can emit. A plan that would create or change anything else is
  * refused (see planGuardrails.ts): even if a crafted value somehow slipped extra HCL past the escaping in hclSafety.ts,
  * the resulting resource would not be on this list.
  *

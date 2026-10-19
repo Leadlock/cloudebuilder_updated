@@ -3,7 +3,7 @@
  *
  *   npx tsx --tsconfig tsconfig.json scripts/ai-dataset/build-dataset.ts [--out datasets/ai-architect]
  *
- * Every assistant message is a blueprint that was compiled by CloudCraft's own engine and
+ * Every assistant message is a blueprint that was compiled by CloudBuilder's own engine and
  * passed all deploy-readiness gates (assessment, hardening, validator, canonical validation,
  * connectivity, layout, network addressing, Terraform). Blueprints that fail are dropped and
  * reported, never written. Output is deterministic for a given seed.
@@ -89,7 +89,7 @@ const tokens = (s: string) => Math.ceil(s.length / 4); // rough: ~4 characters p
 
 type Mutation = { id: string; apply: (s: ArchitectureSpec) => ArchitectureSpec | null };
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
-/** First candidate that CloudCraft actually rejects — a mutation that leaves the design valid teaches nothing. */
+/** First candidate that CloudBuilder actually rejects — a mutation that leaves the design valid teaches nothing. */
 const firstBroken = (candidates: ArchitectureSpec[]): ArchitectureSpec | null => candidates.find((c) => !evaluateSpec(c).ok) ?? null;
 const byType = (s: ArchitectureSpec, type: string) => s.resources.find((r) => r.type === type);
 /** The relational database of an Azure design, whichever engine it uses. */
@@ -112,7 +112,7 @@ const MUTATIONS: Mutation[] = [
   { id: 'overlapping-cidr', apply: (s) => { const c = clone(s); const subs = c.resources.filter((r) => r.type === 'aws_subnet'); if (subs.length < 2) return null; subs[1].config = { ...(subs[1].config ?? {}), cidrBlock: String(subs[0].config?.cidrBlock ?? '10.0.0.0/24') }; return c; } },
   { id: 'dangling-connection', apply: (s) => { const c = clone(s); if (!c.connections.length) return null; c.connections.push({ from: c.connections[0].from, to: 'does-not-exist' }); return c; } },
 
-  // Mistakes an untuned model was observed making against CloudCraft's rules (see the evaluation in README).
+  // Mistakes an untuned model was observed making against CloudBuilder's rules (see the evaluation in README).
   // snake_case setting names: the real names are camelCase, e.g. cidr_block instead of cidrBlock.
   { id: 'snake-case-setting', apply: (s) => {
     const c = clone(s);

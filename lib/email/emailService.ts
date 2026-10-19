@@ -1,5 +1,5 @@
 /**
- * CloudCraft Outbound Email Service (AWS SES & SMTP)
+ * CloudBuilder Outbound Email Service (AWS SES & SMTP)
  * 
  * Delivers transactional emails including Team Invitations using AWS SES
  * via SMTP (Nodemailer) or AWS SES SDK.
@@ -49,12 +49,12 @@ export class EmailService {
    * Send a team invitation email to a new or existing teammate.
    */
   static async sendTeamInvite(params: SendInviteEmailParams): Promise<{ sent: boolean; messageId?: string; error?: string }> {
-    const fromAddress = process.env.EMAIL_FROM || 'CloudCraft <no-reply@cloudcraft.local>';
+    const fromAddress = process.env.EMAIL_FROM || 'CloudBuilder <no-reply@cloudcraft.local>';
     const appUrl = process.env.APP_URL || 'http://localhost:3000';
     const inviter = params.inviterName || 'A team administrator';
     const days = params.expiresInDays || 7;
 
-    const subject = `You've been invited to join ${params.orgName} on CloudCraft`;
+    const subject = `You've been invited to join ${params.orgName} on CloudBuilder`;
 
     const html = `
 <!DOCTYPE html>
@@ -85,7 +85,7 @@ export class EmailService {
 <body>
   <div class="container">
     <div class="header">
-      <div class="logo-badge">⚡ CloudCraft</div>
+      <div class="logo-badge">⚡ CloudBuilder</div>
       <h1 class="title">Join ${params.orgName}</h1>
     </div>
     <div class="content">
@@ -117,7 +117,7 @@ export class EmailService {
       </p>
     </div>
     <div class="footer">
-      This invitation was sent by CloudCraft on behalf of ${params.orgName}. If you did not expect this invitation, you can safely ignore this email.
+      This invitation was sent by CloudBuilder on behalf of ${params.orgName}. If you did not expect this invitation, you can safely ignore this email.
     </div>
   </div>
 </body>
@@ -125,7 +125,7 @@ export class EmailService {
     `.trim();
 
     const text = `
-You've been invited to join ${params.orgName} on CloudCraft!
+You've been invited to join ${params.orgName} on CloudBuilder!
 
 ${inviter} has invited you to join ${params.orgName} as a ${params.role}.
 

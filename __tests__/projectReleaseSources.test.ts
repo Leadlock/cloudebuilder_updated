@@ -48,7 +48,7 @@ describe('the archive a build is given', () => {
     try { expect(list).toEqual(expect.arrayContaining(['Dockerfile', 'main.py'])); } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
-  test('with uploaded code it is that code, built with CloudCraft\'s own Dockerfile, .dockerignore and nginx.conf, never the ones in the zip', () => {
+  test('with uploaded code it is that code, built with CloudBuilder\'s own Dockerfile, .dockerignore and nginx.conf, never the ones in the zip', () => {
     const gen = buildAzureVmBundle(project());
     const bundle = buildAzureVmBundle(project(), own('api'));
     const { dir, list } = untar(sourceArchive(bundle, 'api'));

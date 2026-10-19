@@ -119,7 +119,7 @@ export async function resolveArchitecture(
         orgId,
         project: {
           id: projectId,
-          name: projectId === 'draft' ? 'Active Canvas Architecture' : 'CloudCraft Project',
+          name: projectId === 'draft' ? 'Active Canvas Architecture' : 'CloudBuilder Project',
           description: 'Active deployment project',
           provider: 'aws',
           region: 'us-east-1',

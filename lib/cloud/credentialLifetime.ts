@@ -1,9 +1,9 @@
 /**
- * How long CloudCraft may keep and use a cloud credential.
+ * How long CloudBuilder may keep and use a cloud credential.
  *
  * A stored key is a standing risk: if it leaks, it works until someone notices and deletes it. So a key can be given a lifetime
  * ("keep it for 8 hours"), or be temporary by nature (AWS temporary credentials expire on their own), or be forgotten as soon as a
- * deployment has succeeded. When the time is up CloudCraft refuses to use the credential and erases the secret from its database,
+ * deployment has succeeded. When the time is up CloudBuilder refuses to use the credential and erases the secret from its database,
  * leaving the account listed as expired so the person can see what happened and reconnect.
  *
  * The deadline lives inside the encrypted credentials (that is what is enforced) and is mirrored, as plain non-secret facts, in the
@@ -93,7 +93,7 @@ export function applyLifetimeChange(credentials: Record<string, unknown>, change
     return { ok: true, credentials: next };
   }
   if (typeof credentials['sessionToken'] === 'string') {
-    return { ok: false, message: 'These are temporary AWS credentials: AWS stops accepting them at its own deadline, so CloudCraft cannot extend them. Connect again with new temporary credentials.' };
+    return { ok: false, message: 'These are temporary AWS credentials: AWS stops accepting them at its own deadline, so CloudBuilder cannot extend them. Connect again with new temporary credentials.' };
   }
   const hours = change.hours;
   if (hours === null) { delete next['expiresAt']; return { ok: true, credentials: next }; }
@@ -111,10 +111,10 @@ export class CredentialsExpiredError extends Error {
   constructor(readonly reason: WipeReason, at?: string) {
     super(
       reason === 'forgotten'
-        ? 'CloudCraft deleted these credentials after your last successful deployment, as you asked. Connect the account again to deploy.'
+        ? 'CloudBuilder deleted these credentials after your last successful deployment, as you asked. Connect the account again to deploy.'
         : reason === 'removed'
-        ? 'These credentials were deleted from CloudCraft on request. Connect the account again with a key to use it.'
-        : `These credentials expired${at ? ` on ${at.replace('T', ' ').slice(0, 16)} UTC` : ''}, so CloudCraft deleted them. Connect the account again with a new key.`,
+        ? 'These credentials were deleted from CloudBuilder on request. Connect the account again with a key to use it.'
+        : `These credentials expired${at ? ` on ${at.replace('T', ' ').slice(0, 16)} UTC` : ''}, so CloudBuilder deleted them. Connect the account again with a new key.`,
     );
     this.name = 'CredentialsExpiredError';
   }

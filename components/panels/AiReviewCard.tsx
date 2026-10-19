@@ -84,7 +84,7 @@ export default function AiReviewCard({ nodes, edges, mode = 'general', onReview 
         <div className="flex items-center gap-2">
           <Sparkles className={clsx('w-4 h-4', isLight ? 'text-fuchsia-600' : 'text-fuchsia-400')} />
           <h3 className={clsx('font-semibold text-sm', isLight ? 'text-slate-900' : 'text-white')}>{copy.title}</h3>
-          <span className={clsx('text-[10px] px-2 py-0.5 rounded-full border', isLight ? 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200' : 'bg-fuchsia-900/30 text-fuchsia-300 border-fuchsia-800/50')}>grounded in CloudCraft&apos;s analysis</span>
+          <span className={clsx('text-[10px] px-2 py-0.5 rounded-full border', isLight ? 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200' : 'bg-fuchsia-900/30 text-fuchsia-300 border-fuchsia-800/50')}>grounded in CloudBuilder&apos;s analysis</span>
         </div>
         <button
           onClick={() => run(false, Boolean(review))}   // "Review again" asks the model afresh; the first review may come from the cache
@@ -134,7 +134,7 @@ export default function AiReviewCard({ nodes, edges, mode = 'general', onReview 
           {'suggestions' in review && review.suggestions.length > 0 && (
             <div className={clsx('border border-dashed rounded-lg p-3', isLight ? 'border-purple-300 bg-purple-50/50' : 'border-gray-600')} data-testid="ai-suggestions">
               <p className={clsx('flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide mb-1', isLight ? 'text-purple-800' : 'text-gray-400')}>
-                <Lightbulb className="w-3 h-3" /> AI suggestions — not verified by CloudCraft&apos;s analysis
+                <Lightbulb className="w-3 h-3" /> AI suggestions — not verified by CloudBuilder&apos;s analysis
               </p>
               <ul className={clsx('list-disc list-inside text-xs space-y-0.5', isLight ? 'text-slate-600' : 'text-gray-400')}>{review.suggestions.map((s) => <li key={s}>{s}</li>)}</ul>
             </div>
@@ -142,7 +142,7 @@ export default function AiReviewCard({ nodes, edges, mode = 'general', onReview 
 
           <p className={clsx('flex items-center gap-1.5 text-[10px]', isLight ? 'text-slate-500' : 'text-gray-500')}>
             <BookOpen className="w-3 h-3 shrink-0" />
-            Scores and findings come from CloudCraft&apos;s analysis engine; {copy.footer}
+            Scores and findings come from CloudBuilder&apos;s analysis engine; {copy.footer}
           </p>
         </div>
       )}

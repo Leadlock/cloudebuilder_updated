@@ -1252,7 +1252,7 @@ export class AzureDiscoveryAdapter implements InfrastructureDiscoveryProvider {
           sku: vmss.sku?.name,
           capacity: vmss.sku?.capacity,
           osType: osDisk?.osType,
-          // CloudCraft's osDiskEncryption models "encryption at host", which the VMSS
+          // CloudBuilder's osDiskEncryption models "encryption at host", which the VMSS
           // profile reports directly. Left undefined (→ INSUFFICIENT_DATA) when absent,
           // rather than assuming a secure default.
           osDiskEncryption: profile?.securityProfile?.encryptionAtHost ?? undefined,

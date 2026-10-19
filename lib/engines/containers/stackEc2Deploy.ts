@@ -80,11 +80,11 @@ export function estimateStackEc2Cost(s: StackDeploySpec): DeployCost {
 
 // ─── Terraform ───────────────────────────────────────────────────────────────
 
-/** Builds images inside the AWS account (CodeBuild), for a deployment CloudCraft runs: no Docker is needed anywhere. Not part of the files a person downloads. */
+/** Builds images inside the AWS account (CodeBuild), for a deployment CloudBuilder runs: no Docker is needed anywhere. Not part of the files a person downloads. */
 export function codeBuildTf(s: { built: string[] }): string {
   if (s.built.length === 0) return '';
   return `
-# ── Builds inside this account (CodeBuild): CloudCraft puts a service's source here and starts a build that pushes to its repository ──
+# ── Builds inside this account (CodeBuild): CloudBuilder puts a service's source here and starts a build that pushes to its repository ──
 
 resource "aws_s3_bucket" "source" {
   bucket        = local.source_bucket
@@ -342,7 +342,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "release" {
 resource "aws_s3_object" "compose" {
   bucket                 = aws_s3_bucket.release.id
   key                    = "compose.yml"
-  content                = file("\${path.module}/compose.deploy.yml") # not "source": CloudCraft refuses any generated Terraform with a source = line
+  content                = file("\${path.module}/compose.deploy.yml") # not "source": CloudBuilder refuses any generated Terraform with a source = line
   server_side_encryption = "AES256"
 }
 

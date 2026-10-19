@@ -187,7 +187,7 @@ export class ApiTerraformExecutionService {
 
   /**
    * What the connected AWS role needs to deploy the saved architecture: the services, and a least-privilege policy to paste on the role.
-   * With check: true CloudCraft also asks AWS (read-only) whether the role can already create in those services.
+   * With check: true CloudBuilder also asks AWS (read-only) whether the role can already create in those services.
    */
   static async getRequiredPermissions(
     projectId: string,
@@ -205,7 +205,7 @@ export class ApiTerraformExecutionService {
     return data.data;
   }
 
-  /** Creates the remote state storage in the user's own account (idempotent). Empty bucket name = CloudCraft picks a unique one. */
+  /** Creates the remote state storage in the user's own account (idempotent). Empty bucket name = CloudBuilder picks a unique one. */
   static async createStateBackend(
     projectId: string,
     cloudAccountId: string,
@@ -313,7 +313,7 @@ export class ApiTerraformExecutionService {
     return data.data;
   }
 
-  /** "Check lock": who holds the state lock, since when, and whether CloudCraft is willing to release it. Changes nothing. */
+  /** "Check lock": who holds the state lock, since when, and whether CloudBuilder is willing to release it. Changes nothing. */
   static async inspectLock(projectId: string, cloudAccountId: string, stateBackend: TerraformStateBackendConfig, user?: { id: string; role?: string }): Promise<TerraformLockInspection> {
     return this.lockCall(projectId, { action: 'inspect', cloudAccountId, stateBackend }, user);
   }

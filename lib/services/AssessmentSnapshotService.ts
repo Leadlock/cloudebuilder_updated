@@ -2,7 +2,7 @@
  * AssessmentSnapshotService (server only).
  *
  * An assessment snapshot binds a set of results to the exact architecture they
- * were computed from: architecture revision, CloudCraft graph hash, a SHA-256
+ * were computed from: architecture revision, CloudBuilder graph hash, a SHA-256
  * of the sanitized graph content, the ruleset version and timestamp. Snapshots
  * are persisted in the existing SecurityScan table (findingsJson holds the
  * versioned envelope) and are immutable, so a report regenerated later from

@@ -3,7 +3,7 @@
  *
  * Accepted: a public image, named like Docker does (nginx:1.27, ghcr.io/you/app:1.0, quay.io/org/tool@sha256:...). Every deployment target pulls
  * it as it is. Not accepted: images in the private registries of AWS (ECR) and Azure (ACR). Pulling those needs the target to be given access
- * to somebody else's registry, which is a permission decision CloudCraft will not make for you silently; build from source instead (the
+ * to somebody else's registry, which is a permission decision CloudBuilder will not make for you silently; build from source instead (the
  * deployment then creates a registry of its own and gives the target exactly the access it needs) or make the image public.
  */
 

@@ -4,7 +4,7 @@
  * These are the mistakes a language model keeps making and that have exactly one sensible answer, so asking it again is slower and
  * less reliable than doing it here:
  *
- *  1. an internet-facing load balancer with no certificate setting gets the standard placeholder certificate, which CloudCraft
+ *  1. an internet-facing load balancer with no certificate setting gets the standard placeholder certificate, which CloudBuilder
  *     already reports as a value the person must supply before deploying (it never invents a real certificate);
  *  2. an internet-facing load balancer with no web application firewall gets one, attached to it;
  *  3. subnets that share an address range (the model leaves it out, so every subnet gets the catalog default) get their own /24
@@ -492,8 +492,8 @@ export function repairSpecInput(input: unknown): { value: unknown; report: SpecR
 export function describeSpecRepair(report: SpecRepairReport): string[] {
   const out: string[] = [];
   if (report.certificates > 0) out.push(`The load balancer had no certificate setting, so a placeholder was added: replace it with your own ACM certificate before deploying.`);
-  if (report.waf > 0) out.push(`CloudCraft added a web application firewall in front of the internet-facing load balancer.`);
-  if (report.secured > 0) out.push(`${report.secured} database or cache service(s) were left with insecure defaults, so CloudCraft made them private-only with auditing and TLS 1.2, as the verified patterns do.`);
+  if (report.waf > 0) out.push(`CloudBuilder added a web application firewall in front of the internet-facing load balancer.`);
+  if (report.secured > 0) out.push(`${report.secured} database or cache service(s) were left with insecure defaults, so CloudBuilder made them private-only with auditing and TLS 1.2, as the verified patterns do.`);
   if (report.firewalls > 0) out.push(`${report.firewalls} change(s) were made around the Azure Firewall: lines from it to workloads were removed, a network security group was kept off its subnet, and a route table was added to send the workload subnets' traffic through it.`);
   if (report.reversed > 0) out.push(`${report.reversed} connection(s) ran from a monitor or registry to the application, so they were turned around (the application sends telemetry and pulls images).`);
   if (report.privateEndpoints > 0) out.push(`${report.privateEndpoints} service(s) had their public endpoint switched off, so a Private Endpoint was added for each. Without one the application could not reach them.`);
@@ -505,6 +505,6 @@ export function describeSpecRepair(report: SpecRepairReport): string[] {
   if (report.groups > 0) out.push(`${report.groups} security group(s) were not attached to anything, so each was attached to the matching subnet.`);
   if (report.addressing > 0) out.push(`Subnets shared one address range, so ${report.addressing} of them were given their own.`);
   if (report.gateway > 0) out.push('The design used an internet gateway it never declared, so one was added.');
-  if (report.connections > 0) out.push(`CloudCraft connected ${report.connections} part(s) of the design that the AI had left disconnected.`);
+  if (report.connections > 0) out.push(`CloudBuilder connected ${report.connections} part(s) of the design that the AI had left disconnected.`);
   return out;
 }

@@ -127,7 +127,7 @@ export default function EditAccountDialog({ account, onClose, onSaved }: { accou
                 <input type="password" value={aws.secretAccessKey} onChange={(e) => setAws((v) => ({ ...v, secretAccessKey: e.target.value }))} placeholder="••••••••" autoComplete="new-password" spellCheck={false} className={`${inputClass} font-mono`} />
               </Field>
               <Field label="Role ARN" isLight={isLight} hint={hint.roleArn ? undefined : account.identity?.authMethod === 'access-key'
-                ? 'No role yet: add one to let CloudCraft run Terraform and read on temporary credentials.'
+                ? 'No role yet: add one to let CloudBuilder run Terraform and read on temporary credentials.'
                 : Object.keys(hint).length === 0
                   ? 'The current role is not shown yet — click Re-check once and it appears here. Leave empty to keep it.'
                   : undefined}>

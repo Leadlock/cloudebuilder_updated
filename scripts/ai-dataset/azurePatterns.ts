@@ -1,6 +1,6 @@
 /**
  * Azure blueprints, following the Azure Well-Architected Framework as implemented by
- * CloudCraft's rules: workloads in private subnets behind Application Gateway WAF (or
+ * CloudBuilder's rules: workloads in private subnets behind Application Gateway WAF (or
  * Front Door), data services with public network access disabled, zone redundancy,
  * NSGs on every tier, TLS 1.2 everywhere.
  */

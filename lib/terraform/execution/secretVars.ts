@@ -12,7 +12,7 @@ import { randomBytes, randomInt } from 'crypto';
 
 const SECRET_NAMES = ['TF_VAR_db_password', 'TF_VAR_sql_admin_password', 'TF_VAR_admin_ssh_public_key', 'TF_VAR_windows_admin_password'] as const;
 
-/** The passwords CloudCraft can generate for a deployment itself (see deploymentSecrets.ts); the SSH public key cannot be generated. */
+/** The passwords CloudBuilder can generate for a deployment itself (see deploymentSecrets.ts); the SSH public key cannot be generated. */
 export const GENERATABLE_SECRETS = ['TF_VAR_db_password', 'TF_VAR_sql_admin_password', 'TF_VAR_windows_admin_password'] as const;
 
 /** One random password per name for the life of this server process (development only; production never gets here). */
@@ -41,7 +41,7 @@ export function terraformSecretVars(except: readonly string[] = []): Record<stri
     // The SSH public key is simply not provided in development: see the file comment.
   }
   if (missing.length > 0) {
-    throw new Error(`Refusing to run Terraform in production without ${missing.join(', ')}. Set them in the server environment; CloudCraft never falls back to a built-in password or key.`);
+    throw new Error(`Refusing to run Terraform in production without ${missing.join(', ')}. Set them in the server environment; CloudBuilder never falls back to a built-in password or key.`);
   }
   return out;
 }

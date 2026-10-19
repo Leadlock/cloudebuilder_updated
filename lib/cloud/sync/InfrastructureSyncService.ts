@@ -2,13 +2,13 @@
  * InfrastructureSyncService — Change Detection & Synchronization Model
  *
  * Implements:
- * - import(): Safe discovery and import of cloud infrastructure into CloudCraft canvas
+ * - import(): Safe discovery and import of cloud infrastructure into CloudBuilder canvas
  * - refresh(): Re-scans previously imported infrastructure from cloud APIs
  * - detectChanges(): Compares live cloud state with canvas architecture, detecting:
  *     - Drift / Modified: Functional configuration diverged in cloud
  *     - Deleted in Cloud: Resources removed out-of-band in cloud console
  *     - New in Cloud: New resources provisioned in cloud account
- *     - User Proposed: Resources designed by user in CloudCraft canvas
+ *     - User Proposed: Resources designed by user in CloudBuilder canvas
  *
  * Safety:
  * - READ-ONLY: Never writes or modifies customer infrastructure in the cloud.
@@ -27,11 +27,11 @@ import { computeConfigHash, sanitizeResourceId } from '../discovery/utils';
 // ─── Drift & Change Types ─────────────────────────────────────────────────────
 
 export type ResourceDriftStatus =
-  | 'unchanged'       // In sync between CloudCraft and live cloud
+  | 'unchanged'       // In sync between CloudBuilder and live cloud
   | 'modified'        // Configuration drift detected in cloud
   | 'deleted_in_cloud'// Resource no longer exists in live cloud
-  | 'new_in_cloud'    // Resource was added in cloud outside CloudCraft
-  | 'user_proposed';  // Resource added in CloudCraft by user (not yet deployed)
+  | 'new_in_cloud'    // Resource was added in cloud outside CloudBuilder
+  | 'user_proposed';  // Resource added in CloudBuilder by user (not yet deployed)
 
 export interface DriftItem {
   nodeId: string;
@@ -138,7 +138,7 @@ export class InfrastructureSyncService {
           label: node.label,
           provider: node.provider,
           status: 'user_proposed',
-          message: 'Proposed resource created in CloudCraft canvas (not yet in cloud)',
+          message: 'Proposed resource created in CloudBuilder canvas (not yet in cloud)',
         });
         continue;
       }

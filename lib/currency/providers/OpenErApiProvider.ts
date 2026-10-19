@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Open ExchangeRate API Provider
+ * CloudBuilder — Open ExchangeRate API Provider
  *
  * Sourced from open.er-api.com (reliable, real-time Forex exchange rates).
  * Completely server-side, no secret leakage to client.

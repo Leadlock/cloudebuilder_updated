@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Cloud Provider Pricing Service
+ * CloudBuilder — Cloud Provider Pricing Service
  *
  * Primary provider-independent pricing entry point.
  * Orchestrates AwsPricingProvider, AzurePricingProvider, and PricingCache.

@@ -1,5 +1,5 @@
 /**
- * CloudCraft Assessment Engine — shared domain types.
+ * CloudBuilder Assessment Engine — shared domain types.
  *
  * One technical rule → one evaluation per (rule, resource) → at most one
  * finding → many framework mappings (Well-Architected pillar, security
@@ -12,7 +12,7 @@
  */
 
 export const RULESET_VERSION = '2026.10.5';
-export const ENGINE_NAME = 'CloudCraft Assessment Engine';
+export const ENGINE_NAME = 'CloudBuilder Assessment Engine';
 
 export type AssessmentProvider = 'aws' | 'azure';
 
@@ -69,7 +69,7 @@ export type EvidenceBasis = 'CONFIGURATION' | 'RELATIONSHIP' | 'TOPOLOGY' | 'NOT
 
 /**
  * Provenance of the configuration an evaluation relied on (weakest field wins):
- *  - DESIGN_TIME: at least one value was authored in CloudCraft (a design or a planned
+ *  - DESIGN_TIME: at least one value was authored in CloudBuilder (a design or a planned
  *    change) rather than read from the cloud provider.
  *  - DISCOVERED_CONFIGURATION: every configuration value the rule used was returned by
  *    AWS/Azure discovery (field-level provenance in `_discovery`). Point-in-time: it
@@ -194,7 +194,7 @@ export interface RuleOutcome {
   resourceIds?: string[];
   /** Set when the evidence is not configuration (for example a reading taken from the cloud account); otherwise derived from the evidence. */
   provenance?: EvidenceProvenance;
-  /** What CloudCraft would need to evaluate the control (NOT_EVALUATED / INSUFFICIENT_DATA). */
+  /** What CloudBuilder would need to evaluate the control (NOT_EVALUATED / INSUFFICIENT_DATA). */
   requiredData?: string;
 }
 
@@ -252,7 +252,7 @@ export interface RuleDefinition {
  *  - CROSS_CHECKED_SECONDARY: identifier/title cross-checked against a maintained
  *    machine-readable mapping of the official standard; official page not reachable
  *    from the build environment.
- *  - NOT_VERIFIED_IN_BUILD: URL/identifier taken from existing CloudCraft metadata;
+ *  - NOT_VERIFIED_IN_BUILD: URL/identifier taken from existing CloudBuilder metadata;
  *    must be re-checked by a reviewer.
  */
 export type ReferenceVerification = 'VERIFIED_OFFICIAL_SOURCE' | 'CROSS_CHECKED_SECONDARY' | 'NOT_VERIFIED_IN_BUILD';
@@ -383,7 +383,7 @@ export type Soc1EvidenceType =
 
 /**
  * SOC 1 readiness for one IT general control area. Technical evidence is separated by
- * source. No area ever reaches a control conclusion in CloudCraft: architecture or cloud
+ * source. No area ever reaches a control conclusion in CloudBuilder: architecture or cloud
  * configuration alone cannot show that a control is suitably designed or operating
  * effectively.
  */
@@ -396,11 +396,11 @@ export interface Soc1AreaResult {
   evidenceTypes: Soc1EvidenceType[];
   /** All passing technical checks (architecture + discovered + live), for backwards compatibility. */
   technicalEvidence: string[];
-  /** Passing checks that relied on configuration authored in CloudCraft. */
+  /** Passing checks that relied on configuration authored in CloudBuilder. */
   architectureEvidence: string[];
   /** Passing checks that relied only on configuration returned by AWS/Azure (discovered or live-verified). */
   discoveredEvidence: string[];
-  /** Evidence supplied by the organization. CloudCraft does not yet accept evidence uploads, so this is empty. */
+  /** Evidence supplied by the organization. CloudBuilder does not yet accept evidence uploads, so this is empty. */
   userProvidedEvidence: string[];
   gaps: string[];
   relatedResourceLabels: string[];
@@ -408,7 +408,7 @@ export interface Soc1AreaResult {
   recommendedActions: string[];
   organizationalEvidenceRequired: string[];
   auditorAssessmentRequired: string;
-  /** Always NOT_CONCLUDED: CloudCraft does not conclude on SOC 1 controls. */
+  /** Always NOT_CONCLUDED: CloudBuilder does not conclude on SOC 1 controls. */
   conclusion: 'NOT_CONCLUDED';
   conclusionReason: string;
   limitations: string;

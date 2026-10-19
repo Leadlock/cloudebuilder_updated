@@ -3,11 +3,11 @@
  * NOT EVALUATED when that evidence is not available to the assessment.
  *
  *  - DESIGN_TIME_SUPPORTED: the architecture model can hold the evidence (evaluated when modelled).
- *  - DISCOVERY_SUPPORTED: a resource-level provider API returns it; CloudCraft discovery does
+ *  - DISCOVERY_SUPPORTED: a resource-level provider API returns it; CloudBuilder discovery does
  *    not collect it yet.
  *  - ACCOUNT_API_REQUIRED: account / subscription / tenant APIs (not resource configuration).
  *  - ORGANIZATIONAL_EVIDENCE_REQUIRED: depends on processes and people, not configuration.
- *  - NOT_SUPPORTED: CloudCraft cannot evaluate this control and should not claim to.
+ *  - NOT_SUPPORTED: CloudBuilder cannot evaluate this control and should not claim to.
  *
  * Every rule that can return NOT_EVALUATED must have an entry (enforced by tests).
  */
@@ -59,12 +59,12 @@ export const EVIDENCE_AVAILABILITY: Record<string, EvidenceAvailability> = {
   },
   'AZ-VM-010': {
     classes: ['DISCOVERY_SUPPORTED'],
-    explanation: 'Backup protection is recorded in a Recovery Services vault, not on the VM; CloudCraft does not model vaults and discovery does not query protected items.',
+    explanation: 'Backup protection is recorded in a Recovery Services vault, not on the VM; CloudBuilder does not model vaults and discovery does not query protected items.',
     evidenceSource: 'Recovery Services protected items (Microsoft.RecoveryServices/vaults/backupProtectedItems).',
   },
   'AZ-ARCH-020': {
     classes: ['DISCOVERY_SUPPORTED'],
-    explanation: 'Diagnostic settings and alert rules are separate Azure Monitor resources that CloudCraft does not model or discover.',
+    explanation: 'Diagnostic settings and alert rules are separate Azure Monitor resources that CloudBuilder does not model or discover.',
     evidenceSource: 'Microsoft.Insights/diagnosticSettings per resource; Microsoft.Insights/metricAlerts and scheduledQueryRules.',
   },
   'AZ-ACCT-001': {

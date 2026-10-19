@@ -353,7 +353,7 @@ export default function AIGenerator() {
                   Describe Your Application or Workload
                 </label>
                 <span className={clsx('text-[11px]', isLight ? 'text-slate-400' : 'text-slate-500')}>
-                  CloudCraft will identify gaps & ask clarifying questions
+                  CloudBuilder will identify gaps & ask clarifying questions
                 </span>
               </div>
               

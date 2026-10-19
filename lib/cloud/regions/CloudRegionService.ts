@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Authoritative Cloud Regions & Unified Region Service
+ * CloudBuilder — Authoritative Cloud Regions & Unified Region Service
  *
  * Sourced from official AWS partition metadata and Microsoft Azure ARM region catalog.
  * Replaces hardcoded mock arrays with comprehensive, authoritative commercial region data.

@@ -698,7 +698,7 @@ export default function InfraCanvas() {
 
     setShowSaveProjectModal(false);
     setBannerMessage({
-      text: `Project "${name}" saved to your CloudCraft account!`,
+      text: `Project "${name}" saved to your CloudBuilder account!`,
       type: 'success',
     });
     setTimeout(() => setBannerMessage(null), 3500);
@@ -954,7 +954,7 @@ export default function InfraCanvas() {
     dispatch({ type: 'UPDATE_CANVAS', nodes: laidOut.nodes, edges: laidOut.edges });
 
     const added = `AI added ${newNodes.length} resource${newNodes.length === 1 ? '' : 's'} to the architecture`;
-    // Something the user needs to know (a service CloudCraft can't model, values still to fill in) stays up longer.
+    // Something the user needs to know (a service CloudBuilder can't model, values still to fill in) stays up longer.
     setBannerMessage(notice
       ? { text: `${added}. Note: ${notice.split('\n').join(' ')}`, type: 'info' }
       : { text: `✓ ${added}`, type: 'success' });
@@ -2361,7 +2361,7 @@ export default function InfraCanvas() {
               )}
             </ul>
             <p className={clsx('text-xs mb-5', isLight ? 'text-slate-500' : 'text-slate-400')}>
-              CloudCraft never silently deletes resources. Do you want to continue?
+              CloudBuilder never silently deletes resources. Do you want to continue?
             </p>
             <div className="flex items-center justify-end gap-3">
               <button
@@ -2401,7 +2401,7 @@ export default function InfraCanvas() {
               </div>
               <div>
                 <h3 className={clsx('text-base font-bold', isLight ? 'text-slate-900' : 'text-white')}>Save as Project</h3>
-                <p className={clsx('text-xs', isLight ? 'text-slate-500' : 'text-slate-400')}>Save this visual architecture into your CloudCraft account</p>
+                <p className={clsx('text-xs', isLight ? 'text-slate-500' : 'text-slate-400')}>Save this visual architecture into your CloudBuilder account</p>
               </div>
             </div>
 

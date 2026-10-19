@@ -1,7 +1,7 @@
 /**
- * Which AWS identity is the CloudCraft server running as?
+ * Which AWS identity is the CloudBuilder server running as?
  *
- * CloudCraft reaches a customer's AWS account by assuming a role there. To call sts:AssumeRole at all, the server needs an AWS
+ * CloudBuilder reaches a customer's AWS account by assuming a role there. To call sts:AssumeRole at all, the server needs an AWS
  * identity of its own (an access key in the environment, a profile, or an instance/task role). When it has none, connecting an
  * account fails with a confusing error long after the user typed their role details. This asks AWS who the server is — the same
  * way the SDK will sign in — so the screen can say it up front, and show the identity the role has to trust.

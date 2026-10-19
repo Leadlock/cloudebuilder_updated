@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Hand-Built Reference Architectures
+ * CloudBuilder — Hand-Built Reference Architectures
  *
  * Unlike lib/templates/catalogData.ts (a parameterized factory that produces
  * many labeled variations of one shallow "ALB + compute + optional DB" shape),
@@ -11,7 +11,7 @@
  * Provenance: these patterns are informed by publicly documented AWS/Azure
  * architecture guidance (AWS Architecture Center, AWS Well-Architected
  * Framework whitepapers, Azure Architecture Center, Azure Well-Architected
- * Framework). They are CloudCraft-authored implementations inspired by that
+ * Framework). They are CloudBuilder-authored implementations inspired by that
  * guidance, not reproductions of a specific AWS/Microsoft-published diagram —
  * see each template's `sourceReferences` for what informed it. Do not present
  * these as official AWS/Microsoft-endorsed architectures.

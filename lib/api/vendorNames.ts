@@ -1,5 +1,5 @@
 /**
- * Customers are not told which services run behind CloudCraft (the sign-in directory, the email service, the AI and the price lookups).
+ * Customers are not told which services run behind CloudBuilder (the sign-in directory, the email service, the AI and the price lookups).
  * Text from those services can still end up in a response when a route passes it on, for example a failed sign-up or an email that could not be
  * sent. Such a route puts the text through hideVendorNames at that point. The real text stays in the server log, where the names help debugging.
  *

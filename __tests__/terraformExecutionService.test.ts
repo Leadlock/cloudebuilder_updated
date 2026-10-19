@@ -3,7 +3,7 @@
  * (lib/terraform/execution/TerraformExecutionService.ts).
  *
  * The real `terraform` CLI and filesystem are mocked — these tests verify
- * CloudCraft's own orchestration logic: gate enforcement (RBAC, review
+ * CloudBuilder's own orchestration logic: gate enforcement (RBAC, review
  * approval, hash tamper, destroy blocking), plan hash computation and
  * verification, and that a confirmed plan can only be applied once with an
  * exact hash match.

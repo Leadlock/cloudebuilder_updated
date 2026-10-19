@@ -1,9 +1,9 @@
 /**
- * Gets the Terraform CloudCraft runs, ready before the first deploy: `npm run terraform:install`. It does nothing when a Terraform is already
+ * Gets the Terraform CloudBuilder runs, ready before the first deploy: `npm run terraform:install`. It does nothing when a Terraform is already
  * found (see lib/terraform/execution/binary.ts for the order). The server does the same on its own the first time Terraform is needed, so this
  * is only for people who prefer to do it up front, or want to check that this machine can reach HashiCorp.
  *
- *   --managed   ignore any Terraform already installed and fetch the copy CloudCraft manages (used by CI to test the real download)
+ *   --managed   ignore any Terraform already installed and fetch the copy CloudBuilder manages (used by CI to test the real download)
  *
  * Prints the path and version of the Terraform that will be used. Exits 1, with the reason, when it cannot get one.
  */
@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   const bin = await ensureTerraform({ log: (l) => console.log(l) });
   const v = spawnSync(bin, ['version'], { encoding: 'utf8', timeout: 30_000 });
   if (v.status !== 0) throw new Error(`${bin} did not run: ${(v.stderr || v.stdout).trim().slice(0, 300)}`);
-  console.log(`${before ? 'Found' : 'Installed'} ${bin}\n${v.stdout.split('\n')[0]}  (CloudCraft pins ${TERRAFORM_VERSION})`);
+  console.log(`${before ? 'Found' : 'Installed'} ${bin}\n${v.stdout.split('\n')[0]}  (CloudBuilder pins ${TERRAFORM_VERSION})`);
   if (process.argv.includes('--managed') && !bin.includes(`${path.sep}${TERRAFORM_VERSION}${path.sep}`)) throw new Error(`expected the managed copy, got ${bin}`);
 }
 

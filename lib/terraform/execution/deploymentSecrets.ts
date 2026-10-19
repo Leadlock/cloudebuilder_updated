@@ -1,8 +1,8 @@
 /**
- * Passwords for what CloudCraft deploys (database and admin passwords), generated per cloud account instead of one shared value.
+ * Passwords for what CloudBuilder deploys (database and admin passwords), generated per cloud account instead of one shared value.
  *
  * Before: every deployment used TF_VAR_db_password from the server environment, or in development a fixed value written in this
- * repository. Now, unless the operator set the variable themselves (which always wins), CloudCraft generates a random password the
+ * repository. Now, unless the operator set the variable themselves (which always wins), CloudBuilder generates a random password the
  * first time an account is deployed to, stores it encrypted (bound to the account, like the credentials), and reuses it for every
  * later plan, apply and teardown so the database password does not change under a running system. An owner or admin can read it
  * back to connect to the database (see the deployment-secrets route).
@@ -49,7 +49,7 @@ export async function terraformSecretVarsFor(orgId: string, cloudAccountId: stri
       out[name] = (await store.get(orgId, cloudAccountId, name)) ?? await createOnce(store, orgId, cloudAccountId, name);
     } catch (err) {
       // Production never falls back to a value that is written down somewhere; development keeps working without the table.
-      if (production) throw new Error(`CloudCraft could not read or save the generated ${name.replace('TF_VAR_', '')}: ${err instanceof Error ? err.message : String(err)}. Run the database update (npm run db:update), or set ${name} in the server environment.`);
+      if (production) throw new Error(`CloudBuilder could not read or save the generated ${name.replace('TF_VAR_', '')}: ${err instanceof Error ? err.message : String(err)}. Run the database update (npm run db:update), or set ${name} in the server environment.`);
       return terraformSecretVars();
     }
   }
@@ -70,7 +70,7 @@ async function createOnce(store: DeploymentSecretStore, orgId: string, cloudAcco
   }
 }
 
-/** The passwords CloudCraft generated for an account, for an owner or admin to read back. Never includes operator-supplied values. */
+/** The passwords CloudBuilder generated for an account, for an owner or admin to read back. Never includes operator-supplied values. */
 export async function generatedSecretsFor(orgId: string, cloudAccountId: string, store: DeploymentSecretStore = databaseStore): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   for (const name of GENERATABLE_SECRETS) {

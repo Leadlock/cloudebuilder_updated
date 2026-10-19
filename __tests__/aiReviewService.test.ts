@@ -1,5 +1,5 @@
 /**
- * AI review: numbers and findings come from CloudCraft's engine, the model only explains them. The model is
+ * AI review: numbers and findings come from CloudBuilder's engine, the model only explains them. The model is
  * mocked; the assessment engine, deploy-readiness gates and knowledge base are the real ones.
  */
 const mockCreate = jest.fn();

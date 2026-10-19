@@ -3,7 +3,7 @@
  *
  * Terraform itself adds everything a target depends on (its VPC, subnet, security group...), so the plan lists exactly what would be created.
  * What it does not add is the parts that hang off the resource and exist only for it (an S3 bucket's public-access block, a database's subnet group,
- * an instance's security group rules). CloudCraft names those after the resource (`name`, `name_something`), so they are included here: a bucket
+ * an instance's security group rules). CloudBuilder names those after the resource (`name`, `name_something`), so they are included here: a bucket
  * deployed alone must not lose its protections.
  */
 import type { TerraformGenerationResult } from '@/lib/engines/terraform/TerraformGenerator';
@@ -46,7 +46,7 @@ export function selectTargets(generated: Pick<TerraformGenerationResult, 'files'
   for (const id of ids) {
     const address = generated.resourceMap[id];
     const label = address ? labelOf(address) : null;
-    if (!address) return { error: `"${labelOfNode(id)}" is not something CloudCraft creates, so there is nothing to deploy for it.` };
+    if (!address) return { error: `"${labelOfNode(id)}" is not something CloudBuilder creates, so there is nothing to deploy for it.` };
     if (!label) return { error: `"${labelOfNode(id)}" is an existing resource that was imported, not created here, so there is nothing to deploy for it.` };
     if (!SAFE_ADDRESS.test(address)) return { error: `"${labelOfNode(id)}" cannot be deployed on its own.` };
     addresses.add(address);

@@ -132,7 +132,7 @@ describe('a refused assume-role names the identity the server really is', () => 
     mockValidate.mockResolvedValue({ valid: false, permissionsOk: false, missingPermissions: [], error: 'User: [arn] is not authorized to perform: sts:AssumeRole on resource: [arn]' });
     mockSend.mockResolvedValue({ Account: '999900001111', Arn: 'arn:aws:iam::999900001111:user/cloudcraft-server' });
     const body = (await (await call()).json()).data as { fix: string };
-    expect(body.fix).toContain('The CloudCraft server is signed in as arn:aws:iam::999900001111:user/cloudcraft-server');
+    expect(body.fix).toContain('The CloudBuilder server is signed in as arn:aws:iam::999900001111:user/cloudcraft-server');
     expect(String(mockUpdate.mock.calls[0]![3])).toContain('arn:aws:iam::999900001111:user/cloudcraft-server');
   });
 

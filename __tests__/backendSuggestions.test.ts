@@ -4,7 +4,7 @@ import { AzureBackendSchema } from '@/lib/terraform/execution/backendSchema';
 const SUB = '40ba1da4-7522-41de-b5e5-cfa1098bb7b1';
 
 describe('suggestAzureBackend', () => {
-  it('gives names that Azure and CloudCraft accept, so "Create state storage for me" is usable at once', () => {
+  it('gives names that Azure and CloudBuilder accept, so "Create state storage for me" is usable at once', () => {
     const s = suggestAzureBackend(SUB);
     expect(AzureBackendSchema.safeParse({ provider: 'azure', ...s }).success).toBe(true);
     expect(s.storageAccountName).toMatch(/^[a-z0-9]{3,24}$/);

@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Architecture Auto-Fix Engine
+ * CloudBuilder — Architecture Auto-Fix Engine
  *
  * Provides deterministic, multi-pass architecture repair with strict safety guarantees:
  * - Validate -> Repair -> Revalidate lifecycle.

@@ -2,7 +2,7 @@
  * Reads four AWS account-level controls, read-only: CloudTrail, GuardDuty, root MFA and AWS Config.
  *
  * These are settings of the account and its Regions, not of anything in the architecture diagram, so the assessment could only ever
- * report them as NOT EVALUATED. With a connected AWS account CloudCraft can read them. Only Describe/List/Get calls are made.
+ * report them as NOT EVALUATED. With a connected AWS account CloudBuilder can read them. Only Describe/List/Get calls are made.
  *
  *  - Each control is read on its own: a failure in one never hides the others.
  *  - A refused or failed read is UNAVAILABLE with the reason (and the permission to add), never a pass and never a fail.

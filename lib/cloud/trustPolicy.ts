@@ -1,7 +1,7 @@
 /**
- * Helpers for setting up the IAM role CloudCraft assumes — pure functions, safe to use in the browser and on the server.
+ * Helpers for setting up the IAM role CloudBuilder assumes — pure functions, safe to use in the browser and on the server.
  *
- * The role's TRUST policy says who may assume it: it must name the AWS identity the CloudCraft server runs as, and require the
+ * The role's TRUST policy says who may assume it: it must name the AWS identity the CloudBuilder server runs as, and require the
  * External ID. The server's own identity needs a (small) permission to call sts:AssumeRole on that role. These build both, so
  * nobody has to write IAM JSON by hand.
  */

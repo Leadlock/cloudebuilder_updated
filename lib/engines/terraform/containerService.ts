@@ -16,7 +16,7 @@ const q = (v: string) => JSON.stringify(v);
 export function containerServiceBlocks(name: string, cfg: Record<string, unknown>, subnetRef: string | null, sgRef: string | null): string[] {
   const problems = nodeProblems(cfg);
   if (problems.length > 0) {
-    return [`# CloudCraft: the container service "${name}" was not generated. Fix: ${problems.join(' ').replace(/[\r\n]+/g, ' ')}`];
+    return [`# CloudBuilder: the container service "${name}" was not generated. Fix: ${problems.join(' ').replace(/[\r\n]+/g, ' ')}`];
   }
   const c = containerConfigFromNode(cfg);
   const app = c.appName;

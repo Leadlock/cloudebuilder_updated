@@ -64,7 +64,7 @@ export async function runAwsPreflight(args: { resources: DbArchitectureResource[
         `${dbs.length === 1 ? 'The database' : 'The databases'} ${labels} ask for ${engine} ${version}, which AWS no longer offers in ${region} (AWS retires old minor versions). `
         + `${shown.length > 0 ? `Versions available now include ${shown.join(', ')}. ` : ''}`
         + `Change the Engine Version in the database's properties to one of those, or enter only the major version (${majorOf(version)}) and AWS picks a current one. `
-        + 'CloudCraft stops here because AWS would only refuse it after the other resources had already been built.',
+        + 'CloudBuilder stops here because AWS would only refuse it after the other resources had already been built.',
       );
     } catch {
       // Could not ask (permission or network): say nothing rather than guess.

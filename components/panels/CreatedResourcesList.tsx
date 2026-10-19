@@ -18,7 +18,7 @@ export function createdListText(progress: RunProgressRecord): string {
   const line = (r: ProgressResource) => `${r.address}${r.id ? `  ${r.id}` : ''}`;
   const sure = createdResources(progress).map(line);
   const maybe = maybeCreatedResources(progress).map((r) => `${line(r)}  (was being created: check whether it exists)`);
-  return [`Created by CloudCraft (run ${progress.runId}):`, ...sure, ...(maybe.length ? ['', 'May exist:', ...maybe] : [])].join('\n');
+  return [`Created by CloudBuilder (run ${progress.runId}):`, ...sure, ...(maybe.length ? ['', 'May exist:', ...maybe] : [])].join('\n');
 }
 
 /**

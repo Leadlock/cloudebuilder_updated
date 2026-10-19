@@ -110,7 +110,7 @@ function generateDataset() {
 
   let count = 0;
   for (const ex of EXAMPLES) {
-    const systemPrompt = `You are an expert ${ex.provider.toUpperCase()} cloud architect. Given a user prompt, generate a JSON representation of a cloud architecture matching CloudCraft RDE schema.`;
+    const systemPrompt = `You are an expert ${ex.provider.toUpperCase()} cloud architect. Given a user prompt, generate a JSON representation of a cloud architecture matching CloudBuilder RDE schema.`;
 
     const entry = {
       messages: [

@@ -1,5 +1,5 @@
 /**
- * POST /api/projects/[id]/releases — plan the deployment of a whole project (Frontend, Backend, API, Database) to an Azure VM from inside CloudCraft.
+ * POST /api/projects/[id]/releases — plan the deployment of a whole project (Frontend, Backend, API, Database) to an Azure VM from inside CloudBuilder.
  * GET  /api/projects/[id]/releases?environment=... — the releases of this project's environment, newest first.
  *
  * Planning is read-only: the deployment files are generated HERE from the project's settings (the browser never supplies files), their Terraform is

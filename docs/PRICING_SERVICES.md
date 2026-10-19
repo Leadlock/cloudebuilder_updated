@@ -1,12 +1,12 @@
-# CloudCraft Cloud Pricing Services Documentation
+# CloudBuilder Cloud Pricing Services Documentation
 
-This document provides a comprehensive guide to CloudCraft's real-time cloud pricing architecture, integrating Microsoft's **Azure Retail Prices API** and Amazon Web Services' **AWS Price List Query API**, along with caching, multi-currency conversion, and application-wide price synchronization.
+This document provides a comprehensive guide to CloudBuilder's real-time cloud pricing architecture, integrating Microsoft's **Azure Retail Prices API** and Amazon Web Services' **AWS Price List Query API**, along with caching, multi-currency conversion, and application-wide price synchronization.
 
 ---
 
 ## 1. Architecture Overview
 
-CloudCraft uses a unified, multi-cloud pricing pipeline that ensures exact cost consistency across:
+CloudBuilder uses a unified, multi-cloud pricing pipeline that ensures exact cost consistency across:
 - **AI Architecture Generator** (AI Builder preview and generation results)
 - **Canvas Infrastructure Editor** (Canvas top bar, inspector, and Cost Estimation panel)
 - **Dashboard & Project Cards** (Individual project monthly cost and total monthly cloud portfolio cost)
@@ -15,7 +15,7 @@ CloudCraft uses a unified, multi-cloud pricing pipeline that ensures exact cost 
 
 ```mermaid
 flowchart TD
-    subgraph UI ["CloudCraft UI Layers"]
+    subgraph UI ["CloudBuilder UI Layers"]
         AI[AI Architecture Generator]
         Canvas[Canvas & Cost Panel]
         Dash[Dashboard & Overview]
@@ -132,12 +132,12 @@ GET https://prices.azure.com/api/retail/prices?$filter=serviceName eq 'Virtual M
 - **Official Documentation**: [AWS Price List Query API Reference](https://docs.aws.amazon.com/awspricelist/latest/user-guide/price-list-api.html)
 - **SDK**: `@aws-sdk/client-pricing` (`PricingClient`, `GetProductsCommand`)
 - **API Endpoints**: Served exclusively from two AWS regions worldwide:
-  - `us-east-1` (US East, N. Virginia) — default used by CloudCraft
+  - `us-east-1` (US East, N. Virginia) — default used by CloudBuilder
   - `ap-south-1` (Asia Pacific, Mumbai)
 - **Protocol**: AWS Signature Version 4 (SigV4) signed JSON-RPC requests.
 
 ### 3.2 Authentication & Credential Resolution
-Unlike Azure's retail prices, AWS requires signed requests with valid IAM credentials. CloudCraft resolves credentials in the following hierarchical order:
+Unlike Azure's retail prices, AWS requires signed requests with valid IAM credentials. CloudBuilder resolves credentials in the following hierarchical order:
 
 1. **Dedicated Service Credentials**:
    `AWS_PRICING_ACCESS_KEY_ID` and `AWS_PRICING_SECRET_ACCESS_KEY`
@@ -146,7 +146,7 @@ Unlike Azure's retail prices, AWS requires signed requests with valid IAM creden
 3. **Connected Customer Account Role**:
    If an organization has connected an AWS account via IAM Role, `ensureAwsPricingAccess(orgId)` assumes the role for 1 hour to query the Price List API with zero user friction.
 4. **Resilient Static Fallback**:
-   If credentials are not configured or the network times out, CloudCraft seamlessly falls back to high-fidelity static baseline price tables (`lib/engines/cost/awsPricing.ts`).
+   If credentials are not configured or the network times out, CloudBuilder seamlessly falls back to high-fidelity static baseline price tables (`lib/engines/cost/awsPricing.ts`).
 
 #### Minimum Least-Privilege IAM Policy:
 ```json
@@ -199,7 +199,7 @@ const command = new GetProductsCommand({
 
 ## 4. Multi-Tier Caching & Performance
 
-To guarantee sub-second UI interactions without exceeding external API rate limits, CloudCraft incorporates a robust caching architecture (`lib/cloud/pricing/PricingCache.ts`):
+To guarantee sub-second UI interactions without exceeding external API rate limits, CloudBuilder incorporates a robust caching architecture (`lib/cloud/pricing/PricingCache.ts`):
 
 1. **In-Memory Cache (L1)**:
    - Ultra-fast Map lookup (`<1ms`).

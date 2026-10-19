@@ -1,11 +1,11 @@
 /**
- * CloudCraft — framework control mappings (SOC 2, HIPAA Security Rule, PCI DSS v4.0).
+ * CloudBuilder — framework control mappings (SOC 2, HIPAA Security Rule, PCI DSS v4.0).
  *
- * These are MAPPINGS from framework control areas to CloudCraft's technical
+ * These are MAPPINGS from framework control areas to CloudBuilder's technical
  * assessment rules — not independent checks. Each control's status is derived
  * from the shared assessment evaluations, so it can never disagree with the
  * Security view. The previous implementation re-read resource configuration
- * with keys that do not exist in CloudCraft (e.g. `storageEncrypted`,
+ * with keys that do not exist in CloudBuilder (e.g. `storageEncrypted`,
  * `sseAlgorithm`, `enableHttpsTrafficOnly`) and string-matched "0.0.0.0/0" in the
  * whole security-group config (which matched the default EGRESS rule), so it
  * failed controls on correctly configured architectures.

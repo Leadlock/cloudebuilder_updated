@@ -1,7 +1,7 @@
 /**
  * Centralized Architecture Validator
  *
- * The core validation and quality analysis engine for CloudCraft.
+ * The core validation and quality analysis engine for CloudBuilder.
  * Evaluates structural integrity, cloud networking, availability SPOFs,
  * security postures, scalability limits, and deployment safety.
  *

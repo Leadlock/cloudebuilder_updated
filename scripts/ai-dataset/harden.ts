@@ -2,7 +2,7 @@
  * Greenfield hardening. For a NEW design, the "review required" gate on some fixes exists
  * because changing a deployed resource can interrupt it — that does not apply before
  * anything is deployed. So the dataset builder applies every LOW-severity finding whose fix
- * CloudCraft can verify end to end (rule re-run passes, no new HIGH/CRITICAL finding,
+ * CloudBuilder can verify end to end (rule re-run passes, no new HIGH/CRITICAL finding,
  * Terraform renders the change), and writes the resulting settings back into the spec so the
  * model's target is explicit and self-contained.
  *

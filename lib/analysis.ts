@@ -333,7 +333,7 @@ resource "aws_nat_gateway" "${name}" {
         lines.push(`resource "aws_cloudfront_distribution" "${name}" {
   enabled             = true
   is_ipv6_enabled     = true
-  comment             = "Managed by CloudCraft"
+  comment             = "Managed by CloudBuilder"
   price_class         = "${cfg.priceClass || 'PriceClass_100'}"
 
   origin {
@@ -380,7 +380,7 @@ resource "aws_nat_gateway" "${name}" {
       } else if (node.resourceType === 'aws_waf') {
         lines.push(`resource "aws_wafv2_web_acl" "${name}" {
   name        = "${name}"
-  description = "CloudCraft Production WAF WebACL"
+  description = "CloudBuilder Production WAF WebACL"
   scope       = "${cfg.scope || 'REGIONAL'}"
 
   default_action {
@@ -397,7 +397,7 @@ resource "aws_nat_gateway" "${name}" {
       } else if (node.resourceType === 'aws_sg') {
         lines.push(`resource "aws_security_group" "${name}" {
   name        = "${name}"
-  description = "Managed by CloudCraft"
+  description = "Managed by CloudBuilder"
   vpc_id      = ${vpcRef}
 
   ${cfg.allowHttp ? `ingress {

@@ -6,7 +6,7 @@ import { AppProvider } from '@/context/AppContext';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'CloudCraft — Visual Cloud Infrastructure Builder',
+  title: 'CloudBuilder — Visual Cloud Infrastructure Builder',
   description: 'Design, validate, and deploy AWS and Azure infrastructure visually',
 };
 

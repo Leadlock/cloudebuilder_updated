@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 /**
- * "Deploy from CloudCraft" in the browser: plan, confirm with the password, watch the steps, enter the secrets it asks for, and what is and is not kept.
+ * "Deploy from CloudBuilder" in the browser: plan, confirm with the password, watch the steps, enter the secrets it asks for, and what is and is not kept.
  */
 import React from 'react';
 import { TextEncoder, TextDecoder } from 'util';
@@ -83,7 +83,7 @@ describe('planning', () => {
   });
 
   test('a server that has this switched off says so and offers the terminal way', async () => {
-    routes.unshift([/GET \/api\/projects\/p1\/releases\?/, () => ({ status: 503, code: 'SERVICE_UNAVAILABLE', message: 'Deploying a project from CloudCraft is not switched on on this server (CLOUDCRAFT_PROJECT_RELEASES=1).' })]);
+    routes.unshift([/GET \/api\/projects\/p1\/releases\?/, () => ({ status: 503, code: 'SERVICE_UNAVAILABLE', message: 'Deploying a project from CloudBuilder is not switched on on this server (CLOUDCRAFT_PROJECT_RELEASES=1).' })]);
     mount();
     expect(await screen.findByText(/not switched on on this server/)).toBeTruthy();
     expect(document.body.textContent).toContain('bash deploy.sh');
@@ -495,7 +495,7 @@ describe('the state storage', () => {
     expect(screen.getByTestId('release-checklist').textContent).not.toContain('Press "Create state storage for me"');
   });
 
-  test('"Create state storage for me" with the bucket left empty lets CloudCraft pick one, and fills it in', async () => {
+  test('"Create state storage for me" with the bucket left empty lets CloudBuilder pick one, and fills it in', async () => {
     routes.unshift([/POST \/api\/projects\/p1\/terraform\/state-backend$/, () => ({ data: { bucket: 'cloudcraft-state-123456789012-eu-north-1', steps: [{ what: 'S3 bucket cloudcraft-state-123456789012-eu-north-1', outcome: 'created' }] } })]);
     await mountAws();
     fireEvent.click(screen.getByRole('button', { name: 'Create state storage for me' }));

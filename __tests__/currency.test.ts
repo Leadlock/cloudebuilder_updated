@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Multi-Currency & Real Exchange Rate Tests
+ * CloudBuilder — Multi-Currency & Real Exchange Rate Tests
  *
  * Requirements verified:
  * - USD -> USD identity (rate 1.0)

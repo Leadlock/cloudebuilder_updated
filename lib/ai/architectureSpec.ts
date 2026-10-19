@@ -4,7 +4,7 @@
  * A language model should decide WHAT to build (resources, containment, connections, the
  * few settings that matter) — not emit canvas coordinates, edge protocols or 20 default
  * config fields per resource. So the model produces a compact `ArchitectureSpec`, and this
- * module deterministically expands it into the canonical CloudCraft graph
+ * module deterministically expands it into the canonical CloudBuilder graph
  * (CanvasNode[] / CanvasEdge[]) using the same pieces the app already uses:
  *
  *   spec → resource-catalog defaults → RelationshipEngine (edge type / protocol / port)
@@ -15,7 +15,7 @@
  * model's output, so training data and evaluation can never disagree.
  *
  * Nothing here is a substitute for a real deployment test: the gates prove the design is
- * internally consistent, secure by CloudCraft's rule set and renders to Terraform — not that
+ * internally consistent, secure by CloudBuilder's rule set and renders to Terraform — not that
  * account quotas, IAM permissions, naming collisions or provider outages will allow apply.
  */
 import type { CanvasEdge, CanvasNode, ConfigField } from '@/types';
@@ -33,7 +33,7 @@ import { autoRepairGraph } from './autoRepair';
 export interface SpecResource {
   /** Unique, lowercase kebab-case identifier used by connections and `parent`. */
   id: string;
-  /** A CloudCraft resource type, e.g. "aws_rds". Must exist in the catalog. */
+  /** A CloudBuilder resource type, e.g. "aws_rds". Must exist in the catalog. */
   type: string;
   /** Human-readable name shown on the canvas. */
   label: string;
@@ -497,7 +497,7 @@ export function evaluateSpec(input: unknown, options: { autoRepair?: boolean } =
   if (!parsed.spec) return { ok: false, stage: 'parse', issues: parsed.issues };
   const compiled = compileSpec(parsed.spec);
   if (compiled.issues.length) return { ok: false, stage: 'compile', issues: compiled.issues, spec: parsed.spec };
-  // At inference time, fix what CloudCraft's own verified remediations can fix before judging the design (never when building training data).
+  // At inference time, fix what CloudBuilder's own verified remediations can fix before judging the design (never when building training data).
   const repaired = options.autoRepair ? autoRepairGraph(compiled.nodes, compiled.edges) : null;
   const nodes = repaired?.nodes ?? compiled.nodes;
   const readiness = checkDeployReadiness(nodes, compiled.edges);

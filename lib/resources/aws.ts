@@ -10,7 +10,7 @@ function subnetAzOptions(): { label: string; value: string }[] {
 import { defaultNodeConfig as defaultContainerNodeConfig } from '@/lib/engines/containers/nodeConfig';
 import { SOFTWARE } from '@/lib/engines/servers/software';
 
-/** The software CloudCraft can install on a server, as the options of the "Install on the server" setting. */
+/** The software CloudBuilder can install on a server, as the options of the "Install on the server" setting. */
 const SOFTWARE_OPTIONS = SOFTWARE.map((s) => ({ label: `${s.label} (${s.kind})`, value: s.id }));
 
 export const awsResources: ResourceDefinition[] = [
@@ -72,7 +72,7 @@ export const awsResources: ResourceDefinition[] = [
       {
         key: 'availabilityZone', label: 'Availability Zone', type: 'select', defaultValue: 'us-east-1a',
         // Every AWS Region has at least two AZs (letters a and b), so a / b are offered for every
-        // region CloudCraft knows; us-east-1c stays for backwards compatibility.
+        // region CloudBuilder knows; us-east-1c stays for backwards compatibility.
         options: subnetAzOptions(),
       },
       { key: 'mapPublicIpOnLaunch', label: 'Auto-assign Public IP', type: 'boolean', defaultValue: false },
@@ -216,7 +216,7 @@ export const awsResources: ResourceDefinition[] = [
       {
         key: 'serverPageText', label: 'Start page text (optional)', type: 'text', defaultValue: '', section: 'Server software',
         visibleWhen: (c) => Array.isArray(c['serverSoftware']) && c['serverSoftware'].some((s) => s === 'nginx' || s === 'apache'),
-        placeholder: 'Hello from CloudCraft',
+        placeholder: 'Hello from CloudBuilder',
         description: 'One line shown on the web server\'s home page instead of its default page.',
       },
       {
@@ -1127,7 +1127,7 @@ export const awsResources: ResourceDefinition[] = [
     },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-sg', required: true },
-      { key: 'description', label: 'Description', type: 'text', defaultValue: '', placeholder: 'Managed by CloudCraft' },
+      { key: 'description', label: 'Description', type: 'text', defaultValue: '', placeholder: 'Managed by CloudBuilder' },
       { key: 'allowHttp', label: 'Allow HTTP (port 80)', type: 'boolean', defaultValue: true, section: 'Inbound Rules' },
       { key: 'allowHttps', label: 'Allow HTTPS (port 443)', type: 'boolean', defaultValue: true, section: 'Inbound Rules' },
       { key: 'allowSsh', label: 'Allow SSH (port 22)', type: 'boolean', defaultValue: false, section: 'Inbound Rules' },

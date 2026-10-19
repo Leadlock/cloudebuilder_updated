@@ -6,7 +6,7 @@
  * financial reporting (ICFR). For systems in scope, auditors typically examine
  * IT general controls (logical access, change management, IT operations).
  *
- * CloudCraft can only contribute TECHNICAL, configuration-based evidence from an
+ * CloudBuilder can only contribute TECHNICAL, configuration-based evidence from an
  * architecture design (or discovered configuration). It cannot observe
  * organizational controls, cannot determine which systems are relevant to ICFR,
  * and cannot assess design or operating effectiveness. Every area therefore
@@ -20,7 +20,7 @@ import type {
 
 export const SOC1_DISCLAIMER =
   'This SOC 1-oriented technical control analysis is NOT a SOC 1® examination, report, attestation, certification or opinion. ' +
-  'CloudCraft is not an independent service auditor. It maps technical configuration evidence from the architecture to control areas ' +
+  'CloudBuilder is not an independent service auditor. It maps technical configuration evidence from the architecture to control areas ' +
   'commonly examined as IT general controls, to support readiness and audit preparation. Whether a system is relevant to user entities\' ' +
   'internal control over financial reporting, and whether controls are suitably designed and operating effectively, can only be ' +
   'determined by management and an independent CPA firm performing a SOC 1 engagement (AICPA AT-C section 320).';
@@ -95,7 +95,7 @@ export const SOC1_AREAS: AreaDef[] = [
     id: 'SOC1-CM-01', name: 'Change management — protection against unauthorized or accidental change',
     objective: 'Changes to infrastructure are authorized, tested and approved before implementation; critical resources are protected from accidental deletion.',
     organizationalEvidence: ['Change tickets with approvals', 'Evidence of testing prior to production deployment', 'Segregation between developers and production deployers', 'Emergency change procedures'],
-    limitations: 'CloudCraft can show that infrastructure is defined as code (generated Terraform) and whether deletion protection is configured. It cannot show that changes were approved, tested or segregated.',
+    limitations: 'CloudBuilder can show that infrastructure is defined as code (generated Terraform) and whether deletion protection is configured. It cannot show that changes were approved, tested or segregated.',
   },
   {
     id: 'SOC1-CM-02', name: 'Configuration management and patching',

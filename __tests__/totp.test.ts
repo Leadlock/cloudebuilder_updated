@@ -38,7 +38,7 @@ describe('RFC 6238', () => {
   });
 
   it('builds the link an authenticator app understands', () => {
-    expect(otpauthUri('ABC', 'a@b.c')).toBe('otpauth://totp/CloudCraft%3Aa%40b.c?secret=ABC&issuer=CloudCraft&algorithm=SHA1&digits=6&period=30');
+    expect(otpauthUri('ABC', 'a@b.c')).toBe('otpauth://totp/CloudBuilder%3Aa%40b.c?secret=ABC&issuer=CloudBuilder&algorithm=SHA1&digits=6&period=30');
   });
 });
 

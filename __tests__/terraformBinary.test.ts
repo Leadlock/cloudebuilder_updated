@@ -1,5 +1,5 @@
 /**
- * Terraform comes with CloudCraft: it is found, or downloaded once, checked against the built-in checksum and kept. Everything here runs against
+ * Terraform comes with CloudBuilder: it is found, or downloaded once, checked against the built-in checksum and kept. Everything here runs against
  * a local server and a fake "terraform" program, so nothing real is downloaded; scripts/install-terraform.ts (in CI) does the real download.
  */
 import fs from 'fs';

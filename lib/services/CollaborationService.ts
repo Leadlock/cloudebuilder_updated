@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Real Collaboration Service
+ * CloudBuilder — Real Collaboration Service
  *
  * Provides authenticated, server-authoritative real-time collaboration on
  * architecture graphs using Socket.io.

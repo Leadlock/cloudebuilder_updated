@@ -16,7 +16,7 @@ import type { DbArchitectureResource, DbArchitectureConnection } from '@/lib/rep
 
 export class TerraformSafetyError extends Error {
   constructor(public readonly problems: string[]) {
-    super(`Generated Terraform was refused because it contains constructs CloudCraft never emits: ${problems.join('; ')}`);
+    super(`Generated Terraform was refused because it contains constructs CloudBuilder never emits: ${problems.join('; ')}`);
     this.name = 'TerraformSafetyError';
   }
 }
@@ -116,7 +116,7 @@ export function sanitizeResourcesForHcl(resources: DbArchitectureResource[], con
   return { resources: cleanResources, connections: cleanConnections };
 }
 
-/** Anything that runs commands, loads code or pulls in other modules. CloudCraft's generator emits none of these. */
+/** Anything that runs commands, loads code or pulls in other modules. CloudBuilder's generator emits none of these. */
 const FORBIDDEN: { pattern: RegExp; problem: string }[] = [
   // Anchored to block syntax at the start of a line: after escaping, a value cannot start a new line, so only a real
   // block (or a multi-line heredoc script) can match — an innocent label such as "Provisioner service" cannot.

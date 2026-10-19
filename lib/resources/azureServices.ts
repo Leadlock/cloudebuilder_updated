@@ -275,7 +275,7 @@ export const azureServiceResources: ResourceDefinition[] = [
       { key: 'name', label: 'Firewall Name', type: 'text', defaultValue: 'my-firewall', required: true },
       {
         key: 'sku', label: 'Tier', type: 'select', defaultValue: 'Standard', section: 'Compute / Capacity',
-        description: 'Premium adds TLS inspection and intrusion detection. Place the firewall in a subnet of its own: Azure requires it to be named AzureFirewallSubnet and CloudCraft names it that.',
+        description: 'Premium adds TLS inspection and intrusion detection. Place the firewall in a subnet of its own: Azure requires it to be named AzureFirewallSubnet and CloudBuilder names it that.',
         options: [{ label: 'Standard', value: 'Standard' }, { label: 'Premium', value: 'Premium' }],
       },
       {

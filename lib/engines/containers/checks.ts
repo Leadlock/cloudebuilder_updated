@@ -1,5 +1,5 @@
 /**
- * Security and quality checks for a container template. They read the files CloudCraft is about to hand over (Dockerfile, compose file,
+ * Security and quality checks for a container template. They read the files CloudBuilder is about to hand over (Dockerfile, compose file,
  * .dockerignore, the EC2 Terraform and the workflow) together with the form's settings, so a finding is about what you would actually run,
  * and a regression in a generator shows up here as well as in the form. Pure functions: nothing is sent anywhere.
  */
@@ -128,7 +128,7 @@ export function checkContainer(config: ContainerConfig, files: GeneratedFile[]):
         detail: 'Without a tag (or with :latest) the image that runs changes whenever its publisher pushes, and you cannot roll back to a named version.', fix: 'Use a version tag such as nginx:1.27, or a digest (name@sha256:...).' });
     }
     add({ id: 'CT-028', severity: 'low', file: 'docker-compose.yml', title: 'A ready-made image runs exactly as published',
-      detail: 'CloudCraft does not build it, so it does not scan it and cannot tell what is inside.', fix: 'Pick an image from a publisher you trust, pin its version, and scan it with your own tooling (for example Trivy) before deploying.' });
+      detail: 'CloudBuilder does not build it, so it does not scan it and cannot tell what is inside.', fix: 'Pick an image from a publisher you trust, pin its version, and scan it with your own tooling (for example Trivy) before deploying.' });
   }
   if (t) {
     if (t.cidr === '0.0.0.0/0') {

@@ -48,11 +48,11 @@ export function buildCommentary(input: AiCommentaryInput, findings: Finding[], g
 }
 
 export const COMMENTARY_DISCLAIMER =
-  'AI-generated commentary. CloudCraft\'s analysis engine produced every finding, severity and score in this report; the AI only re-explains and orders them. It does not change any result and is not part of the report\'s integrity hash. Suggestions marked unverified are not backed by a finding.';
+  'AI-generated commentary. CloudBuilder\'s analysis engine produced every finding, severity and score in this report; the AI only re-explains and orders them. It does not change any result and is not part of the report\'s integrity hash. Suggestions marked unverified are not backed by a finding.';
 
 /**
  * A pillar can lack a score for two different reasons, and the wording must not mix them up:
- *  - too little evidence: CloudCraft could not evaluate enough checks (status "Insufficient evidence");
+ *  - too little evidence: CloudBuilder could not evaluate enough checks (status "Insufficient evidence");
  *  - informational only: checks were evaluated (no issues, or observations only) but none carries scoring weight.
  */
 export const WA_INSUFFICIENT_TITLE = 'Insufficient evidence';

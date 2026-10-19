@@ -176,7 +176,7 @@ export default function TerraformExecutionPanel() {
         if ((err as { status?: number }).status === 404) {
           stop();
           setDestroying(false);
-          setDestroyError('CloudCraft lost track of this teardown (the server was restarted while it ran). Check the cloud console for what was removed, then run a new preview.');
+          setDestroyError('CloudBuilder lost track of this teardown (the server was restarted while it ran). Check the cloud console for what was removed, then run a new preview.');
         }
         // any other error is a brief network problem: keep polling
       }
@@ -782,7 +782,7 @@ export default function TerraformExecutionPanel() {
           {/* State backend form */}
           <div>
             <p className={clsx('text-xs mb-1.5', isLight ? 'text-slate-600' : 'text-gray-400')}>
-              Remote State Backend — use storage you already have, or let CloudCraft create it in your account
+              Remote State Backend — use storage you already have, or let CloudBuilder create it in your account
             </p>
             {backendProvider === 'aws' ? (
               <div className="grid grid-cols-2 gap-2">
@@ -948,7 +948,7 @@ export default function TerraformExecutionPanel() {
                   {live.length === 0 ? 'Deploy only some resources (optional)' : `Deploy only ${live.length} selected resource${live.length === 1 ? '' : 's'}`}
                 </summary>
                 <p className={clsx('mt-2 mb-2', isLight ? 'text-slate-500' : 'text-gray-400')}>
-                  Tick the resources to deploy on their own. Terraform also creates what each one needs (its VPC, subnet, security group) and CloudCraft adds the parts that belong to it; the plan lists exactly what will be created. Leave all unticked to deploy the whole architecture.
+                  Tick the resources to deploy on their own. Terraform also creates what each one needs (its VPC, subnet, security group) and CloudBuilder adds the parts that belong to it; the plan lists exactly what will be created. Leave all unticked to deploy the whole architecture.
                 </p>
                 <div className="grid gap-1 sm:grid-cols-2 max-h-48 overflow-y-auto">
                   {choices.map((n) => (

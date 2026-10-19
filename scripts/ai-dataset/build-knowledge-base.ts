@@ -27,7 +27,7 @@ const usable = allResources.filter((r) => CATALOG_TYPES.includes(r.type));
 
 // ─── 1. Resource catalog ────────────────────────────────────────────────────────────────
 function catalogSection(): string {
-  const out: string[] = ['# Resource catalog', '', 'Every resource type the CloudCraft canvas, validator and Terraform generator understand. Use only these types and only the settings listed. Settings not listed do not exist and are rejected.', ''];
+  const out: string[] = ['# Resource catalog', '', 'Every resource type the CloudBuilder canvas, validator and Terraform generator understand. Use only these types and only the settings listed. Settings not listed do not exist and are rejected.', ''];
   for (const r of usable) {
     const lines: string[] = [`## ${r.type} — ${r.label}`, `Provider: ${r.provider}; category: ${r.category}.`];
     if (r.description) lines.push(r.description);
@@ -57,7 +57,7 @@ const node = (t: string, id: string) => ({ id, type: 'cloudNode', resourceType: 
 function connectionSection(pairs: Map<string, number>): string {
   const bySource = new Map<string, [string, number][]>();
   for (const [k, n] of pairs) { const [a, b] = k.split('>'); bySource.set(a, [...(bySource.get(a) ?? []), [b, n]]); }
-  const out: string[] = ['# Connection rules', '', 'Direction matters: connect from the caller to the callee. The lists below are the connections used by gate-verified designs, with the protocol and port CloudCraft infers (do not supply them). The engine accepts some other pairs (it is permissive), but they are not meaningful architectures; prefer these.', ''];
+  const out: string[] = ['# Connection rules', '', 'Direction matters: connect from the caller to the callee. The lists below are the connections used by gate-verified designs, with the protocol and port CloudBuilder infers (do not supply them). The engine accepts some other pairs (it is permissive), but they are not meaningful architectures; prefer these.', ''];
   for (const [a, list] of [...bySource].sort()) {
     const lines = list.sort((x, y) => y[1] - x[1]).map(([b, n]) => {
       const A = node(a, 'a'); const B = node(b, 'b');

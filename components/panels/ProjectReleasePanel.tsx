@@ -1,8 +1,8 @@
 'use client';
 /**
- * "Deploy from CloudCraft" for a project of several services on an Azure VM or an AWS EC2 instance (see docs/IN_APP_DEPLOYMENT_DESIGN.md).
+ * "Deploy from CloudBuilder" for a project of several services on an Azure VM or an AWS EC2 instance (see docs/IN_APP_DEPLOYMENT_DESIGN.md).
  *
- * The person picks a connected Azure account and where Terraform keeps its state, CloudCraft plans the deployment on the server, the person confirms with
+ * The person picks a connected Azure account and where Terraform keeps its state, CloudBuilder plans the deployment on the server, the person confirms with
  * their password (the same single-use approval as any Terraform apply) and the release runs in the background: infrastructure, secrets, build, publish,
  * start, verify. When it needs secrets it stops and asks for them here; they are sent once to the server, written straight to the vault and forgotten (this
  * form clears them, and nothing here stores them). The server decides everything that matters; this is only the window onto it.
@@ -169,7 +169,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
   if (!projectId) {
     return (
       <div className={card} data-testid="release-needs-project">
-        <div className="flex items-center gap-2"><Rocket className="w-4 h-4 text-cyan-500" /><p className="text-sm font-semibold">Deploy from CloudCraft</p></div>
+        <div className="flex items-center gap-2"><Rocket className="w-4 h-4 text-cyan-500" /><p className="text-sm font-semibold">Deploy from CloudBuilder</p></div>
         <p className={clsx('text-xs', muted)}>{saving ? 'Saving the project…' : 'A deployment belongs to a saved project, and this one is still a draft that is kept only in your browser.'}</p>
         {onSaveProject && !saving && (
           <button type="button" onClick={onSaveProject} className="px-4 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white">Save as a project{draftName ? ` (${draftName})` : ''}</button>
@@ -178,7 +178,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
       </div>
     );
   }
-  if (off) return <div className={card}><p className="text-sm font-semibold">Deploy from CloudCraft</p><p className={clsx('text-xs', muted)}>{off} You can still download the files and run <code>bash deploy.sh</code> yourself.</p></div>;
+  if (off) return <div className={card}><p className="text-sm font-semibold">Deploy from CloudBuilder</p><p className={clsx('text-xs', muted)}>{off} You can still download the files and run <code>bash deploy.sh</code> yourself.</p></div>;
 
   const fail = (m: string) => { setError(m); setBusy(false); };
 
@@ -261,7 +261,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
   })();
   const stateReady = stateFilled && stateProblems.length === 0;
 
-  /** Deletes the state bucket CloudCraft made (the server refuses one that is not CloudCraft's or that still records resources). */
+  /** Deletes the state bucket CloudBuilder made (the server refuses one that is not CloudBuilder's or that still records resources). */
   async function deleteState() {
     if (!deleting) return;
     setDeleting({ ...deleting, busy: true }); setError(null); setStateNote(null);
@@ -274,7 +274,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
     setStateNote(r.data.steps.map((x) => `${x.what}: ${x.outcome === 'deleted' ? 'deleted' : 'already gone'}`).join('; '));
   }
 
-  /** Creates the state storage in the chosen account (nothing is changed if it exists). An empty AWS bucket name lets CloudCraft pick a unique one. */
+  /** Creates the state storage in the chosen account (nothing is changed if it exists). An empty AWS bucket name lets CloudBuilder pick a unique one. */
   async function createState() {
     setCreatingState(true); setStateNote(null); setError(null);
     const body = cloud === 'aws'
@@ -315,10 +315,10 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
 
   return (
     <div className={card} data-testid="project-release">
-      <div className="flex items-center gap-2"><Rocket className="w-4 h-4 text-cyan-500" /><p className="text-sm font-semibold">Deploy from CloudCraft</p></div>
+      <div className="flex items-center gap-2"><Rocket className="w-4 h-4 text-cyan-500" /><p className="text-sm font-semibold">Deploy from CloudBuilder</p></div>
       <p className={clsx('text-xs', muted)}>{cloud === 'aws'
-        ? 'CloudCraft creates the AWS resources, builds the images in CodeBuild, stores the secrets in Parameter Store and starts the services, with the account you connected.'
-        : 'CloudCraft creates the Azure resources, builds the images in Azure, stores the secrets in a Key Vault and starts the services, with the account you connected.'} You see the plan and confirm with your password first. Nothing is created before that.</p>
+        ? 'CloudBuilder creates the AWS resources, builds the images in CodeBuild, stores the secrets in Parameter Store and starts the services, with the account you connected.'
+        : 'CloudBuilder creates the Azure resources, builds the images in Azure, stores the secrets in a Key Vault and starts the services, with the account you connected.'} You see the plan and confirm with your password first. Nothing is created before that.</p>
 
       {!release || !ACTIVE.has(release.status) ? (
         <div className="grid grid-cols-2 gap-3">
@@ -356,14 +356,14 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
               className={clsx('px-3 py-1.5 rounded-lg border text-xs font-medium disabled:opacity-40', isLight ? 'border-slate-300 text-slate-700 bg-slate-100' : 'border-slate-600 text-slate-200 bg-slate-800')}>
               {creatingState ? 'Creating state storage…' : 'Create state storage for me'}
             </button>
-            <p className={clsx('text-[11px]', muted)}>{cloud === 'aws' ? 'Makes a private, encrypted, versioned bucket in this account. Leave the bucket name empty and CloudCraft picks a unique one. Nothing changes if it already exists.' : 'Makes the resource group, storage account and container if they do not exist. Nothing changes if they do.'}</p>
+            <p className={clsx('text-[11px]', muted)}>{cloud === 'aws' ? 'Makes a private, encrypted, versioned bucket in this account. Leave the bucket name empty and CloudBuilder picks a unique one. Nothing changes if it already exists.' : 'Makes the resource group, storage account and container if they do not exist. Nothing changes if they do.'}</p>
             {stateNote && <p className="text-[11px] text-emerald-500">{stateNote}</p>}
             {cloud === 'aws' && stateReady && accountId && !(release && infraDone && release.status !== 'destroyed') && !deleting && (
               <button type="button" disabled={busy || creatingState} onClick={() => setDeleting({ typed: '', busy: false })} className="text-[11px] text-rose-500 underline disabled:opacity-40">Delete this state storage…</button>
             )}
             {deleting && (
               <div className={clsx('rounded-lg border p-3 space-y-2', isLight ? 'border-rose-200' : 'border-rose-500/30')} data-testid="delete-state">
-                <p className="text-[11px]">Permanently deletes the bucket <strong>{awsState.bucket}</strong> and everything in it. Only a bucket CloudCraft created is deleted, and only when its Terraform record lists no resources: if something is still deployed, use Remove everything first.</p>
+                <p className="text-[11px]">Permanently deletes the bucket <strong>{awsState.bucket}</strong> and everything in it. Only a bucket CloudBuilder created is deleted, and only when its Terraform record lists no resources: if something is still deployed, use Remove everything first.</p>
                 <label className={label} htmlFor="rel-delete-bucket">Type the bucket name to confirm</label>
                 <input id="rel-delete-bucket" className={input} value={deleting.typed} onChange={(e) => setDeleting({ ...deleting, typed: e.target.value })} autoComplete="off" />
                 <div className="flex gap-2">
@@ -375,7 +375,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
           </div>
           <div className="col-span-2 space-y-2" data-testid="own-code">
             <p className={label}>Your code (optional)</p>
-            <p className={clsx('text-[11px]', muted)}>Without it, each service is built from the generated sample app. Upload a zip (up to 5 MB) of a service&apos;s code to build that instead. CloudCraft&apos;s own Dockerfile is used, not one from the zip.</p>
+            <p className={clsx('text-[11px]', muted)}>Without it, each service is built from the generated sample app. Upload a zip (up to 5 MB) of a service&apos;s code to build that instead. CloudBuilder&apos;s own Dockerfile is used, not one from the zip.</p>
             {builtLayers.map((layer) => (
               <div key={layer} className="flex flex-wrap items-center gap-2 text-xs">
                 <label className="font-medium w-20" htmlFor={`code-${layer}`}>{LAYER_LABEL[layer]}</label>
@@ -432,7 +432,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
           {release.status === 'waiting' && (
             <div className={clsx('rounded-lg border p-3 space-y-2', isLight ? 'border-amber-200 bg-amber-50' : 'border-amber-500/30 bg-amber-500/10')} data-testid="release-secrets">
               <p className="text-xs font-semibold">Enter the secrets the services need</p>
-              <p className={clsx('text-[11px]', muted)}>Each value is sent once, stored in {cloud === 'aws' ? 'Parameter Store' : 'the Key Vault'} and forgotten: CloudCraft keeps none. Use letters, digits and . _ ~ - only. Leave blank one that is already stored.</p>
+              <p className={clsx('text-[11px]', muted)}>Each value is sent once, stored in {cloud === 'aws' ? 'Parameter Store' : 'the Key Vault'} and forgotten: CloudBuilder keeps none. Use letters, digits and . _ ~ - only. Leave blank one that is already stored.</p>
               {(missing ?? release.secrets).map((name) => (
                 <div key={name}><label className={label} htmlFor={`sec-${name}`}>{name}</label>
                   <input id={`sec-${name}`} type="password" autoComplete="off" className={clsx(input, 'font-mono')} value={secretValues[name] ?? ''} onChange={(e) => setSecretValues({ ...secretValues, [name]: e.target.value })} /></div>

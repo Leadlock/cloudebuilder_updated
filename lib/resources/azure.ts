@@ -2,7 +2,7 @@ import { ResourceDefinition } from '@/types';
 import { SOFTWARE } from '@/lib/engines/servers/software';
 import { azureServiceResources } from './azureServices';
 
-/** The software CloudCraft can install on a server, as the options of the "Install on the server" setting. */
+/** The software CloudBuilder can install on a server, as the options of the "Install on the server" setting. */
 const SOFTWARE_OPTIONS = SOFTWARE.map((s) => ({ label: `${s.label} (${s.kind})`, value: s.id }));
 
 const coreAzureResources: ResourceDefinition[] = [
@@ -173,7 +173,7 @@ const coreAzureResources: ResourceDefinition[] = [
       {
         key: 'serverPageText', label: 'Start page text (optional)', type: 'text', defaultValue: '', section: 'Server software',
         visibleWhen: (c) => Array.isArray(c['serverSoftware']) && c['serverSoftware'].some((s) => s === 'nginx' || s === 'apache'),
-        placeholder: 'Hello from CloudCraft',
+        placeholder: 'Hello from CloudBuilder',
         description: 'One line shown on the web server\'s home page instead of its default page.',
       },
       {
@@ -523,7 +523,7 @@ const coreAzureResources: ResourceDefinition[] = [
     },
     configSchema: [
       { key: 'name', label: 'Name', type: 'text', defaultValue: 'my-nsg', required: true },
-      { key: 'description', label: 'Description', type: 'text', defaultValue: '', placeholder: 'Managed by CloudCraft' },
+      { key: 'description', label: 'Description', type: 'text', defaultValue: '', placeholder: 'Managed by CloudBuilder' },
       { key: 'allowHttp', label: 'Allow HTTP (port 80)', type: 'boolean', defaultValue: true, section: 'Inbound Rules' },
       { key: 'allowHttps', label: 'Allow HTTPS (port 443)', type: 'boolean', defaultValue: true, section: 'Inbound Rules' },
       { key: 'allowSsh', label: 'Allow SSH (port 22)', type: 'boolean', defaultValue: false, section: 'Inbound Rules' },

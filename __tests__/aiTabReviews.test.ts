@@ -1,5 +1,5 @@
 /**
- * AI Security and Well-Architected tab reviews: CloudCraft's engine owns findings, severities and scores; the model
+ * AI Security and Well-Architected tab reviews: CloudBuilder's engine owns findings, severities and scores; the model
  * only explains, groups and orders them. The model is mocked; the assessment engine and knowledge base are real.
  */
 const mockCreate = jest.fn();

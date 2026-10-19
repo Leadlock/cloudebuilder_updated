@@ -91,12 +91,12 @@ export default function TotpCard() {
           {qr && (
             <div className="inline-block rounded-lg bg-white p-1" data-testid="totp-qr">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={qr} width={200} height={200} alt="QR code that adds CloudCraft to your authenticator app" />
+              <img src={qr} width={200} height={200} alt="QR code that adds CloudBuilder to your authenticator app" />
             </div>
           )}
           <p className="text-gray-300 leading-relaxed">{qr ? 'Cannot scan it? Choose' : 'Choose'} <strong>Add account → Enter a setup key</strong> instead, and type this key (time-based, 6 digits):</p>
           <code className="block font-mono text-gray-100 bg-gray-900/70 rounded-lg px-3 py-2 break-all select-all" data-testid="totp-secret">{setup.secret.match(/.{1,4}/g)?.join(' ')}</code>
-          <p className="text-gray-500">On a phone you can also <a href={setup.uri} className="text-amber-300 underline">open the setup link</a>. It is shown once and CloudCraft cannot show it again.</p>
+          <p className="text-gray-500">On a phone you can also <a href={setup.uri} className="text-amber-300 underline">open the setup link</a>. It is shown once and CloudBuilder cannot show it again.</p>
           <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (code) void enable(); }}>
             <input type="text" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} placeholder="6-digit code from the app" autoComplete="one-time-code" aria-label="Code from the app" maxLength={8} className={`${INPUT} flex-1 min-w-0`} />
             <button type="submit" className={BUTTON} disabled={busy || !code}>{busy ? <Loader2 className="w-3 h-3 animate-spin inline" /> : 'Turn on'}</button>

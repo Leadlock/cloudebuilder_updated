@@ -1,6 +1,6 @@
 /**
  * Resource normalizer — converts DiscoveredResource / CloudResource objects
- * into CloudCraft's canonical CanvasNode & CanvasEdge format for React Flow.
+ * into CloudBuilder's canonical CanvasNode & CanvasEdge format for React Flow.
  *
  * Rules:
  * - Each node receives `importState: 'imported'`.
@@ -20,7 +20,7 @@ import { getResourceDefinition } from '@/lib/resources';
 /** Adapter bookkeeping keys that are not provider configuration. */
 const DISCOVERY_BOOKKEEPING_KEYS = new Set(['source', 'imported', 'importState', 'lastImportedAt', '_metadata', '_discovery']);
 
-// ─── Resource type → CloudCraft resourceType mapping ─────────────────────────
+// ─── Resource type → CloudBuilder resourceType mapping ─────────────────────────
 
 const RESOURCE_TYPE_MAP: Record<string, string> = {
   // AWS networking

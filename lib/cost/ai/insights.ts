@@ -3,7 +3,7 @@
  *
  * The model reads the computed result and writes words: a short summary, why the biggest lines cost what they do, and settings it thinks
  * could be cheaper. It never supplies a number that is shown:
- *  - totals, shares and every saving come from CloudCraft's own estimator (a suggestion is applied to a copy of the resource and re-priced);
+ *  - totals, shares and every saving come from CloudBuilder's own estimator (a suggestion is applied to a copy of the resource and re-priced);
  *  - sentences containing a currency amount or percentage are dropped from the model's text;
  *  - a suggestion must name a resource that exists, a setting that is a real dropdown of that resource, and one of its real options.
  * Anything that fails a check is silently discarded.
@@ -46,7 +46,7 @@ export interface CostInsights {
 }
 
 export const INSIGHTS_DISCLAIMER =
-  'The explanation and ideas were written by AI. Every price and saving shown here was calculated by CloudCraft from provider list prices: each suggestion was applied to a copy of the resource and re-priced. Check an idea against your real workload before acting on it.';
+  'The explanation and ideas were written by AI. Every price and saving shown here was calculated by CloudBuilder from provider list prices: each suggestion was applied to a copy of the resource and re-priced. Check an idea against your real workload before acting on it.';
 
 type Estimator = { estimateAsync(input: CostEstimationInput, mode?: 'REAL' | 'TEST'): Promise<CostEstimationResult> };
 

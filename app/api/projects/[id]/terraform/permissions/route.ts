@@ -2,8 +2,8 @@
  * POST /api/projects/[id]/terraform/permissions — what the connected AWS role needs in order to deploy THIS architecture.
  * Body: { environment?, cloudAccountId, check?: boolean }
  *
- * Without `check` nothing is sent to AWS: the services are read from the Terraform CloudCraft would generate for the saved design and
- * turned into a least-privilege IAM policy the administrator can paste on the role. With `check: true` CloudCraft also asks AWS (read-only,
+ * Without `check` nothing is sent to AWS: the services are read from the Terraform CloudBuilder would generate for the saved design and
+ * turned into a least-privilege IAM policy the administrator can paste on the role. With `check: true` CloudBuilder also asks AWS (read-only,
  * iam:SimulatePrincipalPolicy: nothing is created) whether the role can already create in each of those services.
  *
  * Accounts connected "Simple" (an administrator user's own key) need no extra permissions and get `needed: false`.

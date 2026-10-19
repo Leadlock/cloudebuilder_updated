@@ -49,7 +49,7 @@ describe('isLockFromThisMachine', () => {
   });
 });
 
-describe('decideAutoUnlock — when may CloudCraft break a lock itself?', () => {
+describe('decideAutoUnlock — when may CloudBuilder break a lock itself?', () => {
   it('NEVER for a lock held by another machine, however old (the situation in the screenshot)', () => {
     for (const age of [5 * 60_000, 2 * HOUR, 30 * 24 * HOUR]) {
       const d = decideAutoUnlock(REAL, 'apply', CREATED + age, 'LAPTOP-G4Q1LCQB');

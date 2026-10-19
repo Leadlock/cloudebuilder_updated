@@ -235,7 +235,7 @@ export class CognitoService {
       const verifyCmd = new VerifySoftwareTokenCommand({
         Session: params.session,
         UserCode: trimmedCode,
-        FriendlyDeviceName: 'CloudCraft App',
+        FriendlyDeviceName: 'CloudBuilder App',
       });
 
       const verifyRes = await client.send(verifyCmd);
@@ -343,7 +343,7 @@ export class CognitoService {
     const command = new VerifySoftwareTokenCommand({
       Session: params.session,
       UserCode: params.userCode.trim(),
-      FriendlyDeviceName: params.friendlyDeviceName || 'CloudCraft App',
+      FriendlyDeviceName: params.friendlyDeviceName || 'CloudBuilder App',
     });
     const res = await client.send(command);
     return {

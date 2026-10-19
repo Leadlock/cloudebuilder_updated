@@ -174,7 +174,7 @@ function planInternal(nodes: CanvasNode[], edges: CanvasEdge[], findingId: strin
         beforeMonthly: Math.round(before$ * 100) / 100,
         afterMonthly: Math.round(after$ * 100) / 100,
         deltaMonthly: Math.round((after$ - before$) * 100) / 100,
-        basis: 'CloudCraft static list-price estimate for the affected resource (USD/month); live pricing may differ.',
+        basis: 'CloudBuilder static list-price estimate for the affected resource (USD/month); live pricing may differ.',
       },
       terraform: { added: diff.added, removed: diff.removed, expectationMet: expect ? diff.added.some((l) => expect.test(l)) : null },
     },
@@ -336,7 +336,7 @@ function tryBatch(nodes: CanvasNode[], edges: CanvasEdge[], ids: string[], base:
         changes: Object.entries(patch).map(([field, value]) => ({ field, label: fieldLabel(node.resourceType, field), current: fmt(node.config?.[field]), proposed: fmt(value) })),
         affectedResources: [node.label], why: rule.risk, securityImprovement: `Resolves ${rule.id}: ${rule.title}.`,
         architectureImpact: rule.autoFix.architectureImpact,
-        cost: { impact: rule.autoFix.costImpact, beforeMonthly: Math.round(before$ * 100) / 100, afterMonthly: Math.round(after$ * 100) / 100, deltaMonthly: Math.round((after$ - before$) * 100) / 100, basis: 'CloudCraft static list-price estimate for the affected resource (USD/month); live pricing may differ.' },
+        cost: { impact: rule.autoFix.costImpact, beforeMonthly: Math.round(before$ * 100) / 100, afterMonthly: Math.round(after$ * 100) / 100, deltaMonthly: Math.round((after$ - before$) * 100) / 100, basis: 'CloudBuilder static list-price estimate for the affected resource (USD/month); live pricing may differ.' },
         terraform: { added: [], removed: [], expectationMet: null },
       },
     });

@@ -198,7 +198,7 @@ export function buildReport(snap: ReportSnapshotInput, opts: { comparison?: Comp
   const sec = a.securityScore;
   const discoveredChecks = a.evaluations.filter((e) => e.provenance === 'DISCOVERED_CONFIGURATION' || e.provenance === 'LIVE_VERIFIED').length;
   const overview =
-    `Based on the architecture configuration available to CloudCraft${discoveredChecks > 0 ? ' (design-time configuration, plus configuration discovered from the cloud provider for some resources)' : ' (design-time configuration only; no live cloud evidence)'}, ` +
+    `Based on the architecture configuration available to CloudBuilder${discoveredChecks > 0 ? ' (design-time configuration, plus configuration discovered from the cloud provider for some resources)' : ' (design-time configuration only; no live cloud evidence)'}, ` +
     `this assessment evaluated ${a.resourceCount} resource${a.resourceCount === 1 ? '' : 's'} on ${providersLabel}` +
     `${a.regions.length ? ` in ${a.regions.join(', ')}` : ''} (architecture revision ${snap.architecture.revision}). ` +
     `${sec.coverage.evaluated} applicable security check${sec.coverage.evaluated === 1 ? ' was' : 's were'} evaluated; ` +
@@ -229,19 +229,19 @@ export function buildReport(snap: ReportSnapshotInput, opts: { comparison?: Comp
   const evaluatedServices = Array.from(new Set(a.evaluations.filter((e) => ['PASS', 'FAIL', 'WARNING'].includes(e.status)).map((e) => RULES_BY_ID.get(e.ruleId)!.service))).sort();
   const scope = {
     evaluated: [
-      `Resource configuration of ${a.resourceCount} resources as modelled in CloudCraft (revision ${snap.architecture.revision})${discoveredChecks > 0 ? ', including configuration discovered from the cloud provider where recorded' : ''}.`,
+      `Resource configuration of ${a.resourceCount} resources as modelled in CloudBuilder (revision ${snap.architecture.revision})${discoveredChecks > 0 ? ', including configuration discovered from the cloud provider where recorded' : ''}.`,
       `Relationships and topology in the architecture diagram (${snap.architecture.edges.length} connections).`,
       `Services with evaluated checks: ${evaluatedServices.join(', ') || 'none'}.`,
       `Provider-native rules: ${a.providers.map((p) => p.toUpperCase()).join(', ')} (ruleset ${a.rulesetVersion}).`,
     ],
     notEvaluated: Array.from(new Set(notEval.map((e) => RULES_BY_ID.get(e.ruleId)!.title))).slice(0, 40),
     dataSources: [
-      'CloudCraft canonical architecture graph (resource configuration, containment and connections).',
+      'CloudBuilder canonical architecture graph (resource configuration, containment and connections).',
       (() => {
         const evaluated = a.evaluations.filter((e) => e.status !== 'NOT_APPLICABLE');
         const n = (p: string) => evaluated.filter((e) => e.provenance === p).length;
         const live = n('LIVE_VERIFIED'); const disc = n('DISCOVERED_CONFIGURATION'); const design = n('DESIGN_TIME');
-        if (live === 0 && disc === 0) return `Evidence provenance: all ${design} applicable checks used design-time configuration authored in CloudCraft. No value was read from, or verified against, a live cloud account.`;
+        if (live === 0 && disc === 0) return `Evidence provenance: all ${design} applicable checks used design-time configuration authored in CloudBuilder. No value was read from, or verified against, a live cloud account.`;
         return `Evidence provenance: ${design} applicable checks used design-time configuration, ${disc} used only configuration returned by AWS/Azure discovery (point-in-time, as of the discovery run)`
           + `, and ${live} used values confirmed by a provider API read made for this assessment (live verified).`;
       })(),
@@ -252,7 +252,7 @@ export function buildReport(snap: ReportSnapshotInput, opts: { comparison?: Comp
       'Account-, subscription- and tenant-level controls (e.g. CloudTrail, GuardDuty, Defender for Cloud, MFA) are reported as NOT EVALUATED unless evidence is available.',
       'Absence of a finding for a control means only that the modelled configuration passed that check; it is not an assurance that the control is effective.',
       'Severity reflects design-time exposure and official guidance; data sensitivity is not known unless modelled.',
-      'CloudCraft is not an auditor. Nothing in this report is an audit opinion, attestation, certification or compliance determination.',
+      'CloudBuilder is not an auditor. Nothing in this report is an audit opinion, attestation, certification or compliance determination.',
     ],
   };
 
@@ -329,7 +329,7 @@ export function buildReport(snap: ReportSnapshotInput, opts: { comparison?: Comp
   return {
     meta: {
       reportId: `CC-${snap.scanId.slice(0, 8).toUpperCase()}`,
-      title: 'CloudCraft Architecture & Security Assessment',
+      title: 'CloudBuilder Architecture & Security Assessment',
       projectName: snap.project.name,
       environment: snap.project.environment,
       providers: a.providers.map((p) => PROVIDER_LABEL[p] ?? p),
@@ -382,7 +382,7 @@ export function buildReport(snap: ReportSnapshotInput, opts: { comparison?: Comp
         `Security score: ${SCORE_METHODOLOGY}`,
         'Well-Architected pillar scores use the same formula restricted to the checks mapped to that pillar; a pillar with no evaluable checks is reported as "Insufficient evidence" rather than scored.',
         `Assessment coverage (all checks): ${cov.evaluated} of ${cov.applicable} applicable checks evaluated (${cov.coveragePct ?? 0}%); ${cov.notApplicable} checks were not applicable to the resources present.`,
-        'Each finding has a stable ID of the form <RULE-ID>-<resource hash> that is identical in the CloudCraft UI, Auto-Fix, this report and later assessments of the same resource.',
+        'Each finding has a stable ID of the form <RULE-ID>-<resource hash> that is identical in the CloudBuilder UI, Auto-Fix, this report and later assessments of the same resource.',
         'Auto-Fix safety: safe fixes are deterministic, non-destructive configuration changes; fixes that need review may affect connectivity or cost, or require resource replacement, and are applied only after explicit confirmation; manual-only findings require human design decisions. Every applied fix is verified by re-running the rule and regenerating Terraform; failed verification leaves the architecture unchanged.',
       ],
       definitions: [
@@ -393,7 +393,7 @@ export function buildReport(snap: ReportSnapshotInput, opts: { comparison?: Comp
         { term: 'NOT EVALUATED', definition: 'The control cannot be observed from an architecture design (e.g. account-level settings). Never treated as a pass.' },
         { term: 'INSUFFICIENT DATA', definition: 'The check applies but required configuration values are missing. Never treated as a pass.' },
         { term: 'ACCEPTED RISK / FALSE POSITIVE', definition: 'A human review decision recorded against a finding. The finding remains technically failing and still counts against the score.' },
-        { term: 'DESIGN-TIME', definition: 'Evidence comes from the architecture as designed in CloudCraft, not from the deployed environment.' },
+        { term: 'DESIGN-TIME', definition: 'Evidence comes from the architecture as designed in CloudBuilder, not from the deployed environment.' },
         { term: 'DISCOVERED CONFIGURATION', definition: 'Every value the check used was returned by AWS/Azure discovery (recorded per field). Point-in-time: it describes the resource when discovery ran.' },
         { term: 'LIVE VERIFIED', definition: 'Every value the check used was confirmed by a provider API read made for this assessment (at most 15 minutes old) and matched the assessed configuration. Not claimed unless that evidence exists.' },
         { term: 'INSUFFICIENT DATA', definition: 'A value the check needs was not specified in the design or not returned by discovery. Never counted as passing.' },

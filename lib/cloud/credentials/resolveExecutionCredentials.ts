@@ -5,7 +5,7 @@
  * discovery (which authenticates its own SDK clients directly and never
  * needs a flat env-var shape).
  *
- * AWS: CloudCraft only ever stores a cross-account role ARN + external ID
+ * AWS: CloudBuilder only ever stores a cross-account role ARN + external ID
  * (AwsRoleCredentials), the same shape used for read-only discovery — there
  * is no static access key on file. Terraform can't assume a role itself
  * without first having *some* credential, so this performs the identical
@@ -18,7 +18,7 @@
  * IMPORTANT: the connected IAM role must be granted write permissions for
  * whatever Terraform will create/modify — REQUIRED_AWS_PERMISSIONS in
  * awsAdapter.ts is a read-only discovery permission set and is NOT
- * sufficient for apply. This is a deliberate scope boundary: CloudCraft
+ * sufficient for apply. This is a deliberate scope boundary: CloudBuilder
  * does not provision or widen that role's permissions itself.
  *
  * Azure: AzureSpCredentials maps directly onto Terraform's azurerm

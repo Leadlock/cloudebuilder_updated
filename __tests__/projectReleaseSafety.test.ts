@@ -1,5 +1,5 @@
 /**
- * The Terraform CloudCraft plans for a release is checked by the same guard as every generated Terraform (no provisioners, modules, external data or
+ * The Terraform CloudBuilder plans for a release is checked by the same guard as every generated Terraform (no provisioners, modules, external data or
  * non-HashiCorp sources). Every target's release bundle, and its downloadable files, must pass it: this was found by planning a real EC2 release.
  */
 import { assertSafeHcl } from '@/lib/engines/terraform/hclSafety';

@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     const emailResult = await EmailService.sendTeamInvite({
       toEmail: invite.email,
       inviterName: inviter?.name || identity.email || 'A team administrator',
-      orgName: org?.name || 'CloudCraft Organization',
+      orgName: org?.name || 'CloudBuilder Organization',
       role: invite.role,
       acceptUrl: url,
       expiresInDays: 7,

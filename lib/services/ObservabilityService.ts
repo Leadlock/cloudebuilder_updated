@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Real Observability Service
+ * CloudBuilder — Real Observability Service
  *
  * Integrates with actual cloud monitoring APIs:
  *  - AWS:   CloudWatch (GetMetricStatistics via @aws-sdk/client-cloudwatch)
@@ -308,7 +308,7 @@ async function getAzureMetrics(
 export interface MetricsRequest {
   provider: CloudProvider;
   resourceId: string;      // The actual cloud resource ID (instance ID, ARN, Azure resource path, etc.)
-  resourceType: string;    // CloudCraft resource type e.g. aws_ec2, azure_vm
+  resourceType: string;    // CloudBuilder resource type e.g. aws_ec2, azure_vm
   region: string;
   credentials?: Record<string, string>;
 }

@@ -1,5 +1,5 @@
 /**
- * CloudCraft Authentication & Session Service
+ * CloudBuilder Authentication & Session Service
  *
  * Accounts are real, DB-backed rows (see orgRepository) — either a local
  * scrypt-hashed password (lib/crypto/password.ts) or an AWS Cognito

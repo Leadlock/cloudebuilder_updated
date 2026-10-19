@@ -647,7 +647,7 @@ describe('security checks for the new targets', () => {
   };
   const patch = (files: { path: string; content: string }[], path: string, fn: (s: string) => string) => { const f = files.find((x) => x.path === path)!; f.content = fn(f.content); };
 
-  it('the defaults of each target raise nothing above medium for what CloudCraft controls', () => {
+  it('the defaults of each target raise nothing above medium for what CloudBuilder controls', () => {
     for (const t of ['ecs', 'container-apps', 'kubernetes'] as const) {
       const c = on(t, (x) => { x.ecs.allowedCidr = '10.0.0.0/8'; x.aca.allowedCidr = '10.0.0.0/8'; x.ecs.imageTag = 'v1'; x.aca.imageTag = 'v1'; x.ecs.certificateArn = 'arn:aws:acm:us-east-1:123456789012:certificate/abc'; x.k8s.ingressHost = 'a.example.com'; x.k8s.tlsSecret = 'a-tls'; });
       expect(checkContainer(c, gen(c).files).filter((f) => f.severity === 'high')).toEqual([]);

@@ -8,7 +8,7 @@
  * different config keys and contained incorrect rules (e.g. flagging every RDS
  * instance for "on-demand pricing" with no evidence, recommending NAT gateway
  * consolidation that conflicts with Multi-AZ resilience, and Azure rules that
- * looked for resource types that do not exist in CloudCraft).
+ * looked for resource types that do not exist in CloudBuilder).
  *
  * Scores are coverage-aware: a pillar with no evaluable checks reports
  * `scored: false` ("Insufficient evidence") instead of a default 100.

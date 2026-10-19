@@ -97,6 +97,6 @@ export function assertProductionConfig(env: NodeJS.ProcessEnv = process.env): vo
   const { errors, warnings } = checkProductionConfig(env);
   for (const w of warnings) console.warn(`[startup] ${w}`);
   if (errors.length > 0) {
-    throw new Error(`CloudCraft will not start in production until this is fixed:\n${errors.map((e) => `  - ${e}`).join('\n')}\nSee .env.example.`);
+    throw new Error(`CloudBuilder will not start in production until this is fixed:\n${errors.map((e) => `  - ${e}`).join('\n')}\nSee .env.example.`);
   }
 }

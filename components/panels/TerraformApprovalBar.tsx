@@ -85,9 +85,9 @@ export default function TerraformApprovalBar({ projectId, action, planId, planHa
     box = (
       <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); if (password && (!info.totpEnabled || code)) void confirmPassword(); }}>
         <div className={`flex items-start gap-2 ${isLight ? 'text-amber-800' : 'text-amber-300'}`}><ShieldAlert className={`w-4 h-4 shrink-0 mt-0.5 ${isLight ? 'text-amber-600' : 'text-amber-400'}`} />
-          <span>Confirm this {noun} with your CloudCraft password{info.totpEnabled ? ' and the code from your authenticator app' : ''} before it runs.{current?.status === 'used' || current?.status === 'expired' ? ' The earlier confirmation is no longer valid.' : ''}</span></div>
+          <span>Confirm this {noun} with your CloudBuilder password{info.totpEnabled ? ' and the code from your authenticator app' : ''} before it runs.{current?.status === 'used' || current?.status === 'expired' ? ' The earlier confirmation is no longer valid.' : ''}</span></div>
         <div className="flex gap-2">
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" autoComplete="current-password" aria-label="Your CloudCraft password"
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" autoComplete="current-password" aria-label="Your CloudBuilder password"
             className={`flex-1 min-w-0 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-amber-500 ${isLight ? 'bg-white border border-slate-300 text-slate-900 placeholder-slate-400' : 'bg-gray-800 border border-gray-600 text-white placeholder-gray-500'}`} />
           {info.totpEnabled && (
             <input type="text" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} placeholder="App code" autoComplete="one-time-code" aria-label="Authenticator app code" maxLength={12}

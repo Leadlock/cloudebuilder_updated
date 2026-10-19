@@ -1,5 +1,5 @@
 /**
- * Customers are not told which services run behind CloudCraft. This checks the helper, the sign-in responses, and (by reading the source)
+ * Customers are not told which services run behind CloudBuilder. This checks the helper, the sign-in responses, and (by reading the source)
  * that no screen or API message names a back-end vendor. The customer's own clouds (AWS, Azure) and Terraform are product features and are
  * not part of this.
  */
@@ -52,7 +52,7 @@ describe('verification method names', () => {
     expect(toPublicMethod('SMS_MFA')).toBe('sms');
     expect(toPublicMethod('EMAIL_OTP')).toBe('email');
     expect(toPublicMethod('MFA_SETUP')).toBe('setup');
-    expect(toPublicMethod('SOMETHING_NEW')).toBeNull();            // a step CloudCraft cannot do is not guessed to be a code
+    expect(toPublicMethod('SOMETHING_NEW')).toBeNull();            // a step CloudBuilder cannot do is not guessed to be a code
     expect(toPublicMethod('NEW_PASSWORD_REQUIRED')).toBeNull();
     for (const m of VERIFICATION_METHODS) expect(toPublicMethod(fromPublicMethod(m))).toBe(m);
     for (const m of VERIFICATION_METHODS) expect(m).not.toMatch(NAMES);

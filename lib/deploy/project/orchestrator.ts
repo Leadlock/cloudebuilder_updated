@@ -3,7 +3,7 @@
  *
  *   infrastructure  Terraform creates the resource group, registry, vault and VM (the existing plan/approve/apply machinery, behind `InfraRunner`)
  *   secrets         the secrets must be in the vault. If they are not, the release WAITS: the person enters them in a write-only form, the API writes
- *                   each straight to the vault (provideSecrets) and the release is resumed. CloudCraft never holds a value.
+ *                   each straight to the vault (provideSecrets) and the release is resumed. CloudBuilder never holds a value.
  *   build           every service built from source is built inside the cloud registry
  *   publish         the image tag and the compose file are put on the VM
  *   start           the service on the VM is restarted

@@ -1,5 +1,5 @@
 /**
- * Types for deploying a project from inside CloudCraft (see docs/IN_APP_DEPLOYMENT_DESIGN.md).
+ * Types for deploying a project from inside CloudBuilder (see docs/IN_APP_DEPLOYMENT_DESIGN.md).
  *
  * A release is a short state machine: a list of steps run in order by a worker. Nothing in a release record is secret: it holds names, tags,
  * the compose file (which only references secrets) and the ids of the resources that were created. Credentials and secret values never appear here.

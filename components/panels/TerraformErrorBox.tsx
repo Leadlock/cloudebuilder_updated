@@ -100,7 +100,7 @@ export default function TerraformErrorBox({ message, fallbackTitle, onRetry, onD
                       )}
                     </>
                   ) : (
-                    <p className={isLight ? 'text-amber-800 font-medium' : 'text-amber-300'} data-testid="tf-lock-refused">{inspection.reason ?? 'CloudCraft will not release this lock.'}</p>
+                    <p className={isLight ? 'text-amber-800 font-medium' : 'text-amber-300'} data-testid="tf-lock-refused">{inspection.reason ?? 'CloudBuilder will not release this lock.'}</p>
                   )}
                 </div>
               )}

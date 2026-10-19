@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Frankfurter Exchange Rate Provider (European Central Bank data)
+ * CloudBuilder — Frankfurter Exchange Rate Provider (European Central Bank data)
  *
  * Secondary authoritative fallback provider for Forex reference rates.
  */

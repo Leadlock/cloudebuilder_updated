@@ -7,7 +7,7 @@ const q = (v: string) => `"${escapeHclString(v)}"`;
 
 /**
  * Renders a `terraform { backend "..." { ... } }` block from an explicit,
- * caller-supplied state backend config. CloudCraft never provisions the S3
+ * caller-supplied state backend config. CloudBuilder never provisions the S3
  * bucket / DynamoDB table / Azure Storage container itself — the caller must
  * already have one, matching the "remote state backend required" policy
  * (a local backend would mean state living only on this server's disk,

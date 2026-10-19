@@ -39,7 +39,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
 
   useEffect(() => {
     if (mfaSecret && email) {
-      const otpauthUri = `otpauth://totp/CloudCraft:${encodeURIComponent(email)}?secret=${mfaSecret}&issuer=CloudCraft`;
+      const otpauthUri = `otpauth://totp/CloudBuilder:${encodeURIComponent(email)}?secret=${mfaSecret}&issuer=CloudBuilder`;
       QRCode.toDataURL(otpauthUri, {
         margin: 1,
         width: 180,
@@ -313,7 +313,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className={`text-lg font-bold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>CloudCraft</h2>
+                <h2 className={`text-lg font-bold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>CloudBuilder</h2>
                 <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border ${
                   isLight ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : 'bg-cyan-950 text-cyan-400 border-cyan-800/60'
                 }`}>

@@ -1,7 +1,7 @@
 /**
  * Size and shape limits for what a caller may send to the AI routes. The model is billed per token and the text goes into
  * its prompt, so an unbounded prompt is both a cost problem (one request can burn a day's budget) and the easiest place to
- * hide a prompt-injection payload. (Whatever the model returns is still validated by CloudCraft's own gates, so an injected
+ * hide a prompt-injection payload. (Whatever the model returns is still validated by CloudBuilder's own gates, so an injected
  * instruction can change the design but never produce one that fails them.)
  */
 export const AI_INPUT_LIMITS = { prompt: 4000, requirements: 4000, answerKey: 300, answerValue: 1000, answers: 40 } as const;

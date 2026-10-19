@@ -107,7 +107,7 @@ describe('error explanation', () => {
 describe('TerraformPermissionHelp', () => {
   test('leads with the simple fix (one built-in AWS policy, nothing to write) and keeps the narrower policy underneath', () => {
     const html = renderToStaticMarkup(<TerraformPermissionHelp message={REAL} resourceTypes={['aws_vpc', 'aws_ecs_cluster', 'aws_iam_role']} />);
-    expect(html).toContain('CloudCraft');
+    expect(html).toContain('CloudBuilder');
     expect(html).toContain('AdministratorAccess');
     expect(html).toContain('Nothing to write or paste');
     expect(html.indexOf('AdministratorAccess')).toBeLessThan(html.indexOf('ecs:*'));   // the simple way comes before the custom policy

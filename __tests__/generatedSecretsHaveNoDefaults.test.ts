@@ -1,7 +1,7 @@
 /**
- * The Terraform CloudCraft generates must never contain a built-in password or SSH key. Anyone can download the files, so a default would
+ * The Terraform CloudBuilder generates must never contain a built-in password or SSH key. Anyone can download the files, so a default would
  * deploy databases and servers that everyone who has read this repository can open. Secrets have no default: Terraform asks for them, and
- * CloudCraft's own runs supply random ones (see lib/terraform/execution/deploymentSecrets.ts).
+ * CloudBuilder's own runs supply random ones (see lib/terraform/execution/deploymentSecrets.ts).
  */
 import { TerraformGenerator } from '@/lib/engines/terraform/TerraformGenerator';
 import type { DbArchitectureResource } from '@/lib/repositories/architectureRepository';

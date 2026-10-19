@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Multi-Tier Cloud Pricing Cache
+ * CloudBuilder — Multi-Tier Cloud Pricing Cache
  *
  * Implements:
  * 1. In-memory fast cache (LRU-style map for <1ms hits)

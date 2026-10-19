@@ -1,5 +1,5 @@
 /**
- * CloudCraft Assessment Engine.
+ * CloudBuilder Assessment Engine.
  *
  * Input: the SAME canvas graph (CanvasNode[] / CanvasEdge[]) that the canvas,
  * canonical architecture, cost engine and Terraform generator use — on the

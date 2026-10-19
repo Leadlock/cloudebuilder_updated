@@ -106,7 +106,7 @@ export default function TopBar() {
 
         {/* Breadcrumb with responsive truncation */}
         <div className="flex items-center gap-1.5 sm:gap-2 text-sm shrink-0 min-w-0 mr-1 sm:mr-2 overflow-hidden">
-          <span className={clsx("text-xs shrink-0 hidden xs:inline", isLight ? "text-slate-500" : "text-gray-500")}>CloudCraft</span>
+          <span className={clsx("text-xs shrink-0 hidden xs:inline", isLight ? "text-slate-500" : "text-gray-500")}>CloudBuilder</span>
           <span className={clsx("text-xs shrink-0 hidden xs:inline", isLight ? "text-slate-400" : "text-gray-700")}>/</span>
           {activeProject && (
             <>

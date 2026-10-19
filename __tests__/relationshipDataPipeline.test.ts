@@ -1,7 +1,7 @@
 /**
  * The connections a data / event pipeline is drawn with must be classified, not "Unclassified Connection (protocol/port not
  * verified)": compute → DynamoDB, CloudWatch monitoring, and S3 event notifications (AWS); compute → Cosmos DB (Azure).
- * And a request for a "data lake" must say CloudCraft cannot model one (Glue / Athena / Lake Formation are not in the catalog).
+ * And a request for a "data lake" must say CloudBuilder cannot model one (Glue / Athena / Lake Formation are not in the catalog).
  */
 import { relationshipEngine } from '@/lib/engines/relationship/RelationshipEngine';
 import { detectServiceNotices, describeNotices } from '@/lib/ai/serviceCoverage';
@@ -75,12 +75,12 @@ describe('a serverless data pipeline has no unclassified connection', () => {
 
 describe('a request for a data lake', () => {
   const unsupported = (prompt: string) => detectServiceNotices(prompt).unsupported.map((u) => u.service);
-  it('says CloudCraft cannot model one, and offers S3 as the closest thing', () => {
+  it('says CloudBuilder cannot model one, and offers S3 as the closest thing', () => {
     const n = detectServiceNotices('Design a data lake on AWS for our analytics team, S3 for storage');
     const lake = n.unsupported.find((u) => /data lake/i.test(u.service));
     expect(lake).toBeDefined();
     expect(lake!.nearest.length).toBeGreaterThan(0);
-    expect(describeNotices(n).join(' ')).toMatch(/data lake .* isn't supported by CloudCraft yet — closest available/i);
+    expect(describeNotices(n).join(' ')).toMatch(/data lake .* isn't supported by CloudBuilder yet — closest available/i);
   });
   it.each(['we need a datalake', 'a Data  Lake on S3', 'lake formation governed storage', 'build a DATA LAKE'])('is noticed in "%s"', (p) => {
     expect(unsupported(p).some((s) => /data lake/i.test(s))).toBe(true);

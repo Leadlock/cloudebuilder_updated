@@ -68,7 +68,7 @@ function AcceptInviteForm() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-white tracking-tight">Join Organization</h1>
-              <p className="text-xs text-slate-400">You&apos;ve been invited to CloudCraft</p>
+              <p className="text-xs text-slate-400">You&apos;ve been invited to CloudBuilder</p>
             </div>
           </div>
         </div>
@@ -82,7 +82,7 @@ function AcceptInviteForm() {
           ) : (
             <>
               <p className="text-xs text-slate-400">
-                If you already have a CloudCraft account with this email, just click Accept.
+                If you already have a CloudBuilder account with this email, just click Accept.
                 Otherwise, set a name and password to create one.
               </p>
 

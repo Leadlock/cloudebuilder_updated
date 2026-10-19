@@ -108,7 +108,7 @@ export const awsRules: RuleDefinition[] = [
     domain: 'SECURITY', category: 'Logging & audit', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
     title: 'S3 server access logging is disabled',
     description: 'Server access logging is not enabled for the bucket.',
-    rationale: 'Security Hub S3.9 (medium). Rated LOW here because CloudTrail data events can provide equivalent object-level audit evidence; CloudCraft cannot see whether they are enabled.',
+    rationale: 'Security Hub S3.9 (medium). Rated LOW here because CloudTrail data events can provide equivalent object-level audit evidence; CloudBuilder cannot see whether they are enabled.',
     risk: 'Requests to the bucket cannot be reconstructed during an investigation.',
     impact: 'Reduced ability to investigate data access and support audit trails.',
     wellArchitected: WA.sec('SEC 4 — Detect and investigate security events'),
@@ -121,7 +121,7 @@ export const awsRules: RuleDefinition[] = [
     },
     autoFix: {
       safety: 'MANUAL_ONLY',
-      safetyReason: 'Requires choosing a target log bucket; the CloudCraft Terraform generator does not yet emit aws_s3_bucket_logging, so a config-only change would not reach Terraform.',
+      safetyReason: 'Requires choosing a target log bucket; the CloudBuilder Terraform generator does not yet emit aws_s3_bucket_logging, so a config-only change would not reach Terraform.',
       description: 'Manual: configure a log destination bucket.',
       patch: () => ({}),
       architectureImpact: 'Adds a log bucket and log delivery.',
@@ -209,7 +209,7 @@ export const awsRules: RuleDefinition[] = [
       terraform: 'aws_s3_bucket_lifecycle_configuration',
     },
     autoFix: {
-      safety: 'MANUAL_ONLY', safetyReason: 'Retention periods are a business decision; CloudCraft will not pick expiration days.',
+      safety: 'MANUAL_ONLY', safetyReason: 'Retention periods are a business decision; CloudBuilder will not pick expiration days.',
       description: 'Manual: choose retention.', patch: () => ({}), architectureImpact: 'Objects transition/expire per policy.', costImpact: 'POSSIBLE_DECREASE',
     },
     evaluate: configEvaluator(['lifecycleTransitionDays', 'lifecycleExpirationDays'], {}, (c) =>
@@ -263,7 +263,7 @@ export const awsRules: RuleDefinition[] = [
     domain: 'SECURITY', category: 'Encryption at rest', severity: 'HIGH', priority: 'REQUIRED_REMEDIATION',
     title: 'RDS storage encryption is disabled',
     description: 'Storage encryption is off, so the DB instance storage, automated backups, read replicas and snapshots are not encrypted.',
-    rationale: 'Security Hub RDS.3 is rated medium; CloudCraft rates it HIGH because a relational database is the primary store of application data and encryption cannot be enabled in place later.',
+    rationale: 'Security Hub RDS.3 is rated medium; CloudBuilder rates it HIGH because a relational database is the primary store of application data and encryption cannot be enabled in place later.',
     risk: 'Data at rest (including snapshots and backups) is not protected by KMS.',
     impact: 'Exposure of data if storage media or snapshots are accessed; non-conformance with data-protection policies.',
     wellArchitected: WA.sec('SEC 8 — Protect data at rest'),
@@ -295,7 +295,7 @@ export const awsRules: RuleDefinition[] = [
     domain: 'SECURITY', category: 'Identity & access', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
     title: 'RDS IAM database authentication is disabled',
     description: 'The instance accepts only native database credentials.',
-    rationale: 'Security Hub RDS.10 (medium). Rated LOW because native credentials stored in Secrets Manager with rotation are an accepted alternative CloudCraft cannot observe.',
+    rationale: 'Security Hub RDS.10 (medium). Rated LOW because native credentials stored in Secrets Manager with rotation are an accepted alternative CloudBuilder cannot observe.',
     risk: 'Long-lived database passwords must be distributed and rotated separately from IAM.',
     impact: 'Credential sprawl and weaker access revocation.',
     wellArchitected: WA.sec('SEC 2 — Manage authentication'),
@@ -348,7 +348,7 @@ export const awsRules: RuleDefinition[] = [
     domain: 'SECURITY', category: 'Workload hardening', severity: 'MEDIUM', priority: 'RECOMMENDED_IMPROVEMENT',
     title: 'RDS automatic minor version upgrade is disabled',
     description: 'Minor engine versions (which include security patches) will not be applied automatically.',
-    rationale: 'Security Hub RDS.13 (rated high by the standard). Rated MEDIUM because patching may be handled by a documented manual process CloudCraft cannot observe.',
+    rationale: 'Security Hub RDS.13 (rated high by the standard). Rated MEDIUM because patching may be handled by a documented manual process CloudBuilder cannot observe.',
     risk: 'Known engine vulnerabilities remain unpatched.',
     impact: 'Exploitable database engine flaws.',
     wellArchitected: WA.sec('SEC 6 — Protect compute resources (patching)'),
@@ -461,7 +461,7 @@ export const awsRules: RuleDefinition[] = [
     wellArchitected: WA.ops('Implement observability'),
     references: ['AWS-FSBP-RDS.6', 'AWS-WA-operational_excellence', TF],
     soc1: ['SOC1-OP-02'],
-    remediation: { recommendation: 'Enable Enhanced Monitoring (e.g. 60-second granularity).', manualSteps: ['Set the monitoring interval.', 'Allow CloudCraft to create the monitoring IAM role.'], terraform: 'aws_db_instance.monitoring_interval + monitoring_role_arn' },
+    remediation: { recommendation: 'Enable Enhanced Monitoring (e.g. 60-second granularity).', manualSteps: ['Set the monitoring interval.', 'Allow CloudBuilder to create the monitoring IAM role.'], terraform: 'aws_db_instance.monitoring_interval + monitoring_role_arn' },
     autoFix: {
       safety: 'REVIEW_REQUIRED', safetyReason: 'Creates an IAM role for RDS monitoring and adds CloudWatch Logs charges.',
       description: 'Enable Enhanced Monitoring at 60-second granularity.', patch: () => ({ monitoringInterval: 60 }),
@@ -482,7 +482,7 @@ export const awsRules: RuleDefinition[] = [
     domain: 'SECURITY', category: 'Network exposure', severity: 'MEDIUM', priority: 'RECOMMENDED_IMPROVEMENT',
     title: 'EC2 instance is assigned a public IP address',
     description: 'The instance receives a public IPv4 address at launch.',
-    rationale: 'Security Hub EC2.9 is rated high; CloudCraft rates it MEDIUM because inbound reachability also depends on security group rules evaluated separately (AWS-SG-001/002). Raised to HIGH if the diagram links the instance directly to an internet entry point.',
+    rationale: 'Security Hub EC2.9 is rated high; CloudBuilder rates it MEDIUM because inbound reachability also depends on security group rules evaluated separately (AWS-SG-001/002). Raised to HIGH if the diagram links the instance directly to an internet entry point.',
     risk: 'The instance is directly addressable from the internet.',
     impact: 'Larger attack surface; bypass of load balancer and WAF controls.',
     wellArchitected: WA.sec('SEC 5 — Protect network resources'),
@@ -531,7 +531,7 @@ export const awsRules: RuleDefinition[] = [
     domain: 'SECURITY', category: 'Workload hardening', severity: 'HIGH', priority: 'RECOMMENDED_IMPROVEMENT',
     title: 'EC2 instance does not require IMDSv2',
     description: 'The instance metadata service accepts IMDSv1 requests (metadata HttpTokens is "optional").',
-    rationale: 'Security Hub EC2.8 (high) requires IMDSv2 (HttpTokens = required). An instance whose metadata option is not specified or not discovered is INSUFFICIENT DATA — CloudCraft never assumes IMDSv2 is enforced.',
+    rationale: 'Security Hub EC2.8 (high) requires IMDSv2 (HttpTokens = required). An instance whose metadata option is not specified or not discovered is INSUFFICIENT DATA — CloudBuilder never assumes IMDSv2 is enforced.',
     risk: 'IMDSv1 allows SSRF-based credential theft.',
     impact: 'Theft of instance role credentials.',
     wellArchitected: WA.sec('SEC 6 — Protect compute resources'),
@@ -588,7 +588,7 @@ export const awsRules: RuleDefinition[] = [
     soc1: ['SOC1-OP-03'],
     remediation: { recommendation: 'Protect the volume with AWS Backup or Data Lifecycle Manager.', manualSteps: ['Create an AWS Backup plan or DLM policy targeting the volume.'] },
     autoFix: {
-      safety: 'MANUAL_ONLY', safetyReason: 'The CloudCraft Terraform generator does not emit AWS Backup/DLM resources, so a config change would not reach Terraform.',
+      safety: 'MANUAL_ONLY', safetyReason: 'The CloudBuilder Terraform generator does not emit AWS Backup/DLM resources, so a config change would not reach Terraform.',
       description: 'Manual: add AWS Backup or DLM policy.', patch: () => ({}), architectureImpact: 'Adds backup policy.', costImpact: 'POSSIBLE_INCREASE',
     },
     evaluate: configEvaluator(['snapshotSchedule'], {}, (c) => (c.snapshotSchedule && c.snapshotSchedule !== 'none')
@@ -952,7 +952,7 @@ export const awsRules: RuleDefinition[] = [
     references: ['AWS-FSBP-EKS.1', 'AWS-WA-security', TF],
     soc1: ['SOC1-LA-01', 'SOC1-LA-02'],
     remediation: { recommendation: 'Enable private endpoint access and disable public access, or restrict public access CIDRs to administrator networks.', manualSteps: ['Enable private endpoint access.', 'Restrict or disable public endpoint access.'], terraform: 'aws_eks_cluster.vpc_config { endpoint_private_access = true, public_access_cidrs = [...] }' },
-    autoFix: { safety: 'MANUAL_ONLY', safetyReason: 'CloudCraft cannot know administrator CIDRs, and disabling public access requires private connectivity for kubectl/CI.', description: 'Manual: restrict endpoint access.', patch: () => ({}), architectureImpact: 'Changes how kubectl and CI reach the cluster.', costImpact: 'NONE' },
+    autoFix: { safety: 'MANUAL_ONLY', safetyReason: 'CloudBuilder cannot know administrator CIDRs, and disabling public access requires private connectivity for kubectl/CI.', description: 'Manual: restrict endpoint access.', patch: () => ({}), architectureImpact: 'Changes how kubectl and CI reach the cluster.', costImpact: 'NONE' },
     evaluate: configEvaluator(['endpointPublicAccess'], { endpointPublicAccess: 'Disabled / No' }, (c, r) => {
       if (c.endpointPublicAccess !== true) return { status: 'PASS', observation: 'Public endpoint access is disabled.' };
       const cidrs = String(c.publicAccessCidrs ?? '0.0.0.0/0');
@@ -1170,7 +1170,7 @@ export const awsRules: RuleDefinition[] = [
     domain: 'SECURITY', category: 'Encryption at rest', severity: 'INFORMATIONAL', priority: 'OPTIONAL_OPTIMIZATION',
     title: 'DynamoDB encryption at rest',
     description: 'DynamoDB encrypts all tables at rest; the configuration selects the key type.',
-    rationale: 'DynamoDB encryption at rest cannot be disabled. "Server-side encryption = off" in CloudCraft means the AWS owned key is used; "on" means an AWS managed KMS key. The previous rule that reported "encryption disabled" was incorrect and has been replaced by this evidence check.',
+    rationale: 'DynamoDB encryption at rest cannot be disabled. "Server-side encryption = off" in CloudBuilder means the AWS owned key is used; "on" means an AWS managed KMS key. The previous rule that reported "encryption disabled" was incorrect and has been replaced by this evidence check.',
     risk: 'None for confidentiality; AWS owned keys provide no key-level audit trail in the customer account.', impact: 'Informational.',
     wellArchitected: WA.sec('SEC 8 — Protect data at rest'),
     references: ['AWS-WA-security', TF],
@@ -1530,7 +1530,7 @@ export const awsRules: RuleDefinition[] = [
     domain: 'SECURITY', category: 'Logging & audit', severity: 'LOW', priority: 'RECOMMENDED_IMPROVEMENT',
     title: 'AWS WAF web ACL has CloudWatch metrics or request sampling disabled',
     description: 'Without CloudWatch metrics and sampled requests there is no view of what the web ACL allows, blocks or counts.',
-    rationale: 'A web ACL that cannot be observed cannot be tuned, and a rule that is blocking real customers goes unnoticed. Full request logging (a logging configuration to Kinesis, S3 or CloudWatch Logs) is not modelled by CloudCraft, so this checks the visibility settings it does model.',
+    rationale: 'A web ACL that cannot be observed cannot be tuned, and a rule that is blocking real customers goes unnoticed. Full request logging (a logging configuration to Kinesis, S3 or CloudWatch Logs) is not modelled by CloudBuilder, so this checks the visibility settings it does model.',
     risk: 'Blocked legitimate traffic and attack patterns go unseen.', impact: 'Slower tuning and incident response.',
     wellArchitected: WA.sec('SEC 4 — Detect and investigate security events'),
     references: ['AWS-WA-security', TF],
@@ -1633,7 +1633,7 @@ export const awsRules: RuleDefinition[] = [
       const arm = isRds ? /^db\.(t4g|m6g|m7g|r6g|r7g)\./ : /^(t4g|m6g|m7g|c6g|c7g|r6g|r7g)\./;
       if (arm.test(family)) return { status: 'PASS', observation: `${family} is a Graviton (arm64) family.`, evidence };
       if (x86.test(family)) return { status: 'WARNING', observation: `${family} is an x86 family with a Graviton equivalent.`, evidence };
-      return { status: 'NOT_APPLICABLE', observation: `${family} has no direct Graviton equivalent that CloudCraft can name.`, evidence };
+      return { status: 'NOT_APPLICABLE', observation: `${family} has no direct Graviton equivalent that CloudBuilder can name.`, evidence };
     },
   }),
   rule({
@@ -1682,7 +1682,7 @@ export const awsRules: RuleDefinition[] = [
     id, service, scope: 'account', domain: 'SECURITY', category, severity, priority: 'REQUIRED_REMEDIATION',
     title: `${what} — account-level control`,
     description: `${what} is an AWS account/Region setting that is not part of an architecture diagram.`,
-    rationale: 'Account-level controls are not part of an architecture diagram and CloudCraft never assumes them: a control is NOT EVALUATED until the account has been checked (read-only API calls through a connected AWS account). A reading is dated, only used for seven days, and a control the account would not let CloudCraft read stays NOT EVALUATED with the reason.',
+    rationale: 'Account-level controls are not part of an architecture diagram and CloudBuilder never assumes them: a control is NOT EVALUATED until the account has been checked (read-only API calls through a connected AWS account). A reading is dated, only used for seven days, and a control the account would not let CloudBuilder read stays NOT EVALUATED with the reason.',
     risk, impact: 'Reduced detection, audit or account protection.',
     wellArchitected: WA.sec(practice),
     references: [ref, 'AWS-WA-security'],

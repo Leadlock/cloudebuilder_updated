@@ -1,5 +1,5 @@
 /**
- * Fine-tunes the CloudCraft architect on Azure AI Foundry (Azure OpenAI v1 API).
+ * Fine-tunes the CloudBuilder architect on Azure AI Foundry (Azure OpenAI v1 API).
  *
  *   npx tsx --env-file=.env --tsconfig tsconfig.json scripts/ai-dataset/finetune-foundry.ts start [--base gpt-4o-mini-2024-07-18] [--type GlobalStandard] [--epochs 3] [--suffix cloudcraft-architect]
  *   npx tsx --env-file=.env --tsconfig tsconfig.json scripts/ai-dataset/finetune-foundry.ts status <jobId>

@@ -5,7 +5,7 @@
  * the canvas graph (architectureRepository.toCanvas — the same mapping used to
  * load the canvas) and runs the unified assessment engine. The previous
  * standalone rule set (awsRules.ts / azureRules.ts) read config keys that do not
- * exist in CloudCraft (e.g. `transparentDataEncryption`, `diskEncryption`,
+ * exist in CloudBuilder (e.g. `transparentDataEncryption`, `diskEncryption`,
  * `blockPublicAccess`) and fired NSG rules without checking the source address;
  * it has been removed in favour of the shared engine.
  */

@@ -2,7 +2,7 @@
  * Official reference catalog.
  *
  * Stores reference METADATA only (organization, identifier, title, URL) plus a
- * short CloudCraft interpretation in the rules themselves — never copied
+ * short CloudBuilder interpretation in the rules themselves — never copied
  * documentation text.
  *
  * Verification (see ReferenceVerification in ./types). Re-run on 2026-09-24: the build
@@ -28,9 +28,9 @@
 import type { SourceReference } from './types';
 
 const SH_PAGE = (svc: string) => `https://docs.aws.amazon.com/securityhub/latest/userguide/${svc}-controls.html`;
-const SH_NOTE = 'Control ID, title and official severity re-checked on 2026-09-24 against the machine-readable FSBP mapping in prowler-cloud/prowler (all 49 CloudCraft controls match). docs.aws.amazon.com is blocked by the build environment\'s network policy, so the AWS Security Hub user guide itself was not consulted — primary reference verification is still required.';
+const SH_NOTE = 'Control ID, title and official severity re-checked on 2026-09-24 against the machine-readable FSBP mapping in prowler-cloud/prowler (all 49 CloudBuilder controls match). docs.aws.amazon.com is blocked by the build environment\'s network policy, so the AWS Security Hub user guide itself was not consulted — primary reference verification is still required.';
 
-/** AWS Foundational Security Best Practices controls used by CloudCraft rules. */
+/** AWS Foundational Security Best Practices controls used by CloudBuilder rules. */
 const AWS_FSBP: Array<[string, string, string, string]> = [
   // [controlId, service page slug, title, officialSeverity]
   ['S3.2', 's3', 'S3 buckets should prohibit public read access', 'critical'],
@@ -93,7 +93,7 @@ const MCSB_PAGES: Record<string, string> = {
   BR: 'https://learn.microsoft.com/security/benchmark/azure/mcsb-backup-recovery',
   PV: 'https://learn.microsoft.com/security/benchmark/azure/mcsb-posture-vulnerability-management',
 };
-const MCSB_NOTE = 'Control ID and Azure Policy definition mapping re-verified on 2026-09-24 in Microsoft\'s built-in "Microsoft cloud security benchmark" initiative (Azure/azure-policy, v57.58.0; all 41 CloudCraft MCSB/Policy references present). The Microsoft Learn page (learn.microsoft.com) is blocked by the build environment\'s network policy, so the control title and URL were not checked against it.';
+const MCSB_NOTE = 'Control ID and Azure Policy definition mapping re-verified on 2026-09-24 in Microsoft\'s built-in "Microsoft cloud security benchmark" initiative (Azure/azure-policy, v57.58.0; all 41 CloudBuilder MCSB/Policy references present). The Microsoft Learn page (learn.microsoft.com) is blocked by the build environment\'s network policy, so the control title and URL were not checked against it.';
 
 /** [MCSB control, title, Azure Policy definition GUID (from the MCSB initiative), policy reference id] */
 const AZURE_MCSB: Array<[string, string, string?, string?]> = [
@@ -147,7 +147,7 @@ const AZURE_POLICIES: Array<[string, string, string, string]> = [
 
 const AWS_WA_BASE = 'https://docs.aws.amazon.com/wellarchitected/latest';
 const AZ_WA_BASE = 'https://learn.microsoft.com/azure/well-architected';
-const WA_NOTE = 'Pillar URL carried over from CloudCraft framework definitions. docs.aws.amazon.com and learn.microsoft.com are blocked by the build environment\'s network policy, so it has not been verified against the published framework — reference verification required.';
+const WA_NOTE = 'Pillar URL carried over from CloudBuilder framework definitions. docs.aws.amazon.com and learn.microsoft.com are blocked by the build environment\'s network policy, so it has not been verified against the published framework — reference verification required.';
 
 function build(): Record<string, SourceReference> {
   const refs: Record<string, SourceReference> = {};
@@ -233,7 +233,7 @@ function build(): Record<string, SourceReference> {
     title: 'hashicorp/azurerm provider resource documentation',
     url: 'https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs',
     verification: 'VERIFIED_OFFICIAL_SOURCE',
-    verificationNote: 'Attribute names checked against hashicorp/terraform-provider-azurerm website/docs sources. CloudCraft pins azurerm ~> 3.0; some attributes are renamed in 4.x.',
+    verificationNote: 'Attribute names checked against hashicorp/terraform-provider-azurerm website/docs sources. CloudBuilder pins azurerm ~> 3.0; some attributes are renamed in 4.x.',
   };
   refs['AICPA-SOC1'] = {
     key: 'AICPA-SOC1', organization: 'AICPA', framework: 'SOC 1® — SOC for Service Organizations: ICFR (SSAE 18, AT-C section 320)',
@@ -241,7 +241,7 @@ function build(): Record<string, SourceReference> {
     title: 'Reporting on an Examination of Controls at a Service Organization Relevant to User Entities\' Internal Control Over Financial Reporting',
     url: 'https://www.aicpa-cima.com/topic/audit-assurance/audit-and-assurance-greater-than-soc-1',
     verification: 'NOT_VERIFIED_IN_BUILD',
-    verificationNote: 'Used only to describe the scope of SOC 1 reporting. aicpa-cima.com is blocked by the build environment\'s network policy, so the page was not verified. CloudCraft does not perform SOC 1 examinations.',
+    verificationNote: 'Used only to describe the scope of SOC 1 reporting. aicpa-cima.com is blocked by the build environment\'s network policy, so the page was not verified. CloudBuilder does not perform SOC 1 examinations.',
   };
 
   return refs;

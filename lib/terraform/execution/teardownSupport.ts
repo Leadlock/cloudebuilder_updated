@@ -57,9 +57,9 @@ export async function disableDeletionProtection(items: ProtectedResource[], clie
       } else {
         await clients.ddb.send(new UpdateTableCommand({ TableName: item.id, DeletionProtectionEnabled: false }));
       }
-      log(`[CloudCraft] Deletion protection switched off for ${item.type} ${item.id.split('/').slice(-2, -1)[0] ?? item.id}.\n`);
+      log(`[CloudBuilder] Deletion protection switched off for ${item.type} ${item.id.split('/').slice(-2, -1)[0] ?? item.id}.\n`);
     } catch (err) {
-      log(`[CloudCraft] Could not switch deletion protection off for ${item.type} ${item.id} (${(err as { name?: string })?.name ?? 'error'}); the teardown will report it if AWS refuses the delete.\n`);
+      log(`[CloudBuilder] Could not switch deletion protection off for ${item.type} ${item.id} (${(err as { name?: string })?.name ?? 'error'}); the teardown will report it if AWS refuses the delete.\n`);
     }
   }
 }

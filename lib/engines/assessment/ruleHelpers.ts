@@ -106,11 +106,11 @@ export function configEvaluator(
   };
 }
 
-/** Outcome for controls CloudCraft cannot observe from an architecture design. */
+/** Outcome for controls CloudBuilder cannot observe from an architecture design. */
 export function notModelled(what: string, requiredData: string, resourceIds: string[] = []): RuleOutcome {
   return {
     status: 'NOT_EVALUATED',
-    observation: `${what} is not represented in the CloudCraft architecture model, so it was not evaluated.`,
+    observation: `${what} is not represented in the CloudBuilder architecture model, so it was not evaluated.`,
     evidence: [{ label: what, observed: 'Not modelled in the architecture', basis: 'NOT_MODELLED' }],
     requiredData,
     resourceIds,

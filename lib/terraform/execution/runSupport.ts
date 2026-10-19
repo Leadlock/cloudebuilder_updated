@@ -69,7 +69,7 @@ export async function initWithRetry(cwd: string, env: Record<string, string>, op
       const message = err instanceof Error ? err.message : String(err);
       if (pluginCache && CACHE_PROBLEM.test(message)) { pluginCache = false; continue; }   // one retry without the shared cache
       if (attempt < attempts && isTransientNetworkError(message)) {
-        onOutput?.(`\n[CloudCraft] Network problem during init (attempt ${attempt} of ${attempts}); retrying…\n`);
+        onOutput?.(`\n[CloudBuilder] Network problem during init (attempt ${attempt} of ${attempts}); retrying…\n`);
         await sleep(attempt * 4000);
         continue;
       }

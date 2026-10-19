@@ -15,7 +15,7 @@ const put = (path: string, content: string, mode?: number) => { mkdirSync(join(p
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'deploy-script-'));
-  repo = join(root, 'repo'); server = join(root, 'server', 'CloudCraft'); bin = join(root, 'bin'); state = join(root, 'state'); ci = join(state, 'ci');
+  repo = join(root, 'repo'); server = join(root, 'server', 'CloudBuilder'); bin = join(root, 'bin'); state = join(root, 'state'); ci = join(state, 'ci');
   mkdirSync(state, { recursive: true });
   // The repository: the deploy scripts, a package.json and one source file, pushed to a bare "origin".
   mkdirSync(join(repo, 'scripts', 'deploy'), { recursive: true });

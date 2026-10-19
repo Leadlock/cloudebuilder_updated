@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Adaptive Workload Scale Engine
+ * CloudBuilder — Adaptive Workload Scale Engine
  *
  * Dynamically resizes compute, database, caching, autoscaling, load-balancing,
  * and security postures based on multi-dimensional workload scale profiles:

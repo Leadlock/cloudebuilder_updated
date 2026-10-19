@@ -24,7 +24,7 @@ const CreateCloudAccountSchema = z.object({
   provider:    z.enum(['aws', 'azure']),
   name:        z.string().min(1).max(120),
   credentials: CloudCredentialsSchema,
-  /** How long CloudCraft may keep this key, and whether to forget it after a deployment. Turned into a deadline here, by the server's clock. */
+  /** How long CloudBuilder may keep this key, and whether to forget it after a deployment. Turned into a deadline here, by the server's clock. */
   lifetime: z.object({
     hours: z.number().positive().max(24 * 30).nullable().optional(),
     forgetAfterDeploy: z.boolean().optional(),
@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
     void _ignoredExpiry; void _ignoredForget;
     const temporary = typeof sent['accessKeyId'] === 'string' && sent['accessKeyId'].startsWith('ASIA');
     if (temporary && !(body.lifetime?.hours && body.lifetime.hours > 0)) {
-      return badRequest('These are temporary credentials: say how long they are valid for, so CloudCraft stops using them when AWS does.');
+      return badRequest('These are temporary credentials: say how long they are valid for, so CloudBuilder stops using them when AWS does.');
     }
     if (temporary && (body.lifetime?.hours ?? 0) > 36) return badRequest('AWS temporary credentials last at most 36 hours.');
     const lifetime = lifetimeFromRequest(body.lifetime, temporary);

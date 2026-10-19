@@ -1,5 +1,5 @@
 /**
- * DiscoveryImportService — bridges a completed discovery run into a CloudCraft
+ * DiscoveryImportService — bridges a completed discovery run into a CloudBuilder
  * architecture canvas, persisting discovered resources as ArchitectureResources.
  *
  * Security: discovery runs contain only sanitised resource data (no credentials).

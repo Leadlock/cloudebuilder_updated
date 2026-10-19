@@ -305,7 +305,7 @@ describe('discovery of the new services', () => {
     expect(out.resources.some((r) => r.resourceType === 'service-bus')).toBe(false);
     expect(out.resources.some((r) => r.resourceType === 'private-endpoint')).toBe(true);
   });
-  test('every discovered kind becomes a CloudCraft type with the config keys that type has', async () => {
+  test('every discovered kind becomes a CloudBuilder type with the config keys that type has', async () => {
     const { resources } = await discoverAzureServices(reader(), 's1');
     const { nodes } = normalizeDiscoveredInfrastructure(resources, []);
     expect(nodes.map((n) => n.resourceType).sort()).toEqual(['azure_container_apps', 'azure_postgres', 'azure_private_endpoint', 'azure_service_bus']);

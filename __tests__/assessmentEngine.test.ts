@@ -232,7 +232,7 @@ describe('Azure assessment', () => {
     expect(statusOf(a.evaluations, 'AZ-ARCH-020')).toBe('NOT_EVALUATED');
   });
 
-  test('load balancer presence is detected with real CloudCraft types (previous rule never matched)', () => {
+  test('load balancer presence is detected with real CloudBuilder types (previous rule never matched)', () => {
     const vm = node('azure_vm');
     const withLb = runAssessment({ nodes: [vm, node('azure_lb')], edges: [] });
     const without = runAssessment({ nodes: [vm], edges: [] });

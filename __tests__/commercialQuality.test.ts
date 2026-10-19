@@ -4,7 +4,7 @@ import { architectureTemplates } from '@/lib/templates';
 import { toCanonicalGraph, validateCanonicalArchitecture, fromCanonicalGraph } from '@/lib/domain/canonicalArchitecture';
 import { CanvasNode, CanvasEdge } from '@/types';
 
-describe('CloudCraft Commercial Quality & Enterprise Robustness', () => {
+describe('CloudBuilder Commercial Quality & Enterprise Robustness', () => {
   describe('Template Catalog Integrity', () => {
     it('contains the parameterized 240-template catalog plus the hand-built reference architectures', () => {
       // 240 parameterized quick-start variations (lib/templates/catalogData.ts)

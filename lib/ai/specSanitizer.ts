@@ -1,7 +1,7 @@
 /**
  * Cleans up the setting names in a model-written design before it is validated.
  *
- * The most common reason a design is rejected is a setting name CloudCraft does not have: usually the right
+ * The most common reason a design is rejected is a setting name CloudBuilder does not have: usually the right
  * setting spelled differently ("cidr_block" for cidrBlock), sometimes an invented one ("allocatedStorageGb").
  * Every setting is optional — anything left out takes the secure default — so:
  *
@@ -143,9 +143,9 @@ export function spreadSubnetZones(resources: SpecResource[]): string[] {
 /** Sentences for the user about settings that were ignored (renames are lossless, so they are not worth a warning). */
 export function describeSanitized(report: SanitizeReport): string[] {
   const out: string[] = report.specRepairs ? describeSpecRepair(report.specRepairs) : [];
-  if (report.zonesSpread && report.zonesSpread.length > 0) out.push(`The AI placed every subnet in one Availability Zone, so CloudCraft spread ${report.zonesSpread.length} of them across two zones for high availability.`);
+  if (report.zonesSpread && report.zonesSpread.length > 0) out.push(`The AI placed every subnet in one Availability Zone, so CloudBuilder spread ${report.zonesSpread.length} of them across two zones for high availability.`);
   if (report.dropped.length === 0) return out;
   const list = report.dropped.map((d) => `${d.type}.${d.setting} (${d.resources.slice(0, 3).join(', ')}${d.resources.length > 3 ? ', …' : ''})`).join('; ');
-  out.push(`The AI used ${report.dropped.length} setting name${report.dropped.length === 1 ? '' : 's'} CloudCraft doesn't have, so the defaults were used instead: ${list}. Check those resources if you needed something specific.`);
+  out.push(`The AI used ${report.dropped.length} setting name${report.dropped.length === 1 ? '' : 's'} CloudBuilder doesn't have, so the defaults were used instead: ${list}. Check those resources if you needed something specific.`);
   return out;
 }

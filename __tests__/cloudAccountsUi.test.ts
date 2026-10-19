@@ -16,12 +16,12 @@ const noop = async () => undefined;
 describe('Connect AWS form', () => {
   const markup = html(createElement(ConnectAwsAccountForm, { onConnected: noop, initialMode: 'role' }));
 
-  it('is about the user\'s own account: their key and their role, with nothing of CloudCraft\'s to set up or trust', () => {
+  it('is about the user\'s own account: their key and their role, with nothing of CloudBuilder\'s to set up or trust', () => {
     expect(markup).toContain('Connect your own AWS account');
-    expect(markup).toContain('nothing of CloudCraft');
+    expect(markup).toContain('nothing of CloudBuilder');
     expect(markup).toContain('temporary role credentials');
-    expect(markup).not.toMatch(/CloudCraft (server )?signs in to AWS/i);
-    expect(markup).not.toContain('Checking how CloudCraft signs in to AWS');
+    expect(markup).not.toMatch(/CloudBuilder (server )?signs in to AWS/i);
+    expect(markup).not.toContain('Checking how CloudBuilder signs in to AWS');
     expect(markup).not.toContain('no AWS credentials of its own');
   });
 
@@ -90,7 +90,7 @@ describe('Cloud Accounts tab', () => {
   const markup = html(createElement(CloudAccountsPanel));
   it('has a heading that says what it is for, and shows loading until the accounts arrive', () => {
     expect(markup).toContain('Cloud Accounts');
-    expect(markup).toContain('Connect the AWS and Azure accounts CloudCraft reads from and deploys to.');
+    expect(markup).toContain('Connect the AWS and Azure accounts CloudBuilder reads from and deploys to.');
     expect(markup).toContain('Loading your accounts');
   });
   it('does not show a connect form or an empty-state message before it knows whether there are accounts', () => {

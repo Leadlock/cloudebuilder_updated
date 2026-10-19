@@ -1,5 +1,5 @@
 /**
- * Limits who can use this CloudCraft to people with an email address on certain domains, for example while it is being tested inside a
+ * Limits who can use this CloudBuilder to people with an email address on certain domains, for example while it is being tested inside a
  * company. Set ALLOWED_EMAIL_DOMAINS to a comma separated list (neozaar.com). Empty or missing means anyone can, as before.
  *
  * The check is deliberately strict: the part after the single "@" must equal a listed domain exactly. Look-alikes such as

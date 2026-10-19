@@ -1,13 +1,13 @@
 /**
- * Terraform comes with CloudCraft: nothing to install.
+ * Terraform comes with CloudBuilder: nothing to install.
  *
  * The first time Terraform is needed and none is found, this downloads the pinned release for this machine from HashiCorp, checks it against
- * the official SHA-256 checksum that is built into this file, and keeps it under the CloudCraft data folder. Anything that does not match is
+ * the official SHA-256 checksum that is built into this file, and keeps it under the CloudBuilder data folder. Anything that does not match is
  * thrown away, so a tampered download or a hostile mirror cannot put a program on the server.
  *
  * Which Terraform is used, in order:
  *   1. TERRAFORM_BINARY_PATH, when set to a file that exists (you chose it);
- *   2. the copy CloudCraft manages (the pinned version);
+ *   2. the copy CloudBuilder manages (the pinned version);
  *   3. ~/bin/terraform, then `terraform` on the PATH (what was there before this existed).
  * If none exists, step 2 is created. Settings, all optional:
  *   CLOUDCRAFT_TERRAFORM_DIR       where the managed copy lives (default ~/.cloudcraft/terraform)
@@ -15,7 +15,7 @@
  *                                  files, because they are still checked against the built-in checksums
  *   CLOUDCRAFT_TERRAFORM_DOWNLOAD=0   never download (for machines with no internet: install Terraform yourself or set TERRAFORM_BINARY_PATH)
  *
- * Terraform is licensed by HashiCorp under the Business Source License. CloudCraft does not redistribute it: each server downloads its own copy
+ * Terraform is licensed by HashiCorp under the Business Source License. CloudBuilder does not redistribute it: each server downloads its own copy
  * from HashiCorp, the same way `hashicorp/setup-terraform` does.
  */
 import { createHash } from 'crypto';
@@ -25,7 +25,7 @@ import os from 'os';
 import path from 'path';
 import { inflateRawSync } from 'zlib';
 
-/** The version CloudCraft runs. The generated Terraform is validated against this one in CI. */
+/** The version CloudBuilder runs. The generated Terraform is validated against this one in CI. */
 export const TERRAFORM_VERSION = '1.9.8';
 
 /** SHA-256 of each release zip, from https://releases.hashicorp.com/terraform/1.9.8/terraform_1.9.8_SHA256SUMS. */

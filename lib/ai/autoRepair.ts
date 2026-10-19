@@ -1,5 +1,5 @@
 /**
- * Fixes a freshly generated design with CloudCraft's own verified remediations, instead of asking the model again.
+ * Fixes a freshly generated design with CloudBuilder's own verified remediations, instead of asking the model again.
  *
  * Most rejected designs fail on something mechanical that the assessment engine already knows how to fix ("subnet assigns public
  * IPs": set one setting to false). Sending that back to a language model is slow and unreliable; applying the rule's own fix is

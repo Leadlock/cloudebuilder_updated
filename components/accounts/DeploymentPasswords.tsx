@@ -1,6 +1,6 @@
 'use client';
 /**
- * The passwords CloudCraft generated for what it deployed with this account (database, SQL Server, Windows admin). Fetched only when
+ * The passwords CloudBuilder generated for what it deployed with this account (database, SQL Server, Windows admin). Fetched only when
  * asked, shown until hidden, never kept in the browser. Empty until the account has been planned or deployed once.
  */
 import { useState } from 'react';
@@ -30,7 +30,7 @@ export default function DeploymentPasswords({ accountId }: { accountId: string }
 
   return (
     <div className="mt-2.5 rounded-lg border border-gray-700 bg-gray-900/40 px-3 py-2 space-y-2 text-xs" data-testid="deployment-passwords">
-      <p className="text-gray-400 font-medium">Passwords CloudCraft generated for this account&apos;s deployments</p>
+      <p className="text-gray-400 font-medium">Passwords CloudBuilder generated for this account&apos;s deployments</p>
       {secrets === null ? (
         <button type="button" disabled={busy} onClick={() => void reveal()} className="px-2 py-1 rounded text-xs border border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-50">
           {busy ? <Loader2 className="w-3 h-3 animate-spin inline" /> : 'Show passwords'}

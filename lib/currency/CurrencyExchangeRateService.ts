@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Currency Exchange Rate Service
+ * CloudBuilder — Currency Exchange Rate Service
  *
  * Dedicated domain service providing real-time & cached multi-currency conversion rates.
  * Sourced from authoritative live Forex feeds with persistent multi-tier caching

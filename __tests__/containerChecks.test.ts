@@ -10,7 +10,7 @@ function gen(c: ContainerConfig) {
 const ids = (c: ContainerConfig, files?: GeneratedFile[]) => checkContainer(c, files ?? gen(c).files).map((f) => f.id);
 const withEc2 = (c: ContainerConfig, over: Partial<ContainerConfig['ec2']> = {}): ContainerConfig => ({ ...c, ec2: { ...c.ec2, enabled: true, ...over } });
 
-describe('what CloudCraft generates passes its own checks', () => {
+describe('what CloudBuilder generates passes its own checks', () => {
   test.each(['node', 'python', 'java', 'static'] as const)('%s with databases and EC2: nothing high', (stack) => {
     const c = withEc2({ ...defaultConfig(stack), postgres: true, redis: true, ec2: { ...defaultConfig(stack).ec2, imageTag: 'v1', allowedCidr: '10.0.0.0/8' } });
     const f = checkContainer(c, gen(c).files);

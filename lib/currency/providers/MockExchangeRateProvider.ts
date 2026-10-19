@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Mock Exchange Rate Provider
+ * CloudBuilder — Mock Exchange Rate Provider
  *
  * Deterministic fixture provider for unit tests and offline testing.
  */

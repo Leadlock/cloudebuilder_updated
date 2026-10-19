@@ -445,7 +445,7 @@ locals {
 
           blocks.push(this._lambda(name, cfg, subnetRefs, sgRef));
           resourceMap[r.id] = `aws_lambda_function.${name}`;
-          warnings.push(`Lambda "${r.label}" deploys a file named placeholder.zip because no code package exists on the canvas. CloudCraft's own deploy creates that file for you. If you run this Terraform yourself, put your function's zip next to main.tf under that name (or change filename in main.tf) before running terraform plan, or it stops with "no such file".`);
+          warnings.push(`Lambda "${r.label}" deploys a file named placeholder.zip because no code package exists on the canvas. CloudBuilder's own deploy creates that file for you. If you run this Terraform yourself, put your function's zip next to main.tf under that name (or change filename in main.tf) before running terraform plan, or it stops with "no such file".`);
           break;
         }
         case 'aws_alb': {
@@ -510,7 +510,7 @@ locals {
 
           if (usedAz.size < 2 && !isImported) {
             const where = chosen.length > 0 ? `all in ${[...usedAz].join(', ')}` : 'none connected';
-            this._blocking.push(`The load balancer "${r.label}" needs subnets in at least two different Availability Zones, but the subnets it can use are ${where}. AWS only refuses this when it creates the load balancer, after other resources were already built, so CloudCraft stops here instead. Add a second subnet in another Availability Zone (set its Availability Zone) and connect it to the load balancer.`);
+            this._blocking.push(`The load balancer "${r.label}" needs subnets in at least two different Availability Zones, but the subnets it can use are ${where}. AWS only refuses this when it creates the load balancer, after other resources were already built, so CloudBuilder stops here instead. Add a second subnet in another Availability Zone (set its Availability Zone) and connect it to the load balancer.`);
           }
 
           // An HTTPS/TLS listener needs a certificate, and AWS reports its absence only when the listener is created, after the load
@@ -1375,7 +1375,7 @@ resource "aws_flow_log" "${name}_flow_log" {
     const lines: string[] = [
       `resource "aws_elasticache_replication_group" "${name}" {`,
       `  replication_group_id = "${name.replace(/_/g, '-')}"`,
-      `  description           = "Managed by CloudCraft"`,
+      `  description           = "Managed by CloudBuilder"`,
       `  engine                = "${cfg['engine'] ?? 'redis'}"`,
       `  engine_version        = "${cfg['engineVersion'] ?? '7.1'}"`,
       `  node_type             = "${cfg['nodeType'] ?? 'cache.t3.medium'}"`,
@@ -1927,7 +1927,7 @@ ${tagLines.join('\n')}
 
     const lines: string[] = [
       `resource "aws_kms_key" "${name}" {`,
-      `  description              = "Managed by CloudCraft"`,
+      `  description              = "Managed by CloudBuilder"`,
       `  key_usage                = "${cfg['keyUsage'] ?? 'ENCRYPT_DECRYPT'}"`,
       `  customer_master_key_spec = "${cfg['keySpec'] ?? 'SYMMETRIC_DEFAULT'}"`,
       `  enable_key_rotation      = ${cfg['enableKeyRotation'] !== false}`,
@@ -2246,7 +2246,7 @@ resource "aws_sfn_state_machine" "${name}" {
   role_arn = aws_iam_role.${name}_sfn_role.arn
   type     = "${cfg['stateMachineType'] ?? 'STANDARD'}"
   definition = jsonencode({
-    Comment = "State Machine created via CloudCraft"
+    Comment = "State Machine created via CloudBuilder"
     StartAt = "PassState"
     States = {
       PassState = {
@@ -2593,7 +2593,7 @@ resource "aws_sfn_state_machine" "${name}" {
 
     return `resource "aws_security_group" "${name}" {
   name        = "${name}"
-  description = "${(cfg['description'] as string) || 'Managed by CloudCraft'}"
+  description = "${(cfg['description'] as string) || 'Managed by CloudBuilder'}"
   vpc_id      = ${vpcRef}
 ${rules.join('\n')}
 ${egressBlock}
@@ -3217,7 +3217,7 @@ locals {
         if (snCfg['imported'] || snCfg['importState'] === 'imported') continue;
         const snName = resolver.tfNameOf(sn.id) ?? tfName(sn.label);
         if (isNsg && subnetHosts(sn.id, 'azure_firewall')) { warnings.push(`Network security group "${g.label}" is drawn against the subnet of an Azure Firewall, which Azure does not allow, so it was not associated.`); continue; }
-        if (isNsg && subnetHosts(sn.id, 'azure_bastion')) { warnings.push(`Network security group "${g.label}" is drawn against the subnet of an Azure Bastion host, which needs a specific set of rules that CloudCraft does not generate, so it was not associated.`); continue; }
+        if (isNsg && subnetHosts(sn.id, 'azure_bastion')) { warnings.push(`Network security group "${g.label}" is drawn against the subnet of an Azure Bastion host, which needs a specific set of rules that CloudBuilder does not generate, so it was not associated.`); continue; }
         if (isNsg) {
           blocks.push(`resource "azurerm_subnet_network_security_group_association" "${gName}_${snName}" {
   subnet_id                 = azurerm_subnet.${snName}.id
@@ -4590,7 +4590,7 @@ export class TerraformGenerator {
         .filter((p) => p !== 'aws' && p !== 'azure')
     );
     for (const p of unsupportedProviders) {
-      warnings.push(`Provider "${p}" is no longer supported by CloudCraft — its resources were skipped. Remove them from the architecture or re-platform to AWS/Azure.`);
+      warnings.push(`Provider "${p}" is no longer supported by CloudBuilder — its resources were skipped. Remove them from the architecture or re-platform to AWS/Azure.`);
     }
 
     const files = this._buildFiles(awsBlocks, azureBlocks, providers, projectName, input);

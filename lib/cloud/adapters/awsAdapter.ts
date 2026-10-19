@@ -373,7 +373,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
       }, used);
     } catch (err) {
       // Could not even sign in: every control is unavailable for the same reason.
-      const reason = `CloudCraft could not sign in to the AWS account (${err instanceof Error ? err.name : 'error'}). Check the connection.`;
+      const reason = `CloudBuilder could not sign in to the AWS account (${err instanceof Error ? err.name : 'error'}). Check the connection.`;
       return (['AWS-ACCT-001', 'AWS-ACCT-002', 'AWS-ACCT-003', 'AWS-ACCT-004'] as const).map((controlId) => ({ controlId, status: 'UNAVAILABLE' as const, observation: reason }));
     }
   }

@@ -1,5 +1,5 @@
 /**
- * Jest configuration for CloudCraft backend tests.
+ * Jest configuration for CloudBuilder backend tests.
  * Tests run in Node.js environment (no DOM).
  */
 /** @type {import('jest').Config} */

@@ -1,5 +1,5 @@
 /**
- * Discovery of the Azure managed services CloudCraft models since lib/resources/azureServices.ts: PostgreSQL and MySQL flexible servers,
+ * Discovery of the Azure managed services CloudBuilder models since lib/resources/azureServices.ts: PostgreSQL and MySQL flexible servers,
  * Service Bus namespaces, Container Registries, Log Analytics workspaces and Private Endpoints.
  *
  * One generic reader (the Resource Manager "list by type" call, then "get by id" for the properties) instead of five more SDK packages. Each
@@ -167,7 +167,7 @@ export const MAP_CONTAINER_APP = (r: Resource): Record<string, unknown> => {
 export interface ArmServiceType {
   armType: string;
   apiVersion: string;
-  /** Raw type name the normalizer maps to a CloudCraft resource type (lib/cloud/normalizer.ts). */
+  /** Raw type name the normalizer maps to a CloudBuilder resource type (lib/cloud/normalizer.ts). */
   resourceType: string;
   fallbackName: string;
   map: (r: Resource) => Record<string, unknown>;

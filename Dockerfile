@@ -1,5 +1,5 @@
 # ==========================================
-# CloudCraft Production Multi-Stage Dockerfile
+# CloudBuilder Production Multi-Stage Dockerfile
 # Hardened: Non-Root Execution & Minimal Attack Surface
 # ==========================================
 

@@ -1,5 +1,5 @@
 /**
- * Starts a local PostgreSQL (docker-compose.yml) and creates CloudCraft's tables in it, so development does not wait on a remote
+ * Starts a local PostgreSQL (docker-compose.yml) and creates CloudBuilder's tables in it, so development does not wait on a remote
  * database: a query to a database in another continent costs a quarter of a second; a local one costs about a millisecond.
  *
  *   npm run db:local

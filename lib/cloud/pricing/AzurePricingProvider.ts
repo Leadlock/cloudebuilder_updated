@@ -1,5 +1,5 @@
 /**
- * CloudCraft — Real Azure Pricing Provider
+ * CloudBuilder — Real Azure Pricing Provider
  *
  * Integrates directly with Microsoft's official Azure Retail Prices API:
  * https://prices.azure.com/api/retail/prices
@@ -180,7 +180,7 @@ export class AzurePricingProvider implements ICloudPricingProvider {
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       assumptions: [
         best && best.retailPrice > 0 ? `Live price from Azure Retail Prices API: $${hourly.toFixed(4)}/hr`
-          : `No matching Azure Retail Prices meter for ${size}; CloudCraft baseline estimate $${hourly.toFixed(4)}/hr`,
+          : `No matching Azure Retail Prices meter for ${size}; CloudBuilder baseline estimate $${hourly.toFixed(4)}/hr`,
         `Assumes 730 hours/month compute runtime: $${(hourly * 730).toFixed(2)}/mo`,
         `${osDiskGb}GB Premium SSD OS disk: $${diskMonthly.toFixed(2)}/mo`,
         `Region: ${region}`,

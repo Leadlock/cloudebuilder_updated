@@ -11,7 +11,7 @@
 export type TerraformStateBackendConfig =
   | {
       provider: 'aws';
-      /** S3 bucket that already exists — CloudCraft does not provision it. */
+      /** S3 bucket that already exists — CloudBuilder does not provision it. */
       bucket: string;
       key: string;
       region: string;
@@ -20,7 +20,7 @@ export type TerraformStateBackendConfig =
     }
   | {
       provider: 'azure';
-      /** Storage account + container that already exist — CloudCraft does not provision them. */
+      /** Storage account + container that already exist — CloudBuilder does not provision them. */
       resourceGroupName: string;
       storageAccountName: string;
       containerName: string;

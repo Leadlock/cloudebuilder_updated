@@ -4,11 +4,11 @@
  * Terraform locks the remote state while it plans, applies or destroys, so two runs can never write it at once. If a run
  * is killed, its lock stays behind. Breaking a lock that is NOT stale — one held by a run that is still going, on this
  * server or on someone else's machine — lets two writers loose on the same state, which can duplicate or lose
- * infrastructure. So CloudCraft only clears a lock automatically when ALL of these hold:
+ * infrastructure. So CloudBuilder only clears a lock automatically when ALL of these hold:
  *
- *   - the lock was taken by this very machine (the lock's "Who" names this host), so it is CloudCraft's own run that
+ *   - the lock was taken by this very machine (the lock's "Who" names this host), so it is CloudBuilder's own run that
  *     died, not a teammate's laptop or a pipeline;
- *   - it is older than the longest run CloudCraft allows (plus a margin), so that run cannot still be working;
+ *   - it is older than the longest run CloudBuilder allows (plus a margin), so that run cannot still be working;
  *   - the operation is a plan or an apply — never a destroy.
  *
  * Anything else is reported with who holds the lock, since when, and how to release it by hand once it is confirmed dead.
@@ -18,7 +18,7 @@ import { isStateLockError, parseLockInfo, type LockInfo } from './stateLockParse
 
 export { isStateLockError, parseLockInfo, type LockInfo };
 
-/** Longest CloudCraft allows an apply (45 min) plus a safety margin. */
+/** Longest CloudBuilder allows an apply (45 min) plus a safety margin. */
 export const AUTO_UNLOCK_MIN_AGE_MS = 60 * 60 * 1000;
 
 export type LockedOperation = 'plan' | 'apply' | 'destroy';
@@ -50,7 +50,7 @@ export function describeHeldLock(originalMessage: string, decision: Extract<Unlo
     ? `The remote state is locked${i.who ? ` by ${i.who}` : ''}${i.operation ? ` (running: ${i.operation})` : ''}${i.created ? `, since ${i.created.toISOString().replace('T', ' ').slice(0, 16)} UTC (${Math.round((now - i.created.getTime()) / 60000)} min ago)` : ''}.`
     : 'The remote state is locked.';
   const how = i
-    ? `CloudCraft did not break it because ${decision.reason}. First confirm that run has finished or died (ask whoever holds it, or check their machine / pipeline). Only then release it with: terraform force-unlock ${i.id}`
-    : `CloudCraft did not break it because ${decision.reason}.`;
+    ? `CloudBuilder did not break it because ${decision.reason}. First confirm that run has finished or died (ask whoever holds it, or check their machine / pipeline). Only then release it with: terraform force-unlock ${i.id}`
+    : `CloudBuilder did not break it because ${decision.reason}.`;
   return `${held} ${how}\n\nTerraform said: ${originalMessage.slice(0, 600)}`;
 }

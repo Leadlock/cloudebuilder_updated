@@ -1,5 +1,5 @@
 /**
- * CloudCraft Backend Foundation Tests
+ * CloudBuilder Backend Foundation Tests
  *
  * Tests cover: project CRUD, environment management, architecture save/load,
  * version creation/restoration, org isolation, invalid requests, and

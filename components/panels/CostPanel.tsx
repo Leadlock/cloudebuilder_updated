@@ -30,7 +30,7 @@ const TIER_STYLE_LIGHT: Record<PricingTier, string> = {
 const TIER_HELP: Record<PricingTier, string> = {
   LIVE: 'Official list price from the cloud provider for this estimate.',
   CACHED_LIVE: 'Official list price retrieved earlier from the provider API and served from cache.',
-  FALLBACK_ESTIMATE: 'The provider API was not available or does not price this resource: CloudCraft static list-price estimate, not a live price.',
+  FALLBACK_ESTIMATE: 'The provider API was not available or does not price this resource: CloudBuilder static list-price estimate, not a live price.',
   UNAVAILABLE: 'No price could be determined for this resource. It is excluded from totals.',
 };
 
@@ -260,7 +260,7 @@ export default function CostPanel() {
             <AlertTriangle className={clsx('w-5 h-5 shrink-0', isLight ? 'text-amber-600' : 'text-amber-400')} />
             <p className={clsx('text-sm', isLight ? 'text-amber-800' : 'text-amber-300')}>
               The pricing service is unreachable — showing an <strong>offline fallback estimate</strong> from
-              CloudCraft&apos;s static list-price tables. These are not live prices{displayCurrency !== 'USD' ? ', and no exchange rate is available, so figures are shown in USD' : ''}.
+              CloudBuilder&apos;s static list-price tables. These are not live prices{displayCurrency !== 'USD' ? ', and no exchange rate is available, so figures are shown in USD' : ''}.
             </p>
           </div>
         )}

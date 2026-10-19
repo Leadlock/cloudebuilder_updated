@@ -8,7 +8,7 @@
  * versioned (so a bad run can be rolled back), and reachable only over TLS.
  *
  * Creating never deletes anything. Deleting (deleteAwsStateBackend, below) is a separate, deliberate action that refuses unless the bucket is one
- * CloudCraft made and its state no longer records any resource.
+ * CloudBuilder made and its state no longer records any resource.
  */
 import {
   S3Client, HeadBucketCommand, CreateBucketCommand, PutBucketVersioningCommand, PutBucketEncryptionCommand,
@@ -49,7 +49,7 @@ const errStatus = (e: unknown): number => (e as { $metadata?: { httpStatusCode?:
 /** The provider's raw error mentions ARNs and request ids; the user needs the cause and the fix. */
 function explainAwsAccessDenied(action: string): StateBackendError {
   return new StateBackendError(
-    `AWS refused "${action}". The role CloudCraft uses is read-only by default, so it cannot create storage. Add the "Extra policy for state storage" shown in Cloud Accounts → Connect an AWS account (step 2) to that role — it covers buckets named ${STATE_BUCKET_PREFIX}* and lock tables named ${STATE_LOCK_TABLE_PREFIX}*, so leave the bucket name empty or use those prefixes — or create the bucket yourself in the AWS console and enter its name here.`,
+    `AWS refused "${action}". The role CloudBuilder uses is read-only by default, so it cannot create storage. Add the "Extra policy for state storage" shown in Cloud Accounts → Connect an AWS account (step 2) to that role — it covers buckets named ${STATE_BUCKET_PREFIX}* and lock tables named ${STATE_LOCK_TABLE_PREFIX}*, so leave the bucket name empty or use those prefixes — or create the bucket yourself in the AWS console and enter its name here.`,
     403,
   );
 }
@@ -74,7 +74,7 @@ export async function ensureAwsStateBackend(
   } catch (e) {
     const status = errStatus(e);
     if (status === 403) {
-      throw new StateBackendError(`The bucket name "${bucket}" is already used by a different AWS account (bucket names are shared by everyone on AWS), or this role may not list it. Pick another name — for example ${bucket}-2 — or leave the name empty and CloudCraft will choose a unique one.`, 409);
+      throw new StateBackendError(`The bucket name "${bucket}" is already used by a different AWS account (bucket names are shared by everyone on AWS), or this role may not list it. Pick another name — for example ${bucket}-2 — or leave the name empty and CloudBuilder will choose a unique one.`, 409);
     }
     if (status !== 404 && errName(e) !== 'NotFound') throw e;
   }
@@ -90,7 +90,7 @@ export async function ensureAwsStateBackend(
       steps.push({ what: `S3 bucket ${bucket}`, outcome: 'created' });
     } catch (e) {
       if (errName(e) === 'BucketAlreadyOwnedByYou') steps.push({ what: `S3 bucket ${bucket}`, outcome: 'already-exists' });
-      else if (errName(e) === 'BucketAlreadyExists') throw new StateBackendError(`The bucket name "${bucket}" is taken by another AWS account. Pick a different name, or leave it empty so CloudCraft picks a unique one.`, 409);
+      else if (errName(e) === 'BucketAlreadyExists') throw new StateBackendError(`The bucket name "${bucket}" is taken by another AWS account. Pick a different name, or leave it empty so CloudBuilder picks a unique one.`, 409);
       else if (errName(e) === 'AccessDenied' || errStatus(e) === 403) throw explainAwsAccessDenied('s3:CreateBucket');
       else throw e;
     }
@@ -168,8 +168,8 @@ const BUCKET_NAME = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
 const MAX_STATE_BYTES = 20 * 1024 * 1024;
 
 /**
- * Deletes a state bucket CloudCraft created, with everything in it (every version of every object). It refuses, and deletes nothing, unless
- *  - the name carries CloudCraft's prefix and the bucket is tagged ManagedBy=CloudCraft, Purpose=terraform-state (so it is never a bucket somebody else made), and
+ * Deletes a state bucket CloudBuilder created, with everything in it (every version of every object). It refuses, and deletes nothing, unless
+ *  - the name carries CloudBuilder's prefix and the bucket is tagged ManagedBy=CloudCraft, Purpose=terraform-state (so it is never a bucket somebody else made), and
  *  - no Terraform state file in it still records a resource (deleting it would orphan what that state created: remove those with "Remove everything" first).
  * An already-missing bucket is a success.
  */
@@ -194,7 +194,7 @@ export async function deleteAwsStateBackend(backend: { bucket: string }, clients
   }
   const tag = (k: string) => tags.find((t) => t.Key === k)?.Value;
   if (tag('ManagedBy') !== 'CloudCraft' || tag('Purpose') !== 'terraform-state') {
-    throw new StateBackendError(`${bucket} was not created by CloudCraft's "Create state storage" (it has no ManagedBy=CloudCraft tag), so it is not deleted here. Delete it in the AWS console if you are sure.`);
+    throw new StateBackendError(`${bucket} was not created by CloudBuilder's "Create state storage" (it has no ManagedBy=CloudCraft tag), so it is not deleted here. Delete it in the AWS console if you are sure.`);
   }
 
   // Everything in it, every version and delete marker; and a look at each state file for resources it still records.

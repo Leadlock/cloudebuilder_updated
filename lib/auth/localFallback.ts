@@ -1,5 +1,5 @@
 /**
- * When may CloudCraft use its own local accounts / unverified token reading instead of AWS Cognito?
+ * When may CloudBuilder use its own local accounts / unverified token reading instead of AWS Cognito?
  *
  * Cognito is where email ownership is verified. Falling back to a local account whenever Cognito returned an error
  * meant anyone could register an email address they do not own (and be logged in at once). So:

@@ -1,5 +1,5 @@
 /**
- * CloudCraft — AI Scale Advisor & Workload Engine
+ * CloudBuilder — AI Scale Advisor & Workload Engine
  *
  * Interprets natural language architecture requirements, derives scale profiles,
  * and generates technically sound architectures through deterministic RDE validation.

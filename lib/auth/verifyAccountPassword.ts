@@ -1,7 +1,7 @@
 /**
  * Re-checks the signed-in person's own password, wherever it lives.
  *
- * Accounts that signed in through AWS Cognito (the normal case) have no password hash in CloudCraft's database: their password is in
+ * Accounts that signed in through AWS Cognito (the normal case) have no password hash in CloudBuilder's database: their password is in
  * Cognito, so it is checked by signing in to Cognito again with it (the tokens that come back are thrown away). Older local accounts
  * have a scrypt hash and are checked against that. Which one is used is decided by whether a hash exists.
  *

@@ -401,7 +401,7 @@ describe('generateValidatedArchitecture — setting-name clean-up', () => {
   });
 });
 
-describe('questionnaire only offers services CloudCraft can model', () => {
+describe('questionnaire only offers services CloudBuilder can model', () => {
   const { detectServiceNotices } = jest.requireActual('@/lib/ai/serviceCoverage') as typeof import('@/lib/ai/serviceCoverage');
   const { dropUnsupportedOptions } = jest.requireActual('@/lib/services/AiGeneratorService') as typeof import('@/lib/services/AiGeneratorService');
   const optionText = (o: { label?: string; description?: string; technicalImpact?: string }) => `${o.label} ${o.description} ${o.technicalImpact}`;

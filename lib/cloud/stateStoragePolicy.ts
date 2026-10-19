@@ -1,9 +1,9 @@
 /**
- * The AWS permissions a role needs for CloudCraft's "Create state storage for me" button and for Terraform to use that storage
+ * The AWS permissions a role needs for CloudBuilder's "Create state storage for me" button and for Terraform to use that storage
  * afterwards. Plain data (no AWS SDK), so the connect screen can show it, and kept in step with
  * lib/terraform/execution/stateBackendProvisioner.ts (which calls exactly these actions).
  *
- * Scoped to resources named with the CloudCraft prefixes, not "*": the role can create and use its state bucket and lock table, and
+ * Scoped to resources named with the CloudBuilder prefixes, not "*": the role can create and use its state bucket and lock table, and
  * cannot touch any other bucket or table in the account. (Delete is only for the state object itself, which Terraform replaces on
  * each run; there is no permission to delete the bucket or the table.)
  */

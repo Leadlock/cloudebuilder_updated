@@ -104,8 +104,8 @@ const IMPORT_SOURCES = [
     label: 'Import Architecture File',
     provider: null,
     badge: 'Canvas JSON',
-    tag: 'CloudCraft JSON',
-    description: 'Load a previously exported or backed up CloudCraft topology file',
+    tag: 'CloudBuilder JSON',
+    description: 'Load a previously exported or backed up CloudBuilder topology file',
     icon: FileJson,
     theme: {
       lightBadge: 'bg-emerald-100 text-emerald-800 border-emerald-300/80',
@@ -126,7 +126,7 @@ const DISCOVERY_STEPS = [
   { icon: Server, label: 'Scanning compute instances & load balancers...' },
   { icon: Database, label: 'Scanning databases & storage accounts...' },
   { icon: Layers, label: 'Reconstructing relationships & network topology...' },
-  { icon: CheckCircle2, label: 'Building CloudCraft architecture diagram...' },
+  { icon: CheckCircle2, label: 'Building CloudBuilder architecture diagram...' },
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -509,7 +509,7 @@ export default function ImportPanel() {
               </span>
             </div>
             <p className={clsx("text-sm mt-1 leading-relaxed", isLight ? "text-slate-600" : "text-gray-400")}>
-              Discover live cloud environments or parse Terraform code and CloudCraft files into visual editable architectures.
+              Discover live cloud environments or parse Terraform code and CloudBuilder files into visual editable architectures.
             </p>
           </div>
         </div>
@@ -845,7 +845,7 @@ export default function ImportPanel() {
                 "mt-4 px-3 py-1 rounded-full text-[11px] font-medium border",
                 isLight ? "bg-slate-100 text-slate-600 border-slate-200" : "bg-gray-800 text-gray-400 border-gray-700"
               )}>
-                Supports {selected === 'terraform' ? 'Terraform HCL and JSON State' : 'CloudCraft Canvas Export JSON'}
+                Supports {selected === 'terraform' ? 'Terraform HCL and JSON State' : 'CloudBuilder Canvas Export JSON'}
               </div>
             </div>
           </div>

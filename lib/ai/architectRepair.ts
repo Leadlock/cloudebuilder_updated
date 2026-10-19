@@ -28,7 +28,7 @@ type Evaluated = ReturnType<typeof evaluateSpec>;
 export interface BestEffort { spec: Evaluated['spec']; graph: NonNullable<Evaluated['graph']>; deploymentInputs: NonNullable<Evaluated['deploymentInputs']>; issues: SpecIssue[]; autoRepairs: string[] }
 export interface RepairOutcome {
   ok: boolean; attempts: RepairAttempt[]; spec?: Evaluated['spec']; graph?: Evaluated['graph']; deploymentInputs?: Evaluated['deploymentInputs'];
-  /** What CloudCraft's own verified fixes changed in the accepted design. */
+  /** What CloudBuilder's own verified fixes changed in the accepted design. */
   autoRepairs?: string[];
   /** Set when ok is false but a design was built: the attempt with the fewest remaining issues. */
   best?: BestEffort;
@@ -46,7 +46,7 @@ export async function generateWithRepair(
   mapIssues?: (issues: SpecIssue[]) => SpecIssue[],
   /** Optional inference-time clean-up of the parsed design before it is validated (see specSanitizer.ts). */
   prepare?: (json: unknown) => unknown,
-  /** Inference only: apply CloudCraft's verified fixes to each design before judging it (see autoRepair.ts). */
+  /** Inference only: apply CloudBuilder's verified fixes to each design before judging it (see autoRepair.ts). */
   options: { autoRepair?: boolean } = {},
 ): Promise<RepairOutcome> {
   const attempts: RepairAttempt[] = [];
