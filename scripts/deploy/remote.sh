@@ -8,7 +8,7 @@ set -euo pipefail
 umask 077
 
 APP_DIR="${APP_DIR:-/root/CloudCraft}"
-BACKUP_DIR="${BACKUP_DIR:-/root/cloudcraft-backups}"
+BACKUP_DIR="${BACKUP_DIR:-/root/cloudbuilder-backups}"
 PM2_APPS="${PM2_APPS:-cloudcraft-web cloudcraft-discovery cloudcraft-tf-apply}"
 HEALTH_URL="${HEALTH_URL:-http://localhost:3100}"
 HEALTH_WAIT="${HEALTH_WAIT:-90}"        # seconds to wait for the site to answer

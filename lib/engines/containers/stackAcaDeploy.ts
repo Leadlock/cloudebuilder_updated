@@ -263,7 +263,7 @@ data "azurerm_client_config" "current" {}
 
 locals {
   tags = {
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
     App       = var.app_name
   }
   # Registry and vault names are global: a short stable suffix keeps these unique.
@@ -338,7 +338,7 @@ resource "azurerm_key_vault_secret" "${secretName(k)}" {
   name         = "${vaultSecretName(k)}"
   value        = "not-set-yet"
   key_vault_id = azurerm_key_vault.app.id
-  tags         = { cloudcraft = "${PLACEHOLDER_TAG}" }
+  tags         = { cloudbuilder = "${PLACEHOLDER_TAG}" }
 
   depends_on = [azurerm_role_assignment.deployer_secrets]
 

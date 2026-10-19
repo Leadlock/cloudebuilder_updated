@@ -59,7 +59,7 @@ const KEY_ROLE_RULES: Rule[] = [
   {
     when: /RoleArn|Member must satisfy regular expression pattern|not a valid (role )?arn|ValidationError/i,
     reason: 'The role ARN does not look valid.',
-    fix: 'Copy the ARN from the role\'s page in IAM. It looks like arn:aws:iam::123456789012:role/CloudCraftReadOnly.',
+    fix: 'Copy the ARN from the role\'s page in IAM. It looks like arn:aws:iam::123456789012:role/CloudBuilderReadOnly.',
   },
   {
     when: /ENOTFOUND|ETIMEDOUT|ECONNREFUSED|ECONNRESET|EAI_AGAIN|getaddrinfo|socket hang up|timed out/i,
@@ -92,7 +92,7 @@ const AWS_RULES: Rule[] = [
   {
     when: /RoleArn|Member must satisfy regular expression pattern|not a valid (role )?arn|ValidationError/i,
     reason: 'The role ARN does not look valid.',
-    fix: 'Copy the ARN from the role\'s page in IAM. It looks like arn:aws:iam::123456789012:role/CloudCraftReadOnly.',
+    fix: 'Copy the ARN from the role\'s page in IAM. It looks like arn:aws:iam::123456789012:role/CloudBuilderReadOnly.',
   },
   {
     when: /ENOTFOUND|ETIMEDOUT|ECONNREFUSED|ECONNRESET|EAI_AGAIN|getaddrinfo|socket hang up|timed out/i,

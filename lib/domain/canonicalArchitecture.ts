@@ -26,7 +26,7 @@ export interface CanonicalResource {
   tags?: Record<string, string>;
   deploymentDependencies: string[];
   logicalReferences: string[];
-  importState?: 'imported' | 'cloudcraft-managed' | 'new' | 'modified' | 'planned';
+  importState?: 'imported' | 'cloudbuilder-managed' | 'new' | 'modified' | 'planned';
 }
 
 export interface CanonicalRelationship {

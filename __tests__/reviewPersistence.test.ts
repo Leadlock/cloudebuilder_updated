@@ -7,7 +7,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 
 const env = process.env as Record<string, string | undefined>;
-const g = globalThis as unknown as { __cloudcraft_reviews?: unknown; __cloudcraft_deployments?: unknown };
+const g = globalThis as unknown as { __cloudbuilder_reviews?: unknown; __cloudbuilder_deployments?: unknown };
 const user = { id: 'u1', name: 'Admin', email: 'a@x.io' };
 const summary = { nodeCount: 1, edgeCount: 0, criticalIssuesCount: 0, estimatedMonthlyCost: 0 };
 const nodes = [{ id: 'n1', resourceType: 'aws_vpc', provider: 'aws', label: 'v', config: {}, groupId: null, position: { x: 0, y: 0 } }] as never;
@@ -15,13 +15,13 @@ const nodes = [{ id: 'n1', resourceType: 'aws_vpc', provider: 'aws', label: 'v',
 let file = '';
 function startServer() {
   jest.resetModules();
-  delete g.__cloudcraft_reviews; delete g.__cloudcraft_deployments;       // a new process has nothing in memory
+  delete g.__cloudbuilder_reviews; delete g.__cloudbuilder_deployments;       // a new process has nothing in memory
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   return (require('@/lib/services/ArchitectureReviewService') as typeof import('@/lib/services/ArchitectureReviewService')).ArchitectureReviewService;
 }
 
-beforeEach(() => { file = join(mkdtempSync(join(tmpdir(), 'cc-reviews-')), 'sub', 'reviews.json'); env['CLOUDCRAFT_REVIEWS_FILE'] = file; });
-afterAll(() => { delete env['CLOUDCRAFT_REVIEWS_FILE']; delete g.__cloudcraft_reviews; delete g.__cloudcraft_deployments; });
+beforeEach(() => { file = join(mkdtempSync(join(tmpdir(), 'cc-reviews-')), 'sub', 'reviews.json'); env['CLOUDBUILDER_REVIEWS_FILE'] = file; });
+afterAll(() => { delete env['CLOUDBUILDER_REVIEWS_FILE']; delete g.__cloudbuilder_reviews; delete g.__cloudbuilder_deployments; });
 
 describe('reviews survive a restart', () => {
   it('an approved review is still approved after the server starts again', () => {
@@ -69,9 +69,9 @@ describe('reviews survive a restart', () => {
   });
 
   it('writes nothing under tests unless a file is chosen', () => {
-    delete env['CLOUDCRAFT_REVIEWS_FILE'];
+    delete env['CLOUDBUILDER_REVIEWS_FILE'];
     // A development server running on this machine may have written this file; what matters is that the test run does not touch it.
-    const real = join(process.cwd(), '.cloudcraft-data', 'reviews.json');
+    const real = join(process.cwd(), '.cloudbuilder-data', 'reviews.json');
     const before = existsSync(real) ? readFileSync(real, 'utf-8') : null;
     const s = startServer();
     s.submitReview('p-never-saved', 'production', nodes, [], user, summary);

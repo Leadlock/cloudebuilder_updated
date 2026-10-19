@@ -9,12 +9,12 @@ function fake(handlers: Record<string, Handler>) {
   return { log, s3: { send: async (command: unknown) => { const c = command as { constructor: { name: string }; input: unknown }; log.push({ name: c.constructor.name, input: c.input }); const h = handlers[c.constructor.name]; if (!h) throw new Error(`no handler for ${c.constructor.name}`); return h(c.input); } } };
 }
 const err = (name: string, status?: number) => Object.assign(new Error(name), { name, ...(status ? { $metadata: { httpStatusCode: status } } : {}) });
-const B = 'cloudcraft-tfstate-123456789012-eu-north-1';
-const TAGS = { TagSet: [{ Key: 'ManagedBy', Value: 'CloudCraft' }, { Key: 'Purpose', Value: 'terraform-state' }] };
+const B = 'cloudbuilder-tfstate-123456789012-eu-north-1';
+const TAGS = { TagSet: [{ Key: 'ManagedBy', Value: 'CloudBuilder' }, { Key: 'Purpose', Value: 'terraform-state' }] };
 const state = (resources: unknown[]) => ({ Body: { transformToString: async () => JSON.stringify({ version: 4, resources }) } });
 const base = (over: Record<string, Handler> = {}) => fake({
   HeadBucketCommand: () => ({}), GetBucketTaggingCommand: () => TAGS,
-  ListObjectVersionsCommand: () => ({ Versions: [{ Key: 'cloudcraft/releases/x.tfstate', VersionId: 'v2', IsLatest: true, Size: 100 }, { Key: 'cloudcraft/releases/x.tfstate', VersionId: 'v1', IsLatest: false }], DeleteMarkers: [{ Key: 'old', VersionId: 'm1' }], IsTruncated: false }),
+  ListObjectVersionsCommand: () => ({ Versions: [{ Key: 'cloudbuilder/releases/x.tfstate', VersionId: 'v2', IsLatest: true, Size: 100 }, { Key: 'cloudbuilder/releases/x.tfstate', VersionId: 'v1', IsLatest: false }], DeleteMarkers: [{ Key: 'old', VersionId: 'm1' }], IsTruncated: false }),
   GetObjectCommand: () => state([]), DeleteObjectsCommand: () => ({}), DeleteBucketCommand: () => ({}), ...over,
 });
 
@@ -24,9 +24,15 @@ describe('deleting a state bucket', () => {
     const r = await deleteAwsStateBackend({ bucket: B }, { s3: t.s3 });
     expect(r).toMatchObject({ bucket: B, deletedObjects: 3, steps: [{ outcome: 'deleted' }] });
     expect(t.log.find((l) => l.name === 'DeleteObjectsCommand')!.input.Delete.Objects).toEqual([
-      { Key: 'cloudcraft/releases/x.tfstate', VersionId: 'v2' }, { Key: 'cloudcraft/releases/x.tfstate', VersionId: 'v1' }, { Key: 'old', VersionId: 'm1' },
+      { Key: 'cloudbuilder/releases/x.tfstate', VersionId: 'v2' }, { Key: 'cloudbuilder/releases/x.tfstate', VersionId: 'v1' }, { Key: 'old', VersionId: 'm1' },
     ]);
     expect(t.log.at(-1)!.name).toBe('DeleteBucketCommand');
+  });
+
+  test('a bucket made while the product was called CloudCraft (its name and its tag) is still deleted', async () => {
+    const old = 'cloudcraft-tfstate-123456789012-eu-north-1';
+    const t = base({ GetBucketTaggingCommand: () => ({ TagSet: [{ Key: 'ManagedBy', Value: 'CloudCraft' }, { Key: 'Purpose', Value: 'terraform-state' }] }) });
+    expect(await deleteAwsStateBackend({ bucket: old }, { s3: t.s3 })).toMatchObject({ bucket: old, steps: [{ outcome: 'deleted' }] });
   });
 
   test('a bucket that is already gone is a success and nothing else is called', async () => {
@@ -37,7 +43,7 @@ describe('deleting a state bucket', () => {
 
   test('a name that is not CloudBuilder\'s, or not a bucket name, is refused before any request', async () => {
     const t = base();
-    for (const bad of ['my-company-data', 'cloudcraft-tfstate-', 'CLOUDCRAFT-tfstate-x', 'cloudcraft-tfstate-../x']) await expect(deleteAwsStateBackend({ bucket: bad }, { s3: t.s3 })).rejects.toThrow(StateBackendError);
+    for (const bad of ['my-company-data', 'cloudbuilder-tfstate-', 'CLOUDBUILDER-tfstate-x', 'cloudbuilder-tfstate-../x']) await expect(deleteAwsStateBackend({ bucket: bad }, { s3: t.s3 })).rejects.toThrow(StateBackendError);
     expect(t.log).toHaveLength(0);
   });
 

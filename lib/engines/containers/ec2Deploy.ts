@@ -157,7 +157,7 @@ locals {
   vpc_id = var.vpc_id == "" ? data.aws_vpc.default[0].id : var.vpc_id
   tags = {
     Name      = var.app_name
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }
 

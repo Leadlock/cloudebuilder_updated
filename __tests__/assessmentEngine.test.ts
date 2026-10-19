@@ -505,7 +505,7 @@ describe('Auto-Fix', () => {
 
   test('encryption fix safety depends on deployment state (deployed resource → review required)', () => {
     const planned = node('aws_rds', { encrypted: false });
-    const deployed = node('aws_rds', { encrypted: false }, { importState: 'cloudcraft-managed' });
+    const deployed = node('aws_rds', { encrypted: false }, { importState: 'cloudbuilder-managed' });
     const a = runAssessment({ nodes: [planned, deployed], edges: [] });
     expect(a.findings.find((f) => f.findingId === findingIdFor('AWS-RDS-002', planned.id))?.autoFix.safety).toBe('SAFE_AUTOFIX');
     expect(a.findings.find((f) => f.findingId === findingIdFor('AWS-RDS-002', deployed.id))?.autoFix.safety).toBe('REVIEW_REQUIRED');

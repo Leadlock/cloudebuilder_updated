@@ -132,7 +132,7 @@ export function generateUniversalAwsHcl(
   // Add standard tags block
   lines.push('  tags = {');
   lines.push(`    Name      = "${name}"`);
-  lines.push(`    ManagedBy = "CloudCraft"`);
+  lines.push(`    ManagedBy = "CloudBuilder"`);
   for (const [k, v] of Object.entries(customTags)) {
     if (k && v) lines.push(`    ${k} = "${escapeHclString(v)}"`);
   }
@@ -195,7 +195,7 @@ export function generateUniversalAzureHcl(
 
   // Tags
   lines.push('  tags = {');
-  lines.push(`    ManagedBy = "CloudCraft"`);
+  lines.push(`    ManagedBy = "CloudBuilder"`);
   for (const [k, v] of Object.entries(customTags)) {
     if (k && v) lines.push(`    ${k} = "${escapeHclString(v)}"`);
   }

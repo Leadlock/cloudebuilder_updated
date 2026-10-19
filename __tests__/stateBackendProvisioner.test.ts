@@ -22,7 +22,7 @@ function fakeAws(handlers: Record<string, () => unknown> = {}) {
 describe('default bucket name', () => {
   test('is unique per account and region, lower-case and within the 63-character limit', () => {
     const n = defaultBucketName('123456789012', 'eu-north-1');
-    expect(n).toBe('cloudcraft-tfstate-123456789012-eu-north-1');
+    expect(n).toBe('cloudbuilder-tfstate-123456789012-eu-north-1');
     expect(defaultBucketName('123456789012', 'ap-southeast-4-very-long-region-name-xxxxxxxxxxxxxxxxxxxxxx').length).toBeLessThanOrEqual(63);
   });
 });
@@ -64,13 +64,13 @@ describe('AWS state storage', () => {
   test('no bucket name: a unique one is chosen from the AWS account id and returned', async () => {
     const f = fakeAws({ HeadBucketCommand: () => { throw awsErr('NotFound', 404); } });
     const r = await ensureAwsStateBackend({ region: 'eu-north-1' }, f.clients);
-    expect(r.bucket).toBe('cloudcraft-tfstate-123456789012-eu-north-1');
+    expect(r.bucket).toBe('cloudbuilder-tfstate-123456789012-eu-north-1');
     expect(f.calls.find((c) => c.name === 'CreateBucketCommand')!.input['Bucket']).toBe(r.bucket);
   });
 
   test('a name owned by another account is refused with an explanation, and nothing is created or changed', async () => {
     const f = fakeAws({ HeadBucketCommand: () => { throw awsErr('Forbidden', 403); } });
-    await expect(ensureAwsStateBackend({ bucket: 'cloudcraft-test', region: 'eu-north-1' }, f.clients)).rejects.toThrow(/different AWS account/);
+    await expect(ensureAwsStateBackend({ bucket: 'cloudbuilder-test', region: 'eu-north-1' }, f.clients)).rejects.toThrow(/different AWS account/);
     expect(f.names()).toEqual(['HeadBucketCommand']);
   });
 
@@ -143,7 +143,7 @@ describe('state bucket tags', () => {
     await ensureAwsStateBackend({ bucket: 'my-state', region: 'eu-north-1' }, f.clients);
     const tag = f.calls.find((c) => c.name === 'PutBucketTaggingCommand')!;
     expect(JSON.stringify(tag.input)).toContain('"ManagedBy"');
-    expect(JSON.stringify(tag.input)).toContain('"CloudCraft"');
+    expect(JSON.stringify(tag.input)).toContain('"CloudBuilder"');
   });
   test('a role without the tagging permission still gets its bucket', async () => {
     const f = fakeAws({ HeadBucketCommand: () => { throw awsErr('NotFound', 404); }, PutBucketTaggingCommand: () => { throw awsErr('AccessDenied', 403); } });

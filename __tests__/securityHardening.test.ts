@@ -16,75 +16,75 @@ import { extractIdentity } from '@/lib/api/auth';
 import { terraformExecutionDenied, allowedTerraformOrgIds } from '@/lib/api/terraformAccess';
 import { POST as metricsPost } from '@/app/api/metrics/route';
 
-const OLD_ENV = process.env.CLOUDCRAFT_TERRAFORM_ORG_IDS;
-afterEach(() => { if (OLD_ENV === undefined) delete process.env.CLOUDCRAFT_TERRAFORM_ORG_IDS; else process.env.CLOUDCRAFT_TERRAFORM_ORG_IDS = OLD_ENV; });
+const OLD_ENV = process.env.CLOUDBUILDER_TERRAFORM_ORG_IDS;
+afterEach(() => { if (OLD_ENV === undefined) delete process.env.CLOUDBUILDER_TERRAFORM_ORG_IDS; else process.env.CLOUDBUILDER_TERRAFORM_ORG_IDS = OLD_ENV; });
 
 describe('Terraform execution gate', () => {
   beforeEach(() => mockGetOrgRole.mockReset());
 
   it('is denied for everyone by default — a brand-new owner of a brand-new org included', async () => {
-    delete process.env.CLOUDCRAFT_TERRAFORM_ORG_IDS;
+    delete process.env.CLOUDBUILDER_TERRAFORM_ORG_IDS;
     mockGetOrgRole.mockResolvedValue('owner');
     expect(allowedTerraformOrgIds().size).toBe(0);
     expect(await terraformExecutionDenied('user-1', 'org-new')).toMatch(/not enabled/i);
     expect(mockGetOrgRole).not.toHaveBeenCalled();
   });
 
-  it(`opens the caller's own org only when NODE_ENV is "development", CLOUDCRAFT_DEV_SHORTCUTS=1 and no list is set — and still needs owner/admin`, async () => {
+  it(`opens the caller's own org only when NODE_ENV is "development", CLOUDBUILDER_DEV_SHORTCUTS=1 and no list is set — and still needs owner/admin`, async () => {
     const env = process.env as Record<string, string | undefined>;
     const savedEnv = env.NODE_ENV;
-    const savedFlag = env.CLOUDCRAFT_DEV_SHORTCUTS;
+    const savedFlag = env.CLOUDBUILDER_DEV_SHORTCUTS;
     try {
-      delete env.CLOUDCRAFT_TERRAFORM_ORG_IDS;
+      delete env.CLOUDBUILDER_TERRAFORM_ORG_IDS;
       env.NODE_ENV = 'development';
       // `npm run dev` alone is not enough: without the flag the gate is closed like in production
-      delete env.CLOUDCRAFT_DEV_SHORTCUTS;
+      delete env.CLOUDBUILDER_DEV_SHORTCUTS;
       mockGetOrgRole.mockResolvedValue('owner');
       expect(await terraformExecutionDenied('u', 'any-org')).toMatch(/not enabled/i);
-      env.CLOUDCRAFT_DEV_SHORTCUTS = '1';
+      env.CLOUDBUILDER_DEV_SHORTCUTS = '1';
       mockGetOrgRole.mockResolvedValueOnce('owner');
       expect(await terraformExecutionDenied('u', 'any-org')).toBeNull();
       mockGetOrgRole.mockResolvedValueOnce('member');
       expect(await terraformExecutionDenied('u', 'any-org')).toMatch(/owner or admin/i);
 
       // setting the list switches the convenience off, so the gate can be tested locally
-      env.CLOUDCRAFT_TERRAFORM_ORG_IDS = 'org-a';
+      env.CLOUDBUILDER_TERRAFORM_ORG_IDS = 'org-a';
       mockGetOrgRole.mockResolvedValue('owner');
       expect(await terraformExecutionDenied('u', 'other-org')).toMatch(/not enabled/i);
 
       // never in production or test builds, even with the flag
-      delete env.CLOUDCRAFT_TERRAFORM_ORG_IDS;
+      delete env.CLOUDBUILDER_TERRAFORM_ORG_IDS;
       for (const mode of ['production', 'test']) {
         env.NODE_ENV = mode;
         expect(await terraformExecutionDenied('u', 'any-org')).toMatch(/not enabled/i);
       }
     } finally {
       env.NODE_ENV = savedEnv;
-      if (savedFlag === undefined) delete env.CLOUDCRAFT_DEV_SHORTCUTS; else env.CLOUDCRAFT_DEV_SHORTCUTS = savedFlag;
+      if (savedFlag === undefined) delete env.CLOUDBUILDER_DEV_SHORTCUTS; else env.CLOUDBUILDER_DEV_SHORTCUTS = savedFlag;
     }
   });
 
   it("the kill switch denies everyone, even a listed org's owner", async () => {
     const env = process.env as Record<string, string | undefined>;
-    env.CLOUDCRAFT_TERRAFORM_ORG_IDS = 'org-a';
-    env.CLOUDCRAFT_TERRAFORM_DISABLED = '1';
+    env.CLOUDBUILDER_TERRAFORM_ORG_IDS = 'org-a';
+    env.CLOUDBUILDER_TERRAFORM_DISABLED = '1';
     mockGetOrgRole.mockResolvedValue('owner');
     try {
       expect(await terraformExecutionDenied('u', 'org-a')).toMatch(/switched off/i);
     } finally {
-      delete env.CLOUDCRAFT_TERRAFORM_DISABLED;
+      delete env.CLOUDBUILDER_TERRAFORM_DISABLED;
     }
     expect(await terraformExecutionDenied('u', 'org-a')).toBeNull();
   });
 
   it('is denied for an org the operator did not list, even for its owner', async () => {
-    process.env.CLOUDCRAFT_TERRAFORM_ORG_IDS = 'org-a, org-b';
+    process.env.CLOUDBUILDER_TERRAFORM_ORG_IDS = 'org-a, org-b';
     mockGetOrgRole.mockResolvedValue('owner');
     expect(await terraformExecutionDenied('user-1', 'org-other')).toMatch(/not enabled/i);
   });
 
   it('is allowed only for an owner or admin of a listed org', async () => {
-    process.env.CLOUDCRAFT_TERRAFORM_ORG_IDS = 'org-a, org-b';
+    process.env.CLOUDBUILDER_TERRAFORM_ORG_IDS = 'org-a, org-b';
     mockGetOrgRole.mockResolvedValueOnce('owner');
     expect(await terraformExecutionDenied('u', 'org-a')).toBeNull();
     mockGetOrgRole.mockResolvedValueOnce('admin');

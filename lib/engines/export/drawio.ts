@@ -139,7 +139,7 @@ export function drawioModelXml(input: DrawioInput): string {
 /** A .drawio file: the same diagram, wrapped the way draw.io saves it (not compressed, so it can be read and diffed). */
 export function drawioFileXml(input: DrawioInput): string {
   const name = escapeXml((input.title || 'CloudBuilder architecture').slice(0, 120));
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<mxfile host="CloudBuilder" version="24.0.0" type="device">\n  <diagram id="cloudcraft-1" name="${name}">\n${drawioModelXml(input)}\n  </diagram>\n</mxfile>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<mxfile host="CloudBuilder" version="24.0.0" type="device">\n  <diagram id="cloudbuilder-1" name="${name}">\n${drawioModelXml(input)}\n  </diagram>\n</mxfile>\n`;
 }
 
 /** A safe file name for the download. */

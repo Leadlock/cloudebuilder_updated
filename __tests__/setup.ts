@@ -16,7 +16,7 @@ process.env['SUPER_ADMIN_EMAILS'] = '';
 // Allow the x-user-id / x-user-role test-automation identity headers that
 // lib/api/auth.ts's extractIdentity() otherwise refuses outside this opt-in —
 // this test suite is exactly that sanctioned automation consumer.
-process.env['CLOUDCRAFT_ALLOW_TEST_AUTH_HEADERS'] = '1';
+process.env['CLOUDBUILDER_ALLOW_TEST_AUTH_HEADERS'] = '1';
 
 // A fixed (not random) test-only value: lib/crypto/sessionToken.ts refuses to
 // sign/verify without one, and any future test that exercises a real
@@ -35,7 +35,7 @@ process.env['SESSION_SECRET'] = 'test-session-secret-not-for-real-use-0000000000
   const guarded: typeof fetch = async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const host = (() => { try { return new URL(url, 'http://localhost').hostname; } catch { return ''; } })();
-    if (process.env['CLOUDCRAFT_LIVE_TESTS'] === '1' || host === 'localhost' || host === '127.0.0.1') {
+    if (process.env['CLOUDBUILDER_LIVE_TESTS'] === '1' || host === 'localhost' || host === '127.0.0.1') {
       return realFetch(input, init);
     }
     throw new Error(`[deterministic test suite] external network request blocked: ${url}. Mock fetch with an official response fixture, or move the test to __tests__/live.`);

@@ -336,7 +336,7 @@ describe('Environment clone and promote — real PostgreSQL collision prevention
 
 describe('CloudAccount credential encryption at rest', () => {
   const awsCreds = {
-    roleArn: 'arn:aws:iam::123456789012:role/CloudCraftReadOnly',
+    roleArn: 'arn:aws:iam::123456789012:role/CloudBuilderReadOnly',
     externalId: `ext-${RUN}`,
     region: 'us-east-1',
   };

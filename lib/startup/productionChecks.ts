@@ -47,7 +47,7 @@ export function checkProductionConfig(env: NodeJS.ProcessEnv = process.env): Sta
     if (!v.ok) { errors.push(`An entry in ENCRYPTION_KEYS_PREVIOUS ${v.problem}.`); break; }
   }
 
-  if (env['CLOUDCRAFT_ALLOW_TEST_AUTH_HEADERS'] === '1') errors.push('CLOUDCRAFT_ALLOW_TEST_AUTH_HEADERS is on. It lets anyone log in as any user by sending a header. Remove it.');
+  if (env['CLOUDBUILDER_ALLOW_TEST_AUTH_HEADERS'] === '1') errors.push('CLOUDBUILDER_ALLOW_TEST_AUTH_HEADERS is on. It lets anyone log in as any user by sending a header. Remove it.');
 
   const db = env['DATABASE_URL'];
   if (!db) errors.push('DATABASE_URL is not set.');

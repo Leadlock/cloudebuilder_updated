@@ -15,7 +15,7 @@ interface CloudNodeData {
   hasWarnings?: boolean;
   hasErrors?: boolean;
   status?: 'ready' | 'warning' | 'error' | 'unconfigured';
-  importState?: 'imported' | 'cloudcraft-managed' | 'new' | 'modified' | 'planned';
+  importState?: 'imported' | 'cloudbuilder-managed' | 'new' | 'modified' | 'planned';
   findingsSummary?: { critical: number; high: number; medium: number; total: number };
   showFindings?: boolean;
 }

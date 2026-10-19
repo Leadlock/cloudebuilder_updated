@@ -9,7 +9,7 @@ import {
 } from '@/lib/terraform/execution/approvals';
 
 const env = process.env as Record<string, string | undefined>;
-const saved = { mode: env['CLOUDCRAFT_TERRAFORM_APPROVAL'], node: env['NODE_ENV'] };
+const saved = { mode: env['CLOUDBUILDER_TERRAFORM_APPROVAL'], node: env['NODE_ENV'] };
 let mem: ReturnType<typeof newDb>;
 
 beforeEach(() => {
@@ -19,12 +19,12 @@ beforeEach(() => {
     "decidedBy" text, "decidedAt" text, "comment" text, "expiresAtMs" double precision NOT NULL, "usedAt" text)`);
   const { Pool } = mem.adapters.createPg();
   _setSharedDbForTests(new Pool() as unknown as Queryable);
-  env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'self-ok';       // these tests are about the approval records; password mode has its own file
+  env['CLOUDBUILDER_TERRAFORM_APPROVAL'] = 'self-ok';       // these tests are about the approval records; password mode has its own file
   env['NODE_ENV'] = 'test';
 });
 afterEach(() => {
   _setSharedDbForTests(null);
-  if (saved.mode === undefined) delete env['CLOUDCRAFT_TERRAFORM_APPROVAL']; else env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = saved.mode;
+  if (saved.mode === undefined) delete env['CLOUDBUILDER_TERRAFORM_APPROVAL']; else env['CLOUDBUILDER_TERRAFORM_APPROVAL'] = saved.mode;
   env['NODE_ENV'] = saved.node;
 });
 
@@ -33,15 +33,15 @@ const ask = (over: Partial<typeof PLAN> & { requestedBy?: string } = {}) => requ
 const expireEverything = () => mem.public.none('UPDATE "terraformApproval" SET "expiresAtMs" = "expiresAtMs" - 3600000');
 
 describe('approvalMode', () => {
-  it('defaults to confirming with a password everywhere, and follows CLOUDCRAFT_TERRAFORM_APPROVAL', () => {
-    delete env['CLOUDCRAFT_TERRAFORM_APPROVAL'];
+  it('defaults to confirming with a password everywhere, and follows CLOUDBUILDER_TERRAFORM_APPROVAL', () => {
+    delete env['CLOUDBUILDER_TERRAFORM_APPROVAL'];
     env['NODE_ENV'] = 'production'; expect(approvalMode()).toBe('password');
     env['NODE_ENV'] = 'development'; expect(approvalMode()).toBe('password');
     env['NODE_ENV'] = 'test'; expect(approvalMode()).toBe('password');
-    env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'self-ok'; expect(approvalMode()).toBe('self-ok');
-    env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'REQUIRED'; expect(approvalMode()).toBe('required');
-    env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'off'; expect(approvalMode()).toBe('off');
-    env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'nonsense'; env['NODE_ENV'] = 'production'; expect(approvalMode()).toBe('password');   // a typo never switches the gate off
+    env['CLOUDBUILDER_TERRAFORM_APPROVAL'] = 'self-ok'; expect(approvalMode()).toBe('self-ok');
+    env['CLOUDBUILDER_TERRAFORM_APPROVAL'] = 'REQUIRED'; expect(approvalMode()).toBe('required');
+    env['CLOUDBUILDER_TERRAFORM_APPROVAL'] = 'off'; expect(approvalMode()).toBe('off');
+    env['CLOUDBUILDER_TERRAFORM_APPROVAL'] = 'nonsense'; env['NODE_ENV'] = 'production'; expect(approvalMode()).toBe('password');   // a typo never switches the gate off
   });
 });
 
@@ -67,7 +67,7 @@ describe('requesting approval', () => {
 
 describe('deciding', () => {
   it('in required mode a different admin approves; the requester cannot approve their own request but can withdraw it', async () => {
-    env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'required';
+    env['CLOUDBUILDER_TERRAFORM_APPROVAL'] = 'required';
     const { approval } = await ask();
     const own = await decideApproval({ id: approval.id, orgId: 'org-1', decidedBy: 'alice', decision: 'approve' });
     expect(own).toMatchObject({ ok: false, code: 'own_request' });
@@ -80,14 +80,14 @@ describe('deciding', () => {
   });
 
   it('in self-ok mode the requester may approve, still as an explicit step', async () => {
-    env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'self-ok';
+    env['CLOUDBUILDER_TERRAFORM_APPROVAL'] = 'self-ok';
     const { approval } = await ask();
     const r = await decideApproval({ id: approval.id, orgId: 'org-1', decidedBy: 'alice', decision: 'approve' });
     expect(r.ok && r.approval.status).toBe('approved');
   });
 
   it('cannot decide something twice, in another organisation, that does not exist, or that has expired', async () => {
-    env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'required';
+    env['CLOUDBUILDER_TERRAFORM_APPROVAL'] = 'required';
     const { approval } = await ask();
     expect(await decideApproval({ id: approval.id, orgId: 'org-OTHER', decidedBy: 'bob', decision: 'approve' })).toMatchObject({ ok: false, code: 'not_found' });
     expect(await decideApproval({ id: 'missing', orgId: 'org-1', decidedBy: 'bob', decision: 'approve' })).toMatchObject({ ok: false, code: 'not_found' });
@@ -98,7 +98,7 @@ describe('deciding', () => {
   });
 
   it('an approval gets a fresh window to be used once it is given', async () => {
-    env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'required';
+    env['CLOUDBUILDER_TERRAFORM_APPROVAL'] = 'required';
     const { approval } = await ask();
     const before = Date.parse(approval.expiresAt);
     const r = await decideApproval({ id: approval.id, orgId: 'org-1', decidedBy: 'bob', decision: 'approve' });
@@ -163,7 +163,7 @@ describe('consuming an approval (what the apply / destroy routes do)', () => {
   });
 
   it('is not required at all when the mode is off', async () => {
-    env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'off';
+    env['CLOUDBUILDER_TERRAFORM_APPROVAL'] = 'off';
     expect(await consumeApproval(PLAN)).toEqual({ ok: true, approval: null });
   });
 });

@@ -131,7 +131,7 @@ export default function ConnectAwsAccountForm({ onConnected, initialMode = 'dire
       )}
       {mode === 'role' && (
         <>
-          <input type="text" placeholder="Role ARN (arn:aws:iam::123456789012:role/CloudCraftRole)" value={form.roleArn} onChange={(e) => setForm((v) => ({ ...v, roleArn: e.target.value }))} autoComplete="off" spellCheck={false} className={inputClass} />
+          <input type="text" placeholder="Role ARN (arn:aws:iam::123456789012:role/CloudBuilderRole)" value={form.roleArn} onChange={(e) => setForm((v) => ({ ...v, roleArn: e.target.value }))} autoComplete="off" spellCheck={false} className={inputClass} />
           <input type="text" placeholder="External ID (optional — only if the role requires one)" value={form.externalId} onChange={(e) => setForm((v) => ({ ...v, externalId: e.target.value }))} autoComplete="off" spellCheck={false} className={inputClass} />
         </>
       )}

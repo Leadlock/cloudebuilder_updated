@@ -285,7 +285,7 @@ export interface CanvasNode {
   parentId?: string;
   width?: number;
   height?: number;
-  importState?: 'imported' | 'cloudcraft-managed' | 'new' | 'modified' | 'planned';
+  importState?: 'imported' | 'cloudbuilder-managed' | 'new' | 'modified' | 'planned';
 }
 
 export interface CanvasEdge {

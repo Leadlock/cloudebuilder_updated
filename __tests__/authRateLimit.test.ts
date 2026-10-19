@@ -48,40 +48,40 @@ beforeEach(() => {
 
 describe('clientIp', () => {
   const env = process.env as Record<string, string | undefined>;
-  const saved = env.CLOUDCRAFT_TRUSTED_PROXY_HOPS;
-  afterEach(() => { if (saved === undefined) delete env.CLOUDCRAFT_TRUSTED_PROXY_HOPS; else env.CLOUDCRAFT_TRUSTED_PROXY_HOPS = saved; });
+  const saved = env.CLOUDBUILDER_TRUSTED_PROXY_HOPS;
+  afterEach(() => { if (saved === undefined) delete env.CLOUDBUILDER_TRUSTED_PROXY_HOPS; else env.CLOUDBUILDER_TRUSTED_PROXY_HOPS = saved; });
   const r = (h: Record<string, string>) => new NextRequest('http://localhost/x', { headers: h });
 
   it('trusts the entry the nearest proxy added (the last), never what the caller wrote on the left', () => {
-    delete env.CLOUDCRAFT_TRUSTED_PROXY_HOPS;
+    delete env.CLOUDBUILDER_TRUSTED_PROXY_HOPS;
     expect(clientIp(r({ 'x-forwarded-for': '6.6.6.6, 5.6.7.8' }))).toBe('5.6.7.8');
     expect(clientIp(r({ 'x-forwarded-for': '9.9.9.9, 8.8.8.8, 5.6.7.8' }))).toBe('5.6.7.8');
     expect(clientIp(r({ 'x-forwarded-for': '5.6.7.8' }))).toBe('5.6.7.8');
   });
 
   it('a caller cannot change their address by forging the header: the same real client always maps to the same address', () => {
-    delete env.CLOUDCRAFT_TRUSTED_PROXY_HOPS;
+    delete env.CLOUDBUILDER_TRUSTED_PROXY_HOPS;
     const real = clientIp(r({ 'x-forwarded-for': '5.6.7.8' }));
     for (const forged of ['1.1.1.1', '2.2.2.2, 3.3.3.3', 'evil']) expect(clientIp(r({ 'x-forwarded-for': `${forged}, 5.6.7.8` }))).toBe(real);
   });
 
   it('counts back the configured number of trusted proxies (a CDN plus a load balancer = 2)', () => {
-    env.CLOUDCRAFT_TRUSTED_PROXY_HOPS = '2';
+    env.CLOUDBUILDER_TRUSTED_PROXY_HOPS = '2';
     expect(clientIp(r({ 'x-forwarded-for': 'forged, 5.6.7.8, 10.0.0.9' }))).toBe('5.6.7.8');
   });
 
   it('does not trust a header that is shorter than the number of proxies, or any header when exposed directly (0 hops)', () => {
-    env.CLOUDCRAFT_TRUSTED_PROXY_HOPS = '2';
+    env.CLOUDBUILDER_TRUSTED_PROXY_HOPS = '2';
     expect(clientIp(r({ 'x-forwarded-for': '5.6.7.8' }))).toBe('unknown');
-    env.CLOUDCRAFT_TRUSTED_PROXY_HOPS = '0';
+    env.CLOUDBUILDER_TRUSTED_PROXY_HOPS = '0';
     expect(clientIp(r({ 'x-forwarded-for': '5.6.7.8', 'x-real-ip': '9.9.9.9' }))).toBe('unknown');
   });
 
   it('falls back to X-Real-IP when there is no forwarded chain, then "unknown"; nonsense settings mean the default', () => {
-    delete env.CLOUDCRAFT_TRUSTED_PROXY_HOPS;
+    delete env.CLOUDBUILDER_TRUSTED_PROXY_HOPS;
     expect(clientIp(r({ 'x-real-ip': '9.9.9.9' }))).toBe('9.9.9.9');
     expect(clientIp(r({}))).toBe('unknown');
-    env.CLOUDCRAFT_TRUSTED_PROXY_HOPS = 'lots';
+    env.CLOUDBUILDER_TRUSTED_PROXY_HOPS = 'lots';
     expect(clientIp(r({ 'x-forwarded-for': 'a, 5.6.7.8' }))).toBe('5.6.7.8');
   });
 });

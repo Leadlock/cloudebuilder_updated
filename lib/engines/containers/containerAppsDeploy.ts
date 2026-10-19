@@ -131,7 +131,7 @@ data "azurerm_client_config" "current" {}
 
 locals {
   tags = {
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
     App       = var.app_name
   }
   # Registry names are global, letters and digits only: a short stable suffix keeps this one unique.

@@ -205,7 +205,7 @@ describe('Well-Architected report API', () => {
   test('PDF and HTML are produced from the same snapshot, pillar by pillar, and are not the security report', async () => {
     const pdf = await waReportPost(req(url, 'owner-a', { format: 'pdf' }), params('proj-a'));
     expect(pdf.status).toBe(200);
-    expect(pdf.headers.get('Content-Disposition')).toContain('cloudcraft-well-architected-');
+    expect(pdf.headers.get('Content-Disposition')).toContain('cloudbuilder-well-architected-');
     expect(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString()).toBe('%PDF-');
 
     const html = await waReportPost(req(url, 'owner-a', { format: 'html' }), params('proj-a'));

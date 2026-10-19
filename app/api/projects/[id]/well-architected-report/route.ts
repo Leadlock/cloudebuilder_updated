@@ -38,7 +38,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if (body.aiCommentary) report.aiWaCommentary = buildWaCommentary(body.aiCommentary, waPillarViews(report), new Date().toISOString());
 
-    const base = `cloudcraft-well-architected-${projectName.replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 40)}-rev${report.meta.architectureRevision}-${report.meta.reportId}`;
+    const base = `cloudbuilder-well-architected-${projectName.replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 40)}-rev${report.meta.architectureRevision}-${report.meta.reportId}`;
     if (body.format === 'json') return ok({ report: { ...report, waPillars: waPillarViews(report).map(({ findings, ...p }) => ({ ...p, findingIds: findings.map((f) => f.findingId) })) }, scanId });
     if (body.format === 'html') {
       return new NextResponse(renderWaReportHtml(report), {

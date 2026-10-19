@@ -5,8 +5,8 @@ describe('which processes npm run dev starts', () => {
     const names = selectDevProcesses({}).map((p) => p.name);
     expect(names).toEqual(['web', 'worker:discovery', 'worker:terraform-apply']);
   });
-  test('CLOUDCRAFT_DEV_WORKERS=off starts only the web server', () => {
-    expect(selectDevProcesses({ CLOUDCRAFT_DEV_WORKERS: 'off' }).map((p) => p.name)).toEqual(['web']);
+  test('CLOUDBUILDER_DEV_WORKERS=off starts only the web server', () => {
+    expect(selectDevProcesses({ CLOUDBUILDER_DEV_WORKERS: 'off' }).map((p) => p.name)).toEqual(['web']);
   });
   test('only the web server is essential, and every worker has a script that exists', async () => {
     expect(DEV_PROCESSES.filter((p) => p.essential).map((p) => p.name)).toEqual(['web']);
@@ -75,15 +75,15 @@ describe('tsxArgs', () => {
 describe('devHostArgs', () => {
   it('listens only on this machine unless told otherwise', () => {
     expect(devHostArgs({})).toEqual(['-H', '127.0.0.1']);
-    expect(devHostArgs({ CLOUDCRAFT_DEV_HOST: '' })).toEqual(['-H', '127.0.0.1']);
+    expect(devHostArgs({ CLOUDBUILDER_DEV_HOST: '' })).toEqual(['-H', '127.0.0.1']);
   });
   it('opens the server only on purpose, with a plain address or name', () => {
-    expect(devHostArgs({ CLOUDCRAFT_DEV_HOST: '0.0.0.0' })).toEqual(['-H', '0.0.0.0']);
-    expect(devHostArgs({ CLOUDCRAFT_DEV_HOST: 'my-laptop.local' })).toEqual(['-H', 'my-laptop.local']);
+    expect(devHostArgs({ CLOUDBUILDER_DEV_HOST: '0.0.0.0' })).toEqual(['-H', '0.0.0.0']);
+    expect(devHostArgs({ CLOUDBUILDER_DEV_HOST: 'my-laptop.local' })).toEqual(['-H', 'my-laptop.local']);
   });
   it('ignores a value that is not an address (nothing is passed to the command line from it)', () => {
-    expect(devHostArgs({ CLOUDCRAFT_DEV_HOST: '0.0.0.0; rm -rf /' })).toEqual(['-H', '127.0.0.1']);
-    expect(devHostArgs({ CLOUDCRAFT_DEV_HOST: '--inspect' })).toEqual(['-H', '127.0.0.1']);   // never a flag
-    expect(devHostArgs({ CLOUDCRAFT_DEV_HOST: '-x' })).toEqual(['-H', '127.0.0.1']);
+    expect(devHostArgs({ CLOUDBUILDER_DEV_HOST: '0.0.0.0; rm -rf /' })).toEqual(['-H', '127.0.0.1']);
+    expect(devHostArgs({ CLOUDBUILDER_DEV_HOST: '--inspect' })).toEqual(['-H', '127.0.0.1']);   // never a flag
+    expect(devHostArgs({ CLOUDBUILDER_DEV_HOST: '-x' })).toEqual(['-H', '127.0.0.1']);
   });
 });

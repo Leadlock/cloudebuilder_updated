@@ -14,20 +14,20 @@ import { NextRequest } from 'next/server';
 import { POST } from '@/app/api/projects/[id]/terraform/unlock/route';
 
 const env = process.env as Record<string, string | undefined>;
-const saved = env.CLOUDCRAFT_TERRAFORM_ORG_IDS;
-const backend = { provider: 'azure', resourceGroupName: 'rg', storageAccountName: 'cloudcraft', containerName: 'tfstate', key: 'k.tfstate' };
+const saved = env.CLOUDBUILDER_TERRAFORM_ORG_IDS;
+const backend = { provider: 'azure', resourceGroupName: 'rg', storageAccountName: 'cloudbuilder', containerName: 'tfstate', key: 'k.tfstate' };
 const LOCK_ID = 'b62dca92-6904-8aff-9c92-38241bd68610';
 const call = (b: unknown) => POST(new NextRequest('http://localhost/api/projects/proj-1/terraform/unlock', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }), { params: Promise.resolve({ id: 'proj-1' }) });
 let u = 0;
 
 beforeEach(() => {
   [mockIdentity, mockOrgRole, mockResolveOrg, mockResolveArch, mockInspect, mockRelease, mockAudit].forEach((m) => m.mockReset());
-  env.CLOUDCRAFT_TERRAFORM_ORG_IDS = 'org-1';
+  env.CLOUDBUILDER_TERRAFORM_ORG_IDS = 'org-1';
   mockIdentity.mockReturnValue({ userId: `unlock-user-${++u}`, role: 'admin', orgIds: [] });
   mockResolveOrg.mockResolvedValue('org-1'); mockOrgRole.mockResolvedValue('owner'); mockResolveArch.mockResolvedValue({ arch: {}, project: {} });
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(() => { if (saved === undefined) delete env.CLOUDCRAFT_TERRAFORM_ORG_IDS; else env.CLOUDCRAFT_TERRAFORM_ORG_IDS = saved; });
+afterEach(() => { if (saved === undefined) delete env.CLOUDBUILDER_TERRAFORM_ORG_IDS; else env.CLOUDBUILDER_TERRAFORM_ORG_IDS = saved; });
 
 describe('POST /api/projects/[id]/terraform/unlock', () => {
   it('inspect returns what the check found and audits it, changing nothing', async () => {
@@ -66,7 +66,7 @@ describe('POST /api/projects/[id]/terraform/unlock', () => {
   });
 
   it('is behind the same access gate as plan/apply/destroy', async () => {
-    delete env.CLOUDCRAFT_TERRAFORM_ORG_IDS;
+    delete env.CLOUDBUILDER_TERRAFORM_ORG_IDS;
     expect((await call({ action: 'inspect', cloudAccountId: 'acct-1', stateBackend: backend })).status).toBe(403);
     expect(mockInspect).not.toHaveBeenCalled();
   });

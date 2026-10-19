@@ -37,8 +37,8 @@ import { localLoginFallbackAllowed, localSignupAllowed, unverifiedTokenFallbackA
 import { readClaimsWithoutSignature } from '@/lib/auth/cognitoService';
 
 const env = process.env as Record<string, string | undefined>;
-const saved = { NODE_ENV: env.NODE_ENV, flag: env.CLOUDCRAFT_ALLOW_LOCAL_SIGNUP };
-afterEach(() => { env.NODE_ENV = saved.NODE_ENV; if (saved.flag === undefined) delete env.CLOUDCRAFT_ALLOW_LOCAL_SIGNUP; else env.CLOUDCRAFT_ALLOW_LOCAL_SIGNUP = saved.flag; });
+const saved = { NODE_ENV: env.NODE_ENV, flag: env.CLOUDBUILDER_ALLOW_LOCAL_SIGNUP };
+afterEach(() => { env.NODE_ENV = saved.NODE_ENV; if (saved.flag === undefined) delete env.CLOUDBUILDER_ALLOW_LOCAL_SIGNUP; else env.CLOUDBUILDER_ALLOW_LOCAL_SIGNUP = saved.flag; });
 beforeEach(() => {
   [mockSignUp, mockSignIn, mockAuthenticate, mockSync, mockFindUser, mockCreateUser].forEach((m) => m.mockReset());
   jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -77,13 +77,13 @@ describe('sign-up', () => {
     mockFindUser.mockResolvedValue(null);
     mockCreateUser.mockResolvedValue({ id: 'u1', email: 'victim@example.com' });
 
-    env.NODE_ENV = 'development'; delete env.CLOUDCRAFT_ALLOW_LOCAL_SIGNUP;
+    env.NODE_ENV = 'development'; delete env.CLOUDBUILDER_ALLOW_LOCAL_SIGNUP;
     expect((await signup()).status).toBe(503);                 // development alone is not enough
-    env.NODE_ENV = 'production'; env.CLOUDCRAFT_ALLOW_LOCAL_SIGNUP = '1';
+    env.NODE_ENV = 'production'; env.CLOUDBUILDER_ALLOW_LOCAL_SIGNUP = '1';
     expect((await signup()).status).toBe(503);                 // the flag alone is not enough
     expect(mockCreateUser).not.toHaveBeenCalled();
 
-    env.NODE_ENV = 'development'; env.CLOUDCRAFT_ALLOW_LOCAL_SIGNUP = '1';
+    env.NODE_ENV = 'development'; env.CLOUDBUILDER_ALLOW_LOCAL_SIGNUP = '1';
     expect((await signup()).status).toBe(200);                 // both, deliberately
     expect(mockCreateUser).toHaveBeenCalledTimes(1);
   });
@@ -127,10 +127,10 @@ describe('fallback rules', () => {
     expect(localLoginFallbackAllowed(undefined)).toBe(false);
   });
   it('localSignupAllowed / unverifiedTokenFallbackAllowed are development-only, and the second needs the dev-shortcuts flag', () => {
-    const flag = env.CLOUDCRAFT_DEV_SHORTCUTS;
+    const flag = env.CLOUDBUILDER_DEV_SHORTCUTS;
     try {
-      env.CLOUDCRAFT_DEV_SHORTCUTS = '1';
-      env.NODE_ENV = 'production'; env.CLOUDCRAFT_ALLOW_LOCAL_SIGNUP = '1';
+      env.CLOUDBUILDER_DEV_SHORTCUTS = '1';
+      env.NODE_ENV = 'production'; env.CLOUDBUILDER_ALLOW_LOCAL_SIGNUP = '1';
       expect(localSignupAllowed()).toBe(false);
       expect(unverifiedTokenFallbackAllowed()).toBe(false);
       env.NODE_ENV = 'test';
@@ -138,10 +138,10 @@ describe('fallback rules', () => {
       env.NODE_ENV = 'development';
       expect(unverifiedTokenFallbackAllowed()).toBe(true);
       // `npm run dev` alone no longer accepts a token whose signature could not be checked
-      delete env.CLOUDCRAFT_DEV_SHORTCUTS;
+      delete env.CLOUDBUILDER_DEV_SHORTCUTS;
       expect(unverifiedTokenFallbackAllowed()).toBe(false);
     } finally {
-      if (flag === undefined) delete env.CLOUDCRAFT_DEV_SHORTCUTS; else env.CLOUDCRAFT_DEV_SHORTCUTS = flag;
+      if (flag === undefined) delete env.CLOUDBUILDER_DEV_SHORTCUTS; else env.CLOUDBUILDER_DEV_SHORTCUTS = flag;
     }
   });
 });

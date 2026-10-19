@@ -1,7 +1,7 @@
 /**
  * Fine-tunes the CloudBuilder architect on Azure AI Foundry (Azure OpenAI v1 API).
  *
- *   npx tsx --env-file=.env --tsconfig tsconfig.json scripts/ai-dataset/finetune-foundry.ts start [--base gpt-4o-mini-2024-07-18] [--type GlobalStandard] [--epochs 3] [--suffix cloudcraft-architect]
+ *   npx tsx --env-file=.env --tsconfig tsconfig.json scripts/ai-dataset/finetune-foundry.ts start [--base gpt-4o-mini-2024-07-18] [--type GlobalStandard] [--epochs 3] [--suffix cloudbuilder-architect]
  *   npx tsx --env-file=.env --tsconfig tsconfig.json scripts/ai-dataset/finetune-foundry.ts status <jobId>
  *   npx tsx --env-file=.env --tsconfig tsconfig.json scripts/ai-dataset/finetune-foundry.ts events <jobId>
  *
@@ -67,7 +67,7 @@ async function main() {
     body: JSON.stringify({
       training_file: train, validation_file: validation,
       model: arg('--base') ?? 'gpt-4o-mini-2024-07-18',
-      suffix: arg('--suffix') ?? 'cloudcraft-architect',
+      suffix: arg('--suffix') ?? 'cloudbuilder-architect',
       seed: 20260929,
       hyperparameters: { n_epochs: Number(arg('--epochs') ?? 3) },
       trainingType: arg('--type') ?? 'GlobalStandard',

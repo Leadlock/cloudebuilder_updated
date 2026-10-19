@@ -131,7 +131,7 @@ export default function EditAccountDialog({ account, onClose, onSaved }: { accou
                 : Object.keys(hint).length === 0
                   ? 'The current role is not shown yet — click Re-check once and it appears here. Leave empty to keep it.'
                   : undefined}>
-                <input type="text" value={aws.roleArn} onChange={(e) => setAws((v) => ({ ...v, roleArn: e.target.value }))} placeholder="arn:aws:iam::123456789012:role/CloudCraftRole" autoComplete="off" spellCheck={false} className={inputClass} />
+                <input type="text" value={aws.roleArn} onChange={(e) => setAws((v) => ({ ...v, roleArn: e.target.value }))} placeholder="arn:aws:iam::123456789012:role/CloudBuilderRole" autoComplete="off" spellCheck={false} className={inputClass} />
               </Field>
               <Field label="External ID (optional)" isLight={isLight} hint={hint.hasExternalId ? 'One is set. Leave empty to keep it, type a new one to replace it, or tick the box to remove it.' : undefined}>
                 <input type="text" value={aws.externalId} onChange={(e) => setAws((v) => ({ ...v, externalId: e.target.value }))} autoComplete="off" spellCheck={false} className={inputClass} />

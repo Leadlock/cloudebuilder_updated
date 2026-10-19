@@ -132,7 +132,7 @@ function awsServerlessApi(): ArchitectureTemplate {
     generate(_opts: TemplateGenerateOptions = {}) {
       const nodes: CanvasNode[] = [
         n(`${id}-cloud`, 'aws_cloud_boundary', 'aws', 'Amazon Web Services (us-east-1)', 30, 20, { region: 'us-east-1' }, undefined, 980, 460),
-        n(`${id}-r53`, 'aws_route53', 'aws', 'Route 53 DNS', 80, 80, { domainName: 'api.cloudcraft.example' }, `${id}-cloud`),
+        n(`${id}-r53`, 'aws_route53', 'aws', 'Route 53 DNS', 80, 80, { domainName: 'api.cloudbuilder.example' }, `${id}-cloud`),
         n(`${id}-cf`, 'aws_cloudfront', 'aws', 'CloudFront Distribution', 340, 80, { priceClass: 'PriceClass_100' }, `${id}-cloud`),
         n(`${id}-s3-web`, 'aws_s3', 'aws', 'Static Frontend (S3)', 600, 80, { versioning: true, encryption: true, publicAccess: false }, `${id}-cloud`),
         n(`${id}-lambda`, 'aws_lambda', 'aws', 'API Handler (Lambda)', 340, 250, { runtime: 'nodejs20.x', memorySize: 512 }, `${id}-cloud`),
@@ -309,7 +309,7 @@ function awsMultiRegionDr(): ArchitectureTemplate {
     tags: ['aws', 'disaster-recovery', 'multi-region', 'rds', 'warm-standby'],
     generate(_opts: TemplateGenerateOptions = {}) {
       const nodes: CanvasNode[] = [
-        n(`${id}-r53`, 'aws_route53', 'aws', 'Route 53 (Failover Routing Policy)', 540, 20, { domainName: 'app.cloudcraft.example' }),
+        n(`${id}-r53`, 'aws_route53', 'aws', 'Route 53 (Failover Routing Policy)', 540, 20, { domainName: 'app.cloudbuilder.example' }),
 
         // Primary region
         n(`${id}-cloud-primary`, 'aws_cloud_boundary', 'aws', 'Primary Region (us-east-1)', 30, 120, { region: 'us-east-1' }, undefined, 620, 560),
@@ -378,7 +378,7 @@ function awsThreeTierMultiAz(): ArchitectureTemplate {
     generate(_opts: TemplateGenerateOptions = {}) {
       const nodes: CanvasNode[] = [
         n('aws-cloud', 'aws_cloud_boundary', 'aws', 'Amazon Web Services (us-east-1)', 30, 20, { region: 'us-east-1' }, undefined, 1460, 1140),
-        n('r53', 'aws_route53', 'aws', 'Route 53 DNS', 200, 70, { domainName: 'cloudcraft.app' }, 'aws-cloud'),
+        n('r53', 'aws_route53', 'aws', 'Route 53 DNS', 200, 70, { domainName: 'cloudbuilder.app' }, 'aws-cloud'),
         n('cf', 'aws_cloudfront', 'aws', 'CloudFront CDN', 450, 70, { priceClass: 'PriceClass_100' }, 'aws-cloud'),
         n('waf', 'aws_waf', 'aws', 'AWS WAF', 700, 70, { scope: 'CLOUDFRONT', defaultAction: 'ALLOW' }, 'aws-cloud'),
         n('vpc', 'aws_vpc', 'aws', 'Production VPC (10.0.0.0/16)', 70, 210, { cidrBlock: '10.0.0.0/16', enableDnsSupport: true, enableDnsHostnames: true }, 'aws-cloud', 1050, 890),

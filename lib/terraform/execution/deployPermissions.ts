@@ -2,7 +2,7 @@
  * What the AWS role needs in order to DEPLOY, built from the resources in the plan, and a reader for "not authorized" errors.
  *
  * CloudBuilder's role is read-only by default (it only needs to look at your account to import it). Terraform has to create things, so
- * the first apply fails with "User: …assumed-role/CloudCraft/… is not authorized to perform: ec2:CreateVpc". Pure (no Node imports) so the
+ * the first apply fails with "User: …assumed-role/CloudBuilder/… is not authorized to perform: ec2:CreateVpc". Pure (no Node imports) so the
  * panel can use it in the browser.
  */
 
@@ -79,8 +79,8 @@ export function buildDeployPolicy(resourceTypes: string[]): DeployPolicy {
   const wildcard = [...services].filter((s) => s !== 'iam').sort().map((s) => `${s}:*`);
   const includesIam = services.has('iam');
   const statements: object[] = [];
-  if (wildcard.length > 0) statements.push({ Sid: 'CloudCraftDeployServices', Effect: 'Allow', Action: wildcard, Resource: '*' });
-  if (includesIam) statements.push({ Sid: 'CloudCraftDeployIamRoles', Effect: 'Allow', Action: IAM_ACTIONS, Resource: '*' });
+  if (wildcard.length > 0) statements.push({ Sid: 'CloudBuilderDeployServices', Effect: 'Allow', Action: wildcard, Resource: '*' });
+  if (includesIam) statements.push({ Sid: 'CloudBuilderDeployIamRoles', Effect: 'Allow', Action: IAM_ACTIONS, Resource: '*' });
   return {
     json: JSON.stringify({ Version: '2012-10-17', Statement: statements }, null, 2),
     services: [...services].sort(),

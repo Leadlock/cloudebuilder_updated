@@ -271,7 +271,7 @@ class ApiWellArchitectedServiceImpl {
       throw new Error(err?.error?.message ?? `Report generation failed (${res.status})`);
     }
     const cd = res.headers.get('Content-Disposition') ?? '';
-    const filename = /filename="([^"]+)"/.exec(cd)?.[1] ?? `cloudcraft-well-architected.${format}`;
+    const filename = /filename="([^"]+)"/.exec(cd)?.[1] ?? `cloudbuilder-well-architected.${format}`;
     const blob = format === 'json' ? new Blob([JSON.stringify(await res.json(), null, 2)], { type: 'application/json' }) : await res.blob();
     return { blob, filename };
   }

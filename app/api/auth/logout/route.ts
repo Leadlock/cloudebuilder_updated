@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    const cookieToken = req.cookies.get('cloudcraft_session')?.value;
+    const cookieToken = req.cookies.get('cloudbuilder_session')?.value;
     const authHeader = req.headers.get('authorization');
     const bearerToken = authHeader?.toLowerCase().startsWith('bearer ') ? authHeader.substring(7).trim() : null;
 
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
 
     // Expire cookie immediately
     response.cookies.set({
-      name: 'cloudcraft_session',
+      name: 'cloudbuilder_session',
       value: '',
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

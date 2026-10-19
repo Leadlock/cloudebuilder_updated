@@ -31,8 +31,8 @@ const MAX_LINES = 1000;
 const TAIL_LINES = 150;
 const KEEP_FINISHED_MS = 60 * 60 * 1000;
 
-const g = globalThis as unknown as { __cloudcraft_tf_runs__?: Map<string, RunRecord> };
-const runs = (): Map<string, RunRecord> => (g.__cloudcraft_tf_runs__ ??= new Map());
+const g = globalThis as unknown as { __cloudbuilder_tf_runs__?: Map<string, RunRecord> };
+const runs = (): Map<string, RunRecord> => (g.__cloudbuilder_tf_runs__ ??= new Map());
 
 // eslint-disable-next-line no-control-regex
 const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;

@@ -16,8 +16,8 @@ import { isOperatorEmail } from './operators';
 import type { AccessRecord } from './types';
 
 export { isOperatorEmail, operatorEmails } from './operators';
-/** On unless the server turns it off (CLOUDCRAFT_TERRAFORM_AUTO_APPROVE=0): the checks, not a setting, are what keeps it safe. */
-export const autoApproveEnabled = (): boolean => process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'] !== '0';
+/** On unless the server turns it off (CLOUDBUILDER_TERRAFORM_AUTO_APPROVE=0): the checks, not a setting, are what keeps it safe. */
+export const autoApproveEnabled = (): boolean => process.env['CLOUDBUILDER_TERRAFORM_AUTO_APPROVE'] !== '0';
 
 const REQUEST_ROLES = new Set(['owner', 'admin']);
 const clearCaches = () => statusAccessCache.clear();

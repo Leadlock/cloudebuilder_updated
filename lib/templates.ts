@@ -94,7 +94,7 @@ export const architectureTemplatesLegacy: ArchitectureTemplate[] = [
         n('aws-cloud', 'aws_cloud_boundary', 'aws', 'Amazon Web Services (us-east-1)', 30, 20, { region: 'us-east-1' }, undefined, 1460, 1140),
 
         // ── Edge & Ingress Layer (Regional/Global, Outside VPC)
-        n('r53', 'aws_route53', 'aws', 'Route 53 DNS', 200, 70, { domainName: 'cloudcraft.app' }, 'aws-cloud'),
+        n('r53', 'aws_route53', 'aws', 'Route 53 DNS', 200, 70, { domainName: 'cloudbuilder.app' }, 'aws-cloud'),
         n('cf', 'aws_cloudfront', 'aws', 'CloudFront CDN', 450, 70, { priceClass: 'PriceClass_100', defaultRootObject: 'index.html' }, 'aws-cloud'),
         n('waf', 'aws_waf', 'aws', 'AWS WAF', 700, 70, { scope: 'CLOUDFRONT', defaultAction: 'ALLOW' }, 'aws-cloud'),
 

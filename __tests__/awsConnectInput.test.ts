@@ -15,7 +15,7 @@ import { NextRequest } from 'next/server';
 import { checkAwsConnectInput, describeArn } from '@/lib/cloud/awsConnectInput';
 import { POST as createPost } from '@/app/api/cloud-accounts/route';
 
-const good = { accessKeyId: 'AKIAIOSFODNN7EXAMPLE', secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', roleArn: 'arn:aws:iam::123456789012:role/CloudCraftRole', externalId: '' };
+const good = { accessKeyId: 'AKIAIOSFODNN7EXAMPLE', secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', roleArn: 'arn:aws:iam::123456789012:role/CloudBuilderRole', externalId: '' };
 
 describe('checkAwsConnectInput', () => {
   it('accepts correct input, with or without an External ID', () => {
@@ -39,7 +39,7 @@ describe('checkAwsConnectInput', () => {
     [{ secretAccessKey: 'too-short' }, /40 characters/],
     [{ roleArn: '' }, /Enter the Role ARN/],
     [{ roleArn: 'arn:aws:iam::123456789012:root' }, /ARN of an account, not of a role/],
-    [{ roleArn: 'CloudCraftRole' }, /should look like arn:aws:iam::123456789012:role\/CloudCraftRole/],
+    [{ roleArn: 'CloudBuilderRole' }, /should look like arn:aws:iam::123456789012:role\/CloudBuilderRole/],
     [{ externalId: 'x' }, /External ID must be 2 to 1224 characters/],
   ])('%j → a sentence about that one field', (patch, expected) => {
     expect(checkAwsConnectInput({ ...good, ...patch })).toMatch(expected);

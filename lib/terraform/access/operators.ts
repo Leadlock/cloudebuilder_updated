@@ -4,17 +4,17 @@
  *
  * Nothing has to be configured:
  *  - By default the operator is the person who first signed up on this server (the one who set it up). The earliest account counts, apart
- *    from the built-in development account (an address ending in @cloudcraft.local). That is the same rule many self-hosted tools use for
+ *    from the built-in development account (an address ending in @cloudbuilder.local). That is the same rule many self-hosted tools use for
  *    their first admin, and it cannot be claimed later: only the earliest account ever qualifies.
  *  - To name operators explicitly instead (several people, or someone other than the first signup), list their emails in
- *    CLOUDCRAFT_OPERATOR_EMAILS. When that list is set, only those people are operators and the first-signup rule is not used.
+ *    CLOUDBUILDER_OPERATOR_EMAILS. When that list is set, only those people are operators and the first-signup rule is not used.
  */
 const csv = (v: string | undefined) => (v ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 
-export const operatorEmails = (): Set<string> => new Set(csv(process.env['CLOUDCRAFT_OPERATOR_EMAILS']));
+export const operatorEmails = (): Set<string> => new Set(csv(process.env['CLOUDBUILDER_OPERATOR_EMAILS']));
 
 /** The built-in development accounts are never the operator. */
-const SEEDED = /@cloudcraft\.local$/i;
+const SEEDED = /@cloudbuilder\.local$/i;
 
 let firstSignup: string | undefined;
 export function _resetOperatorCacheForTests(): void { firstSignup = undefined; }

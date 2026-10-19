@@ -1,7 +1,7 @@
 # Design: deploying a project from inside CloudBuilder
 
 Status: phase 1 (Azure VM) and phase 2 (AWS EC2: CodeBuild, Parameter Store, S3 release bucket, SSM restart) and ECS Fargate (a service per service behind one load balancer, Service Connect, task definition revisions per release) are built and tested with fakes and, for the database and the zip reader, against real Postgres and hand-made hostile archives. Neither has been
-run against a real cloud account. Switched off by default (`CLOUDCRAFT_PROJECT_RELEASES=1`). How to try it: [IN_APP_DEPLOYMENT_TEST.md](IN_APP_DEPLOYMENT_TEST.md).
+run against a real cloud account. Switched off by default (`CLOUDBUILDER_PROJECT_RELEASES=1`). How to try it: [IN_APP_DEPLOYMENT_TEST.md](IN_APP_DEPLOYMENT_TEST.md).
 Built: release state machine with waiting-for-secrets, retry from the failed step, automatic and manual rollback, cancel and kill switch; Azure REST operations; the
 Terraform plan/approval/apply path through the existing machinery; routes; worker queue; the panel; uploaded code (zip); teardown. Phases 2 to 4 (EC2, AKS and Kubernetes, Git sources) are not built.
 Written 2026-10-16.
@@ -180,5 +180,5 @@ Phase 0 is not optional: the generated Terraform and start scripts have never ru
 
 - **Secrets come after the infrastructure, not at plan time.** The vault does not exist before Terraform creates it, so the release is a state machine that *pauses* at the `secrets` step ("waiting for secrets"), exactly where `deploy.sh` asks. The person enters the values in a write-only form; the API writes each one straight to the vault and the job is resumed. CloudBuilder still never stores a value (no encrypted holding row, no queue payload).
 - **Azure calls use the cloud's REST APIs with `@azure/identity` tokens**, not new SDK packages (the registry-build and Key Vault data-plane SDKs are not dependencies yet). A small `AzureOps` interface wraps them, so every step is tested with a fake and the real implementation is one file.
-- **The release is behind a switch.** `CLOUDCRAFT_PROJECT_RELEASES=1` turns it on; it is off by default until phase 0 (a real test deployment from the terminal) has been done, because none of the generated Terraform or start scripts has run on a real cloud yet.
+- **The release is behind a switch.** `CLOUDBUILDER_PROJECT_RELEASES=1` turns it on; it is off by default until phase 0 (a real test deployment from the terminal) has been done, because none of the generated Terraform or start scripts has run on a real cloud yet.
 - **Release records keep the compose file and tag of every release**, so a rollback needs no rebuild and no plan.

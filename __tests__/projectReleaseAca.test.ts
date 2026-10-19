@@ -84,7 +84,7 @@ const app = (p: Record<string, unknown> = {}) => ({ properties: { provisioningSt
 describe('the Container Apps calls', () => {
   test('a secret that is only the marker Terraform left is not stored yet; a stored one is; a missing one is not', async () => {
     const t = ops([
-      [/secrets\/MARK/, () => ({ status: 200, json: { value: 'not-set-yet', tags: { cloudcraft: 'placeholder' } } })],
+      [/secrets\/MARK/, () => ({ status: 200, json: { value: 'not-set-yet', tags: { cloudbuilder: 'placeholder' } } })],
       [/secrets\/REAL/, () => ({ status: 200, json: { value: 'x' } })],
       [/secrets\/NONE/, () => ({ status: 404, json: {} })],
       [/secrets\/DENY/, () => ({ status: 403, json: { error: { code: 'Forbidden', message: 'no' } } })],

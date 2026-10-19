@@ -47,8 +47,8 @@ export function checkAwsConnectInput(input: AwsConnectInput, options: { needsRol
   if (!ROLE_ARN_RE.test(roleArn)) {
     const kind = describeArn(roleArn);
     if (kind === 'user') return 'That is the ARN of an IAM user, not of a role. The Role ARN is the ARN of the role the user assumes (IAM → Roles → your role). If you have not created the role yet, follow steps 1 and 2 above.';
-    if (kind === 'root') return 'That is the ARN of an account, not of a role. The Role ARN looks like arn:aws:iam::123456789012:role/CloudCraftRole.';
-    return 'The Role ARN should look like arn:aws:iam::123456789012:role/CloudCraftRole. Copy it from the role\'s page in IAM.';
+    if (kind === 'root') return 'That is the ARN of an account, not of a role. The Role ARN looks like arn:aws:iam::123456789012:role/CloudBuilderRole.';
+    return 'The Role ARN should look like arn:aws:iam::123456789012:role/CloudBuilderRole. Copy it from the role\'s page in IAM.';
   }
 
   if (externalId && !EXTERNAL_ID_RE.test(externalId)) return 'The External ID must be 2 to 1224 characters. Leave it empty if the role does not require one.';

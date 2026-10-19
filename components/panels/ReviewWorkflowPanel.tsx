@@ -59,7 +59,7 @@ export default function ReviewWorkflowPanel() {
     id: 'usr-admin-1',
     role: 'admin',
     name: 'Cloud Administrator',
-    email: 'admin@cloudcraft.io',
+    email: 'admin@cloudbuilder.io',
   };
   const isAdmin = currentUser.role === 'admin';
   // Who may decide is worked out by the server (the super administrator when there is one); the server checks it again on every decision.

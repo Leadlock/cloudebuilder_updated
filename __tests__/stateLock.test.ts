@@ -6,7 +6,7 @@ const REAL = [
   'Error message: state blob is already locked',
   'Lock Info:',
   '  ID:        1afc9b38-cc96-8e8d-2330-dfba92af6cd7',
-  '  Path:      tfstate/cloudcraft.terraform.tfstate',
+  '  Path:      tfstate/cloudbuilder.terraform.tfstate',
   '  Operation: OperationTypeApply',
   '  Who:       TANMAY\\22tan@Tanmay',
   '  Version:   1.9.8',
@@ -22,7 +22,7 @@ describe('parseLockInfo', () => {
   it.each([['multi-line', REAL], ['flattened', FLAT]])('reads every field from the real error (%s)', (_n, text) => {
     const info = parseLockInfo(text)!;
     expect(info.id).toBe('1afc9b38-cc96-8e8d-2330-dfba92af6cd7');
-    expect(info.path).toBe('tfstate/cloudcraft.terraform.tfstate');
+    expect(info.path).toBe('tfstate/cloudbuilder.terraform.tfstate');
     expect(info.operation).toBe('OperationTypeApply');
     expect(info.who).toBe('TANMAY\\22tan@Tanmay');
     expect(info.created!.toISOString()).toBe('2026-10-01T08:44:17.000Z');

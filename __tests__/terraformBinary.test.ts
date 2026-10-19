@@ -43,7 +43,7 @@ const KEY = platformKey()!;
 const ZIP_NAME = KEY.startsWith('windows') ? 'terraform.exe' : 'terraform';
 
 // ─── environment ──────────────────────────────────────────────────────────────
-const ENV = ['TERRAFORM_BINARY_PATH', 'CLOUDCRAFT_TERRAFORM_DIR', 'CLOUDCRAFT_TERRAFORM_MIRROR', 'CLOUDCRAFT_TERRAFORM_DOWNLOAD', 'HOME', 'USERPROFILE', 'PATH'];
+const ENV = ['TERRAFORM_BINARY_PATH', 'CLOUDBUILDER_TERRAFORM_DIR', 'CLOUDBUILDER_TERRAFORM_MIRROR', 'CLOUDBUILDER_TERRAFORM_DOWNLOAD', 'HOME', 'USERPROFILE', 'PATH'];
 const saved: Record<string, string | undefined> = {};
 const realSha = { ...TERRAFORM_SHA256 };
 let root: string;
@@ -66,12 +66,12 @@ const publish = (program: Buffer) => { served = makeZip([{ name: ZIP_NAME, data:
 beforeEach(async () => {
   for (const k of ENV) saved[k] = process.env[k];
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'tfbin-'));
-  process.env['CLOUDCRAFT_TERRAFORM_DIR'] = path.join(root, 'managed');
+  process.env['CLOUDBUILDER_TERRAFORM_DIR'] = path.join(root, 'managed');
   process.env['HOME'] = path.join(root, 'home'); process.env['USERPROFILE'] = path.join(root, 'home');
   process.env['PATH'] = path.join(root, 'emptybin');
-  delete process.env['TERRAFORM_BINARY_PATH']; delete process.env['CLOUDCRAFT_TERRAFORM_DOWNLOAD'];
+  delete process.env['TERRAFORM_BINARY_PATH']; delete process.env['CLOUDBUILDER_TERRAFORM_DOWNLOAD'];
   hits = []; status = 200; served = null;
-  process.env['CLOUDCRAFT_TERRAFORM_MIRROR'] = await startServer();
+  process.env['CLOUDBUILDER_TERRAFORM_MIRROR'] = await startServer();
   publish(FAKE);
   _resetInstallStateForTests();
 });
@@ -215,7 +215,7 @@ describe('installing it once', () => {
     expect(await ensureTerraform()).toBe(managedBinaryPath());
   });
   it('never downloads when that is switched off, and says how to proceed', async () => {
-    process.env['CLOUDCRAFT_TERRAFORM_DOWNLOAD'] = '0';
+    process.env['CLOUDBUILDER_TERRAFORM_DOWNLOAD'] = '0';
     await expect(ensureTerraform()).rejects.toThrow(/downloading it is switched off.*TERRAFORM_BINARY_PATH/);
     expect(hits).toHaveLength(0);
   });

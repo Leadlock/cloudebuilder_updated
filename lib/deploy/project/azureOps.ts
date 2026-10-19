@@ -206,7 +206,7 @@ export function createAzureOps(deps: AzureOpsDeps): AzureOps & AcaOps {
       const r = await call(vaultUrl(vault, name), { scope: VAULT_SCOPE });
       if (r.status === 404) return false;
       if (!r.ok) throw new AzureError(`Could not read secret ${name}: ${reason(r.json, `HTTP ${r.status}`)}`, r.status);
-      return (r.json as { tags?: Record<string, string> } | null)?.tags?.['cloudcraft'] !== 'placeholder';
+      return (r.json as { tags?: Record<string, string> } | null)?.tags?.['cloudbuilder'] !== 'placeholder';
     },
 
     async containerAppSetImage({ resourceGroup, app, image }) {

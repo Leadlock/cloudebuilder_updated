@@ -7,9 +7,9 @@ import { extractJson } from '@/lib/ai/architectRepair';
 
 export type AskModel = (system: string, user: string) => Promise<Record<string, unknown> | undefined>;
 
-/** True when a model is configured and AI cost help is not switched off (CLOUDCRAFT_AI_COST=off). */
+/** True when a model is configured and AI cost help is not switched off (CLOUDBUILDER_AI_COST=off). */
 export function aiCostAvailable(): boolean {
-  if (process.env['CLOUDCRAFT_AI_COST'] === 'off') return false;
+  if (process.env['CLOUDBUILDER_AI_COST'] === 'off') return false;
   return Boolean(process.env['AZURE_AI_FOUNDRY_ENDPOINT'] && process.env['AZURE_AI_FOUNDRY_API_KEY']);
 }
 

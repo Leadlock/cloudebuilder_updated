@@ -30,8 +30,8 @@ export interface PreparedDestroyPlan {
   expiresAtMs: number;
 }
 
-const g = globalThis as unknown as { __cloudcraft_destroy_plans__?: Map<string, PreparedDestroyPlan> };
-const plans = (): Map<string, PreparedDestroyPlan> => (g.__cloudcraft_destroy_plans__ ??= new Map());
+const g = globalThis as unknown as { __cloudbuilder_destroy_plans__?: Map<string, PreparedDestroyPlan> };
+const plans = (): Map<string, PreparedDestroyPlan> => (g.__cloudbuilder_destroy_plans__ ??= new Map());
 
 async function discardDir(dir: string): Promise<void> { await rm(dir, { recursive: true, force: true }).catch(() => undefined); }
 

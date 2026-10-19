@@ -46,13 +46,13 @@ import { POST as validatePost } from '@/app/api/cloud-accounts/[id]/validate/rou
 
 const KEY_ID = 'AKIAIOSFODNN7EXAMPLE';
 const SECRET = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY';
-const ROLE = 'arn:aws:iam::123456789012:role/CloudCraftRole';
+const ROLE = 'arn:aws:iam::123456789012:role/CloudBuilderRole';
 const keyRole = { accessKeyId: KEY_ID, secretAccessKey: SECRET, roleArn: ROLE, externalId: 'ext-123', region: 'us-east-1' };
 const keyRoleNoExt = { accessKeyId: KEY_ID, secretAccessKey: SECRET, roleArn: ROLE, region: 'us-east-1' };
 const keyOnly = { accessKeyId: KEY_ID, secretAccessKey: SECRET, region: 'us-east-1' };
 const roleOnly = { roleArn: ROLE, externalId: 'ext-123', region: 'us-east-1' };
-const USER_ARN = 'arn:aws:iam::123456789012:user/cloudcraft';
-const ASSUMED_ARN = 'arn:aws:sts::123456789012:assumed-role/CloudCraftRole/cloudcraft-discovery';
+const USER_ARN = 'arn:aws:iam::123456789012:user/cloudbuilder';
+const ASSUMED_ARN = 'arn:aws:sts::123456789012:assumed-role/CloudBuilderRole/cloudcraft-discovery';
 
 /** STS as AWS answers: AssumeRole gives temporary credentials; GetCallerIdentity says who is calling (the user, or the assumed role). */
 function stsAnswers(who: { key?: string; assumed?: string } = {}) {
@@ -194,7 +194,7 @@ describe('Terraform with a key and a role', () => {
     expect(JSON.stringify(env)).not.toContain(KEY_ID);
     expect(JSON.stringify(env)).not.toContain(SECRET);
     expect(stsConstructed[0]!.credentials).toMatchObject({ accessKeyId: KEY_ID, secretAccessKey: SECRET });
-    expect(assumeInputs[0]).toMatchObject({ RoleArn: ROLE, ExternalId: 'ext-123', RoleSessionName: 'cloudcraft-terraform-execution' });
+    expect(assumeInputs[0]).toMatchObject({ RoleArn: ROLE, ExternalId: 'ext-123', RoleSessionName: 'cloudbuilder-terraform-execution' });
   });
 
   it('a key alone never becomes Terraform\'s environment; a legacy role-only account still assumes with the server\'s own identity', async () => {
@@ -264,7 +264,7 @@ describe('explanations for a key + role', () => {
 
 describe('a refused assume-role says exactly who may not assume which role', () => {
   const USER = 'arn:aws:iam::460195068628:user/Test';
-  const ROLE_SAME = 'arn:aws:iam::460195068628:role/CloudCraft';
+  const ROLE_SAME = 'arn:aws:iam::460195068628:role/CloudBuilder';
   const refusal = (user: string, role: string) => `User: ${user} is not authorized to perform: sts:AssumeRole on resource: ${role}`;
   const failAssume = (user: string, role: string) => mockStsSend.mockImplementation(async (cmd: { input?: { RoleArn?: string } }) => {
     if (cmd.input?.RoleArn) throw new Error(refusal(user, role));

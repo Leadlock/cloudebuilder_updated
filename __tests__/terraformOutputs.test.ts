@@ -30,26 +30,26 @@ function generate(resources: DbArchitectureResource[]) {
 
 describe('outputs.tf only references declared resources', () => {
   it.each(OUTPUT_TYPES)('%s: a normal (managed) resource gets an output that resolves', (type, provider, cfg) => {
-    const { outputs, files } = generate([row('r1', type, provider, 'cloudcraft', cfg)]);
+    const { outputs, files } = generate([row('r1', type, provider, 'cloudbuilder', cfg)]);
     const refs = referencedManagedResources(outputs);
     for (const ref of refs) expect(declared(files, ref.type, ref.name)).toBe(true);
   });
 
   it.each(OUTPUT_TYPES)('%s: an imported (existing) resource gets no output pointing at a managed resource', (type, provider, cfg) => {
-    const { outputs, files } = generate([row('r1', type, provider, 'cloudcraft', { ...cfg, imported: true })]);
+    const { outputs, files } = generate([row('r1', type, provider, 'cloudbuilder', { ...cfg, imported: true })]);
     expect(referencedManagedResources(outputs)).toEqual([]);
     for (const ref of referencedManagedResources(outputs)) expect(declared(files, ref.type, ref.name)).toBe(true);
   });
 
   it('also honours importState: "imported"', () => {
-    const { outputs } = generate([row('r1', 'azure_storage', 'azure', 'cloudcraft', { importState: 'imported' })]);
-    expect(outputs).not.toContain('azurerm_storage_account.cloudcraft.name');
+    const { outputs } = generate([row('r1', 'azure_storage', 'azure', 'cloudbuilder', { importState: 'imported' })]);
+    expect(outputs).not.toContain('azurerm_storage_account.cloudbuilder.name');
   });
 
-  it('the failing case from a real teardown: an imported Azure storage account named "cloudcraft"', () => {
-    const { outputs, files } = generate([row('sa', 'azure_storage', 'azure', 'cloudcraft', { imported: true })]);
-    expect(files.some((f) => /data\s+"azurerm_storage_account"\s+"cloudcraft"/.test(f.content))).toBe(true);   // declared as existing…
-    expect(outputs).not.toMatch(/value\s*=\s*azurerm_storage_account\.cloudcraft/);                           // …so no output may treat it as managed
+  it('the failing case from a real teardown: an imported Azure storage account named "cloudbuilder"', () => {
+    const { outputs, files } = generate([row('sa', 'azure_storage', 'azure', 'cloudbuilder', { imported: true })]);
+    expect(files.some((f) => /data\s+"azurerm_storage_account"\s+"cloudbuilder"/.test(f.content))).toBe(true);   // declared as existing…
+    expect(outputs).not.toMatch(/value\s*=\s*azurerm_storage_account\.cloudbuilder/);                           // …so no output may treat it as managed
   });
 
   it('a mix keeps outputs for the managed resources and drops only the imported ones', () => {

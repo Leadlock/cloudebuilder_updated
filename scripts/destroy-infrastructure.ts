@@ -102,7 +102,7 @@ async function main() {
   });
 
   // 3. Prepare workspace with remote backend
-  const workDir = await mkdtemp(join(tmpdir(), 'cloudcraft-destroy-'));
+  const workDir = await mkdtemp(join(tmpdir(), 'cloudbuilder-destroy-'));
   const tfBinary = await ensureTerraform({ log: (l) => console.log(l) });
 
   try {
@@ -113,7 +113,7 @@ async function main() {
     const backendHcl = renderBackendConfig({
       provider: 'aws',
       bucket: 'cloudraft-test',
-      key: 'cloudcraft/terraform.tfstate',
+      key: 'cloudbuilder/terraform.tfstate',
       region: 'eu-north-1',
     });
     await writeFile(join(workDir, 'backend.tf'), backendHcl, 'utf-8');

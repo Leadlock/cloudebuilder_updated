@@ -114,14 +114,14 @@ describe('per-project apply lock', () => {
 
 describe('kill switch', () => {
   const env = process.env as Record<string, string | undefined>;
-  const saved = env.CLOUDCRAFT_TERRAFORM_DISABLED;
-  afterEach(() => { if (saved === undefined) delete env.CLOUDCRAFT_TERRAFORM_DISABLED; else env.CLOUDCRAFT_TERRAFORM_DISABLED = saved; });
+  const saved = env.CLOUDBUILDER_TERRAFORM_DISABLED;
+  afterEach(() => { if (saved === undefined) delete env.CLOUDBUILDER_TERRAFORM_DISABLED; else env.CLOUDBUILDER_TERRAFORM_DISABLED = saved; });
   it('is on only when explicitly set to 1', () => {
-    delete env.CLOUDCRAFT_TERRAFORM_DISABLED;
+    delete env.CLOUDBUILDER_TERRAFORM_DISABLED;
     expect(terraformExecutionDisabled()).toBe(false);
-    env.CLOUDCRAFT_TERRAFORM_DISABLED = '1';
+    env.CLOUDBUILDER_TERRAFORM_DISABLED = '1';
     expect(terraformExecutionDisabled()).toBe(true);
-    env.CLOUDCRAFT_TERRAFORM_DISABLED = '0';
+    env.CLOUDBUILDER_TERRAFORM_DISABLED = '0';
     expect(terraformExecutionDisabled()).toBe(false);
   });
 });

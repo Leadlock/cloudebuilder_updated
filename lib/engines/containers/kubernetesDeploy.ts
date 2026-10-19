@@ -126,7 +126,7 @@ export function splitImage(image: string): { repository: string; tag: string } {
   return colon > slash ? { repository: image.slice(0, colon), tag: image.slice(colon + 1) } : { repository: image, tag: 'latest' };
 }
 
-const labels = (c: ContainerConfig, indent: number) => ['app.kubernetes.io/name: ' + c.appName, 'app.kubernetes.io/managed-by: cloudcraft'].map((l) => ' '.repeat(indent) + l).join('\n');
+const labels = (c: ContainerConfig, indent: number) => ['app.kubernetes.io/name: ' + c.appName, 'app.kubernetes.io/managed-by: cloudbuilder'].map((l) => ' '.repeat(indent) + l).join('\n');
 const selector = (c: ContainerConfig, indent: number) => ' '.repeat(indent) + 'app.kubernetes.io/name: ' + c.appName;
 
 function containerBlock(c: ContainerConfig, image: string, indent: number, helm: boolean): string {

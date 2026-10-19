@@ -19,7 +19,7 @@ describe('state storage policy', () => {
     for (const action of ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 'dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:DeleteItem']) expect(allActions).toContain(action);
   });
 
-  test('is scoped to CloudCraft-named resources and can never delete a bucket or table', () => {
+  test('is scoped to CloudBuilder-named resources and can never delete a bucket or table', () => {
     expect(allActions.filter((a) => /^(s3:DeleteBucket|dynamodb:DeleteTable)/.test(a))).toEqual([]);
     for (const s of statements.filter((x) => !String(x.Action).includes('sts:'))) {
       for (const r of Array.isArray(s.Resource) ? s.Resource : [s.Resource]) {

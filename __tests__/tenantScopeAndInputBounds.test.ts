@@ -140,7 +140,7 @@ describe('GET /api/resources/[id]/findings', () => {
 });
 
 describe('POST /api/ai/generate', () => {
-  const call = (b: object) => generatePost(req('/api/ai/generate', { prompt: 'a web app on aws', projectId: 'pA', environmentId: 'eA', ...b }, 'POST', { cookie: 'cloudcraft_session=t' }));
+  const call = (b: object) => generatePost(req('/api/ai/generate', { prompt: 'a web app on aws', projectId: 'pA', environmentId: 'eA', ...b }, 'POST', { cookie: 'cloudbuilder_session=t' }));
   it('records the generation only into a project of the caller\'s own organisation', async () => {
     asUser('user-A', 'org-A');
     expect((await call({})).status).toBe(200);
@@ -194,7 +194,7 @@ describe('POST /api/ai/generate', () => {
 });
 
 describe('POST /api/ai/questionnaire', () => {
-  const call = (b: object) => questionnairePost(req('/api/ai/questionnaire', b, 'POST', { cookie: 'cloudcraft_session=t' }));
+  const call = (b: object) => questionnairePost(req('/api/ai/questionnaire', b, 'POST', { cookie: 'cloudbuilder_session=t' }));
   it('bounds the prompt', async () => {
     asUser('user-A', 'org-A');
     expect((await call({ prompt: 'a web app' })).status).toBe(200);
@@ -251,7 +251,7 @@ describe('export input', () => {
 });
 
 describe('POST /api/export', () => {
-  const call = (b: object) => exportPost(req('/api/export', b, 'POST', { cookie: 'cloudcraft_session=t' }));
+  const call = (b: object) => exportPost(req('/api/export', b, 'POST', { cookie: 'cloudbuilder_session=t' }));
   const good = { format: 'svg', nodes: [{ id: 'n1', resourceType: 'aws_s3', label: 'B', position: { x: 1, y: 1 } }], edges: [] };
   beforeEach(() => resetRateLimit('export-user:export'));
   it('is bounded and rate limited, and hides internal errors', async () => {

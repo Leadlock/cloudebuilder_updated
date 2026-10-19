@@ -214,19 +214,19 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
                       key={res.type}
                       draggable
                       onDragStart={(e) => {
-                        e.dataTransfer.setData('application/cloudcraft', res.type);
-                        e.dataTransfer.setData(`application/cloudcraft-${res.type}`, res.type);
+                        e.dataTransfer.setData('application/cloudbuilder', res.type);
+                        e.dataTransfer.setData(`application/cloudbuilder-${res.type}`, res.type);
                         e.dataTransfer.effectAllowed = 'copy';
                         if (typeof window !== 'undefined') {
-                          (window as any).__cloudcraft_dragged_type = res.type;
+                          (window as any).__cloudbuilder_dragged_type = res.type;
                         }
 
                         // Set custom drag preview using actual service icon
-                        const existingGhost = document.getElementById('cloudcraft-drag-preview');
+                        const existingGhost = document.getElementById('cloudbuilder-drag-preview');
                         if (existingGhost) existingGhost.remove();
 
                         const ghost = document.createElement('div');
-                        ghost.id = 'cloudcraft-drag-preview';
+                        ghost.id = 'cloudbuilder-drag-preview';
                         ghost.style.position = 'fixed';
                         ghost.style.top = '-1000px';
                         ghost.style.left = '-1000px';
@@ -256,9 +256,9 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
                       }}
                       onDragEnd={() => {
                         if (typeof window !== 'undefined') {
-                          (window as any).__cloudcraft_dragged_type = null;
+                          (window as any).__cloudbuilder_dragged_type = null;
                         }
-                        const ghost = document.getElementById('cloudcraft-drag-preview');
+                        const ghost = document.getElementById('cloudbuilder-drag-preview');
                         if (ghost) ghost.remove();
                       }}
                       onClick={() => onAddResource && onAddResource(res.type)}

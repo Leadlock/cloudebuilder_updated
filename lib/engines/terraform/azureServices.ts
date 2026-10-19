@@ -23,7 +23,7 @@ const tagLines = (cfg: Cfg): string => {
   const tags = cfg['tags'] && typeof cfg['tags'] === 'object' ? (cfg['tags'] as Record<string, string>) : {};
   return Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`).join('\n');
 };
-const tagsBlock = (name: string, cfg: Cfg): string => `  tags = {\n    Name      = "${name}"\n    ManagedBy = "CloudCraft"${tagLines(cfg) ? `\n${tagLines(cfg)}` : ''}\n  }`;
+const tagsBlock = (name: string, cfg: Cfg): string => `  tags = {\n    Name      = "${name}"\n    ManagedBy = "CloudBuilder"${tagLines(cfg) ? `\n${tagLines(cfg)}` : ''}\n  }`;
 
 /** Storage sizes Azure offers for flexible servers, in GB. A requested size is rounded up to the next one. */
 const PG_STORAGE_GB = [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384] as const;

@@ -10,10 +10,10 @@
  *   2. the copy CloudBuilder manages (the pinned version);
  *   3. ~/bin/terraform, then `terraform` on the PATH (what was there before this existed).
  * If none exists, step 2 is created. Settings, all optional:
- *   CLOUDCRAFT_TERRAFORM_DIR       where the managed copy lives (default ~/.cloudcraft/terraform)
- *   CLOUDCRAFT_TERRAFORM_MIRROR    where releases are fetched from (default https://releases.hashicorp.com/terraform); it must serve the same
+ *   CLOUDBUILDER_TERRAFORM_DIR       where the managed copy lives (default ~/.cloudbuilder/terraform)
+ *   CLOUDBUILDER_TERRAFORM_MIRROR    where releases are fetched from (default https://releases.hashicorp.com/terraform); it must serve the same
  *                                  files, because they are still checked against the built-in checksums
- *   CLOUDCRAFT_TERRAFORM_DOWNLOAD=0   never download (for machines with no internet: install Terraform yourself or set TERRAFORM_BINARY_PATH)
+ *   CLOUDBUILDER_TERRAFORM_DOWNLOAD=0   never download (for machines with no internet: install Terraform yourself or set TERRAFORM_BINARY_PATH)
  *
  * Terraform is licensed by HashiCorp under the Business Source License. CloudBuilder does not redistribute it: each server downloads its own copy
  * from HashiCorp, the same way `hashicorp/setup-terraform` does.
@@ -48,10 +48,10 @@ export function platformKey(platform: string = process.platform, arch: string = 
   return key in TERRAFORM_SHA256 ? key : null;
 }
 
-export const managedRoot = (): string => process.env['CLOUDCRAFT_TERRAFORM_DIR'] || path.join(os.homedir(), '.cloudcraft', 'terraform');
+export const managedRoot = (): string => process.env['CLOUDBUILDER_TERRAFORM_DIR'] || path.join(os.homedir(), '.cloudbuilder', 'terraform');
 export const managedBinaryPath = (): string => path.join(managedRoot(), TERRAFORM_VERSION, exeName());
-export const mirrorBase = (): string => (process.env['CLOUDCRAFT_TERRAFORM_MIRROR'] || 'https://releases.hashicorp.com/terraform').replace(/\/+$/, '');
-export const downloadAllowed = (): boolean => process.env['CLOUDCRAFT_TERRAFORM_DOWNLOAD'] !== '0';
+export const mirrorBase = (): string => (process.env['CLOUDBUILDER_TERRAFORM_MIRROR'] || 'https://releases.hashicorp.com/terraform').replace(/\/+$/, '');
+export const downloadAllowed = (): boolean => process.env['CLOUDBUILDER_TERRAFORM_DOWNLOAD'] !== '0';
 
 const isFile = (p: string) => { try { return fs.statSync(p).isFile(); } catch { return false; } };
 
@@ -146,7 +146,7 @@ let inFlight: Promise<string> | null = null;
 export function ensureTerraform(opts: { log?: (line: string) => void; fetchImpl?: typeof fetch } = {}): Promise<string> {
   const found = locateTerraform();
   if (found) return Promise.resolve(found.path);
-  if (!downloadAllowed()) return Promise.reject(new TerraformDownloadError('Terraform is not installed, and downloading it is switched off (CLOUDCRAFT_TERRAFORM_DOWNLOAD=0). Install it, or set TERRAFORM_BINARY_PATH.'));
+  if (!downloadAllowed()) return Promise.reject(new TerraformDownloadError('Terraform is not installed, and downloading it is switched off (CLOUDBUILDER_TERRAFORM_DOWNLOAD=0). Install it, or set TERRAFORM_BINARY_PATH.'));
   inFlight ??= install(opts).finally(() => { inFlight = null; });
   return inFlight;
 }

@@ -17,7 +17,7 @@ import { tmpdir } from 'os';
 import type { PlanRecord } from './types';
 
 const PLAN_TTL_MS = 30 * 60 * 1000; // 30 minutes
-const PLANS_DIR = path.join(tmpdir(), 'cloudcraft-plans');
+const PLANS_DIR = path.join(tmpdir(), 'cloudbuilder-plans');
 
 try {
   if (!fs.existsSync(PLANS_DIR)) {
@@ -26,11 +26,11 @@ try {
 } catch {}
 
 const globalForPlans = globalThis as unknown as {
-  __cloudcraft_terraform_plans__?: Map<string, PlanRecord>;
+  __cloudbuilder_terraform_plans__?: Map<string, PlanRecord>;
 };
-const PLANS = globalForPlans.__cloudcraft_terraform_plans__ ?? new Map<string, PlanRecord>();
+const PLANS = globalForPlans.__cloudbuilder_terraform_plans__ ?? new Map<string, PlanRecord>();
 if (process.env['NODE_ENV'] !== 'production') {
-  globalForPlans.__cloudcraft_terraform_plans__ = PLANS;
+  globalForPlans.__cloudbuilder_terraform_plans__ = PLANS;
 }
 
 export function planTtlMs(): number {

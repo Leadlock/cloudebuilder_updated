@@ -5,16 +5,16 @@
  * meant anyone could register an email address they do not own (and be logged in at once). So:
  *
  *  - Local SIGN-UP is off. It exists only for development when explicitly requested: NODE_ENV=development AND
- *    CLOUDCRAFT_ALLOW_LOCAL_SIGNUP=1.
+ *    CLOUDBUILDER_ALLOW_LOCAL_SIGNUP=1.
  *  - Local LOGIN is only tried when Cognito says it does not know this user or the password is wrong, i.e. for accounts
  *    created before Cognito. A Cognito outage or throttling error never triggers it.
  *  - Reading an ID token without verifying its signature (used when the key server is unreachable) is a development shortcut: it needs
- *    CLOUDCRAFT_DEV_SHORTCUTS=1 as well as NODE_ENV=development (see lib/dev/shortcuts.ts).
+ *    CLOUDBUILDER_DEV_SHORTCUTS=1 as well as NODE_ENV=development (see lib/dev/shortcuts.ts).
  */
 import { devShortcutsEnabled } from '@/lib/dev/shortcuts';
 
 export function localSignupAllowed(): boolean {
-  return process.env.NODE_ENV === 'development' && process.env.CLOUDCRAFT_ALLOW_LOCAL_SIGNUP === '1';
+  return process.env.NODE_ENV === 'development' && process.env.CLOUDBUILDER_ALLOW_LOCAL_SIGNUP === '1';
 }
 
 /** Cognito errors that mean "this is not a Cognito user / wrong password" — the only cases where a legacy local login is tried. */

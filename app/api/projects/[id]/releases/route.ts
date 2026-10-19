@@ -78,7 +78,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     try {
       const { bundle, plan } = await planRelease({
         projectId, orgId, environment, cloudAccountId, stateBackend: stateBackend as TerraformStateBackendConfig, project, sources: own,
-        user: { id: identity.userId, name: 'Cloud Administrator', email: identity.email ?? 'admin@cloudcraft.io', role: identity.role ?? 'admin' },
+        user: { id: identity.userId, name: 'Cloud Administrator', email: identity.email ?? 'admin@cloudbuilder.io', role: identity.role ?? 'admin' },
       });
       const previous = await store.latestSucceeded(projectId, environment);
       const release = newRelease({

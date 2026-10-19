@@ -54,7 +54,7 @@ export function renderWaReportHtml(r: AssessmentReport): string {
   const frameworks = Array.from(new Set(views.map((v) => v.framework)));
   const sections: string[] = [];
 
-  sections.push(`<section class="cover"><p class="brand">CLOUDCRAFT</p><h1>Well-Architected Review</h1><p class="project">${esc(m.projectName)}</p><span class="badge">DESIGN-TIME REVIEW</span>
+  sections.push(`<section class="cover"><p class="brand">CLOUDBUILDER</p><h1>Well-Architected Review</h1><p class="project">${esc(m.projectName)}</p><span class="badge">DESIGN-TIME REVIEW</span>
   ${table(['', ''], [
     ['Environment', esc(m.environment)], ['Framework(s)', esc(frameworks.join('; '))], ['Region(s)', esc(m.regions.join(', ') || 'Not specified')],
     ['Review date', esc(date(m.assessmentDate))], ['Architecture version', `Revision ${m.architectureRevision}`], ['Report ID', esc(m.reportId)],

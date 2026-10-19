@@ -2,7 +2,7 @@
  * /api/operator/terraform-access
  *
  * GET — every organization that has asked for, or been given or refused, Terraform access, requests first. Only operators: the people named in
- * CLOUDCRAFT_OPERATOR_EMAILS. Being an owner or admin of an organization (which every new account is) never makes anyone an operator.
+ * CLOUDBUILDER_OPERATOR_EMAILS. Being an owner or admin of an organization (which every new account is) never makes anyone an operator.
  */
 import { NextRequest } from 'next/server';
 import { ok, forbidden, unauthorized, internalError } from '@/lib/api/response';

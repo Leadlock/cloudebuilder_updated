@@ -39,7 +39,7 @@ const prodNodes1: CanvasNode[] = [
     label: 'Route 53 DNS',
     position: { x: 340, y: 80 },
     groupId: 'aws-cloud',
-    config: { domainName: 'cloudcraft.app' },
+    config: { domainName: 'cloudbuilder.app' },
   },
   {
     id: 'n10',
@@ -71,7 +71,7 @@ const prodNodes1: CanvasNode[] = [
     label: 'Assets S3 Vault',
     position: { x: 1190, y: 380 },
     groupId: 'aws-cloud',
-    config: { name: 'prod-assets-vault', bucketName: 'cloudcraft-prod-assets-vault', versioning: true, encryption: true, publicAccess: false },
+    config: { name: 'prod-assets-vault', bucketName: 'cloudbuilder-prod-assets-vault', versioning: true, encryption: true, publicAccess: false },
   },
 
   // ── 4. Production VPC

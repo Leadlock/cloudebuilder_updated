@@ -18,10 +18,10 @@ const call = (route: Route, headers: Record<string, string> = {}) =>
   }));
 
 describe.each([['generate', generate], ['questionnaire', questionnaire]])('POST /api/ai/%s', (_name, route) => {
-  const original = process.env['CLOUDCRAFT_ALLOW_LOCAL_SIGNUP'];
+  const original = process.env['CLOUDBUILDER_ALLOW_LOCAL_SIGNUP'];
   afterEach(() => {
-    if (original === undefined) delete process.env['CLOUDCRAFT_ALLOW_LOCAL_SIGNUP'];
-    else process.env['CLOUDCRAFT_ALLOW_LOCAL_SIGNUP'] = original;
+    if (original === undefined) delete process.env['CLOUDBUILDER_ALLOW_LOCAL_SIGNUP'];
+    else process.env['CLOUDBUILDER_ALLOW_LOCAL_SIGNUP'] = original;
   });
 
   it('refuses a request with no session', async () => {
@@ -44,15 +44,15 @@ describe.each([['generate', generate], ['questionnaire', questionnaire]])('POST 
     try {
       expect((await call(route)).status).toBe(401);
       expect((await call(route, { 'x-user-id': 'dev-user-id' })).status).toBe(401);
-      process.env['CLOUDCRAFT_ALLOW_LOCAL_SIGNUP'] = '1';
+      process.env['CLOUDBUILDER_ALLOW_LOCAL_SIGNUP'] = '1';
       expect((await call(route)).status).toBe(401);
     } finally {
       if (before === undefined) delete env['NODE_ENV']; else env['NODE_ENV'] = before;
     }
   });
 
-  it('is not unlocked by CLOUDCRAFT_ALLOW_LOCAL_SIGNUP', async () => {
-    process.env['CLOUDCRAFT_ALLOW_LOCAL_SIGNUP'] = '1';
+  it('is not unlocked by CLOUDBUILDER_ALLOW_LOCAL_SIGNUP', async () => {
+    process.env['CLOUDBUILDER_ALLOW_LOCAL_SIGNUP'] = '1';
     expect((await call(route)).status).toBe(401);
     expect((await call(route, { 'x-user-id': 'anyone' })).status).toBe(401);
   });

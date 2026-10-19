@@ -24,16 +24,16 @@ const files = (c: ContainerConfig) => {
 describe('EC2 template', () => {
   test('no software: the start-up script and firewall are unchanged', () => {
     const { get } = files(config('ec2', []));
-    expect(get('ec2/user_data.sh')).not.toContain('cloudcraft-software');
+    expect(get('ec2/user_data.sh')).not.toContain('cloudbuilder-software');
     expect(get('ec2/main.tf')).not.toContain('Web server');
   });
 
   test('installs the chosen software before the app starts, never Docker twice, and opens 80/443 only to the chosen range', () => {
     const { get, r } = files(config('ec2', ['nginx', 'redis', 'docker']));
     const sh = get('ec2/user_data.sh');
-    expect(sh).toContain('cloudcraft-software');
+    expect(sh).toContain('cloudbuilder-software');
     expect(sh).toContain('dnf');
-    expect(sh.indexOf('cloudcraft-software')).toBeLessThan(sh.indexOf('-run <<'));
+    expect(sh.indexOf('cloudbuilder-software')).toBeLessThan(sh.indexOf('-run <<'));
     expect(sh).not.toContain('# Docker\n');
     expect(get('ec2/main.tf')).toMatch(/from_port\s*=\s*80/);
     expect(get('ec2/main.tf')).toMatch(/from_port\s*=\s*443/);
@@ -65,7 +65,7 @@ describe('Azure VM template', () => {
     const { get } = files(config('azvm', ['apache', 'postgresql']));
     const sh = get('azvm/cloud-init.sh');
     expect(sh).toContain('apt-get');
-    expect(sh.indexOf('cloudcraft-software')).toBeLessThan(sh.indexOf('-run <<'));
+    expect(sh.indexOf('cloudbuilder-software')).toBeLessThan(sh.indexOf('-run <<'));
     expect(get('azvm/main.tf')).toContain('"web-80"');
     expect(get('azvm/main.tf')).toContain('"web-443"');
   });

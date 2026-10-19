@@ -28,7 +28,7 @@ jest.mock('@/lib/terraform/execution/stateBackendProvisioner', () => ({
 
 import { DELETE } from '@/app/api/projects/[id]/terraform/state-backend/route';
 
-const B = 'cloudcraft-tfstate-123456789012-eu-north-1';
+const B = 'cloudbuilder-tfstate-123456789012-eu-north-1';
 const call = (body: unknown) => DELETE(new NextRequest('http://x/api/projects/p1/terraform/state-backend', { method: 'DELETE', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }), { params: Promise.resolve({ id: 'p1' }) });
 const ok = { cloudAccountId: 'a1', stateBackend: { provider: 'aws', bucket: B, region: 'eu-north-1' }, confirmName: B };
 

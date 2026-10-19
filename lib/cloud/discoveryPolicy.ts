@@ -36,6 +36,6 @@ export const AWS_DISCOVERY_ACTIONS: readonly string[] = [
 export function buildDiscoveryPolicy(): string {
   return JSON.stringify({
     Version: '2012-10-17',
-    Statement: [{ Sid: 'CloudCraftDiscoveryReadOnly', Effect: 'Allow', Action: AWS_DISCOVERY_ACTIONS, Resource: '*' }],
+    Statement: [{ Sid: 'CloudBuilderDiscoveryReadOnly', Effect: 'Allow', Action: AWS_DISCOVERY_ACTIONS, Resource: '*' }],
   }, null, 2);
 }

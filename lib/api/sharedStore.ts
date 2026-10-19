@@ -6,8 +6,8 @@
  * so they go through a small connection pool of their own instead of opening a connection per call.
  *
  * When it is used:
- *   CLOUDCRAFT_SHARED_STORE=db      always (needs DATABASE_URL)
- *   CLOUDCRAFT_SHARED_STORE=memory  never (single-instance deployments, local development)
+ *   CLOUDBUILDER_SHARED_STORE=db      always (needs DATABASE_URL)
+ *   CLOUDBUILDER_SHARED_STORE=memory  never (single-instance deployments, local development)
  *   unset                           in production, yes; in development and tests, no
  * If the database cannot be reached, callers fall back to their in-process behaviour and log the problem — a database outage
  * must not take the API down (and must not make every limit unlimited).
@@ -22,7 +22,7 @@ export interface Queryable {
 export const NOW_MS = '(extract(epoch from now()) * 1000)';
 
 declare global {
-  var __cloudcraft_shared_pool__: Pool | undefined;
+  var __cloudbuilder_shared_pool__: Pool | undefined;
 }
 
 let override: Queryable | null = null;
@@ -32,7 +32,7 @@ export function _setSharedDbForTests(q: Queryable | null): void { override = q; 
 
 export function sharedStoreEnabled(): boolean {
   if (override) return true;
-  const mode = process.env['CLOUDCRAFT_SHARED_STORE'];
+  const mode = process.env['CLOUDBUILDER_SHARED_STORE'];
   if (mode === 'memory') return false;
   if (!process.env['DATABASE_URL']) return false;
   if (mode === 'db') return true;
@@ -41,12 +41,12 @@ export function sharedStoreEnabled(): boolean {
 
 export function sharedDb(): Queryable {
   if (override) return override;
-  if (!global.__cloudcraft_shared_pool__) {
-    global.__cloudcraft_shared_pool__ = new Pool({ connectionString: process.env['DATABASE_URL'], max: 10, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 5_000 });
+  if (!global.__cloudbuilder_shared_pool__) {
+    global.__cloudbuilder_shared_pool__ = new Pool({ connectionString: process.env['DATABASE_URL'], max: 10, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 5_000 });
     // An idle client erroring (e.g. the server restarted) must not crash the process.
-    global.__cloudcraft_shared_pool__.on('error', (err) => console.warn('[shared-store] idle connection error:', err.message));
+    global.__cloudbuilder_shared_pool__.on('error', (err) => console.warn('[shared-store] idle connection error:', err.message));
   }
-  return global.__cloudcraft_shared_pool__ as unknown as Queryable;
+  return global.__cloudbuilder_shared_pool__ as unknown as Queryable;
 }
 
 const lastWarn = new Map<string, number>();

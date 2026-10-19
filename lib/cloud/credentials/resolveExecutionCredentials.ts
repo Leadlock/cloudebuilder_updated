@@ -49,7 +49,7 @@ export async function resolveExecutionCredentials(
     const assumed = await stsClient.send(
       new AssumeRoleCommand({
         RoleArn: credentials.roleArn,
-        RoleSessionName: 'cloudcraft-terraform-execution',
+        RoleSessionName: 'cloudbuilder-terraform-execution',
         ExternalId: credentials.externalId || undefined,
         DurationSeconds: 3600,
       }),

@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { tmpdir } from 'os';
 
-const LOCK_DIR = path.join(tmpdir(), 'cloudcraft-tf-locks');
+const LOCK_DIR = path.join(tmpdir(), 'cloudbuilder-tf-locks');
 const STALE_AFTER_MS = 35 * 60 * 1000; // apply jobs expire after 30 minutes
 
 const lockPath = (projectId: string) => path.join(LOCK_DIR, `${projectId.replace(/[^A-Za-z0-9_-]/g, '_')}.lock`);

@@ -39,7 +39,7 @@ export function explainTerraformError(raw: string | null | undefined): Terraform
         ? `CloudBuilder downloads Terraform by itself the first time it needs it, and that did not work: ${why}`
         : 'CloudBuilder runs the Terraform program to plan, apply and destroy, and could not find it.',
       steps: [
-        ...(why ? ['Check that the server can reach releases.hashicorp.com (a firewall or proxy may be blocking it), then try again.', 'On a network with no internet access, point CLOUDCRAFT_TERRAFORM_MIRROR at an internal copy of the same release files.'] : []),
+        ...(why ? ['Check that the server can reach releases.hashicorp.com (a firewall or proxy may be blocking it), then try again.', 'On a network with no internet access, point CLOUDBUILDER_TERRAFORM_MIRROR at an internal copy of the same release files.'] : []),
         'Or install Terraform yourself from developer.hashicorp.com/terraform/install on the machine running the server.',
         'Make sure it is on the PATH, or set TERRAFORM_BINARY_PATH to its full path, then try again.',
       ],
@@ -98,7 +98,7 @@ export function explainTerraformError(raw: string | null | undefined): Terraform
       steps: [
         'Close programs you are not using (browser tabs, IDEs, Docker) so the computer has free memory and processor time, then press Try again.',
         'The first start after the plugin is downloaded is the slowest. A second try is usually much faster.',
-        'On Windows, add an antivirus exclusion for the folder named cloudcraft-tf-plugin-cache in your temp folder (PowerShell as administrator: Add-MpPreference -ExclusionPath "$env:TEMP\\cloudcraft-tf-plugin-cache"), or set CLOUDCRAFT_TF_PLUGIN_CACHE_DIR to a folder you exclude.',
+        'On Windows, add an antivirus exclusion for the folder named cloudbuilder-tf-plugin-cache in your temp folder (PowerShell as administrator: Add-MpPreference -ExclusionPath "$env:TEMP\\cloudbuilder-tf-plugin-cache"), or set CLOUDBUILDER_TF_PLUGIN_CACHE_DIR to a folder you exclude.',
         'If you are tearing down infrastructure that was already created, it is still there and may still cost money until the teardown completes. The AWS console can delete it by hand if this keeps failing.',
       ],
     };

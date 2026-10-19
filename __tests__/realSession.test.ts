@@ -9,7 +9,7 @@ const req = (headers: Record<string, string> = {}) => new NextRequest('http://lo
 
 describe('realSession', () => {
   it('accepts a known session cookie', () => {
-    expect(realSession(req({ cookie: 'cloudcraft_session=good-token' }))?.user.id).toBe('u1');
+    expect(realSession(req({ cookie: 'cloudbuilder_session=good-token' }))?.user.id).toBe('u1');
   });
   it('accepts a known bearer token', () => {
     expect(realSession(req({ authorization: 'Bearer good-token' }))?.user.id).toBe('u1');
@@ -17,9 +17,9 @@ describe('realSession', () => {
   });
   it('returns null for no credentials, an unknown token, or a session with no user', () => {
     expect(realSession(req())).toBeNull();
-    expect(realSession(req({ cookie: 'cloudcraft_session=forged' }))).toBeNull();
+    expect(realSession(req({ cookie: 'cloudbuilder_session=forged' }))).toBeNull();
     expect(realSession(req({ authorization: 'Bearer forged' }))).toBeNull();
-    expect(realSession(req({ cookie: 'cloudcraft_session=no-user' }))).toBeNull();
+    expect(realSession(req({ cookie: 'cloudbuilder_session=no-user' }))).toBeNull();
   });
   it('never trusts an identity header', () => {
     expect(realSession(req({ 'x-user-id': 'u1', 'x-user-role': 'admin' }))).toBeNull();

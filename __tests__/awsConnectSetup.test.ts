@@ -35,9 +35,9 @@ describe('trust policy helpers', () => {
   });
 
   it.each([
-    ['arn:aws:iam::123456789012:user/cloudcraft-server', 'arn:aws:iam::123456789012:user/cloudcraft-server'],
+    ['arn:aws:iam::123456789012:user/cloudbuilder-server', 'arn:aws:iam::123456789012:user/cloudbuilder-server'],
     ['arn:aws:iam::123456789012:root', 'arn:aws:iam::123456789012:root'],
-    ['arn:aws:sts::123456789012:assumed-role/CloudCraftEc2Role/i-0abc123', 'arn:aws:iam::123456789012:role/CloudCraftEc2Role'],
+    ['arn:aws:sts::123456789012:assumed-role/CloudBuilderEc2Role/i-0abc123', 'arn:aws:iam::123456789012:role/CloudBuilderEc2Role'],
     ['arn:aws:sts::123456789012:federated-user/bob', 'arn:aws:iam::123456789012:root'],
     ['arn:aws-us-gov:iam::123456789012:user/x', 'arn:aws-us-gov:iam::123456789012:user/x'],
   ])('the principal for %s is %s (a session ARN can never be a principal)', (arn, expected) => {
@@ -45,9 +45,9 @@ describe('trust policy helpers', () => {
   });
 
   it('writes a trust policy that names that principal and requires the External ID', () => {
-    const policy = JSON.parse(buildTrustPolicy('arn:aws:iam::123456789012:user/cloudcraft-server', 'abc123'));
+    const policy = JSON.parse(buildTrustPolicy('arn:aws:iam::123456789012:user/cloudbuilder-server', 'abc123'));
     expect(policy.Statement[0]).toEqual({
-      Effect: 'Allow', Principal: { AWS: 'arn:aws:iam::123456789012:user/cloudcraft-server' }, Action: 'sts:AssumeRole',
+      Effect: 'Allow', Principal: { AWS: 'arn:aws:iam::123456789012:user/cloudbuilder-server' }, Action: 'sts:AssumeRole',
       Condition: { StringEquals: { 'sts:ExternalId': 'abc123' } },
     });
   });
@@ -59,8 +59,8 @@ describe('trust policy helpers', () => {
   });
 
   it('writes the policy the IAM user needs: assume exactly that one role', () => {
-    const policy = JSON.parse(buildAssumeRolePolicy('arn:aws:iam::111122223333:role/CloudCraftReadOnly'));
-    expect(policy.Statement).toEqual([{ Effect: 'Allow', Action: 'sts:AssumeRole', Resource: 'arn:aws:iam::111122223333:role/CloudCraftReadOnly' }]);
+    const policy = JSON.parse(buildAssumeRolePolicy('arn:aws:iam::111122223333:role/CloudBuilderReadOnly'));
+    expect(policy.Statement).toEqual([{ Effect: 'Allow', Action: 'sts:AssumeRole', Resource: 'arn:aws:iam::111122223333:role/CloudBuilderReadOnly' }]);
   });
 });
 
@@ -69,9 +69,9 @@ describe('getServerAwsIdentity', () => {
   afterEach(() => jest.useRealTimers());
 
   it('reports the account and ARN AWS says the server is — and nothing else', async () => {
-    mockSend.mockResolvedValue({ Account: '123456789012', Arn: 'arn:aws:iam::123456789012:user/cloudcraft-server', UserId: 'AIDAXXXX' });
+    mockSend.mockResolvedValue({ Account: '123456789012', Arn: 'arn:aws:iam::123456789012:user/cloudbuilder-server', UserId: 'AIDAXXXX' });
     const r = await getServerAwsIdentity();
-    expect(r).toEqual({ configured: true, accountId: '123456789012', arn: 'arn:aws:iam::123456789012:user/cloudcraft-server' });
+    expect(r).toEqual({ configured: true, accountId: '123456789012', arn: 'arn:aws:iam::123456789012:user/cloudbuilder-server' });
   });
 
   it('says in plain words that the server has no AWS identity (the "invalid account" cause), with what to do', async () => {
@@ -130,10 +130,10 @@ describe('a refused assume-role names the identity the server really is', () => 
 
   it('adds "the server is signed in as <arn> — the role must trust that identity"', async () => {
     mockValidate.mockResolvedValue({ valid: false, permissionsOk: false, missingPermissions: [], error: 'User: [arn] is not authorized to perform: sts:AssumeRole on resource: [arn]' });
-    mockSend.mockResolvedValue({ Account: '999900001111', Arn: 'arn:aws:iam::999900001111:user/cloudcraft-server' });
+    mockSend.mockResolvedValue({ Account: '999900001111', Arn: 'arn:aws:iam::999900001111:user/cloudbuilder-server' });
     const body = (await (await call()).json()).data as { fix: string };
-    expect(body.fix).toContain('The CloudBuilder server is signed in as arn:aws:iam::999900001111:user/cloudcraft-server');
-    expect(String(mockUpdate.mock.calls[0]![3])).toContain('arn:aws:iam::999900001111:user/cloudcraft-server');
+    expect(body.fix).toContain('The CloudBuilder server is signed in as arn:aws:iam::999900001111:user/cloudbuilder-server');
+    expect(String(mockUpdate.mock.calls[0]![3])).toContain('arn:aws:iam::999900001111:user/cloudbuilder-server');
   });
 
   it('adds nothing when the server has no identity (that is a different message), and for other kinds of failure', async () => {

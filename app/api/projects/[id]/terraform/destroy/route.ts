@@ -66,7 +66,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return notFound('Environment');
     }
     const { arch, project } = ctx;
-    const user = { id: identity.userId, email: identity.email ?? 'admin@cloudcraft.io', name: 'Cloud Administrator', role: identity.role };
+    const user = { id: identity.userId, email: identity.email ?? 'admin@cloudbuilder.io', name: 'Cloud Administrator', role: identity.role };
     const backend = stateBackend as TerraformStateBackendConfig;
 
     // ── Step 1: preview with a real `terraform plan -destroy` ────────────────────────────────────────────────────

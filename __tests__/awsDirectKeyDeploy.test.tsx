@@ -18,7 +18,7 @@ const KEY = 'AKIAIOSFODNN7EXAMPLE';
 const SECRET = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY';
 const keyOnly: CloudCredentials = { accessKeyId: KEY, secretAccessKey: SECRET, region: 'eu-north-1' };
 const keyDeploy: CloudCredentials = { ...keyOnly, allowDeploy: true } as CloudCredentials;
-const keyRole: CloudCredentials = { ...keyOnly, roleArn: 'arn:aws:iam::123456789012:role/CloudCraft' };
+const keyRole: CloudCredentials = { ...keyOnly, roleArn: 'arn:aws:iam::123456789012:role/CloudBuilder' };
 
 describe('a key that its owner allowed to deploy', () => {
   test('is a distinct kind of account; a key alone and key + role are unchanged', () => {

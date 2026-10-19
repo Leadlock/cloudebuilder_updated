@@ -89,7 +89,7 @@ describe('destroy confirmation token', () => {
 
 describe('/api/projects/[id]/terraform/destroy — preview, then run, then watch', () => {
   const env = process.env as Record<string, string | undefined>;
-  const saved = env.CLOUDCRAFT_TERRAFORM_ORG_IDS;
+  const saved = env.CLOUDBUILDER_TERRAFORM_ORG_IDS;
   const ARCH = { id: 'arch-1', resources: [{ id: 'r1', resourceType: 'aws_vpc', label: 'VPC' }] };
   const backend = { provider: 'aws', bucket: 'tf-state', key: 'a/b.tfstate', region: 'us-east-1' };
   const body = (extra: object = {}) => ({ environment: 'production', cloudAccountId: 'acct-1', stateBackend: backend, ...extra });
@@ -111,7 +111,7 @@ describe('/api/projects/[id]/terraform/destroy — preview, then run, then watch
     mockConsumeApproval.mockResolvedValue({ ok: true, approval: { id: 'appr-1', decidedBy: 'approver-1' } });
     mockReturnApproval.mockResolvedValue(undefined);
     await _clearDestroyPlansForTests(); _clearRunsForTests();
-    env.CLOUDCRAFT_TERRAFORM_ORG_IDS = 'org-1';
+    env.CLOUDBUILDER_TERRAFORM_ORG_IDS = 'org-1';
     mockIdentity.mockReturnValue({ userId: `destroy-user-${++user}`, role: 'admin', email: 'a@example.com', orgIds: [] });   // fresh user: its own plan budget
     mockResolveOrg.mockResolvedValue('org-1'); mockOrgRole.mockResolvedValue('owner');
     mockResolveArch.mockResolvedValue({ arch: ARCH, project: { name: 'Demo' } });
@@ -119,7 +119,7 @@ describe('/api/projects/[id]/terraform/destroy — preview, then run, then watch
     mockStart.mockImplementation(async (i: { planId: string }) => { takePreparedDestroy(i.planId); return { runId: 'run-123' }; });
     jest.spyOn(console, 'error').mockImplementation(() => {});
   });
-  afterEach(() => { if (saved === undefined) delete env.CLOUDCRAFT_TERRAFORM_ORG_IDS; else env.CLOUDCRAFT_TERRAFORM_ORG_IDS = saved; });
+  afterEach(() => { if (saved === undefined) delete env.CLOUDBUILDER_TERRAFORM_ORG_IDS; else env.CLOUDBUILDER_TERRAFORM_ORG_IDS = saved; });
 
   type Preview = { data: { status: string; confirmationToken: string; planId: string; resourceCount: number; resources: { address: string }[] } };
 
@@ -229,7 +229,7 @@ describe('/api/projects/[id]/terraform/destroy — preview, then run, then watch
   });
 
   it('is still behind the access gate: not enabled → 403 and nothing is planned', async () => {
-    delete env.CLOUDCRAFT_TERRAFORM_ORG_IDS;
+    delete env.CLOUDBUILDER_TERRAFORM_ORG_IDS;
     expect((await call(body())).status).toBe(403);
     expect(mockPrepare).not.toHaveBeenCalled();
   });

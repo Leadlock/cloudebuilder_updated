@@ -6,13 +6,13 @@ import { maybeCreatedResources, createdResources } from '@/components/panels/Cre
 import TerraformPermissionHelp from '@/components/panels/TerraformPermissionHelp';
 
 // Trimmed from the real failure: the connected role could only read, so every create was refused.
-const REAL = `terraform apply failed (exit 1): Error: creating EC2 VPC: operation error EC2: CreateVpc, https response error StatusCode: 403, RequestID: a197fd25, api error UnauthorizedOperation: You are not authorized to perform this operation. User: arn:aws:sts::460195068628:assumed-role/CloudCraft/cloudcraft-terraform-execution is not authorized to perform: ec2:CreateVpc on resource: arn:aws:ec2:us-east-1:460195068628:vpc/* because no identity-based policy allows the ec2:CreateVpc action. Encoded authorization failure message: YVMihtes0uYgu with aws_vpc.production_vpc, on main.tf line 8: Error: creating ECS Cluster: AccessDeniedException: User: arn:aws:sts::460195068628:assumed-role/CloudCraft/cloudcraft-terraform-execution is not authorized to perform: ecs:CreateCluster on resource: arn:aws:ecs:us-east-1:460195068628:cluster/x because no identity-based policy allows the ecs:CreateCluster action Error: creating CloudWatch Logs Log Group: User: arn:aws:sts::460195068628:assumed-role/CloudCraft/cloudcraft-terraform-execution is not authorized to perform: logs:CreateLogGroup on resource: x Error: creating IAM Role: AccessDenied: User: arn:aws:sts::460195068628:assumed-role/CloudCraft/cloudcraft-terraform-execution is not authorized to perform: iam:CreateRole on resource: x`;
+const REAL = `terraform apply failed (exit 1): Error: creating EC2 VPC: operation error EC2: CreateVpc, https response error StatusCode: 403, RequestID: a197fd25, api error UnauthorizedOperation: You are not authorized to perform this operation. User: arn:aws:sts::460195068628:assumed-role/CloudBuilder/cloudbuilder-terraform-execution is not authorized to perform: ec2:CreateVpc on resource: arn:aws:ec2:us-east-1:460195068628:vpc/* because no identity-based policy allows the ec2:CreateVpc action. Encoded authorization failure message: YVMihtes0uYgu with aws_vpc.production_vpc, on main.tf line 8: Error: creating ECS Cluster: AccessDeniedException: User: arn:aws:sts::460195068628:assumed-role/CloudBuilder/cloudbuilder-terraform-execution is not authorized to perform: ecs:CreateCluster on resource: arn:aws:ecs:us-east-1:460195068628:cluster/x because no identity-based policy allows the ecs:CreateCluster action Error: creating CloudWatch Logs Log Group: User: arn:aws:sts::460195068628:assumed-role/CloudBuilder/cloudbuilder-terraform-execution is not authorized to perform: logs:CreateLogGroup on resource: x Error: creating IAM Role: AccessDenied: User: arn:aws:sts::460195068628:assumed-role/CloudBuilder/cloudbuilder-terraform-execution is not authorized to perform: iam:CreateRole on resource: x`;
 
 describe('parseAccessDenied', () => {
   test('reads the refused actions and the role from the real error', () => {
     const d = parseAccessDenied(REAL)!;
     expect(d.actions).toEqual(['ec2:CreateVpc', 'ecs:CreateCluster', 'logs:CreateLogGroup', 'iam:CreateRole']);
-    expect(d.roleName).toBe('CloudCraft');
+    expect(d.roleName).toBe('CloudBuilder');
     expect(d.accountId).toBe('460195068628');
   });
   test('repeats collapse, and other errors give null', () => {
@@ -70,7 +70,7 @@ describe('failures caused by missing permission', () => {
   const PLANNED = [{ address: 'aws_vpc.main', type: 'aws_vpc' }, { address: 'aws_ecs_cluster.c', type: 'aws_ecs_cluster' }, { address: 'aws_s3_bucket.b', type: 'aws_s3_bucket' }];
   const OUTPUT = [
     'aws_vpc.main: Creating...', 'aws_ecs_cluster.c: Creating...', 'aws_s3_bucket.b: Creating...', 'aws_s3_bucket.b: Creation complete after 1s [id=b]',
-    '╷', '│ Error: creating EC2 VPC: operation error EC2: CreateVpc, api error UnauthorizedOperation:', '│ You are not authorized to perform this operation. User: arn:aws:sts::1:assumed-role/CloudCraft/x is not authorized to perform: ec2:CreateVpc', '│ ', '│   with aws_vpc.main,', '│   on main.tf line 8, in resource "aws_vpc" "main":', '╵',
+    '╷', '│ Error: creating EC2 VPC: operation error EC2: CreateVpc, api error UnauthorizedOperation:', '│ You are not authorized to perform this operation. User: arn:aws:sts::1:assumed-role/CloudBuilder/x is not authorized to perform: ec2:CreateVpc', '│ ', '│   with aws_vpc.main,', '│   on main.tf line 8, in resource "aws_vpc" "main":', '╵',
     '╷', '│ Error: creating ECS Cluster: InvalidParameterException: the name is not valid', '│ ', '│   with aws_ecs_cluster.c,', '╵',
   ].join('\n') + '\n';
   const rec = (): RunProgressRecord => {
@@ -95,7 +95,7 @@ describe('error explanation', () => {
   test('a permission refusal gets its own plain explanation with the role and actions', () => {
     const e = explainTerraformError(REAL)!;
     expect(e.kind).toBe('insufficient-permissions');
-    expect(e.summary).toContain('"CloudCraft"');
+    expect(e.summary).toContain('"CloudBuilder"');
     expect(e.summary).toContain('ec2:CreateVpc');
     expect(e.summary).toMatch(/nothing was created/);
   });

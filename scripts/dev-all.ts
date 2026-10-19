@@ -2,10 +2,11 @@
  * `npm run dev` — starts the web server AND the background workers together, so a deployment queued from the web app is never left
  * waiting for a worker nobody started. Output of each process is labelled ([web], [worker:terraform-apply], ...). Ctrl+C stops all of them.
  *
- *   CLOUDCRAFT_DEV_WORKERS=off   web server only (same as `npm run dev:web`)
+ *   CLOUDBUILDER_DEV_WORKERS=off   web server only (same as `npm run dev:web`)
  *
  * A worker that crashes is restarted a few times; one that keeps crashing is left stopped with a message, and the web server keeps running.
  */
+import '../lib/config/legacyEnv';
 import { spawn, spawnSync, type ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';

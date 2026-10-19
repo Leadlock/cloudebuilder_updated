@@ -1,7 +1,7 @@
 import { StateBackendSchema, AwsBackendSchema } from '@/lib/terraform/execution/backendSchema';
 import { ApiTerraformExecutionService } from '@/lib/services/ApiTerraformExecutionService';
 
-const aws = { provider: 'aws' as const, bucket: 'cloudcraft-tfstate-460195068628-eu-north-1', key: 'cloudcraft/terraform.tfstate', region: 'eu-north-1' };
+const aws = { provider: 'aws' as const, bucket: 'cloudbuilder-tfstate-460195068628-eu-north-1', key: 'cloudbuilder/terraform.tfstate', region: 'eu-north-1' };
 
 describe('state backend names are trimmed before they are checked', () => {
   test('a trailing or leading space (the usual result of pasting) is accepted and removed', () => {

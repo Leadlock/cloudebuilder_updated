@@ -19,7 +19,7 @@ let admin: Client;
 
 beforeAll(async () => {
   if (!url) return;
-  process.env['CLOUDCRAFT_SHARED_STORE'] = 'db';
+  process.env['CLOUDBUILDER_SHARED_STORE'] = 'db';
   admin = new Client({ connectionString: url });
   await admin.connect();
   const r = await admin.query(`SELECT to_regclass('"public"."rateLimitBucket"') IS NOT NULL AND to_regclass('"public"."revokedSession"') IS NOT NULL AS ok`);

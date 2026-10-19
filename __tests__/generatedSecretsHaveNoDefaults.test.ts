@@ -37,7 +37,7 @@ describe('generated variables have no built-in secrets', () => {
     for (const f of files(EVERYTHING)) {
       expect(f.content).not.toMatch(/Pass123/);
       expect(f.content).not.toMatch(/ssh-rsa AAAA/);
-      expect(f.content).not.toContain('cloudcraft@admin');
+      expect(f.content).not.toContain('cloudbuilder@admin');
     }
   });
 

@@ -162,7 +162,7 @@ export default function RequiredPermissionsCard({ projectId, environment, cloudA
               <pre className={pre}>{info.policy}</pre>
               <ol className={`mt-2 list-decimal pl-5 space-y-0.5 ${muted}`}>
                 <li>AWS console → <strong>IAM</strong> → <strong>Roles</strong> → <strong>{roleName}</strong></li>
-                <li><strong>Add permissions</strong> → <strong>Create inline policy</strong> → <strong>JSON</strong>, paste the policy, save it as <span className="font-mono">CloudCraftDeploy</span></li>
+                <li><strong>Add permissions</strong> → <strong>Create inline policy</strong> → <strong>JSON</strong>, paste the policy, save it as <span className="font-mono">CloudBuilderDeploy</span></li>
                 <li>Come back and press <strong>Check my access</strong>, then plan.</li>
               </ol>
             </div>
@@ -190,7 +190,7 @@ export default function RequiredPermissionsCard({ projectId, environment, cloudA
               <span>
                 {info.access.state === 'ok' && (azure ? 'The service principal can create everything this design needs.' : 'The role can create everything this design needs.')}
                 {info.access.state !== 'ok' && info.access.message}
-                {!azure && info.access.state === 'cannot-check' && ' No ticks can be shown until the role can answer this. The policy above now includes that one read-only permission: copy it again, replace the CloudCraftDeploy inline policy, then press Check my access again.'}
+                {!azure && info.access.state === 'cannot-check' && ' No ticks can be shown until the role can answer this. The policy above now includes that one read-only permission: copy it again, replace the CloudBuilderDeploy inline policy, then press Check my access again.'}
               </span>
             </div>
           )}

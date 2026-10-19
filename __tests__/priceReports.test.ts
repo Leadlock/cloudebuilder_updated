@@ -17,10 +17,10 @@ describe('price reports', () => {
   beforeEach(() => {
     dir = mkdtempSync(path.join(tmpdir(), 'price-reports-'));
     file = path.join(dir, 'reports.jsonl');
-    process.env['CLOUDCRAFT_PRICE_REPORTS_FILE'] = file;
+    process.env['CLOUDBUILDER_PRICE_REPORTS_FILE'] = file;
   });
   afterEach(() => {
-    delete process.env['CLOUDCRAFT_PRICE_REPORTS_FILE'];
+    delete process.env['CLOUDBUILDER_PRICE_REPORTS_FILE'];
     rmSync(dir, { recursive: true, force: true });
   });
 

@@ -60,22 +60,22 @@ export interface DeploymentRecord {
 
 // In-memory persistent state stores across the dev session (attached to globalThis to survive Next.js dev rebuilds)
 const globalForReviews = globalThis as unknown as {
-  __cloudcraft_reviews?: Map<string, ArchitectureReview>;
-  __cloudcraft_deployments?: DeploymentRecord[];
+  __cloudbuilder_reviews?: Map<string, ArchitectureReview>;
+  __cloudbuilder_deployments?: DeploymentRecord[];
 };
 /**
  * Where reviews and deployment records are kept between restarts. An approval used to live only in this process's memory, so every
  * restart of the server (a crash, `npm run dev` again, a deploy) silently threw it away and the Deploy tab said "approval required"
  * again. They are now also written to a small file after every change and read back when the server starts.
  *
- * Set CLOUDCRAFT_REVIEWS_FILE to choose the file (use a path on storage that survives restarts). Under tests nothing is written unless
+ * Set CLOUDBUILDER_REVIEWS_FILE to choose the file (use a path on storage that survives restarts). Under tests nothing is written unless
  * that variable is set. One file means one server instance: running several instances needs these in the shared database instead.
  */
 function storeFile(): string | null {
-  const explicit = process.env['CLOUDCRAFT_REVIEWS_FILE'];
+  const explicit = process.env['CLOUDBUILDER_REVIEWS_FILE'];
   if (explicit) return explicit;
   if (process.env['NODE_ENV'] === 'test') return null;
-  return join(process.cwd(), '.cloudcraft-data', 'reviews.json');
+  return join(process.cwd(), '.cloudbuilder-data', 'reviews.json');
 }
 
 function loadFromDisk(): { reviews: ArchitectureReview[]; deployments: DeploymentRecord[] } {
@@ -103,12 +103,12 @@ function persist(): void {
   }
 }
 
-const fromDisk = globalForReviews.__cloudcraft_reviews ? null : loadFromDisk();
-const REVIEWS = globalForReviews.__cloudcraft_reviews ?? new Map<string, ArchitectureReview>((fromDisk?.reviews ?? []).map((r) => [r.id, r]));
-const DEPLOYMENTS = globalForReviews.__cloudcraft_deployments ?? fromDisk?.deployments ?? [];
+const fromDisk = globalForReviews.__cloudbuilder_reviews ? null : loadFromDisk();
+const REVIEWS = globalForReviews.__cloudbuilder_reviews ?? new Map<string, ArchitectureReview>((fromDisk?.reviews ?? []).map((r) => [r.id, r]));
+const DEPLOYMENTS = globalForReviews.__cloudbuilder_deployments ?? fromDisk?.deployments ?? [];
 if (process.env.NODE_ENV !== 'production') {
-  globalForReviews.__cloudcraft_reviews = REVIEWS;
-  globalForReviews.__cloudcraft_deployments = DEPLOYMENTS;
+  globalForReviews.__cloudbuilder_reviews = REVIEWS;
+  globalForReviews.__cloudbuilder_deployments = DEPLOYMENTS;
 }
 
 export class ArchitectureReviewService {

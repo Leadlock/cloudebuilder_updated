@@ -17,7 +17,7 @@ export default function TerraformPermissionHelp({ message, resourceTypes }: { me
   const denied = parseAccessDenied(message);
   if (!denied) return null;
   const policy = buildDeployPolicy(resourceTypes);
-  const roleName = denied.roleName ?? 'CloudCraft';
+  const roleName = denied.roleName ?? 'CloudBuilder';
 
   async function copy() {
     try { await navigator.clipboard.writeText(policy.json); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* the text is selectable */ }

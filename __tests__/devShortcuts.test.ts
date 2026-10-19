@@ -14,23 +14,23 @@ import { unverifiedTokenFallbackAllowed } from '@/lib/auth/localFallback';
 import { GET as listProjects } from '@/app/api/projects/route';
 
 const env = process.env as Record<string, string | undefined>;
-const saved = { n: env.NODE_ENV, f: env.CLOUDCRAFT_DEV_SHORTCUTS };
+const saved = { n: env.NODE_ENV, f: env.CLOUDBUILDER_DEV_SHORTCUTS };
 afterEach(() => {
   if (saved.n === undefined) delete env.NODE_ENV; else env.NODE_ENV = saved.n;
-  if (saved.f === undefined) delete env.CLOUDCRAFT_DEV_SHORTCUTS; else env.CLOUDCRAFT_DEV_SHORTCUTS = saved.f;
+  if (saved.f === undefined) delete env.CLOUDBUILDER_DEV_SHORTCUTS; else env.CLOUDBUILDER_DEV_SHORTCUTS = saved.f;
   ensureDevContext.mockClear();
 });
-const mode = (nodeEnv: string, flag?: string) => { env.NODE_ENV = nodeEnv; if (flag === undefined) delete env.CLOUDCRAFT_DEV_SHORTCUTS; else env.CLOUDCRAFT_DEV_SHORTCUTS = flag; };
+const mode = (nodeEnv: string, flag?: string) => { env.NODE_ENV = nodeEnv; if (flag === undefined) delete env.CLOUDBUILDER_DEV_SHORTCUTS; else env.CLOUDBUILDER_DEV_SHORTCUTS = flag; };
 
 describe('devShortcutsEnabled', () => {
   it('needs development AND the flag', () => {
-    expect(devShortcutsEnabled({ NODE_ENV: 'development', CLOUDCRAFT_DEV_SHORTCUTS: '1' })).toBe(true);
+    expect(devShortcutsEnabled({ NODE_ENV: 'development', CLOUDBUILDER_DEV_SHORTCUTS: '1' })).toBe(true);
     expect(devShortcutsEnabled({ NODE_ENV: 'development' })).toBe(false);
-    expect(devShortcutsEnabled({ NODE_ENV: 'development', CLOUDCRAFT_DEV_SHORTCUTS: 'true' })).toBe(false);
-    expect(devShortcutsEnabled({ NODE_ENV: 'development', CLOUDCRAFT_DEV_SHORTCUTS: '' })).toBe(false);
+    expect(devShortcutsEnabled({ NODE_ENV: 'development', CLOUDBUILDER_DEV_SHORTCUTS: 'true' })).toBe(false);
+    expect(devShortcutsEnabled({ NODE_ENV: 'development', CLOUDBUILDER_DEV_SHORTCUTS: '' })).toBe(false);
   });
   it('is never on in production or test, flag or not', () => {
-    for (const m of ['production', 'test', undefined]) expect(devShortcutsEnabled({ NODE_ENV: m, CLOUDCRAFT_DEV_SHORTCUTS: '1' })).toBe(false);
+    for (const m of ['production', 'test', undefined]) expect(devShortcutsEnabled({ NODE_ENV: m, CLOUDBUILDER_DEV_SHORTCUTS: '1' })).toBe(false);
   });
 });
 

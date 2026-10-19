@@ -44,7 +44,7 @@ export async function POST(
 
     const user = {
       id: identity.userId,
-      email: identity.email ?? 'admin@cloudcraft.io',
+      email: identity.email ?? 'admin@cloudbuilder.io',
       name: 'Cloud Administrator',
       role: identity.role,
     };

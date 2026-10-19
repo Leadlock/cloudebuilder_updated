@@ -24,7 +24,7 @@ import { PgBoss } from 'pg-boss';
 
 declare global {
   // eslint-disable-next-line no-var
-  var __cloudcraft_boss__: Promise<PgBoss> | undefined;
+  var __cloudbuilder_boss__: Promise<PgBoss> | undefined;
 }
 
 function createBoss(): PgBoss {
@@ -47,11 +47,11 @@ function createBoss(): PgBoss {
  * same process — the underlying instance and its startup Promise are memoized.
  */
 export function getQueue(): Promise<PgBoss> {
-  let pending = global.__cloudcraft_boss__;
+  let pending = global.__cloudbuilder_boss__;
   if (!pending) {
     const boss = createBoss();
     pending = boss.start().then(() => boss);
-    global.__cloudcraft_boss__ = pending;
+    global.__cloudbuilder_boss__ = pending;
   }
   return pending;
 }
@@ -63,9 +63,9 @@ export function getQueue(): Promise<PgBoss> {
  * stopping there would tear down the queue connection for the whole server.
  */
 export async function stopQueue(): Promise<void> {
-  if (global.__cloudcraft_boss__) {
-    const boss = await global.__cloudcraft_boss__;
+  if (global.__cloudbuilder_boss__) {
+    const boss = await global.__cloudbuilder_boss__;
     await boss.stop({ graceful: true, timeout: 30_000 });
-    global.__cloudcraft_boss__ = undefined;
+    global.__cloudbuilder_boss__ = undefined;
   }
 }

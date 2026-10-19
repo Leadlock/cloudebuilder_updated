@@ -8,8 +8,8 @@ const good = (): NodeJS.ProcessEnv => ({
   NODE_ENV: 'production',
   SESSION_SECRET: randomBytes(32).toString('hex'),
   ENCRYPTION_KEY: randomBytes(32).toString('hex'),
-  DATABASE_URL: 'postgresql://app:s3cret@db.internal:5432/cloudcraft?sslmode=require',
-  APP_URL: 'https://cloudcraft.example.com',
+  DATABASE_URL: 'postgresql://app:s3cret@db.internal:5432/cloudbuilder?sslmode=require',
+  APP_URL: 'https://cloudbuilder.example.com',
   SMTP_HOST: 'smtp.example.com',
   RESTRICTED_FEATURES_ALLOWED_EMAILS: 'admin@example.com',
   SUPER_ADMIN_EMAILS: 'admin@example.com',
@@ -52,7 +52,7 @@ describe('production startup check', () => {
   });
 
   test('the test-login header switch must be off', () => {
-    expect(errors({ ...good(), CLOUDCRAFT_ALLOW_TEST_AUTH_HEADERS: '1' })).toContain('log in as any user');
+    expect(errors({ ...good(), CLOUDBUILDER_ALLOW_TEST_AUTH_HEADERS: '1' })).toContain('log in as any user');
   });
 
   test('the database address must be set, real and valid', () => {

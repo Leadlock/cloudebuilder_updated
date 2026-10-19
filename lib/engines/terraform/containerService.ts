@@ -41,7 +41,7 @@ export function containerServiceBlocks(name: string, cfg: Record<string, unknown
 
   tags = {
     Name      = ${q(app)}
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`);
 
@@ -61,7 +61,7 @@ resource "aws_iam_role" "${name}" {
   name               = ${q(`${app}-ec2`)}
   assume_role_policy = data.aws_iam_policy_document.${name}_assume.json
   tags = {
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }
 
@@ -124,7 +124,7 @@ resource "aws_iam_instance_profile" "${name}" {
 
   tags = {
     Name      = ${q(`${app}-ec2`)}
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`);
     sg = `[aws_security_group.${name}.id]`;
@@ -142,7 +142,7 @@ resource "aws_iam_instance_profile" "${name}" {
   lines.push(`  user_data_replace_on_change = true`);
   lines.push(`  metadata_options {`, `    http_endpoint = "enabled"`, `    http_tokens   = "required"`, `  }`);
   lines.push(`  root_block_device {`, `    volume_size = ${c.ec2.volumeGb}`, `    volume_type = "gp3"`, `    encrypted   = true`, `  }`);
-  lines.push(`  tags = {`, `    Name      = ${q(app)}`, `    ManagedBy = "CloudCraft"`, `  }`, `}`);
+  lines.push(`  tags = {`, `    Name      = ${q(app)}`, `    ManagedBy = "CloudBuilder"`, `  }`, `}`);
   out.push(lines.join('\n'));
 
   if (c.ec2.elasticIp) {
@@ -151,7 +151,7 @@ resource "aws_iam_instance_profile" "${name}" {
   domain   = "vpc"
   tags = {
     Name      = ${q(app)}
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`);
   }

@@ -104,7 +104,7 @@ class ApiTerraformServiceImpl implements ITerraformService {
     nodes: CanvasNode[],
     edges: CanvasEdge[],
     provider: string,
-    projectName = 'cloudcraft-infra'
+    projectName = 'cloudbuilder-infra'
   ): Record<string, string> {
     try {
       const resources = nodes.map((n) => ({
@@ -159,7 +159,7 @@ class ApiTerraformServiceImpl implements ITerraformService {
     nodes: CanvasNode[],
     edges: CanvasEdge[],
     provider: string,
-    projectName = 'cloudcraft-infra'
+    projectName = 'cloudbuilder-infra'
   ): { files: Record<string, string>; warnings: string[] } {
     const files = this.generateFiles(nodes, edges, provider, projectName);
     return { files, warnings: _lastWarnings };

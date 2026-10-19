@@ -13,18 +13,18 @@ export const hostPorts = (ids: unknown): number[] => webPorts(hostItems(ids).ite
 
 /**
  * Shell lines for the VM's start-up script: write the install script to a file and run it. A failure is logged (and kept in
- * /var/log/cloudcraft-setup.log) but does not stop the app from starting, because the app is what the template is for.
+ * /var/log/cloudbuilder-setup.log) but does not stop the app from starting, because the app is what the template is for.
  */
 export function hostSoftwareSh(ids: unknown, o: { family: PackageFamily; loginUser: string; pageText: string }): string {
   const { items } = hostItems(ids);
   if (items.length === 0) return '';
   const body = softwareScript(items, o);
   return `
-# Software chosen in CloudBuilder: ${items.map((i) => i.label).join(', ')}. Its log is /var/log/cloudcraft-setup.log.
-cat > /usr/local/bin/cloudcraft-software <<'CLOUDCRAFT_SOFTWARE'
-${body}CLOUDCRAFT_SOFTWARE
-chmod 755 /usr/local/bin/cloudcraft-software
-bash /usr/local/bin/cloudcraft-software || echo "Installing the chosen software failed: see /var/log/cloudcraft-setup.log. The app is started anyway."
+# Software chosen in CloudBuilder: ${items.map((i) => i.label).join(', ')}. Its log is /var/log/cloudbuilder-setup.log.
+cat > /usr/local/bin/cloudbuilder-software <<'CLOUDBUILDER_SOFTWARE'
+${body}CLOUDBUILDER_SOFTWARE
+chmod 755 /usr/local/bin/cloudbuilder-software
+bash /usr/local/bin/cloudbuilder-software || echo "Installing the chosen software failed: see /var/log/cloudbuilder-setup.log. The app is started anyway."
 `;
 }
 

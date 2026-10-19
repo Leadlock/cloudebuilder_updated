@@ -11,7 +11,7 @@ This is the checklist for the first real run. Everything below the cloud (the st
 - You are on the restricted-features list and an owner/admin; Terraform access is approved for your organization (same as the Deploy tab).
 
 ## 1. Switch it on (on the machine that runs CloudBuilder)
-1. Put `CLOUDCRAFT_PROJECT_RELEASES=1` in `.env` and restart the web server **and** the worker (`npm run worker:terraform-apply`, or `pm2 restart cloudcraft-web cloudcraft-tf-apply --update-env`).
+1. Put `CLOUDBUILDER_PROJECT_RELEASES=1` in `.env` and restart the web server **and** the worker (`npm run worker:terraform-apply`, or `pm2 restart cloudcraft-web cloudcraft-tf-apply --update-env`).
 2. The database must have the two new tables: `npm run db:migrate` (or `prisma db migrate`). Migrations: `add_project_releases`, `add_project_sources`.
 3. Behind nginx: `client_max_body_size 6m;` so a zip of up to 5 MB can be uploaded.
 
@@ -106,7 +106,7 @@ Pick **Azure Container Apps** as the project's deploy target. Same Azure account
 **No database**: tick Frontend, Backend and API only, and give the Backend/API a secret `DATABASE_URL` that points at Azure Database for PostgreSQL / MySQL. A release needs at least 1 minimum replica.
 
 ## What happens
-Terraform creates the resource group, registry, Key Vault (with a *marker* in each secret, tagged `cloudcraft=placeholder`), identity, environment and one Container App per service, with **zero replicas** and a placeholder
+Terraform creates the resource group, registry, Key Vault (with a *marker* in each secret, tagged `cloudbuilder=placeholder`), identity, environment and one Container App per service, with **zero replicas** and a placeholder
 image. You then type the secrets (they replace the markers in Key Vault); the registry builds the images; CloudBuilder points each built app at its new image (a new revision) and scales every app to the minimum replicas,
 waiting until each newest revision is ready and running; finally it checks the public address.
 

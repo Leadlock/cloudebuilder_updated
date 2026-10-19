@@ -39,7 +39,7 @@ export type WaPillar = AwsPillar | AzurePillar;
  */
 export type AnalysisSource =
   | 'DESIGN_TIME'            // Local rule engine — design-time analysis only
-  | 'CLOUDCRAFT_RULE';       // CloudBuilder architecture rule (not framework-attributed)
+  | 'CLOUDBUILDER_RULE';       // CloudBuilder architecture rule (not framework-attributed)
 
 // ─── Resource State ───────────────────────────────────────────────────────────
 
@@ -49,7 +49,7 @@ export type AnalysisSource =
  */
 export type ResourceState =
   | 'imported'              // Exists in cloud, was discovered and imported
-  | 'cloudcraft-managed'    // Was deployed via CloudBuilder
+  | 'cloudbuilder-managed'    // Was deployed via CloudBuilder
   | 'new'                   // New, planned, not yet deployed
   | 'modified'              // Exists but config was modified locally
   | 'planned'               // Planned for future deployment

@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     });
 
     response.cookies.set({
-      name: 'cloudcraft_session',
+      name: 'cloudbuilder_session',
       value: session.token,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

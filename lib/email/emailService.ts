@@ -49,7 +49,7 @@ export class EmailService {
    * Send a team invitation email to a new or existing teammate.
    */
   static async sendTeamInvite(params: SendInviteEmailParams): Promise<{ sent: boolean; messageId?: string; error?: string }> {
-    const fromAddress = process.env.EMAIL_FROM || 'CloudBuilder <no-reply@cloudcraft.local>';
+    const fromAddress = process.env.EMAIL_FROM || 'CloudBuilder <no-reply@cloudbuilder.local>';
     const appUrl = process.env.APP_URL || 'http://localhost:3000';
     const inviter = params.inviterName || 'A team administrator';
     const days = params.expiresInDays || 7;

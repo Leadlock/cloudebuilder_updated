@@ -65,7 +65,7 @@ export async function renderWaReportPdf(report: AssessmentReport): Promise<Buffe
 
   // ── Cover ──
   doc.rect(0, 0, PAGE.w, 300).fillColor(C.navy).fill();
-  doc.font('Helvetica').fontSize(11).fillColor('#9FB6D3').text('CLOUDCRAFT', PAGE.m, 70, { characterSpacing: 3 });
+  doc.font('Helvetica').fontSize(11).fillColor('#9FB6D3').text('CLOUDBUILDER', PAGE.m, 70, { characterSpacing: 3 });
   doc.font('Helvetica-Bold').fontSize(28).fillColor('#FFFFFF').text('Well-Architected Review', PAGE.m, 100, { width: PAGE.w - PAGE.m * 2 });
   doc.font('Helvetica').fontSize(14).fillColor('#D5E1F0').text(pdfSafe(m.projectName), PAGE.m, doc.y + 10, { width: PAGE.w - PAGE.m * 2 });
   doc.roundedRect(PAGE.m, 250, 150, 22, 4).fillColor('#F59E0B').fill();

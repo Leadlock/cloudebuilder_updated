@@ -33,7 +33,7 @@ A production-quality SaaS web app for visually designing AWS and Azure infrastru
 
 ```bash
 # Navigate to the project
-cd cloudcraft
+cd cloudbuilder
 
 # Install dependencies (already done if scaffolded)
 npm install
@@ -105,7 +105,7 @@ backend, all destroy actions blocked).
 ## Project Structure
 
 ```
-cloudcraft/
+cloudbuilder/
 ├── app/               # Next.js App Router
 │   ├── page.tsx       # Root page (shell)
 │   └── layout.tsx     # Root layout with AppProvider

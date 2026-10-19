@@ -22,7 +22,7 @@ const CREATED = Date.parse('2026-10-01T11:30:50Z');
 const info = (who = OURS) => parseLockInfo(lockText(who))!;
 const ctx = (over = {}) => ({ now: CREATED + 10 * 60_000, host: HOST, processRunning: false, projectBusy: false, ...over });
 
-const backend: TerraformStateBackendConfig = { provider: 'azure', resourceGroupName: 'rg', storageAccountName: 'cloudcraft', containerName: 'tfstate', key: 'k.tfstate' };
+const backend: TerraformStateBackendConfig = { provider: 'azure', resourceGroupName: 'rg', storageAccountName: 'cloudbuilder', containerName: 'tfstate', key: 'k.tfstate' };
 const target = (projectId = 'proj-lock-test') => ({ orgId: 'org-1', projectId, cloudAccountId: 'acct-1', stateBackend: backend });
 
 describe('decideManualRelease', () => {

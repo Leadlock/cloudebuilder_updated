@@ -293,7 +293,7 @@ export async function generatePlan(input: GeneratePlanInput): Promise<PlanRecord
     targets = picked.addresses;
   }
 
-  const workDir = await mkdtemp(join(tmpdir(), 'cloudcraft-tf-'));
+  const workDir = await mkdtemp(join(tmpdir(), 'cloudbuilder-tf-'));
   try {
     for (const file of generated.files) {
       await writeFile(join(workDir, file.filename), file.content, 'utf-8');
@@ -366,7 +366,7 @@ export async function planBundle(input: PlanBundleInput): Promise<PlanRecord> {
   const backendHcl = renderBackendConfig(input.stateBackend);
   assertSafeHcl([...input.files.filter((f) => f.filename.endsWith('.tf')), { filename: 'backend.tf', content: backendHcl }]);
 
-  const workDir = await mkdtemp(join(tmpdir(), 'cloudcraft-tf-release-'));
+  const workDir = await mkdtemp(join(tmpdir(), 'cloudbuilder-tf-release-'));
   try {
     for (const f of input.files) await writeFile(join(workDir, f.filename), f.content, 'utf-8');
     await writeFile(join(workDir, 'backend.tf'), backendHcl, 'utf-8');
@@ -554,7 +554,7 @@ export async function prepareDestroy(input: ExecuteDestroyInput, onOutput?: (chu
   const region = regionFromTfvars(generated?.files.find((f) => f.filename === 'terraform.tfvars')?.content)
     ?? input.resources.find((r) => r.region)?.region ?? env['AWS_DEFAULT_REGION'] ?? 'us-east-1';
 
-  let workDir = await mkdtemp(join(tmpdir(), 'cloudcraft-tf-destroy-'));
+  let workDir = await mkdtemp(join(tmpdir(), 'cloudbuilder-tf-destroy-'));
   let keep = false;
   try {
     let usable = false;
@@ -572,7 +572,7 @@ export async function prepareDestroy(input: ExecuteDestroyInput, onOutput?: (chu
     if (!usable) {
       if (input.stateBackend.provider !== 'aws') throw httpError('The saved design could not be turned into a valid configuration, so this teardown cannot run. Fix the design and try again.', 400);
       await rm(workDir, { recursive: true, force: true }).catch(() => {});
-      workDir = await mkdtemp(join(tmpdir(), 'cloudcraft-tf-destroy-'));
+      workDir = await mkdtemp(join(tmpdir(), 'cloudbuilder-tf-destroy-'));
       await writeTerraformFiles(workDir, { files: minimalAwsDestroyConfig(region) }, input.stateBackend);
       await initWithRetry(workDir, env, { onOutput });
       await validateConfiguration(workDir, env);

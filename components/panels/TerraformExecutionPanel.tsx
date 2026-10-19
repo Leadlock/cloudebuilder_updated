@@ -80,7 +80,7 @@ export default function TerraformExecutionPanel() {
   const { state } = useApp();
   const isLight = state.theme === 'light';
   const activeProject = useActiveProject();
-  const currentUser = state.currentUser ?? { id: 'usr-admin-1', role: 'admin' as const, name: 'Cloud Administrator', email: 'admin@cloudcraft.io', orgId: '' };
+  const currentUser = state.currentUser ?? { id: 'usr-admin-1', role: 'admin' as const, name: 'Cloud Administrator', email: 'admin@cloudbuilder.io', orgId: '' };
   const isAdmin = currentUser.role === 'admin';
 
   const [latestReview, setLatestReview] = useState<ArchitectureReview | null>(null);
@@ -89,8 +89,8 @@ export default function TerraformExecutionPanel() {
   const [applyApproved, setApplyApproved] = useState(false);
   const [destroyApproved, setDestroyApproved] = useState(false);
 
-  const storageKey = activeProject ? `cloudcraft_tf_state_${activeProject.id}_${state.activeEnvironment}` : null;
-  const backendStorageKey = activeProject ? `cloudcraft_tf_backend_${activeProject.id}` : null;
+  const storageKey = activeProject ? `cloudbuilder_tf_state_${activeProject.id}_${state.activeEnvironment}` : null;
+  const backendStorageKey = activeProject ? `cloudbuilder_tf_backend_${activeProject.id}` : null;
 
   const defaultProvider: 'aws' | 'azure' =
     activeProject?.provider === 'azure' ||
@@ -106,7 +106,7 @@ export default function TerraformExecutionPanel() {
   const [creatingBackend, setCreatingBackend] = useState(false);
   const [backendCreated, setBackendCreated] = useState<{ what: string; outcome: 'created' | 'already-exists' }[] | null>(null);
   const [backendCreateError, setBackendCreateError] = useState<string | null>(null);
-  const [awsBackend, setAwsBackend] = useState<AwsBackendForm>({ bucket: '', key: 'cloudcraft/terraform.tfstate', region: 'eu-north-1', dynamodbTable: '' });
+  const [awsBackend, setAwsBackend] = useState<AwsBackendForm>({ bucket: '', key: 'cloudbuilder/terraform.tfstate', region: 'eu-north-1', dynamodbTable: '' });
   const [azureBackend, setAzureBackend] = useState<AzureBackendForm>({ resourceGroupName: '', storageAccountName: '', containerName: '', key: '' });
 
   const [plan, setPlan] = useState<TerraformPlanResult | null>(null);
@@ -153,7 +153,7 @@ export default function TerraformExecutionPanel() {
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // 1. Restore persistent backend and deployment state from localStorage
-  const destroyRunKey = (projectId: string) => `cloudcraft_tf_destroy_run_${projectId}`;
+  const destroyRunKey = (projectId: string) => `cloudbuilder_tf_destroy_run_${projectId}`;
 
   function pollDestroyRun(projectId: string, runId: string) {
     if (destroyPollRef.current) clearInterval(destroyPollRef.current);
@@ -451,8 +451,8 @@ export default function TerraformExecutionPanel() {
         ? { provider: 'aws', region: awsBackend.region, ...(awsBackend.bucket ? { bucket: awsBackend.bucket } : {}), ...(awsBackend.key ? { key: awsBackend.key } : {}), ...(awsBackend.dynamodbTable ? { dynamodbTable: awsBackend.dynamodbTable } : {}) }
         : { provider: 'azure', ...azureBackend, key: azureBackend.key || undefined };
       const result = await ApiTerraformExecutionService.createStateBackend(activeProject.id, selectedAccountId, body, currentUser);
-      if (backendProvider === 'aws' && result.bucket) setAwsBackend((b) => ({ ...b, bucket: result.bucket!, key: b.key || 'cloudcraft/terraform.tfstate' }));
-      if (backendProvider === 'azure') setAzureBackend((b) => ({ ...b, key: b.key || 'cloudcraft/terraform.tfstate' }));
+      if (backendProvider === 'aws' && result.bucket) setAwsBackend((b) => ({ ...b, bucket: result.bucket!, key: b.key || 'cloudbuilder/terraform.tfstate' }));
+      if (backendProvider === 'azure') setAzureBackend((b) => ({ ...b, key: b.key || 'cloudbuilder/terraform.tfstate' }));
       setBackendCreated(result.steps);
     } catch (err) {
       setBackendCreateError(err instanceof Error ? err.message : 'Could not create the state storage');

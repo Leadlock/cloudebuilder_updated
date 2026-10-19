@@ -4,7 +4,7 @@
  * with the same table shape as the migration.
  */
 process.env['SESSION_SECRET'] = 'a-test-secret-that-is-at-least-32-chars-long';
-process.env['CLOUDCRAFT_REVOCATION_SYNC_MS'] = '250';          // the smallest allowed, so the tests do not wait long
+process.env['CLOUDBUILDER_REVOCATION_SYNC_MS'] = '250';          // the smallest allowed, so the tests do not wait long
 
 jest.mock('@/src/prisma/db', () => ({ db: {} }));
 

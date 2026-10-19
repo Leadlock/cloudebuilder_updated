@@ -691,8 +691,8 @@ export default function InfraCanvas() {
 
     if (typeof window !== 'undefined') {
       try {
-        localStorage.removeItem('cloudcraft_draft_project');
-        localStorage.removeItem('cloudcraft_draft_timestamp');
+        localStorage.removeItem('cloudbuilder_draft_project');
+        localStorage.removeItem('cloudbuilder_draft_timestamp');
       } catch {}
     }
 
@@ -715,8 +715,8 @@ export default function InfraCanvas() {
     if (isDraft) {
       if (typeof window !== 'undefined') {
         try {
-          localStorage.removeItem('cloudcraft_draft_project');
-          localStorage.removeItem('cloudcraft_draft_timestamp');
+          localStorage.removeItem('cloudbuilder_draft_project');
+          localStorage.removeItem('cloudbuilder_draft_timestamp');
         } catch {}
       }
       dispatch({ type: 'INIT_BLANK_ARCHITECTURE', provider: 'aws', nodes: [], edges: [] });
@@ -1329,12 +1329,12 @@ export default function InfraCanvas() {
 
     // Retrieve dragged resource type reliably
     let resourceType: string | undefined = undefined;
-    if (typeof window !== 'undefined' && (window as any).__cloudcraft_dragged_type) {
-      resourceType = (window as any).__cloudcraft_dragged_type;
+    if (typeof window !== 'undefined' && (window as any).__cloudbuilder_dragged_type) {
+      resourceType = (window as any).__cloudbuilder_dragged_type;
     } else {
-      const mimeType = event.dataTransfer.types.find((t) => t.startsWith('application/cloudcraft-'));
+      const mimeType = event.dataTransfer.types.find((t) => t.startsWith('application/cloudbuilder-'));
       if (mimeType) {
-        resourceType = mimeType.replace('application/cloudcraft-', '');
+        resourceType = mimeType.replace('application/cloudbuilder-', '');
       }
     }
 
@@ -1352,9 +1352,9 @@ export default function InfraCanvas() {
   const onDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     setActiveDragTargetId(null);
-    let resourceType = event.dataTransfer.getData('application/cloudcraft');
+    let resourceType = event.dataTransfer.getData('application/cloudbuilder');
     if (!resourceType && typeof window !== 'undefined') {
-      resourceType = (window as any).__cloudcraft_dragged_type;
+      resourceType = (window as any).__cloudbuilder_dragged_type;
     }
     if (!resourceType || !reactFlowInstance.current || !reactFlowWrapper.current) return;
     const def = getResourceDefinition(resourceType);

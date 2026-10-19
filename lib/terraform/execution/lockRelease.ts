@@ -79,7 +79,7 @@ async function loadEnv(target: LockTarget): Promise<Record<string, string>> {
 
 async function withBackendDir<T>(target: LockTarget, env: Record<string, string>, deps: LockDeps, fn: (dir: string) => Promise<T>): Promise<T> {
   const run = deps.run ?? runTerraform;
-  const dir = await mkdtemp(join(tmpdir(), 'cloudcraft-tf-lock-'));
+  const dir = await mkdtemp(join(tmpdir(), 'cloudbuilder-tf-lock-'));
   try {
     await writeFile(join(dir, 'backend.tf'), renderBackendConfig(target.stateBackend), 'utf-8');
     await initWithRetry(dir, env, { run });

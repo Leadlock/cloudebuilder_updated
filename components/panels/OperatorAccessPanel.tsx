@@ -1,7 +1,7 @@
 'use client';
 /**
  * Operator page: which organizations asked to run Terraform on this server, the checks each one met, and approve / deny / revoke.
- * Only people named in CLOUDCRAFT_OPERATOR_EMAILS can open the data; everyone else gets a plain refusal from the server.
+ * Only people named in CLOUDBUILDER_OPERATOR_EMAILS can open the data; everyone else gets a plain refusal from the server.
  */
 import { useCallback, useEffect, useState } from 'react';
 import clsx from 'clsx';

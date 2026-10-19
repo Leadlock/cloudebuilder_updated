@@ -6,7 +6,7 @@
  * one approval, one run — and live in the database (the `terraformApproval` table), so they hold across restarts and across
  * server instances.
  *
- * Policy (CLOUDCRAFT_TERRAFORM_APPROVAL):
+ * Policy (CLOUDBUILDER_TERRAFORM_APPROVAL):
  *   password   the default. The person running it confirms with their own login password (see passwordConfirm.ts); that records
  *              a short-lived approval for exactly this plan. No second person is involved.
  *   required   a DIFFERENT owner/admin than the requester must approve (production default). The requester can still withdraw
@@ -31,7 +31,7 @@ export const APPROVAL_TTL_MS = 30 * 60 * 1000;
 export const PASSWORD_CONFIRM_TTL_MS = 5 * 60 * 1000;
 
 export function approvalMode(): ApprovalMode {
-  const v = (process.env['CLOUDCRAFT_TERRAFORM_APPROVAL'] ?? '').trim().toLowerCase();
+  const v = (process.env['CLOUDBUILDER_TERRAFORM_APPROVAL'] ?? '').trim().toLowerCase();
   if (v === 'password' || v === 'required' || v === 'self-ok' || v === 'off') return v;
   return 'password';      // a typo, or nothing set, never switches the gate off
 }

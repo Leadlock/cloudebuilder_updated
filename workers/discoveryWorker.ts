@@ -13,6 +13,7 @@
  * Requires the same environment as the main app: DATABASE_URL and
  * ENCRYPTION_KEY (to decrypt stored cloud account credentials).
  */
+import '../lib/config/legacyEnv';
 import type { Job } from 'pg-boss';
 import { getQueue, stopQueue } from '../lib/jobs/queue';
 import { DISCOVERY_QUEUE, ensureDiscoveryQueue, processDiscoveryJob, type DiscoveryJobData } from '../lib/jobs/discoveryJob';

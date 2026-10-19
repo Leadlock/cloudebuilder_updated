@@ -26,7 +26,7 @@ import CloudAccountsPanel from '@/components/panels/CloudAccountsPanel';
 const KEY_ID = 'AKIAIOSFODNN7EXAMPLE';
 const SECRET = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY';
 const NEW_SECRET = 'abcdefghijklmnopqrstuvwxyz0123456789ABCD';
-const ROLE = 'arn:aws:iam::123456789012:role/CloudCraftRole';
+const ROLE = 'arn:aws:iam::123456789012:role/CloudBuilderRole';
 const keyRole = { accessKeyId: KEY_ID, secretAccessKey: SECRET, roleArn: ROLE, externalId: 'ext-123', region: 'us-east-1' };
 const keyOnly = { accessKeyId: KEY_ID, secretAccessKey: SECRET, region: 'us-east-1' };
 const azure = { tenantId: 'a'.repeat(8) + '-aaaa-aaaa-aaaa-' + 'a'.repeat(12), clientId: 'b'.repeat(8) + '-bbbb-bbbb-bbbb-' + 'b'.repeat(12), clientSecret: 'old-azure-secret', subscriptionId: 'c'.repeat(8) + '-cccc-cccc-cccc-' + 'c'.repeat(12) };

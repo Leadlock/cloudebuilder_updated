@@ -47,11 +47,11 @@ import { discoveryRepository } from '@/lib/repositories/discoveryRepository';
 import { createDiscoveryProvider } from '@/lib/cloud/provider';
 import { enqueueDiscoveryJob, processDiscoveryJob, DISCOVERY_QUEUE } from '@/lib/jobs/discoveryJob';
 
-// The pg-boss instance is memoized on `global.__cloudcraft_boss__` (real
+// The pg-boss instance is memoized on `global.__cloudbuilder_boss__` (real
 // process-wide global state, not module-scoped) — clear it between tests so
 // each test starts a fresh boss.start() with the current DATABASE_URL.
 function clearQueueSingleton(): void {
-  (global as unknown as { __cloudcraft_boss__?: unknown }).__cloudcraft_boss__ = undefined;
+  (global as unknown as { __cloudbuilder_boss__?: unknown }).__cloudbuilder_boss__ = undefined;
 }
 
 describe('Discovery job queue', () => {

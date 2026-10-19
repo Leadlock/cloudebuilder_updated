@@ -42,7 +42,7 @@ resource "azurerm_container_registry" "${name}" {
   sku                 = "Basic"
   admin_enabled       = false
   tags = {
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }
 
@@ -56,7 +56,7 @@ resource "azurerm_container_registry" "${name}" {
   soft_delete_retention_days = 7
   purge_protection_enabled   = false
   tags = {
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }
 
@@ -65,7 +65,7 @@ resource "azurerm_user_assigned_identity" "${name}" {
   resource_group_name = ${rgName}
   location            = ${rgLoc}
   tags = {
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }
 
@@ -106,7 +106,7 @@ resource "azurerm_role_assignment" "${name}_deployer_secrets" {
   }
 
   tags = {
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }
 
@@ -122,7 +122,7 @@ resource "azurerm_network_interface" "${name}" {
   }
 
   tags = {
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }
 
@@ -169,7 +169,7 @@ ${heredoc(azureCloudInit(c))}EOT
 
   # The start-up script reads these from the VM itself (instance metadata), so the script never has to change.
   tags = {
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
 ${existing ? '' : `    acr       = azurerm_container_registry.${name}.login_server
 `}    vault     = azurerm_key_vault.${name}.name${existing ? '' : `
     image_tag = ${q(v.imageTag)}`}

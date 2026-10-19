@@ -167,7 +167,7 @@ class ApiSecurityServiceImpl implements ISecurityService {
     }
     const cd = res.headers.get('Content-Disposition') ?? '';
     const ext = format === 'json' ? 'json' : format;
-    const filename = /filename="([^"]+)"/.exec(cd)?.[1] ?? `cloudcraft-assessment.${ext}`;
+    const filename = /filename="([^"]+)"/.exec(cd)?.[1] ?? `cloudbuilder-assessment.${ext}`;
     const blob = format === 'json' ? new Blob([JSON.stringify(await res.json(), null, 2)], { type: 'application/json' }) : await res.blob();
     return { blob, filename, scanId: res.headers.get('X-Assessment-Scan-Id') };
   }

@@ -125,7 +125,7 @@ describe('Cognito MFA Flow', () => {
     const body = await res.json();
     expect(body.success).toBe(true);
     expect(body.user.email).toBe('alex@example.com');
-    expect(res.cookies.get('cloudcraft_session')?.value).toBe('session-user-sub-123');
+    expect(res.cookies.get('cloudbuilder_session')?.value).toBe('session-user-sub-123');
   });
 
   it('mfa/verify route returns 400 when invalid OTP code is entered (CodeMismatchException)', async () => {

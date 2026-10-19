@@ -44,7 +44,7 @@ trap cleanup EXIT
 
 if [ "$STATUS" = 1 ]; then
   say "Server $HOST ($DIR)"
-  remote "cd '$DIR' && echo \"running commit: \$(cat .deployed-commit 2>/dev/null || echo unknown)\" && pm2 status 2>/dev/null | head -20; ls -1t /root/cloudcraft-backups/*.tgz 2>/dev/null | head -5"
+  remote "cd '$DIR' && echo \"running commit: \$(cat .deployed-commit 2>/dev/null || echo unknown)\" && pm2 status 2>/dev/null | head -20; ls -1t /root/cloudbuilder-backups/*.tgz 2>/dev/null | head -5"
   exit 0
 fi
 

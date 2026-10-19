@@ -3,7 +3,7 @@
  * Body: { decision: 'approve' | 'reject', comment?: string }
  *
  * Only an owner/admin of the organisation may decide. When the server requires a second person
- * (CLOUDCRAFT_TERRAFORM_APPROVAL=required) the requester cannot approve their own request — they can still reject (withdraw) it.
+ * (CLOUDBUILDER_TERRAFORM_APPROVAL=required) the requester cannot approve their own request — they can still reject (withdraw) it.
  */
 import { NextRequest } from 'next/server';
 import { z } from 'zod';

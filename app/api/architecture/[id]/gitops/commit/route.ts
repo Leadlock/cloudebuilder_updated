@@ -119,7 +119,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
     let tfResult;
     try {
-      tfResult = new TerraformGenerator().generate({ architectureId, projectId, resources, connections, projectName: 'cloudcraft-deployment' });
+      tfResult = new TerraformGenerator().generate({ architectureId, projectId, resources, connections, projectName: 'cloudbuilder-deployment' });
     } catch (err) {
       if (err instanceof TerraformSafetyError) return fail('The generated Terraform was refused by CloudBuilder\'s safety checks, so nothing was committed.', 422);
       throw err;

@@ -60,7 +60,7 @@ const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
  * The check in getSession is synchronous on purpose (every request path calls it), so it reads these in-memory maps. When
  * the shared store is on (production by default — see sharedStore.ts) they are a copy of the `revokedSession` table:
  * a revocation is written through to the database, and every instance pulls what the others wrote every few seconds
- * (CLOUDCRAFT_REVOCATION_SYNC_MS, default 5000). So a logout reaches all instances within seconds, not "at most 24 hours later".
+ * (CLOUDBUILDER_REVOCATION_SYNC_MS, default 5000). So a logout reaches all instances within seconds, not "at most 24 hours later".
  * Two honest limits: that delay of a few seconds, and an instance that has only just started answers its very first requests
  * before its first pull completes. If the database is unreachable the maps still work for the revocations this instance
  * knows about, and the problem is logged.
@@ -71,7 +71,7 @@ let lastPullAttempt = 0;
 let pulledUntil = 0;                                        // database-clock time of the last successful pull
 let pullInFlight = false;
 const pendingWrites = new Set<Promise<void>>();
-const syncIntervalMs = () => { const n = Number(process.env['CLOUDCRAFT_REVOCATION_SYNC_MS']); return Number.isFinite(n) && n >= 250 ? n : 5_000; };
+const syncIntervalMs = () => { const n = Number(process.env['CLOUDBUILDER_REVOCATION_SYNC_MS']); return Number.isFinite(n) && n >= 250 ? n : 5_000; };
 
 /** Starts a refresh from the shared store if the last one is old enough. Never blocks and never throws. */
 function refreshRevocations(): void {

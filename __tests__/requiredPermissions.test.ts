@@ -38,19 +38,19 @@ describe('requiredPermissionsFor', () => {
     expect(small.services).toEqual(['dynamodb', 's3', 'sqs']);
     expect(small.includesIam).toBe(false);
     expect(JSON.parse(small.json).Statement).toHaveLength(3);        // the services, the read-only self-check, and the read-only price list
-    expect(JSON.parse(small.json).Statement[0].Sid).toBe('CloudCraftDeployServices');
+    expect(JSON.parse(small.json).Statement[0].Sid).toBe('CloudBuilderDeployServices');
   });
 
   it('also lets the role ask IAM what it may do, read-only and limited to the role itself when its ARN is known', () => {
-    const arn = 'arn:aws:iam::123456789012:role/CloudCraft';
+    const arn = 'arn:aws:iam::123456789012:role/CloudBuilder';
     const withArn = JSON.parse(requiredPermissionsFor(files, arn).json) as { Statement: { Sid: string; Action: string[]; Resource: string }[] };
-    const check = withArn.Statement.find((x) => x.Sid === 'CloudCraftCheckOwnAccess')!;
+    const check = withArn.Statement.find((x) => x.Sid === 'CloudBuilderCheckOwnAccess')!;
     expect(check.Action).toEqual(['iam:SimulatePrincipalPolicy']);
     expect(check.Resource).toBe(arn);
     const without = JSON.parse(requiredPermissionsFor(files).json) as { Statement: { Sid: string; Resource: string }[] };
-    expect(without.Statement.find((x) => x.Sid === 'CloudCraftCheckOwnAccess')!.Resource).toBe('*');
+    expect(without.Statement.find((x) => x.Sid === 'CloudBuilderCheckOwnAccess')!.Resource).toBe('*');
     // The same policy lets the role read AWS's official price list, so cost figures come from it.
-    expect(without.Statement.find((x) => x.Sid === 'CloudCraftReadPrices')).toMatchObject({ Action: ['pricing:GetProducts'], Effect: 'Allow' });
+    expect(without.Statement.find((x) => x.Sid === 'CloudBuilderReadPrices')).toMatchObject({ Action: ['pricing:GetProducts'], Effect: 'Allow' });
     // The deploy statement itself never grants the check action or anything beyond the design's services.
     expect(withArn.Statement[0]!.Action.some((a) => a.startsWith('iam:'))).toBe(false);
   });
@@ -70,13 +70,13 @@ describe('checkRoleAccess', () => {
   });
 
   it('is ok when every probe action is allowed', async () => {
-    const r = await checkRoleAccess({ client: answer(['ec2', 'sqs']), makeCommand, roleArn: 'arn:aws:iam::123456789012:role/CloudCraft', services: ['ec2', 'sqs'] });
+    const r = await checkRoleAccess({ client: answer(['ec2', 'sqs']), makeCommand, roleArn: 'arn:aws:iam::123456789012:role/CloudBuilder', services: ['ec2', 'sqs'] });
     expect(r.state).toBe('ok');
     expect(r.services).toEqual([{ service: 'ec2', allowed: true }, { service: 'sqs', allowed: true }]);
   });
 
   it('is partial and names the services still missing', async () => {
-    const r = await checkRoleAccess({ client: answer(['ec2']), makeCommand, roleArn: 'arn:aws:iam::123456789012:role/CloudCraft', services: ['ec2', 'rds', 'sqs'] });
+    const r = await checkRoleAccess({ client: answer(['ec2']), makeCommand, roleArn: 'arn:aws:iam::123456789012:role/CloudBuilder', services: ['ec2', 'rds', 'sqs'] });
     expect(r.state).toBe('partial');
     expect(r.services.filter((s) => !s.allowed).map((s) => s.service)).toEqual(['rds', 'sqs']);
     expect(r.message).toMatch(/rds, sqs/);

@@ -44,9 +44,9 @@ export interface RequestIdentity {
  * Extract the caller's identity from the request.
  *
  * Supports:
- * 1. HTTP-only session cookie (`cloudcraft_session`)
+ * 1. HTTP-only session cookie (`cloudbuilder_session`)
  * 2. `Authorization: Bearer <token>`
- * 3. `x-user-id` / `x-user-role` headers, ONLY when `CLOUDCRAFT_ALLOW_TEST_AUTH_HEADERS=1`
+ * 3. `x-user-id` / `x-user-role` headers, ONLY when `CLOUDBUILDER_ALLOW_TEST_AUTH_HEADERS=1`
  *    is set (automated integration tests) — refused otherwise so a stray header
  *    can never substitute for a real session in a real deployment.
  *
@@ -57,7 +57,7 @@ export interface RequestIdentity {
  */
 export function extractIdentity(req: NextRequest): RequestIdentity | null {
   // 1. Session cookie
-  const cookieToken = req.cookies.get('cloudcraft_session')?.value;
+  const cookieToken = req.cookies.get('cloudbuilder_session')?.value;
   if (cookieToken) {
     const session = AuthService.getSession(cookieToken);
     if (session) {
@@ -87,7 +87,7 @@ export function extractIdentity(req: NextRequest): RequestIdentity | null {
 
   // 3. Test / automation header support — explicitly opt-in only, never in a
   //    deployment that hasn't deliberately set this flag.
-  if (process.env.CLOUDCRAFT_ALLOW_TEST_AUTH_HEADERS === '1') {
+  if (process.env.CLOUDBUILDER_ALLOW_TEST_AUTH_HEADERS === '1') {
     const userId = req.headers.get('x-user-id');
     if (userId) {
       return {

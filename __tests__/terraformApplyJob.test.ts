@@ -38,7 +38,7 @@ import {
 } from '@/lib/jobs/terraformApplyJob';
 
 function clearQueueSingleton(): void {
-  (global as unknown as { __cloudcraft_boss__?: unknown }).__cloudcraft_boss__ = undefined;
+  (global as unknown as { __cloudbuilder_boss__?: unknown }).__cloudbuilder_boss__ = undefined;
 }
 
 describe('Terraform apply job queue', () => {
@@ -95,7 +95,7 @@ describe('Terraform apply job queue', () => {
       const env = process.env as Record<string, string | undefined>;
       (runApply as jest.Mock).mockReset();
       mockAudit.mockReset();
-      env.CLOUDCRAFT_TERRAFORM_DISABLED = '1';
+      env.CLOUDBUILDER_TERRAFORM_DISABLED = '1';
       try {
         const result = await processApplyJob({ applyRunId: 'run-k', planId: 'plan-k', accountId: 'acct-1', orgId: 'org-1' });
         expect(result.status).toBe('failed');
@@ -103,7 +103,7 @@ describe('Terraform apply job queue', () => {
         expect(runApply).not.toHaveBeenCalled();
         expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'apply', outcome: 'blocked' }));
       } finally {
-        delete env.CLOUDCRAFT_TERRAFORM_DISABLED;
+        delete env.CLOUDBUILDER_TERRAFORM_DISABLED;
       }
     });
 

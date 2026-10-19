@@ -5,7 +5,7 @@
  * Only what is in this catalog can be installed: the script is built from the package names and commands below, never from text a person
  * types, so there is no way to slip a command in through a setting. The one free-text input (a start page) is escaped and written to a file.
  * The script is plain bash, safe to run twice (it leaves a marker when done), retries while the network comes up, and logs to
- * /var/log/cloudcraft-setup.log. `scripts/verify-server-software.ts` runs it for real on Amazon Linux and Ubuntu in CI.
+ * /var/log/cloudbuilder-setup.log. `scripts/verify-server-software.ts` runs it for real on Amazon Linux and Ubuntu in CI.
  */
 
 /** Which package manager the server's operating system uses. */
@@ -132,10 +132,10 @@ export function softwareScript(items: readonly SoftwareItem[], o: ScriptOptions)
   const lines: string[] = [
     '#!/bin/bash',
     `# Installed by CloudBuilder the first time this server starts: ${items.map((i) => i.label).join(', ')}.`,
-    '# Safe to run twice. Progress is logged to /var/log/cloudcraft-setup.log.',
+    '# Safe to run twice. Progress is logged to /var/log/cloudbuilder-setup.log.',
     'set -euo pipefail',
-    'exec > >(tee -a /var/log/cloudcraft-setup.log) 2>&1',
-    'MARKER=/var/lib/cloudcraft-setup.done',
+    'exec > >(tee -a /var/log/cloudbuilder-setup.log) 2>&1',
+    'MARKER=/var/lib/cloudbuilder-setup.done',
     'if [ -f "$MARKER" ]; then echo "CloudBuilder setup already done."; exit 0; fi',
     ...(apt ? ['export DEBIAN_FRONTEND=noninteractive'] : []),
     '',
@@ -154,7 +154,7 @@ export function softwareScript(items: readonly SoftwareItem[], o: ScriptOptions)
     if (item.id === 'docker') lines.push(`if id -u ${o.loginUser} >/dev/null 2>&1; then usermod -aG docker ${o.loginUser}; fi`);
     if (item.docRoot && page !== '') {
       const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(page)}</title></head><body><h1>${escapeHtml(page)}</h1></body></html>`;
-      lines.push(`mkdir -p ${item.docRoot[o.family]}`, `cat > ${item.docRoot[o.family]}/index.html <<'CLOUDCRAFT_PAGE'`, html, 'CLOUDCRAFT_PAGE');
+      lines.push(`mkdir -p ${item.docRoot[o.family]}`, `cat > ${item.docRoot[o.family]}/index.html <<'CLOUDBUILDER_PAGE'`, html, 'CLOUDBUILDER_PAGE');
     }
     if (item.service) lines.push(`start_service ${item.service[o.family]}`);
   }

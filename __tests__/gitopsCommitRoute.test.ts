@@ -12,7 +12,7 @@ import { POST } from '@/app/api/architecture/[id]/gitops/commit/route';
 
 const TOKEN = 'ghp_' + 'a'.repeat(36);
 const base = {
-  projectId: 'proj-1', githubOrg: 'acme-corp', githubRepo: 'infra.repo', branch: 'feature/cloudcraft-1', commitMessage: 'Update',
+  projectId: 'proj-1', githubOrg: 'acme-corp', githubRepo: 'infra.repo', branch: 'feature/cloudbuilder-1', commitMessage: 'Update',
   createPullRequest: false, githubToken: TOKEN,
   nodes: [{ id: 'n1', resourceType: 'aws_s3', provider: 'aws', label: 'Assets', position: { x: 0, y: 0 }, config: {} }], edges: [],
 };

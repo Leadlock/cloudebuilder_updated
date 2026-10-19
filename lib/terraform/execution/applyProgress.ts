@@ -215,7 +215,7 @@ export interface RunProgressRecord extends ProgressData {
   error?: string;
 }
 
-const runsDir = () => process.env['CLOUDCRAFT_RUNS_DIR'] || path.join(tmpdir(), 'cloudcraft-runs');
+const runsDir = () => process.env['CLOUDBUILDER_RUNS_DIR'] || path.join(tmpdir(), 'cloudbuilder-runs');
 const safeName = (s: string) => s.replace(/[^A-Za-z0-9_-]/g, '_');
 const KEEP_MS = 7 * 24 * 60 * 60 * 1000;
 

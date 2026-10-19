@@ -78,7 +78,7 @@ data "azurerm_client_config" "current" {}
 
 locals {
   tags = {
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
     App       = var.app_name
   }
   slug       = replace(replace(var.app_name, "-", ""), "_", "")

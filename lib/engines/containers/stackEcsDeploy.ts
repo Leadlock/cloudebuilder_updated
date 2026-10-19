@@ -161,7 +161,7 @@ locals {
   vpc_id = var.vpc_id == "" ? data.aws_vpc.default[0].id : var.vpc_id
   tags = {
     Name      = var.app_name
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
   # The services that are built from source, one image repository each.
   built = [${built.map((l) => `"${l}"`).join(', ')}]

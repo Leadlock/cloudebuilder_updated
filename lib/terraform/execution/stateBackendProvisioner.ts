@@ -40,7 +40,7 @@ export interface AwsClients { s3: Sender; ddb: Sender; sts: Sender; waitForTable
 
 /** S3 bucket names are global across all of AWS, so a generic name ("terraform-state") is almost always taken. */
 export function defaultBucketName(awsAccountId: string, region: string): string {
-  return `cloudcraft-tfstate-${awsAccountId}-${region}`.toLowerCase().slice(0, 63).replace(/-+$/, '');
+  return `cloudbuilder-tfstate-${awsAccountId}-${region}`.toLowerCase().slice(0, 63).replace(/-+$/, '');
 }
 
 const errName = (e: unknown): string => (e as { name?: string })?.name ?? '';
@@ -119,9 +119,9 @@ export async function ensureAwsStateBackend(
       }),
     }));
     steps.push({ what: 'Bucket is private, versioned, encrypted and TLS-only', outcome: exists ? 'already-exists' : 'created' });
-    // Tags make it findable later (AWS Tag Editor: ManagedBy = CloudCraft). Best effort: an older role policy without this action is fine.
+    // Tags make it findable later (AWS Tag Editor: ManagedBy = CloudBuilder). Best effort: an older role policy without this action is fine.
     try {
-      await clients.s3.send(new PutBucketTaggingCommand({ Bucket: bucket, Tagging: { TagSet: [{ Key: 'ManagedBy', Value: 'CloudCraft' }, { Key: 'Purpose', Value: 'terraform-state' }] } }));
+      await clients.s3.send(new PutBucketTaggingCommand({ Bucket: bucket, Tagging: { TagSet: [{ Key: 'ManagedBy', Value: 'CloudBuilder' }, { Key: 'Purpose', Value: 'terraform-state' }] } }));
     } catch { /* tagging is optional */ }
   } catch (e) {
     if (errName(e) === 'AccessDenied' || errStatus(e) === 403) throw explainAwsAccessDenied('s3:PutBucket* (securing the bucket)');
@@ -164,18 +164,20 @@ export async function ensureAwsStateBackend(
 
 export interface StateDeleteResult { bucket: string; deletedObjects: number; steps: { what: string; outcome: 'deleted' | 'already-gone' }[] }
 
+/** Buckets made while the product was called CloudCraft carry that name and tag, and are still ours to delete. */
+const LEGACY_AND_CURRENT_PREFIXES = [STATE_BUCKET_PREFIX, 'cloudcraft-tfstate-'];
 const BUCKET_NAME = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
 const MAX_STATE_BYTES = 20 * 1024 * 1024;
 
 /**
  * Deletes a state bucket CloudBuilder created, with everything in it (every version of every object). It refuses, and deletes nothing, unless
- *  - the name carries CloudBuilder's prefix and the bucket is tagged ManagedBy=CloudCraft, Purpose=terraform-state (so it is never a bucket somebody else made), and
+ *  - the name carries CloudBuilder's prefix and the bucket is tagged ManagedBy=CloudBuilder, Purpose=terraform-state (so it is never a bucket somebody else made), and
  *  - no Terraform state file in it still records a resource (deleting it would orphan what that state created: remove those with "Remove everything" first).
  * An already-missing bucket is a success.
  */
 export async function deleteAwsStateBackend(backend: { bucket: string }, clients: Pick<AwsClients, 's3'>): Promise<StateDeleteResult> {
   const bucket = backend.bucket.trim();
-  if (!BUCKET_NAME.test(bucket) || !bucket.startsWith(STATE_BUCKET_PREFIX)) {
+  if (!BUCKET_NAME.test(bucket) || !LEGACY_AND_CURRENT_PREFIXES.some((p) => bucket.startsWith(p))) {
     throw new StateBackendError(`Only buckets named ${STATE_BUCKET_PREFIX}* are deleted here. Delete any other bucket in the AWS console.`);
   }
   const s3 = clients.s3;
@@ -193,8 +195,8 @@ export async function deleteAwsStateBackend(backend: { bucket: string }, clients
     if (errName(e) !== 'NoSuchTagSet') throw e;
   }
   const tag = (k: string) => tags.find((t) => t.Key === k)?.Value;
-  if (tag('ManagedBy') !== 'CloudCraft' || tag('Purpose') !== 'terraform-state') {
-    throw new StateBackendError(`${bucket} was not created by CloudBuilder's "Create state storage" (it has no ManagedBy=CloudCraft tag), so it is not deleted here. Delete it in the AWS console if you are sure.`);
+  if (!['CloudBuilder', 'CloudCraft'].includes(tag('ManagedBy') ?? '') || tag('Purpose') !== 'terraform-state') {
+    throw new StateBackendError(`${bucket} was not created by CloudBuilder's "Create state storage" (it has no ManagedBy=CloudBuilder tag), so it is not deleted here. Delete it in the AWS console if you are sure.`);
   }
 
   // Everything in it, every version and delete marker; and a look at each state file for resources it still records.

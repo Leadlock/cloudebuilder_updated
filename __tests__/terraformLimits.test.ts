@@ -13,7 +13,7 @@ import { GET as statusGet, _clearStatusAccessCacheForTests } from '@/app/api/pro
 
 const env = process.env as Record<string, string | undefined>;
 const saved: Record<string, string | undefined> = {};
-const KEYS = ['CLOUDCRAFT_TERRAFORM_PLANS_PER_WINDOW', 'CLOUDCRAFT_TERRAFORM_PLAN_WINDOW_MINUTES', 'CLOUDCRAFT_TERRAFORM_ORG_IDS', 'CLOUDCRAFT_TERRAFORM_DISABLED'];
+const KEYS = ['CLOUDBUILDER_TERRAFORM_PLANS_PER_WINDOW', 'CLOUDBUILDER_TERRAFORM_PLAN_WINDOW_MINUTES', 'CLOUDBUILDER_TERRAFORM_ORG_IDS', 'CLOUDBUILDER_TERRAFORM_DISABLED'];
 beforeEach(() => { KEYS.forEach((k) => { saved[k] = env[k]; delete env[k]; }); });
 afterEach(() => { KEYS.forEach((k) => { if (saved[k] === undefined) delete env[k]; else env[k] = saved[k]; }); });
 
@@ -49,11 +49,11 @@ describe('planLimit', () => {
     expect(planLimit()).toEqual({ limit: 6, windowMs: 600_000, windowMinutes: 10 });
   });
   it('can be adjusted by the operator, and ignores nonsense values', () => {
-    env.CLOUDCRAFT_TERRAFORM_PLANS_PER_WINDOW = '12'; env.CLOUDCRAFT_TERRAFORM_PLAN_WINDOW_MINUTES = '30';
+    env.CLOUDBUILDER_TERRAFORM_PLANS_PER_WINDOW = '12'; env.CLOUDBUILDER_TERRAFORM_PLAN_WINDOW_MINUTES = '30';
     expect(planLimit()).toEqual({ limit: 12, windowMs: 1_800_000, windowMinutes: 30 });
-    env.CLOUDCRAFT_TERRAFORM_PLANS_PER_WINDOW = '0'; env.CLOUDCRAFT_TERRAFORM_PLAN_WINDOW_MINUTES = 'abc';
+    env.CLOUDBUILDER_TERRAFORM_PLANS_PER_WINDOW = '0'; env.CLOUDBUILDER_TERRAFORM_PLAN_WINDOW_MINUTES = 'abc';
     expect(planLimit()).toEqual({ limit: 6, windowMs: 600_000, windowMinutes: 10 });
-    env.CLOUDCRAFT_TERRAFORM_PLANS_PER_WINDOW = '-3'; env.CLOUDCRAFT_TERRAFORM_PLAN_WINDOW_MINUTES = '1.5';
+    env.CLOUDBUILDER_TERRAFORM_PLANS_PER_WINDOW = '-3'; env.CLOUDBUILDER_TERRAFORM_PLAN_WINDOW_MINUTES = '1.5';
     expect(planLimit().limit).toBe(6);
   });
 });
@@ -90,14 +90,14 @@ describe('GET /api/projects/[id]/terraform/status', () => {
     expect(body.data.enabled).toBe(false);
     expect(body.data.reason).toMatch(/not enabled/i);
     _clearStatusAccessCacheForTests();                       // the server's settings just changed; a real change shows within 30 s
-    env.CLOUDCRAFT_TERRAFORM_ORG_IDS = 'org-s'; env.CLOUDCRAFT_TERRAFORM_DISABLED = '1';
+    env.CLOUDBUILDER_TERRAFORM_ORG_IDS = 'org-s'; env.CLOUDBUILDER_TERRAFORM_DISABLED = '1';
     const off = await (await call()).json() as { data: { enabled: boolean; reason?: string } };
     expect(off.data.reason).toMatch(/switched off/i);
   });
 
   it('reports plans left and the countdown for this user, and never uses any of the budget', async () => {
     signedIn('u-count');
-    env.CLOUDCRAFT_TERRAFORM_ORG_IDS = 'org-s';
+    env.CLOUDBUILDER_TERRAFORM_ORG_IDS = 'org-s';
     const { limit, windowMs } = planLimit();
     await checkRateLimit(planRateKey('u-count'), limit, windowMs); await checkRateLimit(planRateKey('u-count'), limit, windowMs);
     for (let i = 0; i < 4; i++) {
@@ -109,7 +109,7 @@ describe('GET /api/projects/[id]/terraform/status', () => {
   });
 
   it('remembers a successful access check for a short time (the panel polls every 20 s), but never a refusal, and always reads the numbers fresh', async () => {
-    signedIn('u-cache'); env.CLOUDCRAFT_TERRAFORM_ORG_IDS = 'org-s';
+    signedIn('u-cache'); env.CLOUDBUILDER_TERRAFORM_ORG_IDS = 'org-s';
     const id = `proj-cache-${Date.now()}`;
     expect((await call(id)).status).toBe(200);
     expect(mockResolveOrg).toHaveBeenCalledTimes(1);
@@ -127,7 +127,7 @@ describe('GET /api/projects/[id]/terraform/status', () => {
 
   it('shows whether an apply is running for this project, and only this project', async () => {
     signedIn('u-apply');
-    env.CLOUDCRAFT_TERRAFORM_ORG_IDS = 'org-s';
+    env.CLOUDBUILDER_TERRAFORM_ORG_IDS = 'org-s';
     const id = `proj-running-${Date.now()}`;
     expect((await (await call(id)).json() as { data: { applyRunning: boolean } }).data.applyRunning).toBe(false);
     acquireProjectLock(id);

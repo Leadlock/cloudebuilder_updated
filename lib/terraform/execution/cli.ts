@@ -44,7 +44,7 @@ export interface TerraformRunOptions {
 
 /** Where downloaded providers are shared between runs, so each `init` does not fetch the (large) cloud provider again. */
 export function pluginCacheDir(): string {
-  return process.env['CLOUDCRAFT_TF_PLUGIN_CACHE_DIR'] || path.join(os.tmpdir(), 'cloudcraft-tf-plugin-cache');
+  return process.env['CLOUDBUILDER_TF_PLUGIN_CACHE_DIR'] || path.join(os.tmpdir(), 'cloudbuilder-tf-plugin-cache');
 }
 
 // Terraform's plugin cache is not safe for two `init`s at once in one cache, so inits in this process take turns.

@@ -130,7 +130,7 @@ function createAwsTemplate(spec: AwsTemplateSpec): ArchitectureTemplate {
 
       // Edge Layer
       if (spec.useDns) {
-        nodes.push(n(`${spec.id}-r53`, 'aws_route53', 'aws', 'Route 53 DNS', 80, 70, { domainName: 'cloudcraft.io' }, `${spec.id}-cloud`));
+        nodes.push(n(`${spec.id}-r53`, 'aws_route53', 'aws', 'Route 53 DNS', 80, 70, { domainName: 'cloudbuilder.io' }, `${spec.id}-cloud`));
       }
       if (spec.useCdn) {
         nodes.push(n(`${spec.id}-cf`, 'aws_cloudfront', 'aws', 'CloudFront Global CDN', 320, 70, { priceClass: 'PriceClass_100' }, `${spec.id}-cloud`));
@@ -926,7 +926,7 @@ if (legacyAwsProdIdx !== -1) {
     generate(_opts: TemplateGenerateOptions = {}) {
       const nodes: CanvasNode[] = [
         n('aws-cloud', 'aws_cloud_boundary', 'aws', 'Amazon Web Services (us-east-1)', 30, 20, { region: 'us-east-1' }, undefined, 1460, 1140),
-        n('r53', 'aws_route53', 'aws', 'Route 53 DNS', 200, 70, { domainName: 'cloudcraft.app' }, 'aws-cloud'),
+        n('r53', 'aws_route53', 'aws', 'Route 53 DNS', 200, 70, { domainName: 'cloudbuilder.app' }, 'aws-cloud'),
         n('cf', 'aws_cloudfront', 'aws', 'CloudFront CDN', 450, 70, { priceClass: 'PriceClass_100' }, 'aws-cloud'),
         n('waf', 'aws_waf', 'aws', 'AWS WAF', 700, 70, { scope: 'CLOUDFRONT', defaultAction: 'ALLOW' }, 'aws-cloud'),
         n('vpc', 'aws_vpc', 'aws', 'Production VPC (10.0.0.0/16)', 70, 210, { cidrBlock: '10.0.0.0/16', enableDnsSupport: true, enableDnsHostnames: true }, 'aws-cloud', 1050, 890),

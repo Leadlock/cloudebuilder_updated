@@ -7,10 +7,10 @@ import { checkRateLimit, peekRateLimit, resetRateLimit } from '@/lib/api/rateLim
 import { _setSharedDbForTests, sharedStoreEnabled, type Queryable } from '@/lib/api/sharedStore';
 
 const env = process.env as Record<string, string | undefined>;
-const saved = { mode: env['CLOUDCRAFT_SHARED_STORE'], url: env['DATABASE_URL'], node: env['NODE_ENV'] };
+const saved = { mode: env['CLOUDBUILDER_SHARED_STORE'], url: env['DATABASE_URL'], node: env['NODE_ENV'] };
 afterEach(() => {
   _setSharedDbForTests(null);
-  for (const [k, v] of [['CLOUDCRAFT_SHARED_STORE', saved.mode], ['DATABASE_URL', saved.url], ['NODE_ENV', saved.node]] as const) { if (v === undefined) delete env[k]; else env[k] = v; }
+  for (const [k, v] of [['CLOUDBUILDER_SHARED_STORE', saved.mode], ['DATABASE_URL', saved.url], ['NODE_ENV', saved.node]] as const) { if (v === undefined) delete env[k]; else env[k] = v; }
 });
 
 describe('checkRateLimit (in-process)', () => {
@@ -51,14 +51,14 @@ describe('checkRateLimit (in-process)', () => {
 });
 
 describe('sharedStoreEnabled', () => {
-  it('is off in development and tests, on in production, and follows CLOUDCRAFT_SHARED_STORE', () => {
+  it('is off in development and tests, on in production, and follows CLOUDBUILDER_SHARED_STORE', () => {
     env['DATABASE_URL'] = 'postgres://x/y';
-    delete env['CLOUDCRAFT_SHARED_STORE'];
+    delete env['CLOUDBUILDER_SHARED_STORE'];
     env['NODE_ENV'] = 'test'; expect(sharedStoreEnabled()).toBe(false);
     env['NODE_ENV'] = 'development'; expect(sharedStoreEnabled()).toBe(false);
     env['NODE_ENV'] = 'production'; expect(sharedStoreEnabled()).toBe(true);
-    env['CLOUDCRAFT_SHARED_STORE'] = 'memory'; expect(sharedStoreEnabled()).toBe(false);
-    env['NODE_ENV'] = 'development'; env['CLOUDCRAFT_SHARED_STORE'] = 'db'; expect(sharedStoreEnabled()).toBe(true);
+    env['CLOUDBUILDER_SHARED_STORE'] = 'memory'; expect(sharedStoreEnabled()).toBe(false);
+    env['NODE_ENV'] = 'development'; env['CLOUDBUILDER_SHARED_STORE'] = 'db'; expect(sharedStoreEnabled()).toBe(true);
     delete env['DATABASE_URL']; expect(sharedStoreEnabled()).toBe(false);          // nothing to connect to
   });
 });

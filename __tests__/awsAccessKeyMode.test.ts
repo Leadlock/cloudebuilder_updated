@@ -48,7 +48,7 @@ import { POST as validatePost } from '@/app/api/cloud-accounts/[id]/validate/rou
 const KEY_ID = 'AKIAIOSFODNN7EXAMPLE';
 const SECRET = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY';      // 40 characters
 const keys = { accessKeyId: KEY_ID, secretAccessKey: SECRET, region: 'us-east-1' };
-const role = { roleArn: 'arn:aws:iam::123456789012:role/CloudCraftReadOnly', externalId: 'abc123', region: 'us-east-1' };
+const role = { roleArn: 'arn:aws:iam::123456789012:role/CloudBuilderReadOnly', externalId: 'abc123', region: 'us-east-1' };
 const azure = { tenantId: 'a'.repeat(8) + '-aaaa-aaaa-aaaa-' + 'a'.repeat(12), clientId: 'b'.repeat(8) + '-bbbb-bbbb-bbbb-' + 'b'.repeat(12), clientSecret: 's', subscriptionId: 'c'.repeat(8) + '-cccc-cccc-cccc-' + 'c'.repeat(12) };
 
 describe('credential kinds', () => {
@@ -116,7 +116,7 @@ describe('the AWS adapter with an access key', () => {
   beforeEach(() => { mockStsSend.mockReset(); mockEc2Send.mockReset(); stsConstructed.length = 0; });
 
   it('signs in with the key directly: nothing to assume, no AWS identity needed on the server', async () => {
-    mockStsSend.mockResolvedValue({ Account: '123456789012', Arn: 'arn:aws:iam::123456789012:user/cloudcraft-readonly', UserId: 'AIDAEXAMPLE' });
+    mockStsSend.mockResolvedValue({ Account: '123456789012', Arn: 'arn:aws:iam::123456789012:user/cloudbuilder-readonly', UserId: 'AIDAEXAMPLE' });
     mockEc2Send.mockResolvedValue({ Vpcs: [] });
     const adapter = new AwsDiscoveryAdapter(keys);
     const result = await adapter.validateAccount();
@@ -182,7 +182,7 @@ describe('POST /api/cloud-accounts/[id]/validate for an access-key account', () 
   });
 
   it('a working key makes the account active and keeps "access-key" with it, so the app knows what it may be used for', async () => {
-    mockStsSend.mockResolvedValue({ Account: '123456789012', Arn: 'arn:aws:iam::123456789012:user/cloudcraft-readonly', UserId: 'AIDAEXAMPLE' });
+    mockStsSend.mockResolvedValue({ Account: '123456789012', Arn: 'arn:aws:iam::123456789012:user/cloudbuilder-readonly', UserId: 'AIDAEXAMPLE' });
     mockEc2Send.mockResolvedValue({ Vpcs: [] });
     const res = await call();
     expect(((await res.json()).data as { valid: boolean }).valid).toBe(true);

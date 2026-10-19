@@ -3,7 +3,7 @@
  *
  * A person who sees a number that does not fit can send the line with a note. Each report keeps what is needed to reproduce the problem (the
  * service, region, price, where the price came from, and the assumptions behind it) and nothing about the account: no credentials, no email.
- * Reports are appended to a file under .cloudcraft-data (override with CLOUDCRAFT_PRICE_REPORTS_FILE), one JSON object per line, so a report
+ * Reports are appended to a file under .cloudbuilder-data (override with CLOUDBUILDER_PRICE_REPORTS_FILE), one JSON object per line, so a report
  * can be turned into a reference test and survives a restart.
  */
 import { appendFile, mkdir, readFile } from 'fs/promises';
@@ -29,7 +29,7 @@ export interface PriceReport {
 
 export type NewPriceReport = Omit<PriceReport, 'id' | 'at'>;
 
-const reportsFile = (): string => process.env['CLOUDCRAFT_PRICE_REPORTS_FILE'] || path.join(process.cwd(), '.cloudcraft-data', 'price-reports.jsonl');
+const reportsFile = (): string => process.env['CLOUDBUILDER_PRICE_REPORTS_FILE'] || path.join(process.cwd(), '.cloudbuilder-data', 'price-reports.jsonl');
 
 /** Keeps a free-text note short and on one line of plain text. */
 export function cleanNote(note: string): string {

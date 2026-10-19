@@ -41,7 +41,7 @@ export async function confirmWithPassword(
   const checked = await deps.checkPassword(input.userId, input.password);
   if (checked === 'unavailable') return { ok: false, code: 'unavailable', message: 'Could not check your password right now (the sign-in service did not answer). Try again in a minute.' };
   if (checked === 'none') {
-    return { ok: false, code: 'no_password', message: 'Your account has no password to confirm with (you may have signed in another way). Ask the server operator to set CLOUDCRAFT_TERRAFORM_APPROVAL=self-ok, or sign in with an email and password.' };
+    return { ok: false, code: 'no_password', message: 'Your account has no password to confirm with (you may have signed in another way). Ask the server operator to set CLOUDBUILDER_TERRAFORM_APPROVAL=self-ok, or sign in with an email and password.' };
   }
   if (checked !== 'ok') {
     const after = await checkRateLimit(key(input.userId), PASSWORD_TRIES.limit, PASSWORD_TRIES.windowMs);   // counts this failure

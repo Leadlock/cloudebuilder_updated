@@ -21,7 +21,7 @@ export default function GitOpsPanel({ projectId, architectureId, nodes, edges, o
   const [error, setError] = useState<string | null>(null);
 
   // Form state
-  const [githubOrg, setGithubOrg] = useState('cloudcraft-deployments');
+  const [githubOrg, setGithubOrg] = useState('cloudbuilder-deployments');
   const [githubRepo, setGithubRepo] = useState('infrastructure-live');
   const [branch, setBranch] = useState('main');
   const [commitMessage, setCommitMessage] = useState('feat: update architecture from CloudBuilder');

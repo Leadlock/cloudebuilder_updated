@@ -43,7 +43,7 @@ describe('terraformSecretVars', () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { spawnSync } = require('child_process') as typeof import('child_process');
     // grep exits 1 when it finds nothing, which is the passing case.
-    const r = spawnSync('grep', ['-rIlE', 'Pass123!|cloudcraft@admin', 'lib', 'app', 'components', 'workers', 'scripts'], { encoding: 'utf8' });
+    const r = spawnSync('grep', ['-rIlE', 'Pass123!|cloudbuilder@admin', 'lib', 'app', 'components', 'workers', 'scripts'], { encoding: 'utf8' });
     expect(r.status === 0 || r.status === 1).toBe(true);
     const hits = r.stdout.split('\n').filter(Boolean);
     expect(hits).toEqual([]);

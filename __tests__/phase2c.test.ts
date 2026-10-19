@@ -132,7 +132,7 @@ jest.mock('@aws-sdk/client-sts', () => ({
       if (name === 'GetCallerIdentityCommand') {
         return Promise.resolve({
           Account: '123456789012',
-          Arn: 'arn:aws:sts::123456789012:assumed-role/CloudCraftReadOnly/cloudcraft-discovery',
+          Arn: 'arn:aws:sts::123456789012:assumed-role/CloudBuilderReadOnly/cloudcraft-discovery',
           UserId: 'AROATEST:cloudcraft-discovery',
         });
       }
@@ -879,7 +879,7 @@ async function seedOrg() {
   return { orgId, userId };
 }
 
-const awsCreds = { roleArn: 'arn:aws:iam::123456789012:role/CloudCraftReadOnly', externalId: 'ext-secret', region: 'us-east-1' };
+const awsCreds = { roleArn: 'arn:aws:iam::123456789012:role/CloudBuilderReadOnly', externalId: 'ext-secret', region: 'us-east-1' };
 const azureCreds = { tenantId: 'tenant-1', clientId: 'client-1', clientSecret: 'supersecret', subscriptionId: 'sub-1' };
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -1659,7 +1659,7 @@ describe('Input validation — AWS credentials schema', () => {
 
   it('accepts a valid AWS role ARN', () => {
     expect(AwsSchema.safeParse({
-      roleArn: 'arn:aws:iam::123456789012:role/CloudCraftReadOnly',
+      roleArn: 'arn:aws:iam::123456789012:role/CloudBuilderReadOnly',
       externalId: 'ext-secret',
       region: 'us-east-1',
     }).success).toBe(true);
@@ -1685,7 +1685,7 @@ describe('Input validation — AWS credentials schema', () => {
 
   it('rejects an externalId with leading whitespace', () => {
     const result = AwsSchema.safeParse({
-      roleArn: 'arn:aws:iam::123456789012:role/CloudCraftReadOnly',
+      roleArn: 'arn:aws:iam::123456789012:role/CloudBuilderReadOnly',
       externalId: ' leading-space',
       region: 'us-east-1',
     });
@@ -1694,7 +1694,7 @@ describe('Input validation — AWS credentials schema', () => {
 
   it('rejects an externalId that is too short (1 char)', () => {
     const result = AwsSchema.safeParse({
-      roleArn: 'arn:aws:iam::123456789012:role/CloudCraftReadOnly',
+      roleArn: 'arn:aws:iam::123456789012:role/CloudBuilderReadOnly',
       externalId: 'x',
       region: 'us-east-1',
     });
@@ -1703,7 +1703,7 @@ describe('Input validation — AWS credentials schema', () => {
 
   it('rejects a malformed AWS region', () => {
     const result = AwsSchema.safeParse({
-      roleArn: 'arn:aws:iam::123456789012:role/CloudCraftReadOnly',
+      roleArn: 'arn:aws:iam::123456789012:role/CloudBuilderReadOnly',
       externalId: 'ext-secret',
       region: 'not-a-region',
     });
@@ -1712,7 +1712,7 @@ describe('Input validation — AWS credentials schema', () => {
 
   it('rejects region containing injection characters', () => {
     const result = AwsSchema.safeParse({
-      roleArn: 'arn:aws:iam::123456789012:role/CloudCraftReadOnly',
+      roleArn: 'arn:aws:iam::123456789012:role/CloudBuilderReadOnly',
       externalId: 'ext-secret',
       region: 'us-east-1; DROP TABLE',
     });
@@ -1770,7 +1770,7 @@ describe('Input validation — AWS credentials schema', () => {
 
   it('rejects more than 20 additionalRegions', () => {
     const result = AwsSchema.safeParse({
-      roleArn: 'arn:aws:iam::123456789012:role/CloudCraftReadOnly',
+      roleArn: 'arn:aws:iam::123456789012:role/CloudBuilderReadOnly',
       externalId: 'ext-secret',
       region: 'us-east-1',
       additionalRegions: Array.from({ length: 21 }, () => 'us-east-1'),

@@ -7,8 +7,8 @@
  *  - unexpected-types   only resource types CloudBuilder's generator can produce
  *  - iam-admin          no administrator-style IAM (`*` on `*`, AdministratorAccess)
  *  - public-exposure    no world-open admin ports, public databases or public buckets
- *  - region             provider region within CLOUDCRAFT_TERRAFORM_ALLOWED_REGIONS (when that is set)
- *  - size               no more than CLOUDCRAFT_TERRAFORM_MAX_RESOURCES creates/updates per run (default 200)
+ *  - region             provider region within CLOUDBUILDER_TERRAFORM_ALLOWED_REGIONS (when that is set)
+ *  - size               no more than CLOUDBUILDER_TERRAFORM_MAX_RESOURCES creates/updates per run (default 200)
  *
  * Destroy actions are refused separately by the executor. The result is stored on the plan and shown to the approver.
  */
@@ -41,8 +41,8 @@ export interface GuardrailOptions { maxResources?: number; allowedRegions?: stri
 
 const envList = (name: string): string[] => (process.env[name] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 export function guardrailOptionsFromEnv(): GuardrailOptions {
-  const max = Number(process.env.CLOUDCRAFT_TERRAFORM_MAX_RESOURCES);
-  return { maxResources: Number.isFinite(max) && max > 0 ? max : 200, allowedRegions: envList('CLOUDCRAFT_TERRAFORM_ALLOWED_REGIONS') };
+  const max = Number(process.env.CLOUDBUILDER_TERRAFORM_MAX_RESOURCES);
+  return { maxResources: Number.isFinite(max) && max > 0 ? max : 200, allowedRegions: envList('CLOUDBUILDER_TERRAFORM_ALLOWED_REGIONS') };
 }
 
 const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : v === undefined || v === null ? [] : [v]);

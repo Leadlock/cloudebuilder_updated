@@ -3,7 +3,7 @@ import { explainTerraformError } from '@/lib/terraform/execution/errorHints';
 const RG = `terraform destroy failed (exit 1): Error: deleting Resource Group "production_resource_group": the Resource Group still contains Resources. Terraform is configured to check for Resources within the Resource Group when deleting the Resource Group - and raise an error if nested Resources still exist. Terraform has detected that the following Resources still exist within the Resource Group: * \`/subscriptions/40ba1da4-7522-41de-b5e5-cfa1098bb7b1/resourceGroups/production_resource_group/providers/Microsoft.Cache/Redis/azure-cache-for-redis-kvagqt\` This feature is intended to avoid the unintentional destruction`;
 const DNS = 'terraform destroy failed (exit 1): Error: populating Resource Provider cache: listing Resource Providers: loading results: Get "https://management.azure.com/subscriptions/x/providers": dial tcp: lookup management.azure.com: getaddrinfow: This is usually a temporary error during hostname resolution';
 const LOCK = 'The remote state is locked by LAPTOP-G4Q1LCQB\\Lenovo@LAPTOP-G4Q1LCQB (running: OperationTypeApply), since 2026-10-01 11:30 UTC (4 min ago). Terraform said: Error acquiring the state lock Lock Info: ID: b62dca92-6904-8aff-9c92-38241bd68610 Path: tfstate/x Operation: OperationTypeApply Who: LAPTOP-G4Q1LCQB\\Lenovo@LAPTOP-G4Q1LCQB Version: 1.16.4 Created: 2026-10-01 11:30:50.6885795 +0000 UTC Info:';
-const UNDECLARED = 'Error: Reference to undeclared resource on outputs.tf line 3, in output "cloudcraft_storage_account_name": value = azurerm_storage_account.cloudcraft.name A managed resource "azurerm_storage_account" "cloudcraft" has not been declared';
+const UNDECLARED = 'Error: Reference to undeclared resource on outputs.tf line 3, in output "cloudbuilder_storage_account_name": value = azurerm_storage_account.cloudbuilder.name A managed resource "azurerm_storage_account" "cloudbuilder" has not been declared';
 
 describe('explainTerraformError', () => {
   it('explains the leftover-resources error from a real Azure teardown and names the resource', () => {
@@ -68,8 +68,8 @@ describe('the AWS plugin not starting is a busy computer, not a bad design', () 
     expect(e.kind).toBe('plugin-start');
     expect(e.title).toMatch(/too busy/);
     expect(e.summary).toMatch(/design is fine/);
-    expect(e.steps.join(' ')).toMatch(/cloudcraft-tf-plugin-cache/);
-    expect(e.steps.join(' ')).toContain('$env:TEMP\\cloudcraft-tf-plugin-cache');       // the backslash survives
+    expect(e.steps.join(' ')).toMatch(/cloudbuilder-tf-plugin-cache/);
+    expect(e.steps.join(' ')).toContain('$env:TEMP\\cloudbuilder-tf-plugin-cache');       // the backslash survives
     expect(e.steps.join(' ')).toMatch(/may still cost money/);
   });
 
@@ -92,7 +92,7 @@ describe('Terraform that could not be downloaded', () => {
     expect(e.summary).toContain('downloads Terraform by itself');
     expect(e.summary).toContain('getaddrinfo ENOTFOUND');
     const steps = e.steps.join(' ');
-    for (const part of ['releases.hashicorp.com', 'CLOUDCRAFT_TERRAFORM_MIRROR', 'TERRAFORM_BINARY_PATH']) expect(steps).toContain(part);
+    for (const part of ['releases.hashicorp.com', 'CLOUDBUILDER_TERRAFORM_MIRROR', 'TERRAFORM_BINARY_PATH']) expect(steps).toContain(part);
   });
   it('keeps the old wording when no download was involved', () => {
     expect(explainTerraformError('The `terraform` CLI is not installed or not on PATH.')!.title).toBe('Terraform is not installed on the server');

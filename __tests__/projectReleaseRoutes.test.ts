@@ -110,7 +110,7 @@ const OUT = { resourceGroup: 'rg-shop', vmName: 'vm-shop', acrName: 'acrshop', v
 
 beforeEach(() => {
   [mockIdentity, mockOrgRole, mockResolveOrg, mockResolveArch, mockDenied, mockAudit, mockRate, mockVerify, mockEnqueue, mockPlanRelease, mockOpsFor, mockPrepareDestroy, mockStartDestroy, mockPeekDestroy, ...Object.values(A)].forEach((m) => m.mockReset());
-  process.env['CLOUDCRAFT_PROJECT_RELEASES'] = '1';
+  process.env['CLOUDBUILDER_PROJECT_RELEASES'] = '1';
   projectId = `proj-rel-${++n}`;
   mockResolveOrg.mockResolvedValue('org-1'); mockResolveArch.mockResolvedValue({ arch: {}, project: {} });
   mockDenied.mockResolvedValue(null);
@@ -122,7 +122,7 @@ beforeEach(() => {
   A.giveBack.mockResolvedValue(undefined);
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(() => { releaseProjectLock(projectId); delete process.env['CLOUDCRAFT_PROJECT_RELEASES']; });
+afterEach(() => { releaseProjectLock(projectId); delete process.env['CLOUDBUILDER_PROJECT_RELEASES']; });
 
 describe('the gates in front of every release route', () => {
   const calls: Array<[string, () => Promise<Response>]> = [
@@ -138,7 +138,7 @@ describe('the gates in front of every release route', () => {
   ];
 
   test.each(calls)('%s: switched off by default', async (_n, call) => {
-    delete process.env['CLOUDCRAFT_PROJECT_RELEASES'];
+    delete process.env['CLOUDBUILDER_PROJECT_RELEASES'];
     expect((await call()).status).toBe(503);
     expect(mockPlanRelease).not.toHaveBeenCalled();
   });

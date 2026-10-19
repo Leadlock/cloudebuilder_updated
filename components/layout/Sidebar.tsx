@@ -82,7 +82,7 @@ export default function Sidebar() {
   // Load persisted width on mount
   useEffect(() => {
     try {
-      const savedWidth = localStorage.getItem('cloudcraft_sidebar_width');
+      const savedWidth = localStorage.getItem('cloudbuilder_sidebar_width');
       if (savedWidth) {
         const num = parseInt(savedWidth, 10);
         if (num >= 180 && num <= 480) {
@@ -104,7 +104,7 @@ export default function Sidebar() {
     const handleMouseUp = () => {
       setIsResizing(false);
       try {
-        localStorage.setItem('cloudcraft_sidebar_width', widthRef.current.toString());
+        localStorage.setItem('cloudbuilder_sidebar_width', widthRef.current.toString());
       } catch {}
     };
 
@@ -139,7 +139,7 @@ export default function Sidebar() {
   const handleLogout = async () => {
     try {
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('cloudcraft_demo_user');
+        localStorage.removeItem('cloudbuilder_demo_user');
       }
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
       dispatch({ type: 'SET_USER', user: null });

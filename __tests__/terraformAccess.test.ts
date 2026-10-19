@@ -41,7 +41,7 @@ import { statusAccessCache } from '@/lib/api/accessCache';
 import { _resetOperatorCacheForTests } from '@/lib/terraform/access/operators';
 
 const GOOD_KEY = 'a'.repeat(32) + 'b'.repeat(16) + 'c'.repeat(16);
-const ENV_KEYS = ['CLOUDCRAFT_ALLOW_TEST_AUTH_HEADERS', 'CLOUDCRAFT_OPERATOR_EMAILS', 'CLOUDCRAFT_TERRAFORM_AUTO_APPROVE', 'CLOUDCRAFT_TERRAFORM_ORG_IDS', 'ENCRYPTION_KEY', 'CLOUDCRAFT_DEV_SHORTCUTS'];
+const ENV_KEYS = ['CLOUDBUILDER_ALLOW_TEST_AUTH_HEADERS', 'CLOUDBUILDER_OPERATOR_EMAILS', 'CLOUDBUILDER_TERRAFORM_AUTO_APPROVE', 'CLOUDBUILDER_TERRAFORM_ORG_IDS', 'ENCRYPTION_KEY', 'CLOUDBUILDER_DEV_SHORTCUTS'];
 const saved: Record<string, string | undefined> = {};
 
 function seed() {
@@ -59,8 +59,8 @@ function seed() {
 }
 beforeEach(() => {
   for (const k of ENV_KEYS) { saved[k] = process.env[k]; delete process.env[k]; }
-  process.env['CLOUDCRAFT_ALLOW_TEST_AUTH_HEADERS'] = '1';
-  process.env['CLOUDCRAFT_OPERATOR_EMAILS'] = 'ops@platform.test, Boss@Platform.test';
+  process.env['CLOUDBUILDER_ALLOW_TEST_AUTH_HEADERS'] = '1';
+  process.env['CLOUDBUILDER_OPERATOR_EMAILS'] = 'ops@platform.test, Boss@Platform.test';
   process.env['ENCRYPTION_KEY'] = GOOD_KEY;
   _resetOperatorCacheForTests();
   seed();
@@ -99,14 +99,14 @@ describe('before anyone has asked', () => {
 
 describe('asking for access', () => {
   it('goes to an operator when the server has turned automatic approval off, even if every check passes', async () => {
-    process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'] = '0';
+    process.env['CLOUDBUILDER_TERRAFORM_AUTO_APPROVE'] = '0';
     const r = await json(await request());
     expect(r).toMatchObject({ status: 'requested', automatic: false });
     expect(await denied()).toMatch(/waiting for an operator/);
     expect(stores.TerraformAuditEvent.size).toBe(1);
   });
   it('is approved at once by default when every check passes, with nothing configured', async () => {
-    delete process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'];
+    delete process.env['CLOUDBUILDER_TERRAFORM_AUTO_APPROVE'];
     const r = await json(await request());
     expect(r).toMatchObject({ status: 'approved', automatic: true });
     expect(await denied()).toBeNull();
@@ -140,9 +140,9 @@ describe('asking for access', () => {
 
 describe('operators', () => {
   it('see requests first with the organization name, the person and the checks; nobody else can', async () => {
-    process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'] = '0';
+    process.env['CLOUDBUILDER_TERRAFORM_AUTO_APPROVE'] = '0';
     await request('owner-a', 'org-a');
-    delete process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'];
+    delete process.env['CLOUDBUILDER_TERRAFORM_AUTO_APPROVE'];
     await request('owner-b', 'org-b');
     const list = await json(await OPERATOR_LIST(req('GET', 'ops', { email: 'ops@platform.test', path: 'operator/terraform-access' })));
     expect(list.entries.map((e: { orgName: string; status: string }) => [e.orgName, e.status])).toEqual([['Acme', 'requested'], ['Bravo', 'approved']]);
@@ -155,7 +155,7 @@ describe('operators', () => {
     expect((await json(await GET(req('GET', 'ops', { org: 'org-b', email: 'BOSS@platform.test' })))).operator).toBe(true);
     expect((await json(await GET(req('GET', 'owner-a', { org: 'org-a', email: 'owner@acme.test' })))).operator).toBe(false);
     expect((await decide('org-a', { action: 'approve' }, 'owner@acme.test')).status).toBe(403);
-    delete process.env['CLOUDCRAFT_OPERATOR_EMAILS'];
+    delete process.env['CLOUDBUILDER_OPERATOR_EMAILS'];
     expect((await decide('org-a', { action: 'approve' })).status).toBe(403);
     expect(stores.TerraformAccess.size).toBe(0);
   });
@@ -167,7 +167,7 @@ describe('operators', () => {
     expect([...stores.TerraformAccess.values()][0]).toMatchObject({ status: 'approved', source: 'operator', decidedBy: 'ops@platform.test', note: 'trial customer' });
   });
   it('deny keeps it blocked with the reason, and the organization may ask again', async () => {
-    process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'] = '0';
+    process.env['CLOUDBUILDER_TERRAFORM_AUTO_APPROVE'] = '0';
     await request();
     await decide('org-a', { action: 'deny', note: 'please connect a test account first' });
     expect(await denied()).toMatch(/declined it: please connect a test account first/);
@@ -187,7 +187,7 @@ describe('operators', () => {
     expect(await denied()).toBeNull();
   });
   it('every decision and request is in the audit trail, with who did it', async () => {
-    process.env['CLOUDCRAFT_TERRAFORM_AUTO_APPROVE'] = '0';
+    process.env['CLOUDBUILDER_TERRAFORM_AUTO_APPROVE'] = '0';
     await request();
     await decide('org-a', { action: 'approve' });
     await decide('org-a', { action: 'revoke', note: 'x' });
@@ -205,13 +205,13 @@ describe('operators', () => {
 
 describe('what each state means to terraformExecutionDenied', () => {
   it('the server\'s own list still works as an override, and an approved organization still needs an owner or admin', async () => {
-    process.env['CLOUDCRAFT_TERRAFORM_ORG_IDS'] = 'org-a';
+    process.env['CLOUDBUILDER_TERRAFORM_ORG_IDS'] = 'org-a';
     expect(await denied('owner-a')).toBeNull();
     expect(await denied('member-a')).toMatch(/owner or admin/);
     expect((await json(await GET(req('GET', 'owner-a', { org: 'org-a' })))).status).toBe('approved');
     expect((await json(await GET(req('GET', 'owner-a', { org: 'org-a' })))).canRequest).toBe(false);
     await decide('org-a', { action: 'approve' });
-    delete process.env['CLOUDCRAFT_TERRAFORM_ORG_IDS'];
+    delete process.env['CLOUDBUILDER_TERRAFORM_ORG_IDS'];
     expect(await denied('member-a')).toMatch(/owner or admin/);
     expect(await denied('owner-a')).toBeNull();
   });
@@ -227,10 +227,10 @@ describe('what each state means to terraformExecutionDenied', () => {
 });
 
 describe('with nothing configured', () => {
-  const noOperatorList = () => { delete process.env['CLOUDCRAFT_OPERATOR_EMAILS']; _resetOperatorCacheForTests(); };
+  const noOperatorList = () => { delete process.env['CLOUDBUILDER_OPERATOR_EMAILS']; _resetOperatorCacheForTests(); };
   beforeEach(() => {
     noOperatorList();
-    stores.User.set('u0', { id: 'u0', email: 'dev@cloudcraft.local', createdAt: '2026-01-01T00:00:00Z' });
+    stores.User.set('u0', { id: 'u0', email: 'dev@cloudbuilder.local', createdAt: '2026-01-01T00:00:00Z' });
     stores.User.set('u1', { id: 'u1', email: 'First@Owner.test', createdAt: '2026-02-01T00:00:00Z' });
     stores.User.set('u2', { id: 'u2', email: 'later@customer.test', createdAt: '2026-03-01T00:00:00Z' });
   });
@@ -240,7 +240,7 @@ describe('with nothing configured', () => {
     expect(await operatorOf('first@owner.test')).toBe(true);
     expect(await operatorOf('FIRST@OWNER.TEST')).toBe(true);
     expect(await operatorOf('later@customer.test')).toBe(false);
-    expect(await operatorOf('dev@cloudcraft.local')).toBe(false);
+    expect(await operatorOf('dev@cloudbuilder.local')).toBe(false);
     expect(await operatorOf('nobody@x.test')).toBe(false);
   });
   it('nobody can become the operator later: the first account stays it even after others sign up or the data changes', async () => {
@@ -250,7 +250,7 @@ describe('with nothing configured', () => {
     expect(await operatorOf('first@owner.test')).toBe(true);
   });
   it('naming operators in the environment replaces the first-signup rule', async () => {
-    process.env['CLOUDCRAFT_OPERATOR_EMAILS'] = 'boss@platform.test';
+    process.env['CLOUDBUILDER_OPERATOR_EMAILS'] = 'boss@platform.test';
     expect(await operatorOf('boss@platform.test')).toBe(true);
     expect(await operatorOf('first@owner.test')).toBe(false);
   });

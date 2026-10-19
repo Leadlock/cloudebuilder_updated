@@ -111,10 +111,10 @@ type Action =
 // hands one user's unsaved local draft to a different user who signs in
 // afterwards — each account's "brand new" first login starts empty.
 function draftStorageKey(userId: string | undefined | null): string {
-  return `cloudcraft_draft_project_${userId ?? 'anon'}`;
+  return `cloudbuilder_draft_project_${userId ?? 'anon'}`;
 }
 function draftTimestampKey(userId: string | undefined | null): string {
-  return `cloudcraft_draft_timestamp_${userId ?? 'anon'}`;
+  return `cloudbuilder_draft_timestamp_${userId ?? 'anon'}`;
 }
 
 function computeProject(p: Project, nodes: CanvasNode[], edges: CanvasEdge[]): Project {
@@ -289,7 +289,7 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'SET_CURRENCY': {
       const currency = action.currency.toUpperCase();
       if (typeof window !== 'undefined') {
-        try { localStorage.setItem('cloudcraft_display_currency', currency); } catch {}
+        try { localStorage.setItem('cloudbuilder_display_currency', currency); } catch {}
       }
       const projects = state.projects.map((p) => {
         if (p.id === state.activeProjectId) {
@@ -303,7 +303,7 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'SET_THEME': {
       const theme = action.theme;
       if (typeof window !== 'undefined') {
-        try { localStorage.setItem('cloudcraft_theme', theme); } catch {}
+        try { localStorage.setItem('cloudbuilder_theme', theme); } catch {}
       }
       return { ...state, theme };
     }
@@ -311,7 +311,7 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'TOGGLE_THEME': {
       const theme = state.theme === 'dark' ? 'light' : 'dark';
       if (typeof window !== 'undefined') {
-        try { localStorage.setItem('cloudcraft_theme', theme); } catch {}
+        try { localStorage.setItem('cloudbuilder_theme', theme); } catch {}
       }
       return { ...state, theme };
     }
@@ -1034,11 +1034,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
-        const savedTheme = localStorage.getItem('cloudcraft_theme') as 'dark' | 'light' | null;
+        const savedTheme = localStorage.getItem('cloudbuilder_theme') as 'dark' | 'light' | null;
         if (savedTheme && (savedTheme === 'dark' || savedTheme === 'light')) {
           dispatch({ type: 'SET_THEME', theme: savedTheme });
         }
-        const saved = localStorage.getItem('cloudcraft_display_currency');
+        const saved = localStorage.getItem('cloudbuilder_display_currency');
         if (saved) {
           dispatch({ type: 'SET_CURRENCY', currency: saved });
         }
@@ -1070,7 +1070,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (data?.data?.user) {
           dispatch({ type: 'SET_USER', user: data.data.user });
         } else if (typeof window !== 'undefined') {
-          const stored = localStorage.getItem('cloudcraft_demo_user');
+          const stored = localStorage.getItem('cloudbuilder_demo_user');
           if (stored) {
             try { dispatch({ type: 'SET_USER', user: JSON.parse(stored) }); } catch {}
           }
@@ -1078,7 +1078,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {
         if (typeof window !== 'undefined') {
-          const stored = localStorage.getItem('cloudcraft_demo_user');
+          const stored = localStorage.getItem('cloudbuilder_demo_user');
           if (stored) {
             try { dispatch({ type: 'SET_USER', user: JSON.parse(stored) }); } catch {}
           }
@@ -1339,7 +1339,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // Broadcast to other browser tabs
           if (typeof window !== 'undefined') {
             try {
-              localStorage.setItem('cloudcraft_tab_sync', JSON.stringify({
+              localStorage.setItem('cloudbuilder_tab_sync', JSON.stringify({
                 projectId: project.id,
                 env: currentState.activeEnvironment,
                 revision: res?.revision || currentRevision + 1,
@@ -1398,7 +1398,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const handleStorage = (e: StorageEvent) => {
-      if (e.key === 'cloudcraft_tab_sync' && e.newValue) {
+      if (e.key === 'cloudbuilder_tab_sync' && e.newValue) {
         try {
           const syncData = JSON.parse(e.newValue);
           if (syncData.projectId === stateRef.current.activeProjectId) {

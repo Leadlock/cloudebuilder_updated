@@ -58,7 +58,7 @@ export class GitOpsService {
     });
 
     // Update ref
-    const targetBranch = params.createPullRequest ? `cloudcraft-${Date.now()}` : branch;
+    const targetBranch = params.createPullRequest ? `cloudbuilder-${Date.now()}` : branch;
     
     if (params.createPullRequest) {
       // Create new branch

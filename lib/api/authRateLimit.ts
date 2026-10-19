@@ -14,7 +14,7 @@
  *
  * The client address comes from X-Forwarded-For, but only the part a trusted proxy wrote: each proxy appends the address
  * it received the request from, so the entries on the LEFT are whatever the caller chose to send and are worthless. With
- * CLOUDCRAFT_TRUSTED_PROXY_HOPS proxies in front (default 1, e.g. a load balancer), the real client is that many entries
+ * CLOUDBUILDER_TRUSTED_PROXY_HOPS proxies in front (default 1, e.g. a load balancer), the real client is that many entries
  * from the RIGHT. Set it to 2 behind a CDN plus a load balancer, and to 0 when the app is exposed directly (the header is
  * then ignored and everyone shares one address bucket — the per-email limits still apply).
  */
@@ -40,7 +40,7 @@ export const AUTH_LIMITS = {
 } as const;
 
 export function trustedProxyHops(): number {
-  const raw = process.env.CLOUDCRAFT_TRUSTED_PROXY_HOPS;
+  const raw = process.env.CLOUDBUILDER_TRUSTED_PROXY_HOPS;
   if (raw === undefined || raw.trim() === '') return 1;
   const n = Number(raw);
   return Number.isInteger(n) && n >= 0 && n <= 10 ? n : 1;

@@ -342,7 +342,7 @@ export class CollaborationService {
       // ── Authentication ───────────────────────────────────────────────────────
       const token =
         (socket.handshake.auth as Record<string, string>)?.token ??
-        socket.handshake.headers?.cookie?.match(/cloudcraft_session=([^;]+)/)?.[1];
+        socket.handshake.headers?.cookie?.match(/cloudbuilder_session=([^;]+)/)?.[1];
 
       authenticatedUser = authenticateSocket(token);
 

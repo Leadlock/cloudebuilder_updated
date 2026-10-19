@@ -27,7 +27,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   try {
     // Authentication
-    const cookieToken = req.cookies.get('cloudcraft_session')?.value;
+    const cookieToken = req.cookies.get('cloudbuilder_session')?.value;
     const authHeader = req.headers.get('authorization');
     const bearerToken = authHeader?.toLowerCase().startsWith('bearer ')
       ? authHeader.substring(7).trim()

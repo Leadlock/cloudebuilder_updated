@@ -44,7 +44,7 @@ export default function AwsKeyRoleGuide({ roleArn, externalId, onExternalId }: {
   const accountId = fromArn || typedAccount.trim();
   const accountOk = ACCOUNT_RE.test(accountId);
   const account = accountOk ? accountId : '<YOUR-12-DIGIT-ACCOUNT-ID>';
-  const roleToAssume = ROLE_ARN_RE.test(roleArn.trim()) ? roleArn.trim() : `arn:aws:iam::${account}:role/CloudCraftRole`;
+  const roleToAssume = ROLE_ARN_RE.test(roleArn.trim()) ? roleArn.trim() : `arn:aws:iam::${account}:role/CloudBuilderRole`;
 
   // Once the Role ARN is filled in, the account id comes from it.
   useEffect(() => { if (fromArn) setTypedAccount(fromArn); }, [fromArn]);

@@ -410,7 +410,7 @@ locals {
 
   tags = {
     Name      = "${name}_sg"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`);
                 dbSgRef = `[aws_security_group.${name}_sg.id]`;
@@ -573,7 +573,7 @@ locals {
 
   tags = {
     Name      = "${name}_sg"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`);
               albSgRef = `[aws_security_group.${name}_sg.id]`;
@@ -946,7 +946,7 @@ locals {
 
   tags = {
     Name      = "${vpcName}_${suffix}_rt"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`);
         for (const sn of targets) {
@@ -989,7 +989,7 @@ locals {
   enable_dns_hostnames = ${cfg['enableDnsHostnames'] !== false}
   tags = {
     Name        = "${name}"
-    ManagedBy   = "CloudCraft"
+    ManagedBy   = "CloudBuilder"
   }
 }`;
     if (cfg['flowLogsEnabled'] !== true) return vpc;
@@ -1006,7 +1006,7 @@ resource "aws_flow_log" "${name}_flow_log" {
   log_destination      = "arn:aws:s3:::${bucket}"
   tags = {
     Name      = "${name}-flow-log"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`;
   }
@@ -1019,7 +1019,7 @@ resource "aws_flow_log" "${name}_flow_log" {
   map_public_ip_on_launch = ${cfg['mapPublicIpOnLaunch'] === true}
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`;
   }
@@ -1068,7 +1068,7 @@ resource "aws_flow_log" "${name}_flow_log" {
     lines.push(`  }`);
     lines.push(`  tags = {`);
     lines.push(`    Name      = "${name}"`);
-    lines.push(`    ManagedBy = "CloudCraft"`);
+    lines.push(`    ManagedBy = "CloudBuilder"`);
     for (const [k, v] of Object.entries(tags)) {
       if (!k) continue;
       lines.push(`    ${k} = "${v}"`);
@@ -1087,7 +1087,7 @@ resource "aws_flow_log" "${name}_flow_log" {
   subnet_ids = [${subnetRefs.join(', ')}]
   tags = {
     Name      = "${sanitizedName}-subnet-group"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`;
   }
@@ -1159,7 +1159,7 @@ resource "aws_flow_log" "${name}_flow_log" {
     if (sgRef) lines.push(`  vpc_security_group_ids         = ${sgRef}`);
     lines.push(`  tags = {`);
     lines.push(`    Name      = "${name}"`);
-    lines.push(`    ManagedBy = "CloudCraft"`);
+    lines.push(`    ManagedBy = "CloudBuilder"`);
     for (const [k, v] of Object.entries(tags)) {
       if (!k) continue;
       lines.push(`    ${k} = "${v}"`);
@@ -1207,7 +1207,7 @@ resource "aws_flow_log" "${name}_flow_log" {
         `  skip_final_snapshot    = true\n` +
         `  tags = {\n` +
         `    Name      = "${name}-replica-${i}"\n` +
-        `    ManagedBy = "CloudCraft"\n` +
+        `    ManagedBy = "CloudBuilder"\n` +
         `  }\n` +
         `}`
       );
@@ -1295,7 +1295,7 @@ resource "aws_flow_log" "${name}_flow_log" {
       fnLines.push(`    security_group_ids = ${sgRef ? `[${sgRef}]` : '[]'}`);
       fnLines.push(`  }`);
     }
-    fnLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`);
+    fnLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`);
     for (const [k, v] of Object.entries(tags)) {
       if (!k) continue;
       fnLines.push(`    ${k} = "${v}"`);
@@ -1354,7 +1354,7 @@ resource "aws_flow_log" "${name}_flow_log" {
       lines.push(`  ttl {`, `    attribute_name = "${cfg['ttlAttribute']}"`, `    enabled        = true`, `  }`);
     }
 
-    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
     return lines.join('\n');
   }
 
@@ -1392,7 +1392,7 @@ resource "aws_flow_log" "${name}_flow_log" {
       lines.push(`  depends_on            = [aws_elasticache_subnet_group.${name}_subnet_group]`);
     }
     if (sgRef) lines.push(`  security_group_ids    = ${sgRef}`);
-    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
     return lines.join('\n');
   }
 
@@ -1429,7 +1429,7 @@ resource "aws_flow_log" "${name}_flow_log" {
     if (cfg['deadLetterTargetArn']) {
       lines.push(`  redrive_policy = jsonencode({`, `    deadLetterTargetArn = "${cfg['deadLetterTargetArn']}"`, `    maxReceiveCount     = ${cfg['maxReceiveCount'] ?? 5}`, `  })`);
     }
-    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
     return lines.join('\n');
   }
 
@@ -1456,7 +1456,7 @@ resource "aws_flow_log" "${name}_flow_log" {
   name = "${name}-cluster"
   tags = {
     Name      = "${name}-cluster"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`,
       `resource "aws_cloudwatch_log_group" "${name}_logs" {
@@ -1507,7 +1507,7 @@ resource "aws_flow_log" "${name}_flow_log" {
 
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
 ${tagLines.join('\n')}
   }
 }`,
@@ -1537,7 +1537,7 @@ ${tagLines.join('\n')}
       serviceLines.push(`  load_balancer {`, `    target_group_arn = ${lb.targetGroupRef}.arn`, `    container_name   = "${name}"`, `    container_port   = ${containerPort}`, `  }`);
     }
     if (loadBalancers.length > 0) serviceLines.push(`  depends_on = [${loadBalancers.map((lb) => lb.dependsOn).join(', ')}]`);
-    serviceLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    serviceLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
     parts.push(serviceLines.join('\n'));
 
     const minCap = Number(cfg['minCapacity'] ?? 1);
@@ -1614,7 +1614,7 @@ ${tagLines.join('\n')}
         `  }`,
       );
     }
-    clusterLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`);
+    clusterLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`);
     clusterLines.push(`  depends_on = [aws_iam_role_policy_attachment.${name}_cluster_policy]`, `}`);
     parts.push(clusterLines.join('\n'));
 
@@ -1667,7 +1667,7 @@ ${tagLines.join('\n')}
 
   tags = {
     Name      = "${name}-nodes"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
 ${tagLines.join('\n')}
   }
 
@@ -1695,7 +1695,7 @@ ${tagLines.join('\n')}
     if (isPrivate) {
       zoneLines.push(`  vpc {`, `    vpc_id = ${vpcRef ?? 'data.aws_vpc.default.id'}`, `  }`);
     }
-    zoneLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    zoneLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
 
     const recordType = (cfg['recordType'] as string) || 'A';
     const routingPolicy = (cfg['routingPolicy'] as string) || 'Simple';
@@ -1805,7 +1805,7 @@ ${tagLines.join('\n')}
       ``,
       `  tags = {`,
       `    Name      = "${name}"`,
-      `    ManagedBy = "CloudCraft"`,
+      `    ManagedBy = "CloudBuilder"`,
       ...tagLines,
       `  }`,
       `}`,
@@ -1831,7 +1831,7 @@ ${tagLines.join('\n')}
       lines.push(`  }`);
     }
 
-    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
 
     const assocBlocks = subnetRefs.map((subnetRef, i) =>
       `resource "aws_route_table_association" "${name}_assoc_${i + 1}" {\n  subnet_id      = ${subnetRef}\n  route_table_id = aws_route_table.${name}.id\n}`
@@ -1882,7 +1882,7 @@ ${tagLines.join('\n')}
       );
     }
 
-    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
     return lines.join('\n');
   }
 
@@ -1905,7 +1905,7 @@ ${tagLines.join('\n')}
   })
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
 ${tagLines.join('\n')}
   }
 }`,
@@ -1935,7 +1935,7 @@ ${tagLines.join('\n')}
       `  deletion_window_in_days  = ${cfg['deletionWindowDays'] ?? 30}`,
       `  tags = {`,
       `    Name      = "${name}"`,
-      `    ManagedBy = "CloudCraft"`,
+      `    ManagedBy = "CloudBuilder"`,
       ...tagLines,
       `  }`,
       `}`,
@@ -1968,12 +1968,12 @@ ${tagLines.join('\n')}
   treat_missing_data   = "${treatMissingData}"
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
 ${tagLines.join('\n')}
   }
 }`,
       `resource "aws_cloudwatch_log_group" "${name}_logs" {
-  name              = "/cloudcraft/${name}"
+  name              = "/cloudbuilder/${name}"
   retention_in_days = ${cfg['logRetentionDays'] ?? 30}
 }`,
     ].join('\n\n');
@@ -2003,7 +2003,7 @@ ${tagLines.join('\n')}
     if (cfg['multiAttachEnabled'] === true && (volumeType === 'io1' || volumeType === 'io2')) {
       lines.push(`  multi_attach_enabled = true`);
     }
-    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
     return lines.join('\n');
   }
 
@@ -2082,7 +2082,7 @@ ${tagLines.join('\n')}
     lines.push(
       `  tags = {`,
       `    Name      = "${name}"`,
-      `    ManagedBy = "CloudCraft"`,
+      `    ManagedBy = "CloudBuilder"`,
       `  }`,
       `}`,
       ``,
@@ -2092,7 +2092,7 @@ ${tagLines.join('\n')}
       `  auto_deploy = ${cfg['autoDeploy'] !== false}`,
       `  tags = {`,
       `    Name      = "${name}-stage"`,
-      `    ManagedBy = "CloudCraft"`,
+      `    ManagedBy = "CloudBuilder"`,
       `  }`,
       `}`
     );
@@ -2109,7 +2109,7 @@ ${tagLines.join('\n')}
   }
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }
 
@@ -2138,7 +2138,7 @@ resource "aws_api_gateway_stage" "${name}_stage" {
   subnet_ids = [${subnetRefs.join(', ')}]
   tags = {
     Name      = "${name}-subnet-group"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`);
     }
@@ -2157,7 +2157,7 @@ resource "aws_api_gateway_stage" "${name}_stage" {
   skip_final_snapshot     = true
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`);
 
@@ -2168,7 +2168,7 @@ resource "aws_api_gateway_stage" "${name}_stage" {
   instance_class     = "${instanceClass}"
   tags = {
     Name      = "${name}-instance-${i + 1}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`);
     }
@@ -2182,7 +2182,7 @@ resource "aws_api_gateway_stage" "${name}_stage" {
   recovery_window_in_days = ${cfg['recoveryWindowInDays'] ?? 30}
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`;
   }
@@ -2195,7 +2195,7 @@ resource "aws_api_gateway_stage" "${name}_stage" {
   content_based_deduplication = ${isFifo && cfg['contentBasedDeduplication'] === true}
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`;
   }
@@ -2205,7 +2205,7 @@ resource "aws_api_gateway_stage" "${name}_stage" {
   name = "${cfg['name'] ?? name}"
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`;
   }
@@ -2223,7 +2223,7 @@ resource "aws_api_gateway_stage" "${name}_stage" {
   }
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`;
   }
@@ -2257,7 +2257,7 @@ resource "aws_sfn_state_machine" "${name}" {
   })
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`;
   }
@@ -2265,7 +2265,7 @@ resource "aws_sfn_state_machine" "${name}" {
   private _s3(name: string, cfg: Record<string, unknown>): string {
     const rawBucketName = (cfg['bucketName'] as string) ?? name;
     const sanitizedRaw = rawBucketName.toLowerCase().replace(/_/g, '-').replace(/[^a-z0-9-]/g, '').replace(/--+/g, '-').replace(/^-+|-+$/g, '');
-    const baseName = sanitizedRaw.length > 0 ? sanitizedRaw : 'cloudcraft-bucket';
+    const baseName = sanitizedRaw.length > 0 ? sanitizedRaw : 'cloudbuilder-bucket';
     const bucketExpr = baseName.includes('${') ? `"${baseName}"` : `"${baseName}-\${local.aws_suffix}"`;
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const blockAcls = cfg['publicAccess'] === true ? cfg['blockPublicAcls'] === true : true;
@@ -2276,7 +2276,7 @@ resource "aws_sfn_state_machine" "${name}" {
       `  bucket = ${bucketExpr}`,
       `  tags = {`,
       `    Name      = "${name}"`,
-      `    ManagedBy = "CloudCraft"`,
+      `    ManagedBy = "CloudBuilder"`,
     ];
     for (const [k, v] of Object.entries(tags)) {
       if (!k) continue;
@@ -2372,7 +2372,7 @@ resource "aws_sfn_state_machine" "${name}" {
       if (logBucket) lines.push(`  access_logs {`, `    bucket  = "${logBucket}"`, `    prefix  = "${sanitizedName}"`, `    enabled = true`, `  }`);
       else lines.push(`  # WARNING: access logs are enabled but no valid S3 bucket name is set, so none are configured.`);
     }
-    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
 
     const targetProtocol = (cfg['targetProtocol'] as string) || 'HTTP';
     const targetPort = cfg['targetPort'] ?? 80;
@@ -2484,7 +2484,7 @@ resource "aws_sfn_state_machine" "${name}" {
   vpc_id = ${vpcRef}
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`;
   }
@@ -2517,7 +2517,7 @@ resource "aws_sfn_state_machine" "${name}" {
     if (!isPrivate && secondaryIds.length > 0) {
       lines.push(`  secondary_allocation_ids = [${secondaryIds.map((id) => `"${id}"`).join(', ')}]`);
     }
-    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
     parts.push(lines.join('\n'));
 
     return parts.join('\n\n');
@@ -2600,7 +2600,7 @@ ${egressBlock}
 
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
 ${tagLines.join('\n')}
   }
 }`;
@@ -2686,7 +2686,7 @@ ${tagLines.join('\n')}
       if (logBucket) lines.push(``, `  logging_config {`, `    bucket          = "${logBucket}.s3.amazonaws.com"`, `    include_cookies = false`, `    prefix          = "${name}/"`, `  }`);
       else lines.push(``, `  # WARNING: logging is enabled but no valid S3 bucket name is set, so none is configured.`);
     }
-    lines.push(``, `  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(``, `  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
 
     return lines.join('\n');
   }
@@ -2820,7 +2820,7 @@ resource "azurerm_resource_group" "main" {
   location = var.azure_location
   tags = {
     Environment = var.environment
-    ManagedBy   = "CloudCraft"
+    ManagedBy   = "CloudBuilder"
   }
 }`);
       resourceMap['__default_rg'] = 'azurerm_resource_group.main';
@@ -3324,7 +3324,7 @@ data "azurerm_network_security_group" "${name}" {
   name     = "${name}"
   location = "${cfg['location'] ?? 'eastus'}"
   tags = {
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`;
   }
@@ -3336,7 +3336,7 @@ data "azurerm_network_security_group" "${name}" {
   location            = ${rgLoc}
   resource_group_name = ${rgName}
   tags = {
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`;
   }
@@ -3431,7 +3431,7 @@ data "azurerm_network_security_group" "${name}" {
       lines.push(`  custom_data = base64encode(<<-EOF\n${cfg['customData']}\nEOF\n  )`);
     }
 
-    lines.push(`  tags = {`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
 
     return lines.join('\n');
   }
@@ -3478,7 +3478,7 @@ data "azurerm_network_security_group" "${name}" {
       lines.push(`  static_website {`, `    index_document     = "${doc(cfg['indexDocument'], 'index.html')}"`, `    error_404_document = "${doc(cfg['errorDocument'], '404.html')}"`, `  }`);
     }
 
-    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
     return lines.join('\n');
   }
 
@@ -3587,7 +3587,7 @@ data "azurerm_network_security_group" "${name}" {
       lines.push(``, `  capabilities {`, `    name = "EnableServerless"`, `  }`);
     }
 
-    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
     return lines.join('\n');
   }
 
@@ -3622,7 +3622,7 @@ data "azurerm_network_security_group" "${name}" {
   account_tier             = "Standard"
   account_replication_type = "LRS"
   tags = {
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`,
       `resource "azurerm_service_plan" "${name}_plan" {
@@ -3661,7 +3661,7 @@ data "azurerm_network_security_group" "${name}" {
       appLines.push(`  }`);
     }
 
-    appLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    appLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
     parts.push(appLines.join('\n'));
 
     return parts.join('\n\n');
@@ -3704,7 +3704,7 @@ data "azurerm_network_security_group" "${name}" {
     if (cfg['rbacEnabled'] !== false) {
       lines.push(``, `  azure_active_directory_role_based_access_control {`, `    managed            = true`, `    azure_rbac_enabled = true`, `  }`);
     }
-    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
     return lines.join('\n');
   }
 
@@ -3775,7 +3775,7 @@ data "azurerm_network_security_group" "${name}" {
       appLines.push(`  }`);
     }
 
-    appLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    appLines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
     parts.push(appLines.join('\n'));
 
     return parts.join('\n\n');
@@ -3797,7 +3797,7 @@ data "azurerm_network_security_group" "${name}" {
   sku                 = "${cfg['sku'] ?? 'Standard'}"
   tags = {
     Name      = "${name}-pip"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`);
       publicIpRef = `azurerm_public_ip.${name}_pip.id`;
@@ -3824,7 +3824,7 @@ ${frontendBlock}
 
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
 ${tagLines.join('\n')}
   }
 }`,
@@ -3875,7 +3875,7 @@ ${tagLines.join('\n')}
     if (cfg['publicNetworkAccessEnabled'] === true) {
       lines.push(`  network_acls {`, `    default_action = "${cfg['networkAclsDefaultAction'] ?? 'Deny'}"`, `    bypass         = "AzureServices"`, `  }`);
     }
-    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
     return lines.join('\n');
   }
 
@@ -3898,7 +3898,7 @@ ${tagLines.join('\n')}
   public_network_access_enabled  = ${cfg['publicNetworkAccessEnabled'] !== false}
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
 ${tagLines.join('\n')}
   }
 }`;
@@ -3922,7 +3922,7 @@ ${tagLines.join('\n')}
     if (cfg['domainNameLabel']) {
       lines.push(`  domain_name_label   = "${cfg['domainNameLabel']}"`);
     }
-    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
     return lines.join('\n');
   }
 
@@ -3945,7 +3945,7 @@ ${tagLines.join('\n')}
 
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
 ${tagLines.join('\n')}
   }
 }`;
@@ -3972,7 +3972,7 @@ ${tagLines.join('\n')}
       }
       lines.push(`  }`);
     }
-    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
     return lines.join('\n');
   }
 
@@ -4013,7 +4013,7 @@ ${tagLines.join('\n')}
       `  }`,
       `  tags = {`,
       `    Name      = "${name}"`,
-      `    ManagedBy = "CloudCraft"`,
+      `    ManagedBy = "CloudBuilder"`,
       ...tagLines,
       `  }`,
       `}`,
@@ -4090,7 +4090,7 @@ ${rules}
 
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
 ${tagLines.join('\n')}
   }
 }
@@ -4127,7 +4127,7 @@ resource "azurerm_cdn_frontdoor_security_policy" "${name}_attach" {
   sku_name            = "${cfg['sku'] ?? 'Standard_AzureFrontDoor'}"
   tags = {
     Name      = "${fdName}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
 ${tagLines.join('\n')}
   }
 }`,
@@ -4189,7 +4189,7 @@ ${tagLines.join('\n')}
 
   tags = {
     Name      = "${name}"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
 ${tagLines.join('\n')}
   }
 }`;
@@ -4249,7 +4249,7 @@ ${tagLines.join('\n')}
       `  }`,
       `  tags = {`,
       `    Name      = "${name}"`,
-      `    ManagedBy = "CloudCraft"`,
+      `    ManagedBy = "CloudBuilder"`,
       ...tagLines,
       `  }`,
       `}`,
@@ -4293,7 +4293,7 @@ ${tagLines.join('\n')}
   sku                 = "Standard"
   tags = {
     Name      = "${name}-pip"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`);
       publicIpRef = `azurerm_public_ip.${name}_pip.id`;
@@ -4357,7 +4357,7 @@ ${tagLines.join('\n')}
     if (cfg['sku'] === 'WAF_v2' && cfg['wafEnabled'] === true) {
       lines.push(`  waf_configuration {`, `    enabled          = true`, `    firewall_mode    = "${cfg['wafMode'] ?? 'Prevention'}"`, `    rule_set_type    = "OWASP"`, `    rule_set_version = "3.2"`, `  }`);
     }
-    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
     parts.push(lines.join('\n'));
     return parts.join('\n\n');
   }
@@ -4377,7 +4377,7 @@ ${tagLines.join('\n')}
   sku                 = "Standard"
   tags = {
     Name      = "${name}-pip"
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`);
       publicIpRef = `azurerm_public_ip.${name}_pip.id`;
@@ -4394,7 +4394,7 @@ ${tagLines.join('\n')}
     if (cfg['availabilityZone']) {
       lines.push(`  zones                   = ["${cfg['availabilityZone']}"]`);
     }
-    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudCraft"`, ...tagLines, `  }`, `}`);
+    lines.push(`  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
 
     parts.push(lines.join('\n'));
     parts.push(`resource "azurerm_nat_gateway_public_ip_association" "${name}_pip_assoc" {
@@ -4515,7 +4515,7 @@ ${tagLines.join('\n')}
   resource_group_name = ${rgName}
 ${rules.join('\n')}
   tags = {
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
 ${tagLines.join('\n')}
   }
 }`;
@@ -4555,7 +4555,7 @@ export class TerraformGenerator {
     input = { ...rawInput, resources: safe.resources, connections: safe.connections, architectureId: hclSafeId(rawInput.architectureId), projectId: hclSafeId(rawInput.projectId), projectName: rawInput.projectName === undefined ? undefined : escapeHclString(rawInput.projectName) };
 
     const resolver = new ReferenceResolver(input.resources);
-    const projectName = input.projectName ?? 'cloudcraft';
+    const projectName = input.projectName ?? 'cloudbuilder';
     const awsResources   = input.resources.filter((r) => r.provider === 'aws');
     const azureResources = input.resources.filter((r) => r.provider === 'azure');
 
@@ -4700,7 +4700,7 @@ ${required.join('\n')}
       `variable "project_name" {
   description = "Project name used as a prefix for resources"
   type        = string
-  default     = "cloudcraft"
+  default     = "cloudbuilder"
 }`,
     ];
 

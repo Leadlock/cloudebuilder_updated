@@ -17,9 +17,9 @@ export function suggestAzureBackend(subscriptionId: string | undefined | null): 
   // "cctfstate" + up to 12 characters = at most 21: inside the 24-character limit, and still valid when the id is unknown.
   const storageAccountName = digits.length >= 4 ? `cctfstate${digits}` : 'cctfstatestorage';
   return {
-    resourceGroupName: 'cloudcraft-tfstate-rg',
+    resourceGroupName: 'cloudbuilder-tfstate-rg',
     storageAccountName,
     containerName: 'tfstate',
-    key: 'cloudcraft/terraform.tfstate',
+    key: 'cloudbuilder/terraform.tfstate',
   };
 }

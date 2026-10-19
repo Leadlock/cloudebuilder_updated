@@ -117,7 +117,7 @@ export const orgRepository = {
 
     let user = await this.findUser(userId);
     if (!user) {
-      user = await this.upsertUser({ id: userId, email: 'dev@cloudcraft.local', name: 'Dev User' });
+      user = await this.upsertUser({ id: userId, email: 'dev@cloudbuilder.local', name: 'Dev User' });
     }
 
     let org = await this.findOrgBySlug(orgSlug);

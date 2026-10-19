@@ -42,7 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       await recordTerraformAudit({ action: 'approval', outcome: 'denied', orgId, projectId, userId: identity.userId, detail: denied });
       return forbidden(denied);
     }
-    if (approvalMode() !== 'password') return badRequest('This server does not use password confirmation (CLOUDCRAFT_TERRAFORM_APPROVAL is not "password").');
+    if (approvalMode() !== 'password') return badRequest('This server does not use password confirmation (CLOUDBUILDER_TERRAFORM_APPROVAL is not "password").');
 
     const parsed = await parseBody(req, Body);
     if (!parsed.ok) return parsed.response;

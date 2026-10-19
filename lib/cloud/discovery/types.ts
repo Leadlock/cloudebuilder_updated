@@ -12,7 +12,7 @@ import type { CloudProviderKey } from '../types';
 
 export type ImportState =
   | 'imported'             // Existing infrastructure discovered in live cloud account
-  | 'cloudcraft-managed'   // CloudBuilder is the source of truth for this existing resource
+  | 'cloudbuilder-managed'   // CloudBuilder is the source of truth for this existing resource
   | 'new'                  // Newly added by user in CloudBuilder canvas (not yet in cloud)
   | 'modified'             // Existing imported resource with local changes planned
   | 'planned';             // Planned design resource scheduled for future deployment

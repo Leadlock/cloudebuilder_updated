@@ -27,7 +27,7 @@ import { NextRequest } from 'next/server';
 import { POST } from '@/app/api/projects/[id]/terraform/permissions/route';
 import { CredentialsExpiredError } from '@/lib/cloud/credentialLifetime';
 
-const ROLE = 'arn:aws:iam::123456789012:role/CloudCraft';
+const ROLE = 'arn:aws:iam::123456789012:role/CloudBuilder';
 const post = (body: unknown) => POST(new NextRequest('http://localhost/api/projects/p1/terraform/permissions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }), { params: Promise.resolve({ id: 'p1' }) });
 const data = async (res: Response) => (await res.json()) as { data?: Record<string, any>; error?: { code: string; message: string } };
 const account = (authMethod: string, provider = 'aws') => ({ id: 'acct-1', provider, name: 'A', status: 'active', identity: { authMethod, connection: { roleArn: ROLE } } });
@@ -53,7 +53,7 @@ describe('permissions route', () => {
     expect(d.services).toEqual(['dynamodb', 'ec2', 'ecs', 'iam', 's3']);
     expect(d.includesIam).toBe(true);
     expect(JSON.parse(d.policy).Statement[0].Action).toEqual(['dynamodb:*', 'ec2:*', 'ecs:*', 's3:*']);
-    const selfCheck = JSON.parse(d.policy).Statement.find((x: { Sid: string }) => x.Sid === 'CloudCraftCheckOwnAccess');
+    const selfCheck = JSON.parse(d.policy).Statement.find((x: { Sid: string }) => x.Sid === 'CloudBuilderCheckOwnAccess');
     expect(selfCheck).toMatchObject({ Action: ['iam:SimulatePrincipalPolicy'], Resource: ROLE });     // so "Check my access" can answer once attached
     expect(mockCreds).not.toHaveBeenCalled();
     expect(mockIamSend).not.toHaveBeenCalled();

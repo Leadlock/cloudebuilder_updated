@@ -53,7 +53,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!parsed.ok) return parsed.response;
     const { stateBackend, confirmationToken, planId, confirmName } = parsed.data;
     const backend = stateBackend as TerraformStateBackendConfig;
-    const user = { id: identity.userId, email: identity.email ?? 'admin@cloudcraft.io', name: 'Cloud Administrator', role: identity.role ?? 'admin' };
+    const user = { id: identity.userId, email: identity.email ?? 'admin@cloudbuilder.io', name: 'Cloud Administrator', role: identity.role ?? 'admin' };
     const environment = release.environment; const cloudAccountId = release.cloudAccountId;
 
     if (!confirmationToken) {

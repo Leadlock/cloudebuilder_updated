@@ -48,7 +48,7 @@ export class OpenErApiProvider implements IExchangeRateProvider {
         signal: controller.signal,
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'CloudCraft-ExchangeRateService/1.0',
+          'User-Agent': 'CloudBuilder-ExchangeRateService/1.0',
         },
       });
       clearTimeout(timeoutId);
@@ -93,7 +93,7 @@ export class OpenErApiProvider implements IExchangeRateProvider {
         signal: controller.signal,
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'CloudCraft-ExchangeRateService/1.0',
+          'User-Agent': 'CloudBuilder-ExchangeRateService/1.0',
         },
       });
       clearTimeout(timeoutId);

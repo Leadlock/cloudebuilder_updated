@@ -110,7 +110,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
         setAccounts(list); setAccountId((cur) => cur || list[0]?.id || '');
       } else if (!cancelled) setAccounts([]);
       try {
-        const saved = JSON.parse(localStorage.getItem(`cloudcraft_tf_backend_${projectId}`) ?? 'null') as { azureBackend?: { resourceGroupName?: string; storageAccountName?: string; containerName?: string }; awsBackend?: { bucket?: string; region?: string; dynamodbTable?: string } } | null;
+        const saved = JSON.parse(localStorage.getItem(`cloudbuilder_tf_backend_${projectId}`) ?? 'null') as { azureBackend?: { resourceGroupName?: string; storageAccountName?: string; containerName?: string }; awsBackend?: { bucket?: string; region?: string; dynamodbTable?: string } } | null;
         if (cloud === 'aws') {
           if (saved?.awsBackend && !cancelled) setAwsState((b) => ({ ...b, bucket: saved.awsBackend!.bucket ?? '', region: saved.awsBackend!.region || b.region, dynamodbTable: saved.awsBackend!.dynamodbTable ?? '' }));
         } else if (saved?.azureBackend && !cancelled) setBackend((b) => ({ ...b, resourceGroupName: saved.azureBackend!.resourceGroupName ?? '', storageAccountName: saved.azureBackend!.storageAccountName ?? '', containerName: saved.azureBackend!.containerName || 'tfstate' }));
@@ -127,7 +127,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
 
   // The state key is this project's own, never the architecture's: two Terraform projects must not share one state.
   useEffect(() => {
-    const key = `cloudcraft/releases/${stack.name}-${environment}.tfstate`;
+    const key = `cloudbuilder/releases/${stack.name}-${environment}.tfstate`;
     setBackend((b) => (b.key ? b : { ...b, key })); setAwsState((b) => (b.key ? b : { ...b, key }));
   }, [stack.name, environment]);
 

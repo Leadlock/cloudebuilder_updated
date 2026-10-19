@@ -28,7 +28,7 @@ describe('Connect AWS form', () => {
   it('asks for the access key, its secret (masked), the role ARN, an OPTIONAL External ID and a region — in one form, no method to choose', () => {
     expect(markup).toContain('Access key ID (AKIA');
     expect(markup).toMatch(/type="password"[^>]*placeholder="Secret access key/);
-    expect(markup).toContain('Role ARN (arn:aws:iam::123456789012:role/CloudCraftRole)');
+    expect(markup).toContain('Role ARN (arn:aws:iam::123456789012:role/CloudBuilderRole)');
     expect(markup).toContain('External ID (optional');
     expect(markup).toContain('aria-label="Region"');
     expect(markup).toContain('Account name (optional)');
@@ -46,7 +46,7 @@ describe('Connect AWS form', () => {
     expect(markup).toContain('Trust policy for the role');
     expect(markup).toContain('Read-only policy for discovery');
     expect(markup).toContain('Inline policy for the user');
-    expect(markup).toContain('CloudCraftDiscoveryReadOnly');
+    expect(markup).toContain('CloudBuilderDiscoveryReadOnly');
     expect(markup).toContain('sts:AssumeRole');
   });
 

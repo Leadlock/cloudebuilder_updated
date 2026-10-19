@@ -25,7 +25,7 @@ Key findings from this audit:
 
 ```mermaid
 graph TD
-    A[ResourcePalette.tsx] -->|Drag 'application/cloudcraft'| B[InfraCanvas.tsx]
+    A[ResourcePalette.tsx] -->|Drag 'application/cloudbuilder'| B[InfraCanvas.tsx]
     B -->|onDrop| C[AppContext.tsx: nodes, edges]
     C -->|Select Node| D[PropertiesPanel.tsx - w-64]
     D -->|onUpdate| C

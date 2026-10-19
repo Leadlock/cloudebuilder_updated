@@ -17,7 +17,7 @@ const put = (path: string, content: string, mode?: number) => { mkdirSync(join(p
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'deploy-test-'));
-  app = join(root, 'CloudCraft'); backups = join(root, 'backups'); bin = join(root, 'bin'); state = join(root, 'state');
+  app = join(root, 'CloudBuilder'); backups = join(root, 'backups'); bin = join(root, 'bin'); state = join(root, 'state');
   mkdirSync(state, { recursive: true });
   put(join(app, 'package.json'), '{}');
   put(join(app, 'package-lock.json'), 'lock-v1');

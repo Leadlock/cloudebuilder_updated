@@ -15,7 +15,7 @@ Where the work stands and what comes next. Effort: S is under a day, M a few day
 | # | Task | Why | Done when | Status |
 |---|---|---|---|---|
 | 1 | CI workflow (S) | Nothing ran on a push, so regressions went unnoticed. | `tsc`, lint, tests, the production build and the Terraform validation run on every push and pull request, and a red build blocks merging. | Workflow added (`.github/workflows/ci.yml`); making it required is a GitHub setting (see the file's header) |
-| 2 | Remove the other dev-only shortcuts (S) | A signed-in user with no organization gets a shared "dev org" with sample data. Under `next dev` any owner or admin can run Terraform with no allow-list. | Both need an explicit opt-in flag, with tests. | Done: all development shortcuts need `CLOUDCRAFT_DEV_SHORTCUTS=1` as well as `NODE_ENV=development` (`lib/dev/shortcuts.ts`) |
+| 2 | Remove the other dev-only shortcuts (S) | A signed-in user with no organization gets a shared "dev org" with sample data. Under `next dev` any owner or admin can run Terraform with no allow-list. | Both need an explicit opt-in flag, with tests. | Done: all development shortcuts need `CLOUDBUILDER_DEV_SHORTCUTS=1` as well as `NODE_ENV=development` (`lib/dev/shortcuts.ts`) |
 | 3 | Stop flaky tests (S) | `assessmentPerformance` is timing based and fails under parallel load. Retrieval accuracy is 96% against a 95% bar. | The suite is green three runs in a row. | Done: the timing guard passes if any of five attempts is within the limit; the full suite passed twice under 8 CPU burners. Retrieval search now combines meaning and words (89% to 99% first-choice accuracy on the held-out set, 82% to 89% on the hand-written one) |
 | 4 | One worktree per task (S) | Two sessions mixed their changes in one folder. | Documented in the README, with a helper script. | Open |
 
@@ -39,7 +39,7 @@ Where the work stands and what comes next. Effort: S is under a day, M a few day
 
 ## Done: deploy access without editing `.env` per organization
 
-Nothing has to be configured. The person who first signed up is the operator (`CLOUDCRAFT_OPERATOR_EMAILS` overrides that) and enables Terraform for their own organization with one click; they approve, deny or revoke others on the "Deploy access" page. Any other organization enables it itself once its owner has the authenticator app on, it has a cloud account that passed its check and, on a production server, the server has its own encryption key (`CLOUDCRAFT_TERRAFORM_AUTO_APPROVE=0` makes every request wait for an operator). The old `CLOUDCRAFT_TERRAFORM_ORG_IDS` list still works as an override. Every request and decision is in the Terraform audit trail.
+Nothing has to be configured. The person who first signed up is the operator (`CLOUDBUILDER_OPERATOR_EMAILS` overrides that) and enables Terraform for their own organization with one click; they approve, deny or revoke others on the "Deploy access" page. Any other organization enables it itself once its owner has the authenticator app on, it has a cloud account that passed its check and, on a production server, the server has its own encryption key (`CLOUDBUILDER_TERRAFORM_AUTO_APPROVE=0` makes every request wait for an operator). The old `CLOUDBUILDER_TERRAFORM_ORG_IDS` list still works as an override. Every request and decision is in the Terraform audit trail.
 
 ## Server software (done)
 

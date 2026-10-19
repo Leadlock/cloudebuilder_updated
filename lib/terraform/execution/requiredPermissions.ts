@@ -34,14 +34,14 @@ export interface RequiredPermissions extends DeployPolicy {
  * limited to the role itself when its ARN is known, so it adds no reach beyond answering that one question.
  */
 export function selfCheckStatement(roleArn: string | null | undefined): object {
-  return { Sid: 'CloudCraftCheckOwnAccess', Effect: 'Allow', Action: ['iam:SimulatePrincipalPolicy'], Resource: roleArn || '*' };
+  return { Sid: 'CloudBuilderCheckOwnAccess', Effect: 'Allow', Action: ['iam:SimulatePrincipalPolicy'], Resource: roleArn || '*' };
 }
 
 /**
  * Lets CloudBuilder read AWS's official price list through this role (lib/cloud/pricing/awsPricingAccess.ts), so cost figures do not fall back to
  * the built-in table. Read-only: list prices are public and the call touches no resource in the account.
  */
-export const PRICE_LIST_STATEMENT = { Sid: 'CloudCraftReadPrices', Effect: 'Allow', Action: ['pricing:GetProducts'], Resource: '*' };
+export const PRICE_LIST_STATEMENT = { Sid: 'CloudBuilderReadPrices', Effect: 'Allow', Action: ['pricing:GetProducts'], Resource: '*' };
 
 export function requiredPermissionsFor(files: { filename: string; content: string }[], roleArn?: string | null): RequiredPermissions {
   const terraformTypes = terraformTypesIn(files);

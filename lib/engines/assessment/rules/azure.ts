@@ -13,7 +13,7 @@ import type { AssessResource, RuleDefinition } from '../types';
 import { REVIEWED, configEvaluator, ev, notModelled, rule, isAzureAnySource, fmt } from '../ruleHelpers';
 
 const V = '1.0.0';
-const deployed = (r: AssessResource) => ['imported', 'cloudcraft-managed', 'modified'].includes(String(r.importState ?? ''));
+const deployed = (r: AssessResource) => ['imported', 'cloudbuilder-managed', 'modified'].includes(String(r.importState ?? ''));
 const TF = 'TF-AZURERM';
 
 const WA = {

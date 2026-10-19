@@ -100,7 +100,7 @@ ${ports.map((p) => `
 
   tags = {
     Name      = ${q(`${name}-web`)}
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }`;
 }
@@ -127,7 +127,7 @@ ${ports.map((p, i) => `
   }`).join('\n')}
 
   tags = {
-    ManagedBy = "CloudCraft"
+    ManagedBy = "CloudBuilder"
   }
 }
 

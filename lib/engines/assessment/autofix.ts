@@ -70,7 +70,7 @@ export function generateCanonicalTerraform(nodes: CanvasNode[], edges: CanvasEdg
     const res = terraformGenerator.generate({
       architectureId: 'autofix-verification',
       projectId: 'autofix-verification',
-      projectName: 'cloudcraft-infra',
+      projectName: 'cloudbuilder-infra',
       resources: nodes.map((n) => ({
         id: n.id,
         resourceType: n.resourceType,
@@ -117,7 +117,7 @@ function monthly(nodes: CanvasNode[], ids: string[]): number {
 }
 
 function patchNodes(nodes: CanvasNode[], resourceId: string, patch: Record<string, unknown>): CanvasNode[] {
-  return nodes.map((n) => (n.id === resourceId ? { ...n, config: { ...n.config, ...patch }, importState: n.importState === 'imported' || n.importState === 'cloudcraft-managed' ? 'modified' : n.importState } : n));
+  return nodes.map((n) => (n.id === resourceId ? { ...n, config: { ...n.config, ...patch }, importState: n.importState === 'imported' || n.importState === 'cloudbuilder-managed' ? 'modified' : n.importState } : n));
 }
 
 /** Precomputed state of the graph a fix starts from (avoids recomputing it per step). */

@@ -23,7 +23,7 @@ const PLAN = { release: release(), plan: { planId: 'plan-1', planHash: 'h'.repea
 beforeEach(() => {
   calls = []; routes = [];
   localStorage.clear();
-  localStorage.setItem('cloudcraft_tf_backend_p1', JSON.stringify({ azureBackend: { resourceGroupName: 'rg-state', storageAccountName: 'tfstateacct', containerName: 'tfstate', key: 'cloudcraft/terraform.tfstate' } }));
+  localStorage.setItem('cloudbuilder_tf_backend_p1', JSON.stringify({ azureBackend: { resourceGroupName: 'rg-state', storageAccountName: 'tfstateacct', containerName: 'tfstate', key: 'cloudbuilder/terraform.tfstate' } }));
   routes.push([/GET \/api\/cloud-accounts\?provider=azure/, () => ({ data: [{ id: 'acct-1', name: 'Test subscription', provider: 'azure' }, { id: 'acct-2', name: 'Key only', provider: 'azure', identity: { authMethod: 'access-key' } }] })]);
   routes.push([/GET \/api\/projects\/p1\/releases\?/, () => ({ data: { releases: [] } })]);
   (global as unknown as { fetch: unknown }).fetch = jest.fn(async (path: string, init: RequestInit = {}) => {
@@ -52,13 +52,13 @@ describe('planning', () => {
     await waitFor(() => expect(screen.getByRole('option', { name: 'Test subscription' })).toBeTruthy());
     expect(screen.queryByRole('option', { name: 'Key only' })).toBeNull();
     expect((screen.getByLabelText('State: storage account') as HTMLInputElement).value).toBe('tfstateacct');
-    expect((screen.getByLabelText('State: file name') as HTMLInputElement).value).toBe('cloudcraft/releases/shop-production.tfstate');   // not the architecture's file
+    expect((screen.getByLabelText('State: file name') as HTMLInputElement).value).toBe('cloudbuilder/releases/shop-production.tfstate');   // not the architecture's file
   });
 
   test('sends the project settings, the account and the state, and shows what will be created, the cost, the warnings and the secrets', async () => {
     await plan();
     const post = calls.find((c) => c.method === 'POST')!;
-    expect(post.body).toMatchObject({ environment: 'production', cloudAccountId: 'acct-1', stateBackend: { provider: 'azure', resourceGroupName: 'rg-state', storageAccountName: 'tfstateacct', containerName: 'tfstate', key: 'cloudcraft/releases/shop-production.tfstate' }, project: { name: 'shop' } });
+    expect(post.body).toMatchObject({ environment: 'production', cloudAccountId: 'acct-1', stateBackend: { provider: 'azure', resourceGroupName: 'rg-state', storageAccountName: 'tfstateacct', containerName: 'tfstate', key: 'cloudbuilder/releases/shop-production.tfstate' }, project: { name: 'shop' } });
     const text = screen.getByTestId('release-plan').textContent!;
     expect(text).toContain('18 to create, 0 to change, 0 to destroy');
     expect(text).toContain('$87.64 a month');
@@ -83,7 +83,7 @@ describe('planning', () => {
   });
 
   test('a server that has this switched off says so and offers the terminal way', async () => {
-    routes.unshift([/GET \/api\/projects\/p1\/releases\?/, () => ({ status: 503, code: 'SERVICE_UNAVAILABLE', message: 'Deploying a project from CloudBuilder is not switched on on this server (CLOUDCRAFT_PROJECT_RELEASES=1).' })]);
+    routes.unshift([/GET \/api\/projects\/p1\/releases\?/, () => ({ status: 503, code: 'SERVICE_UNAVAILABLE', message: 'Deploying a project from CloudBuilder is not switched on on this server (CLOUDBUILDER_PROJECT_RELEASES=1).' })]);
     mount();
     expect(await screen.findByText(/not switched on on this server/)).toBeTruthy();
     expect(document.body.textContent).toContain('bash deploy.sh');
@@ -413,7 +413,7 @@ describe('on AWS (EC2)', () => {
   const awsStack = (() => { const p = defaultProject(); p.name = 'shop'; for (const l of LAYERS) p.layers[l].enabled = ['backend', 'api'].includes(l); p.deploy.target = 'ec2'; return p; })();
   beforeEach(() => {
     routes.unshift([/GET \/api\/cloud-accounts\?provider=aws/, () => ({ data: [{ id: 'aws-1', name: 'Test AWS', provider: 'aws' }, { id: 'az-1', name: 'Wrong cloud', provider: 'azure' }] })]);
-    localStorage.setItem('cloudcraft_tf_backend_p1', JSON.stringify({ awsBackend: { bucket: 'my-state', key: 'cloudcraft/terraform.tfstate', region: 'eu-west-1', dynamodbTable: 'locks' } }));
+    localStorage.setItem('cloudbuilder_tf_backend_p1', JSON.stringify({ awsBackend: { bucket: 'my-state', key: 'cloudbuilder/terraform.tfstate', region: 'eu-west-1', dynamodbTable: 'locks' } }));
   });
 
   test('offers AWS accounts only, fills in the S3 state the Deploy tab knows, and plans with an AWS state backend and its own file', async () => {
@@ -427,7 +427,7 @@ describe('on AWS (EC2)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Plan the deployment' }));
     await screen.findByTestId('release-plan');
     expect(calls.find((c) => c.method === 'POST')!.body).toMatchObject({
-      cloudAccountId: 'aws-1', stateBackend: { provider: 'aws', bucket: 'my-state', region: 'eu-west-1', dynamodbTable: 'locks', key: 'cloudcraft/releases/shop-production.tfstate' },
+      cloudAccountId: 'aws-1', stateBackend: { provider: 'aws', bucket: 'my-state', region: 'eu-west-1', dynamodbTable: 'locks', key: 'cloudbuilder/releases/shop-production.tfstate' },
     });
   });
 
@@ -443,7 +443,7 @@ describe('on ECS Fargate', () => {
   const ecsStack = (() => { const p = defaultProject(); p.name = 'shop'; for (const l of LAYERS) p.layers[l].enabled = ['backend', 'api'].includes(l); p.deploy.target = 'ecs'; return p; })();
   beforeEach(() => {
     routes.unshift([/GET \/api\/cloud-accounts\?provider=aws/, () => ({ data: [{ id: 'aws-1', name: 'Test AWS', provider: 'aws' }] })]);
-    localStorage.setItem('cloudcraft_tf_backend_p1', JSON.stringify({ awsBackend: { bucket: 'my-state', region: 'eu-west-1' } }));
+    localStorage.setItem('cloudbuilder_tf_backend_p1', JSON.stringify({ awsBackend: { bucket: 'my-state', region: 'eu-west-1' } }));
   });
   test('asks for an AWS account and an S3 state, plans with them, and describes the steps for a cluster', async () => {
     routes.unshift([/POST \/api\/projects\/p1\/releases$/, () => ({ status: 201, data: { ...PLAN, release: release({ steps: STEPS() }) } })]);
@@ -478,11 +478,11 @@ describe('the state storage', () => {
 
   test('a bucket name S3 would refuse is explained next to the fields, and nothing can be planned or sent', async () => {
     await mountAws();
-    fireEvent.change(screen.getByLabelText('State: S3 bucket'), { target: { value: 'cloudcraft-state-AJ-123456' } });
+    fireEvent.change(screen.getByLabelText('State: S3 bucket'), { target: { value: 'cloudbuilder-state-AJ-123456' } });
     expect(screen.getByRole('alert').textContent).toContain('Invalid S3 bucket name');
     expect((screen.getByRole('button', { name: 'Plan the deployment' }) as HTMLButtonElement).disabled).toBe(true);
     expect(calls.filter((c) => c.method === 'POST')).toEqual([]);
-    fireEvent.change(screen.getByLabelText('State: S3 bucket'), { target: { value: 'cloudcraft-state-aj-123456' } });
+    fireEvent.change(screen.getByLabelText('State: S3 bucket'), { target: { value: 'cloudbuilder-state-aj-123456' } });
     expect(screen.queryByRole('alert')).toBeNull();
     expect((screen.getByRole('button', { name: 'Plan the deployment' }) as HTMLButtonElement).disabled).toBe(false);
   });
@@ -496,13 +496,13 @@ describe('the state storage', () => {
   });
 
   test('"Create state storage for me" with the bucket left empty lets CloudBuilder pick one, and fills it in', async () => {
-    routes.unshift([/POST \/api\/projects\/p1\/terraform\/state-backend$/, () => ({ data: { bucket: 'cloudcraft-state-123456789012-eu-north-1', steps: [{ what: 'S3 bucket cloudcraft-state-123456789012-eu-north-1', outcome: 'created' }] } })]);
+    routes.unshift([/POST \/api\/projects\/p1\/terraform\/state-backend$/, () => ({ data: { bucket: 'cloudbuilder-state-123456789012-eu-north-1', steps: [{ what: 'S3 bucket cloudbuilder-state-123456789012-eu-north-1', outcome: 'created' }] } })]);
     await mountAws();
     fireEvent.click(screen.getByRole('button', { name: 'Create state storage for me' }));
-    await waitFor(() => expect((screen.getByLabelText('State: S3 bucket') as HTMLInputElement).value).toBe('cloudcraft-state-123456789012-eu-north-1'));
+    await waitFor(() => expect((screen.getByLabelText('State: S3 bucket') as HTMLInputElement).value).toBe('cloudbuilder-state-123456789012-eu-north-1'));
     const post = calls.find((c) => c.method === 'POST')!;
-    expect(post.body).toEqual({ cloudAccountId: 'aws-1', stateBackend: { provider: 'aws', region: 'eu-north-1', key: 'cloudcraft/releases/shop-production.tfstate' } });
-    expect(screen.getByText(/S3 bucket cloudcraft-state-123456789012-eu-north-1: created/)).toBeTruthy();
+    expect(post.body).toEqual({ cloudAccountId: 'aws-1', stateBackend: { provider: 'aws', region: 'eu-north-1', key: 'cloudbuilder/releases/shop-production.tfstate' } });
+    expect(screen.getByText(/S3 bucket cloudbuilder-state-123456789012-eu-north-1: created/)).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Plan the deployment' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
@@ -527,32 +527,32 @@ describe('the state storage', () => {
   });
 
   test('the state bucket can be deleted: a link, the name typed again, then it is cleared from the box', async () => {
-    routes.unshift([/DELETE \/api\/projects\/p1\/terraform\/state-backend$/, () => ({ data: { bucket: 'cloudcraft-tfstate-1-eu-north-1', steps: [{ what: 'S3 bucket cloudcraft-tfstate-1-eu-north-1 and its 2 stored objects', outcome: 'deleted' }] } })]);
+    routes.unshift([/DELETE \/api\/projects\/p1\/terraform\/state-backend$/, () => ({ data: { bucket: 'cloudbuilder-tfstate-1-eu-north-1', steps: [{ what: 'S3 bucket cloudbuilder-tfstate-1-eu-north-1 and its 2 stored objects', outcome: 'deleted' }] } })]);
     await mountAws();
     expect(screen.queryByText('Delete this state storage…')).toBeNull();           // nothing to delete yet
-    fireEvent.change(screen.getByLabelText('State: S3 bucket'), { target: { value: 'cloudcraft-tfstate-1-eu-north-1' } });
+    fireEvent.change(screen.getByLabelText('State: S3 bucket'), { target: { value: 'cloudbuilder-tfstate-1-eu-north-1' } });
     fireEvent.click(screen.getByText('Delete this state storage…'));
     const go = screen.getByRole('button', { name: 'Delete permanently' }) as HTMLButtonElement;
     expect(go.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Type the bucket name to confirm'), { target: { value: 'something-else' } });
     expect(go.disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText('Type the bucket name to confirm'), { target: { value: 'cloudcraft-tfstate-1-eu-north-1' } });
+    fireEvent.change(screen.getByLabelText('Type the bucket name to confirm'), { target: { value: 'cloudbuilder-tfstate-1-eu-north-1' } });
     expect(go.disabled).toBe(false);
     fireEvent.click(go);
     await waitFor(() => expect((screen.getByLabelText('State: S3 bucket') as HTMLInputElement).value).toBe(''));
     const del = calls.find((c) => c.method === 'DELETE')!;
-    expect(del.body).toEqual({ cloudAccountId: 'aws-1', stateBackend: { provider: 'aws', bucket: 'cloudcraft-tfstate-1-eu-north-1', region: 'eu-north-1' }, confirmName: 'cloudcraft-tfstate-1-eu-north-1' });
+    expect(del.body).toEqual({ cloudAccountId: 'aws-1', stateBackend: { provider: 'aws', bucket: 'cloudbuilder-tfstate-1-eu-north-1', region: 'eu-north-1' }, confirmName: 'cloudbuilder-tfstate-1-eu-north-1' });
     expect(screen.getByText(/2 stored objects: deleted/)).toBeTruthy();
   });
 
   test('a refusal (the record still lists resources) is shown and the bucket name stays', async () => {
     routes.unshift([/DELETE \/api\/projects\/p1\/terraform\/state-backend$/, () => ({ status: 409, code: 'CONFLICT', message: 'Not deleted: Terraform\'s record still lists what it created' })]);
     await mountAws();
-    fireEvent.change(screen.getByLabelText('State: S3 bucket'), { target: { value: 'cloudcraft-tfstate-1-eu-north-1' } });
+    fireEvent.change(screen.getByLabelText('State: S3 bucket'), { target: { value: 'cloudbuilder-tfstate-1-eu-north-1' } });
     fireEvent.click(screen.getByText('Delete this state storage…'));
-    fireEvent.change(screen.getByLabelText('Type the bucket name to confirm'), { target: { value: 'cloudcraft-tfstate-1-eu-north-1' } });
+    fireEvent.change(screen.getByLabelText('Type the bucket name to confirm'), { target: { value: 'cloudbuilder-tfstate-1-eu-north-1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Delete permanently' }));
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('still lists what it created'));
-    expect((screen.getByLabelText('State: S3 bucket') as HTMLInputElement).value).toBe('cloudcraft-tfstate-1-eu-north-1');
+    expect((screen.getByLabelText('State: S3 bucket') as HTMLInputElement).value).toBe('cloudbuilder-tfstate-1-eu-north-1');
   });
 });

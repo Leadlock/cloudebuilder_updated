@@ -21,11 +21,11 @@ import { processApplyJob } from '@/lib/jobs/terraformApplyJob';
 let dir: string;
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-runs-'));
-  process.env['CLOUDCRAFT_RUNS_DIR'] = dir;
+  process.env['CLOUDBUILDER_RUNS_DIR'] = dir;
 });
 afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
-  delete process.env['CLOUDCRAFT_RUNS_DIR'];
+  delete process.env['CLOUDBUILDER_RUNS_DIR'];
   jest.clearAllMocks();
 });
 

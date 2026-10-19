@@ -93,7 +93,7 @@ describe('the files', () => {
     expect(tf).toContain('min_replicas = 0');
     expect(tf).toContain('mcr.microsoft.com/k8se/quickstart:latest');
     expect(tf).toContain('ignore_changes = [template[0].container[0].image, template[0].min_replicas]');
-    expect(tf).toContain('tags         = { cloudcraft = "placeholder" }');
+    expect(tf).toContain('tags         = { cloudbuilder = "placeholder" }');
     expect(tf).toContain('ignore_changes = [value, tags]');
     expect(tf).toContain('azurerm_key_vault_secret.jwt-secret');
     expect(tf).not.toContain('Value for');

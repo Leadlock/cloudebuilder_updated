@@ -83,7 +83,7 @@ export function renderReportHtml(r: AssessmentReport): string {
   const counts = (c: Record<Severity, number>) => `<div class="counts">${(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFORMATIONAL'] as Severity[]).map((s) => `<div><b style="color:${SEV[s]}">${c[s]}</b><span>${s}</span></div>`).join('')}</div>`;
   const sections: string[] = [];
 
-  sections.push(`<section class="cover"><p class="brand">CLOUDCRAFT</p><h1>Architecture &amp; Security Assessment</h1><p class="project">${esc(m.projectName)}</p><span class="badge">DESIGN-TIME ASSESSMENT</span>
+  sections.push(`<section class="cover"><p class="brand">CLOUDBUILDER</p><h1>Architecture &amp; Security Assessment</h1><p class="project">${esc(m.projectName)}</p><span class="badge">DESIGN-TIME ASSESSMENT</span>
   ${table(['', ''], [
     ['Environment', esc(m.environment)], ['Provider(s)', esc(m.providers.join(', '))], ['Region(s)', esc(m.regions.join(', ') || 'Not specified')],
     ['Assessment date', esc(date(m.assessmentDate))], ['Architecture version', `Revision ${m.architectureRevision}`], ['Report ID', esc(m.reportId)],

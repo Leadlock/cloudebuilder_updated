@@ -51,8 +51,8 @@ describe('first-boot script', () => {
     expect(softwareScript([], { family: 'apt', loginUser: 'ubuntu' })).toBe('');
     const s = softwareScript([item('nginx')], { family: 'apt', loginUser: 'ubuntu' });
     expect(s).toContain('#!/bin/bash');
-    expect(s).toContain('/var/log/cloudcraft-setup.log');
-    expect(s).toContain('/var/lib/cloudcraft-setup.done');
+    expect(s).toContain('/var/log/cloudbuilder-setup.log');
+    expect(s).toContain('/var/lib/cloudbuilder-setup.done');
     expect(s).toContain('nginx');
   });
 
@@ -92,13 +92,13 @@ describe('EC2 Terraform', () => {
 
   test('without software nothing about it appears', () => {
     const out = main(ec2({}));
-    expect(out).not.toContain('cloudcraft-setup');
+    expect(out).not.toContain('cloudbuilder-setup');
     expect(out).not.toContain('_web"');
   });
 
   test('installs the software through user_data, looks the image up by name, and opens the ports only to the chosen range', () => {
     const out = main(ec2({ serverSoftware: ['nginx'], webAccessCidr: '203.0.113.0/24' }));
-    expect(out).toContain('cloudcraft-setup');
+    expect(out).toContain('cloudbuilder-setup');
     expect(out).toContain('aws_ssm_parameter');
     expect(out).toContain('203.0.113.0/24');
     expect(out).toMatch(/from_port\s*=\s*80/);
@@ -142,13 +142,13 @@ describe('EC2 Terraform', () => {
   test('an unsupported operating system installs nothing but keeps the person\'s own script', () => {
     const r = ec2({ os: 'Windows Server 2022', serverSoftware: ['nginx'], userData: 'echo mine' });
     expect(main(r)).toContain('echo mine');
-    expect(main(r)).not.toContain('cloudcraft-setup');
+    expect(main(r)).not.toContain('cloudbuilder-setup');
     expect(r.warnings.join(' ')).toContain('not one of them');
   });
 
   test('their own script runs after the software', () => {
     const out = main(ec2({ serverSoftware: ['git'], userData: '#!/bin/bash\necho mine' }));
-    expect(out.indexOf('cloudcraft-setup')).toBeLessThan(out.indexOf('echo mine'));
+    expect(out.indexOf('cloudbuilder-setup')).toBeLessThan(out.indexOf('echo mine'));
   });
 });
 
@@ -158,7 +158,7 @@ describe('Azure VM Terraform', () => {
   test('installs through custom_data and opens the web ports to the chosen range only', () => {
     const out = main(vm({ serverSoftware: ['nginx', 'redis'], webAccessCidr: '203.0.113.0/24' }));
     expect(out).toContain('custom_data');
-    expect(out).toContain('cloudcraft-setup');
+    expect(out).toContain('cloudbuilder-setup');
     expect(out).toContain('203.0.113.0/24');
     expect(out).toContain('azurerm_network_security_group');
     expect(out).toContain('azurerm_network_interface_security_group_association');
@@ -171,7 +171,7 @@ describe('Azure VM Terraform', () => {
 
   test('Windows VMs install nothing and say so', () => {
     const r = vm({ osType: 'Windows', serverSoftware: ['nginx'] });
-    expect(main(r)).not.toContain('cloudcraft-setup');
+    expect(main(r)).not.toContain('cloudbuilder-setup');
     expect(r.warnings.join(' ')).toContain('Linux VMs only');
   });
 });

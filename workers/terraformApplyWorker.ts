@@ -8,6 +8,7 @@
  * environment as the main app (DATABASE_URL, ENCRYPTION_KEY) plus the
  * `terraform` CLI itself on PATH — see lib/terraform/execution/cli.ts.
  */
+import '../lib/config/legacyEnv';
 import type { Job } from 'pg-boss';
 import { getQueue, stopQueue } from '../lib/jobs/queue';
 import { TERRAFORM_APPLY_QUEUE, ensureTerraformApplyQueue, processApplyJob } from '../lib/jobs/terraformApplyJob';

@@ -43,7 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if (body.aiCommentary) report.aiCommentary = buildCommentary(body.aiCommentary, report.security.findings, new Date().toISOString());
 
-    const base = `cloudcraft-assessment-${projectName.replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 40)}-rev${report.meta.architectureRevision}-${report.meta.reportId}`;
+    const base = `cloudbuilder-assessment-${projectName.replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 40)}-rev${report.meta.architectureRevision}-${report.meta.reportId}`;
     if (body.format === 'json') {
       return ok({ report, scanId });
     }

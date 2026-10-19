@@ -16,7 +16,7 @@ export interface ContainerNodeData {
   isDragTarget?: boolean;
   isValidDrop?: boolean;
   childCount?: number;
-  importState?: 'imported' | 'cloudcraft-managed' | 'new' | 'modified' | 'planned';
+  importState?: 'imported' | 'cloudbuilder-managed' | 'new' | 'modified' | 'planned';
   findingsSummary?: { critical: number; high: number; medium: number; total: number };
   showFindings?: boolean;
 }

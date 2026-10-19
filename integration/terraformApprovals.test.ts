@@ -20,7 +20,7 @@ let admin: Client;
 
 beforeAll(async () => {
   if (!url) return;
-  process.env['CLOUDCRAFT_TERRAFORM_APPROVAL'] = 'required';
+  process.env['CLOUDBUILDER_TERRAFORM_APPROVAL'] = 'required';
   admin = new Client({ connectionString: url });
   await admin.connect();
   const r = await admin.query(`SELECT to_regclass('"public"."terraformApproval"') IS NOT NULL AS ok`);

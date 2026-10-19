@@ -15,7 +15,7 @@ export interface CloudProviderBoundaryData {
   overallScore?: number;
   criticalFindingsCount?: number;
   showFindings?: boolean;
-  importState?: 'imported' | 'cloudcraft-managed' | 'new' | 'modified' | 'planned';
+  importState?: 'imported' | 'cloudbuilder-managed' | 'new' | 'modified' | 'planned';
 }
 
 function formatRegionName(region?: string): string {
