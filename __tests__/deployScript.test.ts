@@ -26,9 +26,9 @@ beforeEach(() => {
   // The "server": the running old version, with its own .env.
   put(join(server, 'package.json'), '{}'); put(join(server, 'package-lock.json'), 'lock'); put(join(server, '.env'), 'RESTRICTED_FEATURES_ALLOWED_EMAILS=ajinkya@neozaar.com');
   put(join(server, 'src.txt'), 'OLD'); put(join(server, '.next', 'BUILD_ID'), 'old-build'); put(join(server, 'node_modules', 'x'), 'x');
-  // ssh stand-in: drops its options and the host, then runs the command here. rsync uses it too.
+  // ssh stand-in: drops its options (newer rsync passes the user as `-l user`) and the host, then runs the command here. rsync uses it too.
   put(join(bin, 'ssh'), `#!/bin/bash
-while [ $# -gt 0 ]; do case "$1" in -o|-O) shift 2;; -*) shift;; *) break;; esac; done
+while [ $# -gt 0 ]; do case "$1" in -o|-O|-l|-p|-i) shift 2;; -*) shift;; *) break;; esac; done
 shift
 [ $# -eq 0 ] && exit 0
 exec bash -c "$*"`, 0o755);

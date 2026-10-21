@@ -27,7 +27,7 @@ describe('buildTar', () => {
       for (const f of files) expect(readFileSync(join(dir, f.path))).toEqual(Buffer.isBuffer(f.content) ? f.content : Buffer.from(f.content));
       expect(statSync(join(dir, 'src/server.js')).mode & 0o777).toBe(0o755);
       const list = spawnSync('tar', ['-tzf', join(dir, 'a.tgz')], { encoding: 'utf8' }).stdout.trim().split('\n').sort();
-      expect(list.filter((x) => !x.includes('\\'))).toEqual(files.map((f) => f.path).filter((x) => !/[^\x00-\x7f]/.test(x)).sort());   // tar prints a non-ASCII name escaped; its content was checked above
+      expect(list.filter((x) => !x.includes('\\') && !/[^\x00-\x7f]/.test(x))).toEqual(files.map((f) => f.path).filter((x) => !/[^\x00-\x7f]/.test(x)).sort());   // GNU tar prints a non-ASCII name as it is, BSD tar escapes it: either way its content was checked above
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
