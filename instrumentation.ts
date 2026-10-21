@@ -11,5 +11,13 @@ export async function register() {
       console.error(e instanceof Error ? e.message : e);
       process.exit(1);
     }
+    // Write the built-in templates to the database (best effort: the gallery still has them from the code if the database is not ready).
+    void (async () => {
+      try {
+        const [{ PgTemplateStore }, { syncBuiltInTemplates }] = await Promise.all([import('./lib/templates/templateStore'), import('./lib/templates/sync')]);
+        const r = await syncBuiltInTemplates(new PgTemplateStore());
+        if (r.added + r.updated + r.removed > 0) console.log(`[templates] built-in templates synced: ${r.added} added, ${r.updated} updated, ${r.removed} removed`);
+      } catch (e) { console.warn('[templates] could not sync the built-in templates:', e instanceof Error ? e.message : e); }
+    })();
   }
 }

@@ -780,3 +780,31 @@ model ProjectSource {
 
   @@index([projectId, expiresAtMs])
 }
+
+// An architecture template of the Templates gallery. The built-in ones (orgId empty, source 'builtin') are written here from the code by
+// lib/templates/sync.ts, so the list can be read, exported and uploaded from the database; an organization's own (orgId set, source 'org') are saved
+// by its members. `graphJson` is the template's default graph ({ nodes, edges }); `metaJson` holds the descriptive fields the gallery shows
+// (pattern, use cases, availability, scale, data flow, source references, flags). `contentHash` lets the sync see what changed.
+model ArchitectureTemplate {
+  id          String  @id
+  orgId       String?
+  source      String
+  name        String
+  description String
+  provider    String
+  category    String
+  complexity  String
+  tagsJson    String  @default("[]")
+  featuresJson String @default("[]")
+  estimatedCost Float
+  resourceCount Float
+  metaJson    String  @default("{}")
+  graphJson   String
+  contentHash String
+  createdBy   String?
+  createdAt   String
+  updatedAt   String
+
+  @@index([orgId])
+  @@index([source])
+}

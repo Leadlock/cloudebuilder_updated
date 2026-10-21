@@ -23,6 +23,7 @@
     "credentials:new-key": "tsx --tsconfig tsconfig.json scripts/new-encryption-key.ts",
     "terraform:install": "tsx --tsconfig tsconfig.json scripts/install-terraform.ts",
     "worker:discovery": "tsx workers/discoveryWorker.ts",
+    "templates:sync": "tsx scripts/sync-templates.ts",
     "worker:terraform-apply": "tsx workers/terraformApplyWorker.ts",
     "terraform:destroy": "tsx scripts/destroy-infrastructure.ts",
     "auth:list-local-accounts": "tsx --env-file=.env --tsconfig tsconfig.json scripts/auth/list-local-accounts.ts",

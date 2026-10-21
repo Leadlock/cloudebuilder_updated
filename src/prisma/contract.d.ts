@@ -33,7 +33,7 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'5d5e21b651aa807330e6db3599f64737318a18eedcf3607abd46a30c059bd72e'>;
+  StorageHashBase<'d420dc7309251c8c6148cb90ba225b02bb817acd63f6e912bd7c950c070074b1'>;
 export type ExecutionHash =
   ExecutionHashBase<'14edecb9b1ec2439249159275776ee7bea16746ed17fedbf98c8c8211fdfb2c3'>;
 export type ProfileHash =
@@ -291,6 +291,26 @@ export type FieldOutputTypes = {
       readonly groupId: CodecTypes['pg/text@1']['output'] | null;
       readonly locked: CodecTypes['pg/bool@1']['output'];
       readonly architectureId: CodecTypes['pg/text@1']['output'];
+    };
+    readonly ArchitectureTemplate: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly orgId: CodecTypes['pg/text@1']['output'] | null;
+      readonly source: CodecTypes['pg/text@1']['output'];
+      readonly name: CodecTypes['pg/text@1']['output'];
+      readonly description: CodecTypes['pg/text@1']['output'];
+      readonly provider: CodecTypes['pg/text@1']['output'];
+      readonly category: CodecTypes['pg/text@1']['output'];
+      readonly complexity: CodecTypes['pg/text@1']['output'];
+      readonly tagsJson: CodecTypes['pg/text@1']['output'];
+      readonly featuresJson: CodecTypes['pg/text@1']['output'];
+      readonly estimatedCost: CodecTypes['pg/float8@1']['output'];
+      readonly resourceCount: CodecTypes['pg/float8@1']['output'];
+      readonly metaJson: CodecTypes['pg/text@1']['output'];
+      readonly graphJson: CodecTypes['pg/text@1']['output'];
+      readonly contentHash: CodecTypes['pg/text@1']['output'];
+      readonly createdBy: CodecTypes['pg/text@1']['output'] | null;
+      readonly createdAt: CodecTypes['pg/text@1']['output'];
+      readonly updatedAt: CodecTypes['pg/text@1']['output'];
     };
     readonly ArchitectureVersion: {
       readonly id: CodecTypes['pg/text@1']['output'];
@@ -733,6 +753,26 @@ export type FieldInputTypes = {
       readonly locked: CodecTypes['pg/bool@1']['input'];
       readonly architectureId: CodecTypes['pg/text@1']['input'];
     };
+    readonly ArchitectureTemplate: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly orgId: CodecTypes['pg/text@1']['input'] | null;
+      readonly source: CodecTypes['pg/text@1']['input'];
+      readonly name: CodecTypes['pg/text@1']['input'];
+      readonly description: CodecTypes['pg/text@1']['input'];
+      readonly provider: CodecTypes['pg/text@1']['input'];
+      readonly category: CodecTypes['pg/text@1']['input'];
+      readonly complexity: CodecTypes['pg/text@1']['input'];
+      readonly tagsJson: CodecTypes['pg/text@1']['input'];
+      readonly featuresJson: CodecTypes['pg/text@1']['input'];
+      readonly estimatedCost: CodecTypes['pg/float8@1']['input'];
+      readonly resourceCount: CodecTypes['pg/float8@1']['input'];
+      readonly metaJson: CodecTypes['pg/text@1']['input'];
+      readonly graphJson: CodecTypes['pg/text@1']['input'];
+      readonly contentHash: CodecTypes['pg/text@1']['input'];
+      readonly createdBy: CodecTypes['pg/text@1']['input'] | null;
+      readonly createdAt: CodecTypes['pg/text@1']['input'];
+      readonly updatedAt: CodecTypes['pg/text@1']['input'];
+    };
     readonly ArchitectureVersion: {
       readonly id: CodecTypes['pg/text@1']['input'];
       readonly versionNumber: CodecTypes['pg/int4@1']['input'];
@@ -1174,6 +1214,26 @@ export type StorageColumnTypes = {
       readonly region: CodecTypes['pg/text@1']['output'] | null;
       readonly resourceType: CodecTypes['pg/text@1']['output'];
     };
+    readonly architectureTemplate: {
+      readonly category: CodecTypes['pg/text@1']['output'];
+      readonly complexity: CodecTypes['pg/text@1']['output'];
+      readonly contentHash: CodecTypes['pg/text@1']['output'];
+      readonly createdAt: CodecTypes['pg/text@1']['output'];
+      readonly createdBy: CodecTypes['pg/text@1']['output'] | null;
+      readonly description: CodecTypes['pg/text@1']['output'];
+      readonly estimatedCost: CodecTypes['pg/float8@1']['output'];
+      readonly featuresJson: CodecTypes['pg/text@1']['output'];
+      readonly graphJson: CodecTypes['pg/text@1']['output'];
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly metaJson: CodecTypes['pg/text@1']['output'];
+      readonly name: CodecTypes['pg/text@1']['output'];
+      readonly orgId: CodecTypes['pg/text@1']['output'] | null;
+      readonly provider: CodecTypes['pg/text@1']['output'];
+      readonly resourceCount: CodecTypes['pg/float8@1']['output'];
+      readonly source: CodecTypes['pg/text@1']['output'];
+      readonly tagsJson: CodecTypes['pg/text@1']['output'];
+      readonly updatedAt: CodecTypes['pg/text@1']['output'];
+    };
     readonly architectureVersion: {
       readonly architectureId: CodecTypes['pg/text@1']['output'];
       readonly author: CodecTypes['pg/text@1']['output'];
@@ -1614,6 +1674,26 @@ export type StorageColumnInputTypes = {
       readonly provider: CodecTypes['pg/text@1']['input'];
       readonly region: CodecTypes['pg/text@1']['input'] | null;
       readonly resourceType: CodecTypes['pg/text@1']['input'];
+    };
+    readonly architectureTemplate: {
+      readonly category: CodecTypes['pg/text@1']['input'];
+      readonly complexity: CodecTypes['pg/text@1']['input'];
+      readonly contentHash: CodecTypes['pg/text@1']['input'];
+      readonly createdAt: CodecTypes['pg/text@1']['input'];
+      readonly createdBy: CodecTypes['pg/text@1']['input'] | null;
+      readonly description: CodecTypes['pg/text@1']['input'];
+      readonly estimatedCost: CodecTypes['pg/float8@1']['input'];
+      readonly featuresJson: CodecTypes['pg/text@1']['input'];
+      readonly graphJson: CodecTypes['pg/text@1']['input'];
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly metaJson: CodecTypes['pg/text@1']['input'];
+      readonly name: CodecTypes['pg/text@1']['input'];
+      readonly orgId: CodecTypes['pg/text@1']['input'] | null;
+      readonly provider: CodecTypes['pg/text@1']['input'];
+      readonly resourceCount: CodecTypes['pg/float8@1']['input'];
+      readonly source: CodecTypes['pg/text@1']['input'];
+      readonly tagsJson: CodecTypes['pg/text@1']['input'];
+      readonly updatedAt: CodecTypes['pg/text@1']['input'];
     };
     readonly architectureVersion: {
       readonly architectureId: CodecTypes['pg/text@1']['input'];
@@ -2454,6 +2534,129 @@ type ContractBase = Omit<
                   };
                 },
               ];
+            };
+            readonly architectureTemplate: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly orgId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly source: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly name: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly description: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly provider: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly category: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly complexity: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly tagsJson: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', '[]'>;
+                  };
+                };
+                readonly featuresJson: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', '[]'>;
+                  };
+                };
+                readonly estimatedCost: {
+                  readonly nativeType: 'float8';
+                  readonly codecId: 'pg/float8@1';
+                  readonly nullable: false;
+                };
+                readonly resourceCount: {
+                  readonly nativeType: 'float8';
+                  readonly codecId: 'pg/float8@1';
+                  readonly nullable: false;
+                };
+                readonly metaJson: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                  readonly default: {
+                    readonly kind: 'literal';
+                    readonly value: DefaultLiteralValue<'pg/text@1', '{}'>;
+                  };
+                };
+                readonly graphJson: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly contentHash: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly createdBy: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly createdAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly updatedAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [];
+              indexes: readonly [
+                {
+                  readonly name: 'architectureTemplate_orgId_idx_c5e5aabe';
+                  readonly prefix: 'architectureTemplate_orgId_idx';
+                  readonly columns: readonly ['orgId'];
+                  readonly unique: false;
+                },
+                {
+                  readonly name: 'architectureTemplate_source_idx_c937a07d';
+                  readonly prefix: 'architectureTemplate_source_idx';
+                  readonly columns: readonly ['source'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [];
             };
             readonly architectureVersion: {
               columns: {
@@ -5370,6 +5573,10 @@ type ContractBase = Omit<
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'ProjectSource';
     };
+    readonly architectureTemplate: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'ArchitectureTemplate';
+    };
   };
   readonly domain: {
     readonly namespaces: {
@@ -5868,6 +6075,107 @@ type ContractBase = Omit<
                 readonly groupId: { readonly column: 'groupId' };
                 readonly locked: { readonly column: 'locked' };
                 readonly architectureId: { readonly column: 'architectureId' };
+              };
+            };
+          };
+          readonly ArchitectureTemplate: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly orgId: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly source: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly name: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly description: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly provider: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly category: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly complexity: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly tagsJson: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly featuresJson: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly estimatedCost: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/float8@1' };
+              };
+              readonly resourceCount: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/float8@1' };
+              };
+              readonly metaJson: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly graphJson: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly contentHash: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly createdBy: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly createdAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly updatedAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: {
+              readonly table: 'architectureTemplate';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly orgId: { readonly column: 'orgId' };
+                readonly source: { readonly column: 'source' };
+                readonly name: { readonly column: 'name' };
+                readonly description: { readonly column: 'description' };
+                readonly provider: { readonly column: 'provider' };
+                readonly category: { readonly column: 'category' };
+                readonly complexity: { readonly column: 'complexity' };
+                readonly tagsJson: { readonly column: 'tagsJson' };
+                readonly featuresJson: { readonly column: 'featuresJson' };
+                readonly estimatedCost: { readonly column: 'estimatedCost' };
+                readonly resourceCount: { readonly column: 'resourceCount' };
+                readonly metaJson: { readonly column: 'metaJson' };
+                readonly graphJson: { readonly column: 'graphJson' };
+                readonly contentHash: { readonly column: 'contentHash' };
+                readonly createdBy: { readonly column: 'createdBy' };
+                readonly createdAt: { readonly column: 'createdAt' };
+                readonly updatedAt: { readonly column: 'updatedAt' };
               };
             };
           };

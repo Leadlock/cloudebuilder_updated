@@ -1,0 +1,119 @@
+[
+  {
+    "id": "table.architectureTemplate",
+    "label": "Create table \"architectureTemplate\"",
+    "summary": "Creates table \"architectureTemplate\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "architectureTemplate"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"architectureTemplate\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureTemplate\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"architectureTemplate\"",
+        "sql": "CREATE TABLE \"public\".\"architectureTemplate\" (\n  \"category\" text NOT NULL,\n  \"complexity\" text NOT NULL,\n  \"contentHash\" text NOT NULL,\n  \"createdAt\" text NOT NULL,\n  \"createdBy\" text,\n  \"description\" text NOT NULL,\n  \"estimatedCost\" float8 NOT NULL,\n  \"featuresJson\" text DEFAULT '[]' NOT NULL,\n  \"graphJson\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"metaJson\" text DEFAULT '{}' NOT NULL,\n  \"name\" text NOT NULL,\n  \"orgId\" text,\n  \"provider\" text NOT NULL,\n  \"resourceCount\" float8 NOT NULL,\n  \"source\" text NOT NULL,\n  \"tagsJson\" text DEFAULT '[]' NOT NULL,\n  \"updatedAt\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"architectureTemplate\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureTemplate\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.architectureTemplate.architectureTemplate_orgId_idx_c5e5aabe",
+    "label": "Create index \"architectureTemplate_orgId_idx_c5e5aabe\" on \"architectureTemplate\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "architectureTemplate_orgId_idx_c5e5aabe",
+        "table": "architectureTemplate"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"architectureTemplate_orgId_idx_c5e5aabe\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureTemplate_orgId_idx_c5e5aabe\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"architectureTemplate_orgId_idx_c5e5aabe\"",
+        "sql": "CREATE INDEX \"architectureTemplate_orgId_idx_c5e5aabe\" ON \"public\".\"architectureTemplate\" (\"orgId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"architectureTemplate_orgId_idx_c5e5aabe\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureTemplate_orgId_idx_c5e5aabe\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.architectureTemplate.architectureTemplate_source_idx_c937a07d",
+    "label": "Create index \"architectureTemplate_source_idx_c937a07d\" on \"architectureTemplate\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "architectureTemplate_source_idx_c937a07d",
+        "table": "architectureTemplate"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"architectureTemplate_source_idx_c937a07d\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureTemplate_source_idx_c937a07d\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"architectureTemplate_source_idx_c937a07d\"",
+        "sql": "CREATE INDEX \"architectureTemplate_source_idx_c937a07d\" ON \"public\".\"architectureTemplate\" (\"source\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"architectureTemplate_source_idx_c937a07d\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"architectureTemplate_source_idx_c937a07d\""
+        ]
+      }
+    ]
+  }
+]

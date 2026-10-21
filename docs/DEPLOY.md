@@ -32,3 +32,8 @@ Open the site. Sign in as someone who must **not** have access to Deploy, AI Gen
 
 ## How it is tested
 `__tests__/deployRemote.test.ts` runs the server part for real in a temporary folder (good deploy, failed build, failed install, site not answering, crash loop, rollback, missing `.env`, concurrent deploy, backup pruning). `__tests__/deployScript.test.ts` runs the whole command against a throwaway repository. Neither needs a server.
+
+## Architecture templates in the database
+The Templates gallery's built-in templates are written to the `architectureTemplate` table from the code (252 of them, about 2.6 MB): when the server starts, the first time `/api/architecture-templates` is asked for them, and with `npm run templates:sync`. The sync adds new ones, updates changed ones and removes ones that left the code; running it again changes nothing. An organization's own templates ("Save the open project as a template" in the gallery) are rows of the same table with that organization's id, and are never touched by the sync.
+After a deploy that includes the migration `add_architecture_templates`: `npm run db:migrate` on the server (the server also writes the built-in rows by itself when it starts). The gallery still shows the built-in templates from the code if the database cannot be reached.
+
