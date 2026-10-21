@@ -808,3 +808,24 @@ model ArchitectureTemplate {
   @@index([orgId])
   @@index([source])
 }
+
+// A read-only API key an organization's administrator made so another system (a marketplace, a script) can read its architecture templates
+// (lib/apiKeys). Only the SHA-256 hash of the key is stored; the key itself is shown once, when it is made. `scope` says what it may read.
+// includeBuiltin / includeOwn choose which templates it can see: the built-in ones, the organization's own, or both.
+model ApiKey {
+  id             String  @id @default(uuid())
+  orgId          String
+  name           String
+  keyPrefix      String
+  keyHash        String  @unique
+  scope          String
+  includeBuiltin Boolean @default(true)
+  includeOwn     Boolean @default(true)
+  createdBy      String
+  createdAt      String
+  expiresAt      String?
+  lastUsedAt     String?
+  revokedAt      String?
+
+  @@index([orgId])
+}

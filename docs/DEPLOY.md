@@ -37,3 +37,14 @@ Open the site. Sign in as someone who must **not** have access to Deploy, AI Gen
 The Templates gallery's built-in templates are written to the `architectureTemplate` table from the code (252 of them, about 2.6 MB): when the server starts, the first time `/api/architecture-templates` is asked for them, and with `npm run templates:sync`. The sync adds new ones, updates changed ones and removes ones that left the code; running it again changes nothing. An organization's own templates ("Save the open project as a template" in the gallery) are rows of the same table with that organization's id, and are never touched by the sync.
 After a deploy that includes the migration `add_architecture_templates`: `npm run db:migrate` on the server (the server also writes the built-in rows by itself when it starts). The gallery still shows the built-in templates from the code if the database cannot be reached.
 
+## Read-only API keys for the templates
+An administrator makes a key in the Templates gallery ("API keys for other systems"): a name, which templates it may read (the built-in ones, the organization's own, or both) and when it expires. The key (`cb_` and 43 characters) is shown once; only its SHA-256 hash is stored in the `apiKey` table (migration `add_api_keys`). Revoking it stops it at once.
+Another system reads with `Authorization: Bearer cb_…` (or `X-API-Key`):
+```
+GET /api/public/templates                      the list (descriptive fields)
+GET /api/public/templates?graphs=1             a full export, with every template's resources and connections
+GET /api/public/templates?provider=aws&category=Custom
+GET /api/public/templates/<id>                 one template with its graph
+```
+A key reads nothing else, and every bad key (none, malformed, unknown, revoked, expired) gets the same 401. Failed attempts are limited to 30 a minute per address, and a working key to 120 a minute. After a deploy that includes this, run `npm run db:migrate` on the server.
+

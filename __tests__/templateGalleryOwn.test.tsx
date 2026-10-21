@@ -14,6 +14,15 @@ jest.mock('@/context/AppContext', () => ({
   useActiveProject: () => mockProject,
 }));
 
+const mkTemplate = (id: string, name: string, provider: string, category: string) => ({
+  id, name, description: `${name} description`, provider, category, tags: [], complexity: 'simple', estimatedCost: 10, resourceCount: 1, features: [],
+  generate: () => ({ nodes: [{ id: 'n', type: 'aws_vpc', label: 'VPC', position: { x: 0, y: 0 }, config: {} }], edges: [] }),
+});
+// A few built-in templates: the real list is 250 cards, which makes every render in this test slow.
+jest.mock('@/lib/templates', () => ({
+  architectureTemplates: [mkTemplate('b1', 'Three-Tier Web App', 'aws', 'Web Applications'), mkTemplate('b2', 'Serverless API', 'aws', 'Serverless'), mkTemplate('b3', 'Microservices on AKS', 'azure', 'Microservices')],
+}));
+
 import TemplateGallery from '@/components/templates/TemplateGallery';
 
 type Call = { method: string; path: string; body?: unknown };
@@ -57,7 +66,7 @@ describe('the Templates gallery', () => {
     await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Saved'));
     const post = calls.find((c) => c.method === 'POST')!;
     expect(post.body).toMatchObject({ name: 'Shop', description: 'For shops', provider: 'aws', category: 'Custom', nodes: [{ id: 'a' }], edges: [] });
-  }, 30000);
+  });
 
   test('nothing to save from an empty project or none', () => {
     mockProject = { id: 'p1', name: 'Empty', provider: 'aws', nodes: [], edges: [] };

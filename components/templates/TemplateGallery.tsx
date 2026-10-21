@@ -9,6 +9,7 @@ import { formatCurrency } from '@/lib/currency/formatter';
 import { calculateCosts } from '@/lib/analysis';
 import clsx from 'clsx';
 import { instantiateTemplate } from '@/lib/domain/instantiateTemplate';
+import ApiKeysCard from './ApiKeysCard';
 import { masterGraph, toTemplate, type StoredTemplate } from '@/lib/templates/stored';
 
 // Estimated monthly cost per template, computed from the SAME resource graph
@@ -213,6 +214,7 @@ export default function TemplateGallery() {
           </div>
         </div>
 
+        {state.currentUser?.role === 'admin' && <ApiKeysCard isLight={isLight} />}
         {project && project.nodes.length > 0 && (
           <div className="mb-5" data-testid="save-as-template">
             {!saveOpen ? (

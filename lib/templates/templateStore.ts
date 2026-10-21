@@ -14,6 +14,12 @@ export class PgTemplateStore {
     return rows.map(fromRow);
   }
 
+  /** The built-in templates and this organization's own, each with its graph, in one query (a full export). */
+  async listWithGraphs(orgId: string): Promise<StoredTemplateWithGraph[]> {
+    const { rows } = await this.db().query(`SELECT ${SUMMARY}, "graphJson" FROM "architectureTemplate" WHERE "orgId" IS NULL OR "orgId" = $1 ORDER BY "source", "name"`, [orgId]);
+    return rows.flatMap((r) => { const graph = graphOf(r); return graph ? [{ ...fromRow(r), graph }] : []; });
+  }
+
   /** The organization's own templates with their graphs. */
   async listOwn(orgId: string): Promise<StoredTemplateWithGraph[]> {
     const { rows } = await this.db().query(`SELECT ${SUMMARY}, "graphJson" FROM "architectureTemplate" WHERE "orgId" = $1 ORDER BY "updatedAt" DESC`, [orgId]);
