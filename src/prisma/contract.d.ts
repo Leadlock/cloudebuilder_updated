@@ -33,7 +33,7 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'53667c3a3c43a309729c004a3b6991da16e28bfad2f8bd2431a4a9ad79c68e9f'>;
+  StorageHashBase<'6d64572a0d0c10f4b6eae901755a22f7f7186a9f2d5ef5458799f969be8caf88'>;
 export type ExecutionHash =
   ExecutionHashBase<'61a96443efd0094439696f92429341f99b9a8b4cbcc9db5e1321bd74692faecc'>;
 export type ProfileHash =
@@ -595,6 +595,14 @@ export type FieldOutputTypes = {
       readonly createdAt: CodecTypes['pg/text@1']['output'];
       readonly completedAt: CodecTypes['pg/text@1']['output'] | null;
     };
+    readonly TemplateListing: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly orgId: CodecTypes['pg/text@1']['output'];
+      readonly templateId: CodecTypes['pg/text@1']['output'];
+      readonly listingJson: CodecTypes['pg/text@1']['output'];
+      readonly updatedBy: CodecTypes['pg/text@1']['output'];
+      readonly updatedAt: CodecTypes['pg/text@1']['output'];
+    };
     readonly TerraformAccess: {
       readonly id: CodecTypes['pg/text@1']['output'];
       readonly orgId: CodecTypes['pg/text@1']['output'];
@@ -1070,6 +1078,14 @@ export type FieldInputTypes = {
       readonly findingsJson: CodecTypes['pg/text@1']['input'];
       readonly createdAt: CodecTypes['pg/text@1']['input'];
       readonly completedAt: CodecTypes['pg/text@1']['input'] | null;
+    };
+    readonly TemplateListing: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly orgId: CodecTypes['pg/text@1']['input'];
+      readonly templateId: CodecTypes['pg/text@1']['input'];
+      readonly listingJson: CodecTypes['pg/text@1']['input'];
+      readonly updatedBy: CodecTypes['pg/text@1']['input'];
+      readonly updatedAt: CodecTypes['pg/text@1']['input'];
     };
     readonly TerraformAccess: {
       readonly id: CodecTypes['pg/text@1']['input'];
@@ -1547,6 +1563,14 @@ export type StorageColumnTypes = {
       readonly status: CodecTypes['pg/text@1']['output'];
       readonly versionId: CodecTypes['pg/text@1']['output'] | null;
     };
+    readonly templateListing: {
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly listingJson: CodecTypes['pg/text@1']['output'];
+      readonly orgId: CodecTypes['pg/text@1']['output'];
+      readonly templateId: CodecTypes['pg/text@1']['output'];
+      readonly updatedAt: CodecTypes['pg/text@1']['output'];
+      readonly updatedBy: CodecTypes['pg/text@1']['output'];
+    };
     readonly terraformAccess: {
       readonly checksJson: CodecTypes['pg/text@1']['output'];
       readonly decidedAt: CodecTypes['pg/text@1']['output'] | null;
@@ -2022,6 +2046,14 @@ export type StorageColumnInputTypes = {
       readonly score: CodecTypes['pg/int4@1']['input'];
       readonly status: CodecTypes['pg/text@1']['input'];
       readonly versionId: CodecTypes['pg/text@1']['input'] | null;
+    };
+    readonly templateListing: {
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly listingJson: CodecTypes['pg/text@1']['input'];
+      readonly orgId: CodecTypes['pg/text@1']['input'];
+      readonly templateId: CodecTypes['pg/text@1']['input'];
+      readonly updatedAt: CodecTypes['pg/text@1']['input'];
+      readonly updatedBy: CodecTypes['pg/text@1']['input'];
     };
     readonly terraformAccess: {
       readonly checksJson: CodecTypes['pg/text@1']['input'];
@@ -4785,6 +4817,51 @@ type ContractBase = Omit<
                 },
               ];
             };
+            readonly templateListing: {
+              columns: {
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly orgId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly templateId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly listingJson: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly updatedBy: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly updatedAt: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [];
+              indexes: readonly [
+                {
+                  readonly name: 'templateListing_orgId_idx_c5e5aabe';
+                  readonly prefix: 'templateListing_orgId_idx';
+                  readonly columns: readonly ['orgId'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [];
+            };
             readonly terraformAccess: {
               columns: {
                 readonly id: {
@@ -5726,6 +5803,10 @@ type ContractBase = Omit<
       readonly model: 'ArchitectureTemplate';
     };
     readonly apiKey: { readonly namespace: 'public' & NamespaceId; readonly model: 'ApiKey' };
+    readonly templateListing: {
+      readonly namespace: 'public' & NamespaceId;
+      readonly model: 'TemplateListing';
+    };
   };
   readonly domain: {
     readonly namespaces: {
@@ -8307,6 +8388,47 @@ type ContractBase = Omit<
                 readonly findingsJson: { readonly column: 'findingsJson' };
                 readonly createdAt: { readonly column: 'createdAt' };
                 readonly completedAt: { readonly column: 'completedAt' };
+              };
+            };
+          };
+          readonly TemplateListing: {
+            readonly fields: {
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly orgId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly templateId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly listingJson: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly updatedBy: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly updatedAt: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+            };
+            readonly relations: Record<string, never>;
+            readonly storage: {
+              readonly table: 'templateListing';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly id: { readonly column: 'id' };
+                readonly orgId: { readonly column: 'orgId' };
+                readonly templateId: { readonly column: 'templateId' };
+                readonly listingJson: { readonly column: 'listingJson' };
+                readonly updatedBy: { readonly column: 'updatedBy' };
+                readonly updatedAt: { readonly column: 'updatedAt' };
               };
             };
           };

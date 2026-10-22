@@ -1,4 +1,4 @@
-/** GET /api/public/templates/[id] — one template with its graph, read with an API key (see ../route.ts). A template the key may not see is a 404. */
+/** GET /api/public/templates/[id] — one template with its graph, read with an API key (see ../route.ts). A template the key may not see is a 404. `?format=neozaar` gives it as Neozaar's Create Service request. */
 import { NextRequest } from 'next/server';
 import { ok, internalError, notFound } from '@/lib/api/response';
 import { authenticateApiKey } from '@/lib/apiKeys/auth';
@@ -6,11 +6,14 @@ import { SCOPE_TEMPLATES_READ } from '@/lib/apiKeys/keys';
 import { PgApiKeyStore } from '@/lib/apiKeys/store';
 import { PgTemplateStore } from '@/lib/templates/templateStore';
 import { publicTemplate } from '@/lib/apiKeys/publicTemplate';
+import { PgListingStore } from '@/lib/marketplace/listingStore';
+import { toNeozaarService } from '@/lib/marketplace/neozaar';
 
 export const dynamic = 'force-dynamic';
 
 const keys = new PgApiKeyStore();
 const templates = new PgTemplateStore();
+const listings = new PgListingStore();
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -19,6 +22,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const { key } = auth;
     const t = await templates.get(key.orgId, (await params).id);
     if (!t || (t.source === 'builtin' ? !key.includeBuiltin : !key.includeOwn)) return notFound('Template');
+    if (new URL(req.url).searchParams.get('format') === 'neozaar') {
+      const saved = await listings.get(key.orgId, t.id);
+      const res = ok({ neozaar: toNeozaarService(publicTemplate(t, t.graph), saved?.listing ?? {}) });
+      res.headers.set('Cache-Control', 'private, no-store');
+      return res;
+    }
     const res = ok({ template: publicTemplate(t, t.graph) });
     res.headers.set('Cache-Control', 'private, no-store');
     return res;

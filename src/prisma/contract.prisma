@@ -829,3 +829,17 @@ model ApiKey {
 
   @@index([orgId])
 }
+
+// What an organization wrote about one architecture template for the Neozaar marketplace export (lib/marketplace): the business problem, the
+// outcomes, price, audience and so on. It sits next to the template, not in its row, so the sync of the built-in templates never overwrites it.
+// id is "<orgId>:<templateId>"; listingJson is the details as JSON (checked again whenever it is read).
+model TemplateListing {
+  id          String @id
+  orgId       String
+  templateId  String
+  listingJson String
+  updatedBy   String
+  updatedAt   String
+
+  @@index([orgId])
+}

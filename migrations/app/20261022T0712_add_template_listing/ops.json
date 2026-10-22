@@ -1,0 +1,80 @@
+[
+  {
+    "id": "table.templateListing",
+    "label": "Create table \"templateListing\"",
+    "summary": "Creates table \"templateListing\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "templateListing"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"templateListing\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"templateListing\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"templateListing\"",
+        "sql": "CREATE TABLE \"public\".\"templateListing\" (\n  \"id\" text NOT NULL,\n  \"listingJson\" text NOT NULL,\n  \"orgId\" text NOT NULL,\n  \"templateId\" text NOT NULL,\n  \"updatedAt\" text NOT NULL,\n  \"updatedBy\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"templateListing\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"templateListing\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.templateListing.templateListing_orgId_idx_c5e5aabe",
+    "label": "Create index \"templateListing_orgId_idx_c5e5aabe\" on \"templateListing\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "templateListing_orgId_idx_c5e5aabe",
+        "table": "templateListing"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"templateListing_orgId_idx_c5e5aabe\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"templateListing_orgId_idx_c5e5aabe\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"templateListing_orgId_idx_c5e5aabe\"",
+        "sql": "CREATE INDEX \"templateListing_orgId_idx_c5e5aabe\" ON \"public\".\"templateListing\" (\"orgId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"templateListing_orgId_idx_c5e5aabe\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"templateListing_orgId_idx_c5e5aabe\""
+        ]
+      }
+    ]
+  }
+]

@@ -136,6 +136,10 @@
       "model": "SecurityScan",
       "namespace": "public"
     },
+    "templateListing": {
+      "model": "TemplateListing",
+      "namespace": "public"
+    },
     "terraformAccess": {
       "model": "TerraformAccess",
       "namespace": "public"
@@ -4478,6 +4482,77 @@
               "table": "securityScan"
             }
           },
+          "TemplateListing": {
+            "fields": {
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "listingJson": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "orgId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "templateId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "updatedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "updatedBy": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {},
+            "storage": {
+              "fields": {
+                "id": {
+                  "column": "id"
+                },
+                "listingJson": {
+                  "column": "listingJson"
+                },
+                "orgId": {
+                  "column": "orgId"
+                },
+                "templateId": {
+                  "column": "templateId"
+                },
+                "updatedAt": {
+                  "column": "updatedAt"
+                },
+                "updatedBy": {
+                  "column": "updatedBy"
+                }
+              },
+              "namespaceId": "public",
+              "table": "templateListing"
+            }
+          },
           "TerraformAccess": {
             "fields": {
               "checksJson": {
@@ -8803,6 +8878,57 @@
               },
               "uniques": []
             },
+            "templateListing": {
+              "columns": {
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "listingJson": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "orgId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "templateId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "updatedAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "updatedBy": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [],
+              "indexes": [
+                {
+                  "columns": [
+                    "orgId"
+                  ],
+                  "name": "templateListing_orgId_idx_c5e5aabe",
+                  "prefix": "templateListing_orgId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
             "terraformAccess": {
               "columns": {
                 "checksJson": {
@@ -9704,7 +9830,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "53667c3a3c43a309729c004a3b6991da16e28bfad2f8bd2431a4a9ad79c68e9f"
+    "storageHash": "6d64572a0d0c10f4b6eae901755a22f7f7186a9f2d5ef5458799f969be8caf88"
   },
   "execution": {
     "executionHash": "61a96443efd0094439696f92429341f99b9a8b4cbcc9db5e1321bd74692faecc",
