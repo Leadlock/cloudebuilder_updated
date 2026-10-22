@@ -1,5 +1,6 @@
 /**
- * Who may make, see and revoke API keys for the templates. Set CLOUDBUILDER_API_KEY_MANAGERS to a comma separated list of email addresses
+ * Who may make, see and revoke API keys for the templates, and who may read and write a template's marketplace listing (the real price and text for the
+ * Neozaar export). Set CLOUDBUILDER_API_KEY_MANAGERS to a comma separated list of email addresses
  * (ajinkya@neozaar.com). When it is not set, the list of RESTRICTED_FEATURES_ALLOWED_EMAILS is used (the people who may already use Deploy), so a server
  * that has that lock needs no new setting. Unlike that lock, an empty list means NOBODY: managing keys is never open to everyone, and being a super
  * administrator does not add anyone. The interface and the API use this one rule.
@@ -19,3 +20,4 @@ export function canManageApiKeys(email: unknown, env: NodeJS.ProcessEnv = proces
 }
 
 export const API_KEY_MANAGER_MESSAGE = 'Managing API keys is not accessible for your account.';
+export const LISTING_MANAGER_MESSAGE = 'Marketplace listings are not accessible for your account.';

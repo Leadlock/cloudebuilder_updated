@@ -45,6 +45,7 @@ beforeEach(() => {
   K.findByHash.mockResolvedValue(REC); K.touch.mockResolvedValue(undefined); mockRate.mockResolvedValue({ allowed: true });
   T.list.mockResolvedValue([stored('a'), stored('b')]); T.listWithGraphs.mockResolvedValue([stored('a'), stored('b', { category: 'Mystery' })]); T.get.mockResolvedValue(stored('a'));
   L.forOrg.mockResolvedValue(new Map()); L.get.mockResolvedValue(null); L.put.mockResolvedValue(undefined); L.delete.mockResolvedValue(true);
+  process.env['CLOUDBUILDER_API_KEY_MANAGERS'] = 'a@x.com';
   mockIdentity.mockReturnValue({ userId: 'u1', email: 'a@x.com' }); mockOrg.mockResolvedValue('o1'); mockRole.mockResolvedValue('admin');
 });
 
@@ -100,14 +101,27 @@ describe('GET /api/public/templates/[id]?format=neozaar', () => {
 const put = (body: unknown) => new NextRequest('http://x/api/architecture-templates/a/listing', { method: 'PUT', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } });
 const plain = (method: string) => new NextRequest('http://x/api/architecture-templates/a/listing', { method });
 
+afterAll(() => { delete process.env['CLOUDBUILDER_API_KEY_MANAGERS']; });
+
 describe('/api/architecture-templates/[id]/listing', () => {
+  test('only the account that may manage keys: another administrator can neither read, write nor delete a listing', async () => {
+    mockIdentity.mockReturnValue({ userId: 'u2', email: 'other-admin@x.com' });          // an administrator of the organization, but not the listed account
+    expect((await LGET(plain('GET'), ctx('a'))).status).toBe(403);
+    expect((await LPUT(put({ startingPrice: 1 }), ctx('a'))).status).toBe(403);
+    expect((await LDEL(plain('DELETE'), ctx('a'))).status).toBe(403);
+    expect(L.get).not.toHaveBeenCalled(); expect(L.put).not.toHaveBeenCalled(); expect(L.delete).not.toHaveBeenCalled(); expect(T.get).not.toHaveBeenCalled();
+    mockIdentity.mockReturnValue({ userId: 'u1', email: 'A@X.com' });                    // the listed account, in another letter case
+    expect((await LGET(plain('GET'), ctx('a'))).status).toBe(200);
+    delete process.env['CLOUDBUILDER_API_KEY_MANAGERS'];
+    expect((await LGET(plain('GET'), ctx('a'))).status).toBe(403);                      // an empty setting is nobody
+  });
   test('an administrator writes the listing, and gets the request it produces', async () => {
     const r = await LPUT(put({ challenges: 'Real problem.', startingPrice: 1000, audience: ['CTO'] }), ctx('a'));
     expect(r.status).toBe(200);
     expect(L.put).toHaveBeenCalledWith('o1', 'a', { challenges: 'Real problem.', startingPrice: 1000, audience: ['CTO'] }, 'a@x.com');
     expect((await r.json()).data.neozaar.catalog.fields.starting_price).toBe('1000');
   });
-  test('only an administrator writes or deletes; a member may read', async () => {
+  test('even the listed account must be an administrator to write or delete; as a member it may read', async () => {
     mockRole.mockResolvedValue('member');
     expect((await LPUT(put({ startingPrice: 1 }), ctx('a'))).status).toBe(403);
     expect((await LDEL(plain('DELETE'), ctx('a'))).status).toBe(403);

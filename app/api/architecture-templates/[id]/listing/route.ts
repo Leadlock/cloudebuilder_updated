@@ -2,7 +2,9 @@
  * /api/architecture-templates/[id]/listing — what the caller's organization wrote about a template for the Neozaar marketplace export:
  * the business problem, outcomes, price, audience, segments, industries, CTA, regions, category. Anything left out falls back to the category's defaults.
  *
- * GET    — the listing and the Neozaar request it produces, with what is still missing (any member).
+ * Only the people listed in CLOUDBUILDER_API_KEY_MANAGERS (lib/auth/apiKeyManagers.ts) may use these routes at all.
+ *
+ * GET    — the listing and the Neozaar request it produces, with what is still missing (any member of the organization).
  * PUT    — write it (administrators and owners). The body is the listing; values for the form's choice lists must be ones the form offers.
  * DELETE — remove it, so the defaults apply again (administrators and owners).
  */
@@ -10,6 +12,7 @@ import { NextRequest } from 'next/server';
 import { ok, forbidden, unauthorized, internalError, badRequest, notFound, parseBody } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId } from '@/lib/api/phase2d';
+import { canManageApiKeys, LISTING_MANAGER_MESSAGE } from '@/lib/auth/apiKeyManagers';
 import { PgTemplateStore } from '@/lib/templates/templateStore';
 import { PgListingStore } from '@/lib/marketplace/listingStore';
 import { ListingSchema } from '@/lib/marketplace/listingSchema';
@@ -25,6 +28,7 @@ const ADMIN = new Set(['owner', 'admin']);
 async function context(req: NextRequest, id: string, write: boolean) {
   const identity = extractIdentity(req);
   if (!identity) return { response: unauthorized() };
+  if (!canManageApiKeys(identity.email)) return { response: forbidden(LISTING_MANAGER_MESSAGE) };
   const orgId = await resolveOrgId(req, identity.userId);
   if (!orgId) return { response: badRequest('orgId required') };
   const role = await getOrgRole(identity.userId, orgId);
