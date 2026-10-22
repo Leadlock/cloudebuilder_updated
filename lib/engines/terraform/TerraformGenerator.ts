@@ -2017,6 +2017,13 @@ ${tagLines.join('\n')}
   name_prefix   = "${name}-"
   image_id      = "${cfg['amiId'] ?? 'ami-0c55b159cbfafe1f0'}"
   instance_type = "${cfg['instanceType'] ?? 't3.medium'}"${sgRef ? `\n  vpc_security_group_ids = [${sgRef}]` : ''}
+
+  # Instance metadata only with a session token (IMDSv2), so a request forged through the application cannot read the role's credentials.
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2 # 2 so containers on the instance can still reach it
+  }
 }`,
     ];
 
@@ -2361,6 +2368,8 @@ resource "aws_sfn_state_machine" "${name}" {
       `  idle_timeout               = ${cfg['idleTimeoutSeconds'] ?? 60}`,
       `  enable_deletion_protection = ${cfg['deletionProtection'] === true}`,
     ];
+    // Only an application load balancer has headers to check; the setting is not valid on a network or gateway load balancer.
+    if ((cfg['lbType'] ?? 'application') === 'application') lines.push(`  drop_invalid_header_fields = true`);
     if (sgRef) lines.push(`  security_groups    = ${sgRef}`);
     if (subnetRefs.length > 0) {
       lines.push(`  subnets            = [${subnetRefs.join(', ')}]`);

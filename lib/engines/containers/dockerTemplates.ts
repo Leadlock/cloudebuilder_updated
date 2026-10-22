@@ -389,6 +389,8 @@ RUN ${c.buildCommand.trim() || 'npm run build'}
 FROM nginxinc/nginx-unprivileged:${c.version}-alpine AS runtime
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/${c.staticBuildDir} /usr/share/nginx/html
+# The image already runs as this unprivileged user (101); saying so makes it visible to anyone reading, or scanning, the file.
+USER 101
 EXPOSE ${c.port}
 ${healthcheck(c, 'wget')}CMD ["nginx", "-g", "daemon off;"]
 `;
