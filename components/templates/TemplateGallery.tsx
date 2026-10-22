@@ -214,7 +214,7 @@ export default function TemplateGallery() {
           </div>
         </div>
 
-        {state.currentUser?.role === 'admin' && <ApiKeysCard isLight={isLight} />}
+        {state.currentUser?.canManageApiKeys === true && <ApiKeysCard isLight={isLight} />}
         {project && project.nodes.length > 0 && (
           <div className="mb-5" data-testid="save-as-template">
             {!saveOpen ? (

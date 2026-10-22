@@ -1,5 +1,6 @@
 /**
- * /api/api-keys — the read-only API keys of the caller's organization. Administrators and owners only.
+ * /api/api-keys — the read-only API keys of the caller's organization. Only the people listed in CLOUDBUILDER_API_KEY_MANAGERS (lib/auth/apiKeyManagers.ts),
+ * and only when they are administrators or owners of the organization.
  *
  * GET  — the keys (name, first characters, what each may see, when it was last used, whether it is revoked). Never a key.
  * POST — make a key: { name, includeBuiltin?, includeOwn?, expiresInDays? }. The key is in the answer ONCE; only its hash is kept.
@@ -9,6 +10,7 @@ import { z } from 'zod';
 import { ok, created, forbidden, unauthorized, internalError, badRequest, parseBody } from '@/lib/api/response';
 import { extractIdentity, getOrgRole } from '@/lib/api/auth';
 import { resolveOrgId } from '@/lib/api/phase2d';
+import { canManageApiKeys, API_KEY_MANAGER_MESSAGE } from '@/lib/auth/apiKeyManagers';
 import { generateKey, MAX_KEY_DAYS, MAX_KEYS_PER_ORG, SCOPE_TEMPLATES_READ } from '@/lib/apiKeys/keys';
 import { PgApiKeyStore } from '@/lib/apiKeys/store';
 
@@ -26,6 +28,7 @@ const Body = z.object({
 async function admin(req: NextRequest) {
   const identity = extractIdentity(req);
   if (!identity) return { response: unauthorized() };
+  if (!canManageApiKeys(identity.email)) return { response: forbidden(API_KEY_MANAGER_MESSAGE) };
   const orgId = await resolveOrgId(req, identity.userId);
   if (!orgId) return { response: badRequest('orgId required') };
   const role = await getOrgRole(identity.userId, orgId);

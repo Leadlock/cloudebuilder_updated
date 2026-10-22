@@ -38,7 +38,7 @@ The Templates gallery's built-in templates are written to the `architectureTempl
 After a deploy that includes the migration `add_architecture_templates`: `npm run db:migrate` on the server (the server also writes the built-in rows by itself when it starts). The gallery still shows the built-in templates from the code if the database cannot be reached.
 
 ## Read-only API keys for the templates
-An administrator makes a key in the Templates gallery ("API keys for other systems"): a name, which templates it may read (the built-in ones, the organization's own, or both) and when it expires. The key (`cb_` and 43 characters) is shown once; only its SHA-256 hash is stored in the `apiKey` table (migration `add_api_keys`). Revoking it stops it at once.
+Only the people listed in `CLOUDBUILDER_API_KEY_MANAGERS` (for example `ajinkya@neozaar.com`; when it is not set, the `RESTRICTED_FEATURES_ALLOWED_EMAILS` list applies; an empty list means nobody) can make, see or revoke keys, and only as an administrator or owner of the organization. The server checks it on every call, and the button in the Templates gallery ("API keys for other systems") shows only for them. A person who was already signed in when this was deployed signs in once more to see it. They make a key: a name, which templates it may read (the built-in ones, the organization's own, or both) and when it expires. The key (`cb_` and 43 characters) is shown once; only its SHA-256 hash is stored in the `apiKey` table (migration `add_api_keys`). Revoking it stops it at once.
 Another system reads with `Authorization: Bearer cb_…` (or `X-API-Key`):
 ```
 GET /api/public/templates                      the list (descriptive fields)

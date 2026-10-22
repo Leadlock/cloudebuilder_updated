@@ -8,9 +8,10 @@ Object.assign(globalThis, { TextEncoder, TextDecoder });
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 const mockDispatch = jest.fn();
+let mockUser: Record<string, unknown> = {};
 let mockProject: { id: string; name: string; provider: string; nodes: unknown[]; edges: unknown[] } | null;
 jest.mock('@/context/AppContext', () => ({
-  useApp: () => ({ state: { theme: 'dark', displayCurrency: 'USD' }, dispatch: mockDispatch }),
+  useApp: () => ({ state: { theme: 'dark', displayCurrency: 'USD', currentUser: mockUser }, dispatch: mockDispatch }),
   useActiveProject: () => mockProject,
 }));
 
@@ -32,7 +33,7 @@ const OWN = { id: 'org-1', orgId: 'o1', source: 'org', name: 'Our standard stack
   graph: { nodes: [{ id: 'n1', type: 'aws_vpc', label: 'VPC', position: { x: 0, y: 0 }, config: {} }], edges: [] } };
 
 beforeEach(() => {
-  calls = []; listed = [OWN]; mockDispatch.mockClear();
+  calls = []; listed = [OWN]; mockDispatch.mockClear(); mockUser = {};
   mockProject = { id: 'p1', name: 'Shop', provider: 'aws', nodes: [{ id: 'a', type: 'aws_vpc', label: 'VPC', position: { x: 0, y: 0 } }], edges: [] };
   (global as unknown as { fetch: unknown }).fetch = jest.fn(async (path: string, init: RequestInit = {}) => {
     const method = init.method ?? 'GET';
@@ -86,5 +87,19 @@ describe('the Templates gallery', () => {
     fireEvent.click(screen.getByText('Save the open project as a template'));
     fireEvent.click(screen.getByRole('button', { name: 'Save template' }));
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Viewers cannot save templates.'));
+  });
+
+  test('the API keys button is only for the account that may manage keys (an administrator who is not listed does not see it)', () => {
+    mockUser = { role: 'admin', canManageApiKeys: false };
+    const { unmount } = render(<TemplateGallery />);
+    expect(screen.queryByText(/API keys for other systems/)).toBeNull();
+    unmount();
+    mockUser = { role: 'user', canManageApiKeys: undefined };
+    const second = render(<TemplateGallery />);
+    expect(screen.queryByText(/API keys for other systems/)).toBeNull();
+    second.unmount();
+    mockUser = { role: 'admin', canManageApiKeys: true };
+    render(<TemplateGallery />);
+    expect(screen.getByText(/API keys for other systems/)).toBeTruthy();
   });
 });

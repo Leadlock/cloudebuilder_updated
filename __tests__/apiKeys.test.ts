@@ -69,11 +69,25 @@ const REC = { id: 'k1', orgId: 'o1', name: 'Marketplace', keyPrefix: 'cb_abcdef'
 
 beforeEach(() => {
   jest.clearAllMocks();
+  process.env['CLOUDBUILDER_API_KEY_MANAGERS'] = 'a@x.com';
   mockIdentity.mockReturnValue({ userId: 'u1', email: 'a@x.com' }); mockOrg.mockResolvedValue('o1'); mockRole.mockResolvedValue('admin'); mockRate.mockResolvedValue({ allowed: true });
   K.create.mockResolvedValue(REC); K.list.mockResolvedValue([REC]); K.countActive.mockResolvedValue(0); K.revoke.mockResolvedValue(true); K.touch.mockResolvedValue(undefined);
 });
 
+afterAll(() => { delete process.env['CLOUDBUILDER_API_KEY_MANAGERS']; });
+
 describe('managing keys', () => {
+  test('only the account in CLOUDBUILDER_API_KEY_MANAGERS: another administrator is refused, and the setting empty refuses everybody', async () => {
+    mockIdentity.mockReturnValue({ userId: 'u2', email: 'other-admin@x.com' });           // an administrator of the organization, but not listed
+    expect((await KEYS_GET(req('GET'))).status).toBe(403);
+    expect((await KEYS_POST(req('POST', undefined, { body: { name: 'x' } }))).status).toBe(403);
+    expect((await KEY_DELETE(req('DELETE'), ctx('k1'))).status).toBe(403);
+    expect(K.list).not.toHaveBeenCalled(); expect(K.create).not.toHaveBeenCalled(); expect(K.revoke).not.toHaveBeenCalled();
+    mockIdentity.mockReturnValue({ userId: 'u1', email: 'A@X.com' });                     // the listed one, in another letter case
+    expect((await KEYS_GET(req('GET'))).status).toBe(200);
+    delete process.env['CLOUDBUILDER_API_KEY_MANAGERS'];
+    expect((await KEYS_GET(req('GET'))).status).toBe(403);
+  });
   test('an administrator makes a key: it is in the answer once, and only its hash and prefix are stored', async () => {
     const r = await KEYS_POST(req('POST', undefined, { body: { name: 'Marketplace', expiresInDays: 30 } }));
     expect(r.status).toBe(201);

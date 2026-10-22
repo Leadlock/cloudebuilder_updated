@@ -18,6 +18,7 @@
  */
 import { isSuperAdmin, mayDecideReviews } from '@/lib/auth/superAdmins';
 import { canUseRestrictedFeatures } from '@/lib/auth/restrictedFeatures';
+import { canManageApiKeys } from '@/lib/auth/apiKeyManagers';
 import { emailAllowed } from '@/lib/auth/emailDomains';
 import { isOperatorEmail } from '@/lib/terraform/access/operators';
 import { sharedStoreEnabled, warnSharedStore } from './sharedStore';
@@ -38,6 +39,8 @@ export interface AuthUser {
   operator?: boolean;
   /** Shown in the interface only (whether the Deploy and AI Generator tabs are open). Every server check recomputes it from the email. */
   restrictedFeatures?: boolean;
+  /** Shown in the interface only (the API keys button in the Templates gallery). Every server check recomputes it from the email. */
+  canManageApiKeys?: boolean;
   /** Shown in the interface only: this person is a super administrator. */
   superAdmin?: boolean;
   /** Shown in the interface only: this person may approve, reject or send back architecture reviews. Every server check recomputes it. */
@@ -121,7 +124,7 @@ async function toAuthUser(user: { id: string; email: string; name: string | null
   const orgId = orgIds[0]?.orgId ?? '';
   // A super administrator is an administrator of the organization they belong to.
   const role: AuthUser['role'] = isSuperAdmin(user.email) || (orgIds[0] && ADMIN_ORG_ROLES.has(orgIds[0].role)) ? 'admin' : 'user';
-  return { id: user.id, email: user.email, name: user.name ?? user.email, role, orgId, operator: await isOperatorEmail(user.email), restrictedFeatures: canUseRestrictedFeatures(user.email), superAdmin: isSuperAdmin(user.email), canDecideReviews: mayDecideReviews(user.email, role) };
+  return { id: user.id, email: user.email, name: user.name ?? user.email, role, orgId, operator: await isOperatorEmail(user.email), restrictedFeatures: canUseRestrictedFeatures(user.email), canManageApiKeys: canManageApiKeys(user.email), superAdmin: isSuperAdmin(user.email), canDecideReviews: mayDecideReviews(user.email, role) };
 }
 
 // Lazily imported to avoid a hard dependency cycle at module init.
