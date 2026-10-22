@@ -15,6 +15,7 @@ Needs `ssh` and `rsync` here, and `rsync`, `python3`, `npm` and `pm2` on the ser
 ## What it refuses to do
 - Deploy with uncommitted changes, or a commit that is not `origin/main` (`--allow-unpushed` overrides).
 - Deploy when CI for that commit is not green (`--ignore-ci` overrides).
+  CI runs on pull requests and on pushes to `main`, not on every branch push. To deploy a branch commit, open a pull request for it (its run is the one the script reads), or pass `--ignore-ci`.
 - Deploy to a server that has no `.env`: the server's `.env` holds the access lock (`RESTRICTED_FEATURES_ALLOWED_EMAILS`, `SUPER_ADMIN_EMAILS`). It is never copied, overwritten or deleted.
 - Send anything git does not track (local files, `.env*`, `node_modules`).
 

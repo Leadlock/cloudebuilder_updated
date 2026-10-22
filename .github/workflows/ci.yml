@@ -1,4 +1,4 @@
-# Runs on every push and pull request. A red run means something that worked before no longer does.
+# Runs on every pull request and on every push to main. A red run means something that worked before no longer does.
 #
 #   checks             type check, lint (errors fail it, warnings do not), and the whole test suite (no database or cloud needed)
 #   build              the production build, which catches what the type check cannot (route files, client/server mix-ups)
@@ -12,7 +12,10 @@
 name: ci
 
 on:
+  # Not on every push to every branch: a pull request is checked before it is merged, and main after. Open a pull request to get a run for a branch
+  # (scripts/deploy.sh reads the result of that run for the commit it deploys).
   push:
+    branches: [main]
   pull_request:
 
 # A newer push to the same branch makes the older, still-running one pointless.
