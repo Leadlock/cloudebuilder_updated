@@ -19,13 +19,17 @@
  * then ignored and everyone shares one address bucket — the per-email limits still apply).
  */
 import type { NextRequest, NextResponse } from 'next/server';
-import { checkRateLimit, peekRateLimit, resetRateLimit } from './rateLimit';
-import { tooManyRequests } from './response';
+import { checkRateLimit, resetRateLimit } from './rateLimit';
+import { apiError, tooManyRequests } from './response';
+import { NOW_MS, sharedDb, sharedStoreEnabled, warnSharedStore } from './sharedStore';
 
 const MIN = 60_000;
+export const LOCKOUT_TIER_1_MS = 2 * MIN; // First lockout duration: 2 minutes
+export const LOCKOUT_TIER_2_MS = 5 * MIN; // Repeated lockout duration: 5 minutes
+
 export const AUTH_LIMITS = {
   loginIp:         { limit: 30, windowMs: 15 * MIN },
-  loginFailures:   { limit: 5,  windowMs: 15 * MIN },   // failed attempts per (address, email)
+  loginFailures:   { limit: 5,  windowMs: 2 * MIN },   // failed attempts per (address, email) before lockout
   signupIp:        { limit: 5,  windowMs: 60 * MIN },
   signupEmail:     { limit: 3,  windowMs: 60 * MIN },
   resendIp:        { limit: 10, windowMs: 60 * MIN },
@@ -83,20 +87,187 @@ export async function limitAuthAttempt(req: NextRequest, action: AuthAction, ema
   }
 }
 
+// ─── Tiered Account Lockout ───────────────────────────────────────────────────
+
+interface LockoutState {
+  failures: number;
+  lastFailureMs: number;
+  lockedUntilMs: number;
+  tier: number; // 0: no prior lockout, 1: locked once (2 mins), 2: locked repeatedly (5 mins)
+}
+
+const memoryLockouts = new Map<string, LockoutState>();
+
+export function _resetLockoutForTests(): void {
+  memoryLockouts.clear();
+}
+
 const failureKey = (req: NextRequest, email: string) => `auth:login-fail:${clientIp(req)}:${norm(email)}`;
+const lockoutBaseKey = (req: NextRequest, email: string) => `${clientIp(req)}:${norm(email)}`;
 
-/** True-ish check before trying a password: refuses when this address has already failed too often for this email. */
+export interface LockoutInfo {
+  locked: boolean;
+  remainingSeconds: number;
+  tier: number;
+}
+
+export async function getLockoutStatus(baseKey: string): Promise<LockoutInfo> {
+  const now = Date.now();
+  const mem = memoryLockouts.get(baseKey);
+
+  if (mem && mem.lockedUntilMs > now) {
+    const remainingSeconds = Math.max(1, Math.ceil((mem.lockedUntilMs - now) / 1000));
+    return { locked: true, remainingSeconds, tier: mem.tier };
+  }
+
+  if (sharedStoreEnabled()) {
+    try {
+      const lockKey = `auth:login-lock:${baseKey}`;
+      const { rows } = await sharedDb().query(
+        `SELECT "count", "expiresAtMs", ${NOW_MS} AS "nowMs" FROM "rateLimitBucket" WHERE "key" = $1`,
+        [lockKey],
+      );
+      const row = rows[0];
+      if (row) {
+        const expiresAtMs = Number(row['expiresAtMs']);
+        const nowMs = Number(row['nowMs']);
+        if (expiresAtMs > nowMs) {
+          const remainingSeconds = Math.max(1, Math.ceil((expiresAtMs - nowMs) / 1000));
+          const tier = Number(row['count']) || 1;
+          return { locked: true, remainingSeconds, tier };
+        }
+      }
+    } catch (err) {
+      warnSharedStore('login lockout status', err);
+    }
+  }
+
+  return { locked: false, remainingSeconds: 0, tier: mem?.tier ?? 0 };
+}
+
+/** Check before trying a password: blocks if account is currently locked due to failed attempts. */
 export async function loginLocked(req: NextRequest, email: string): Promise<NextResponse | null> {
-  const { limit, windowMs } = AUTH_LIMITS.loginFailures;
-  const p = await peekRateLimit(failureKey(req, email), limit, windowMs);
-  return p.remaining === 0 ? tooManyRequests(p.resetsInSeconds) : null;
+  const baseKey = lockoutBaseKey(req, email);
+  const status = await getLockoutStatus(baseKey);
+
+  if (status.locked) {
+    const mins = Math.ceil(status.remainingSeconds / 60);
+    const timePhrase = status.remainingSeconds > 60
+      ? `${mins} minute${mins > 1 ? 's' : ''}`
+      : `${status.remainingSeconds} second${status.remainingSeconds !== 1 ? 's' : ''}`;
+    const reason = status.tier >= 2 ? 'repeated' : 'multiple';
+    const message = `Account is temporarily locked due to ${reason} failed login attempts. Please try again in ${timePhrase}.`;
+
+    const res = apiError('ACCOUNT_LOCKED', message, 429, {
+      remainingSeconds: status.remainingSeconds,
+      retryAfter: status.remainingSeconds,
+      tier: status.tier,
+    });
+    res.headers.set('Retry-After', String(status.remainingSeconds));
+    return res;
+  }
+
+  return null;
 }
 
-export async function recordLoginFailure(req: NextRequest, email: string): Promise<void> {
-  const { limit, windowMs } = AUTH_LIMITS.loginFailures;
-  await checkRateLimit(failureKey(req, email), limit, windowMs);
+export interface RecordFailureResult {
+  locked: boolean;
+  remainingSeconds?: number;
+  tier?: number;
+  remainingAttempts?: number;
 }
 
+/** Record a failed password attempt and trigger 2-min (first) or 5-min (repeated) lockout if threshold reached. */
+export async function recordLoginFailure(req: NextRequest, email: string): Promise<RecordFailureResult> {
+  const baseKey = lockoutBaseKey(req, email);
+  const limit = AUTH_LIMITS.loginFailures.limit;
+  const now = Date.now();
+
+  let mem = memoryLockouts.get(baseKey);
+  if (!mem) {
+    mem = { failures: 0, lastFailureMs: now, lockedUntilMs: 0, tier: 0 };
+    memoryLockouts.set(baseKey, mem);
+  }
+
+  // Reset failures if more than 15 mins since last attempt and not currently locked
+  if (now - mem.lastFailureMs > 15 * MIN && mem.lockedUntilMs <= now) {
+    mem.failures = 0;
+  }
+
+  mem.failures += 1;
+  mem.lastFailureMs = now;
+
+  let isLocked = false;
+  let lockoutDurationMs = 0;
+  let nextTier = mem.tier;
+
+  if (mem.failures >= limit) {
+    isLocked = true;
+    const isRepeated = mem.tier >= 1;
+    lockoutDurationMs = isRepeated ? LOCKOUT_TIER_2_MS : LOCKOUT_TIER_1_MS;
+    nextTier = isRepeated ? 2 : 1;
+    mem.tier = nextTier;
+    mem.lockedUntilMs = now + lockoutDurationMs;
+    mem.failures = 0; // Fresh attempt budget for when the lockout expires
+  }
+
+  if (sharedStoreEnabled()) {
+    try {
+      const lockKey = `auth:login-lock:${baseKey}`;
+      const tierKey = `auth:login-tier:${baseKey}`;
+      if (isLocked) {
+        await sharedDb().query(
+          `INSERT INTO "rateLimitBucket" ("key", "count", "windowStartMs", "expiresAtMs")
+           VALUES ($1, $2, ${NOW_MS}, ${NOW_MS} + $3::double precision)
+           ON CONFLICT ("key") DO UPDATE SET "count" = $2, "windowStartMs" = ${NOW_MS}, "expiresAtMs" = ${NOW_MS} + $3::double precision`,
+          [lockKey, nextTier, lockoutDurationMs],
+        );
+        await sharedDb().query(
+          `INSERT INTO "rateLimitBucket" ("key", "count", "windowStartMs", "expiresAtMs")
+           VALUES ($1, $2, ${NOW_MS}, ${NOW_MS} + 86400000::double precision)
+           ON CONFLICT ("key") DO UPDATE SET "count" = $2, "windowStartMs" = ${NOW_MS}, "expiresAtMs" = ${NOW_MS} + 86400000::double precision`,
+          [tierKey, nextTier],
+        );
+      }
+    } catch (err) {
+      warnSharedStore('record login failure', err);
+    }
+  }
+
+  // Keep compatibility with rateLimit counters
+  await checkRateLimit(failureKey(req, email), limit, isLocked ? lockoutDurationMs : AUTH_LIMITS.loginFailures.windowMs);
+
+  if (isLocked) {
+    return {
+      locked: true,
+      remainingSeconds: Math.ceil(lockoutDurationMs / 1000),
+      tier: nextTier,
+    };
+  }
+
+  return {
+    locked: false,
+    remainingSeconds: 0,
+    tier: mem.tier,
+    remainingAttempts: limit - mem.failures,
+  };
+}
+
+/** Clear all failure counters and lockout tiers on successful sign-in. */
 export async function clearLoginFailures(req: NextRequest, email: string): Promise<void> {
+  const baseKey = lockoutBaseKey(req, email);
+  memoryLockouts.delete(baseKey);
   await resetRateLimit(failureKey(req, email));
+
+  if (sharedStoreEnabled()) {
+    try {
+      await sharedDb().query(
+        `DELETE FROM "rateLimitBucket" WHERE "key" IN ($1, $2, $3)`,
+        [`auth:login-fail:${baseKey}`, `auth:login-lock:${baseKey}`, `auth:login-tier:${baseKey}`],
+      );
+    } catch (err) {
+      warnSharedStore('clear login failures', err);
+    }
+  }
 }
+

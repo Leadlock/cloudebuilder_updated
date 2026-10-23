@@ -133,6 +133,61 @@ describe('login', () => {
     for (let i = 0; i < AUTH_LIMITS.loginIp.limit; i++) await login(ip, `x${i}-${uniq()}@example.com`);
     expect((await login(ip, `y${uniq()}@example.com`)).status).toBe(429);
   });
+
+  it('blocks for 2 minutes initially, and escalates to 5 minutes for repeated failures', async () => {
+    const ip = `ip-${uniq()}`; const email = `escalate-${uniq()}@example.com`;
+    mockSignIn.mockRejectedValue(cognitoError('NotAuthorizedException'));
+
+    // 1st round: 5 failures triggers 2-min (120s) lockout
+    let fifthRes: any;
+    for (let i = 0; i < AUTH_LIMITS.loginFailures.limit; i++) {
+      fifthRes = await login(ip, email);
+    }
+    expect(fifthRes.status).toBe(401);
+    const fifthBody = await fifthRes.json();
+    expect(fifthBody.error.message).toContain('2 minutes');
+
+    // Attempting while locked out returns 429 with ~120s Retry-After
+    const blockedTier1 = await login(ip, email);
+    expect(blockedTier1.status).toBe(429);
+    const retryAfter1 = Number(blockedTier1.headers.get('Retry-After'));
+    expect(retryAfter1).toBeGreaterThanOrEqual(115);
+    expect(retryAfter1).toBeLessThanOrEqual(120);
+    const tier1Body = await blockedTier1.json();
+    expect(tier1Body.error.message).toContain('2 minutes');
+
+    // Simulate 2 minutes passing (121 seconds later)
+    const realNow = Date.now;
+    try {
+      jest.spyOn(Date, 'now').mockReturnValue(realNow() + 121_000);
+
+      // Lockout has expired, attempt reaches sign-in again
+      mockSignIn.mockClear();
+      const firstTryAfterLock = await login(ip, email);
+      expect(firstTryAfterLock.status).toBe(401);
+      expect(mockSignIn).toHaveBeenCalledTimes(1);
+
+      // 4 more failures (total 5 in round 2)
+      let repeatFifthRes: any;
+      for (let i = 0; i < 4; i++) {
+        repeatFifthRes = await login(ip, email);
+      }
+      expect(repeatFifthRes.status).toBe(401);
+      const repeatFifthBody = await repeatFifthRes.json();
+      expect(repeatFifthBody.error.message).toContain('5 minutes');
+
+      // Next attempt while locked out in round 2 returns 429 with ~300s Retry-After
+      const blockedTier2 = await login(ip, email);
+      expect(blockedTier2.status).toBe(429);
+      const retryAfter2 = Number(blockedTier2.headers.get('Retry-After'));
+      expect(retryAfter2).toBeGreaterThanOrEqual(295);
+      expect(retryAfter2).toBeLessThanOrEqual(300);
+      const tier2Body = await blockedTier2.json();
+      expect(tier2Body.error.message).toContain('5 minutes');
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
 });
 
 describe('sign-up', () => {

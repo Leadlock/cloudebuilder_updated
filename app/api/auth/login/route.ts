@@ -147,7 +147,21 @@ export async function POST(req: NextRequest) {
       }
 
       if (cognitoErr.name === 'NotAuthorizedException' || cognitoErr.name === 'UserNotFoundException') {
-        await recordLoginFailure(req, email);
+        const failureResult = await recordLoginFailure(req, email);
+        if (failureResult?.locked) {
+          const mins = Math.ceil((failureResult.remainingSeconds ?? 120) / 60);
+          const durationStr = (failureResult.remainingSeconds ?? 120) > 60
+            ? `${mins} minute${mins > 1 ? 's' : ''}`
+            : `${failureResult.remainingSeconds} second${failureResult.remainingSeconds !== 1 ? 's' : ''}`;
+          const res = unauthorized(`Invalid email or password. Your account is temporarily locked for ${durationStr}.`);
+          if (failureResult.remainingSeconds) {
+            res.headers.set('Retry-After', String(failureResult.remainingSeconds));
+          }
+          return res;
+        }
+        if (failureResult?.remainingAttempts !== undefined && failureResult.remainingAttempts <= 2) {
+          return unauthorized(`Invalid email or password. ${failureResult.remainingAttempts} attempt${failureResult.remainingAttempts === 1 ? '' : 's'} remaining before account lockout.`);
+        }
         return unauthorized('Invalid email or password');
       }
 

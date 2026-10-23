@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Lock, Mail, User as UserIcon, Building2, AlertCircle, Loader2, KeyRound, ArrowLeft, RefreshCw, CheckCircle2, Copy, Check, Smartphone, QrCode } from 'lucide-react';
+import { ShieldCheck, Lock, Mail, User as UserIcon, Building2, AlertCircle, Loader2, KeyRound, ArrowLeft, RefreshCw, CheckCircle2, Copy, Check, Smartphone, QrCode, Eye, EyeOff } from 'lucide-react';
 import QRCode from 'qrcode';
 import type { AuthUser } from '@/lib/api/authService';
 import { useApp } from '@/context/AppContext';
@@ -19,8 +19,12 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
   const [mode, setMode] = useState<'signin' | 'signup' | 'confirm' | 'mfa' | 'forgot_password' | 'reset_password'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [newPassword, setNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [lockoutCountdown, setLockoutCountdown] = useState<number | null>(null);
   const [name, setName] = useState('');
   const [orgName, setOrgName] = useState('');
   const [code, setCode] = useState('');
@@ -36,6 +40,27 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
   const [resending, setResending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (lockoutCountdown === null || lockoutCountdown <= 0) return;
+    const timer = setInterval(() => {
+      setLockoutCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(timer);
+          setError('Lockout period has expired. You may now try signing in again.');
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lockoutCountdown]);
+
+  function formatLockout(seconds: number): string {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  }
 
   useEffect(() => {
     if (mfaSecret && email) {
@@ -244,6 +269,13 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
       }
 
       if (!res.ok || !data.success) {
+        if (res.status === 429 || data.error?.code === 'ACCOUNT_LOCKED' || res.headers.get('Retry-After')) {
+          const retryHeader = res.headers.get('Retry-After');
+          const remainingSec = data.error?.details?.remainingSeconds ?? (retryHeader ? parseInt(retryHeader, 10) : 120);
+          if (remainingSec && !isNaN(remainingSec)) {
+            setLockoutCountdown(remainingSec);
+          }
+        }
         throw new Error(data.error?.message ?? data.error ?? data.message ?? 'Something went wrong');
       }
 
@@ -335,7 +367,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
             <div className={`grid grid-cols-2 gap-1 p-1 rounded-xl border ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
               <button
                 type="button"
-                onClick={() => { setMode('signin'); setError(null); setInfoMessage(null); }}
+                onClick={() => { setMode('signin'); setError(null); setInfoMessage(null); setShowPassword(false); }}
                 className={`py-2 rounded-lg text-xs font-semibold transition-colors ${
                   mode === 'signin'
                     ? 'bg-cyan-600 text-white shadow-sm'
@@ -348,7 +380,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
               </button>
               <button
                 type="button"
-                onClick={() => { setMode('signup'); setError(null); setInfoMessage(null); }}
+                onClick={() => { setMode('signup'); setError(null); setInfoMessage(null); setShowPassword(false); }}
                 className={`py-2 rounded-lg text-xs font-semibold transition-colors ${
                   mode === 'signup'
                     ? 'bg-cyan-600 text-white shadow-sm'
@@ -367,6 +399,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                 setMode('signin');
                 setError(null);
                 setInfoMessage(null);
+                setShowPassword(false);
                 setMfaCode('');
                 setMfaSecret(null);
               }}
@@ -387,11 +420,24 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
           )}
 
           {error && (
-            <div className={`flex items-center gap-2 p-3 rounded-xl border text-xs ${
-              isLight ? 'bg-rose-50 border-rose-200 text-rose-900' : 'bg-rose-950/50 border-rose-500/40 text-rose-300'
+            <div className={`flex items-start gap-2 p-3 rounded-xl border text-xs ${
+              lockoutCountdown
+                ? isLight ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-amber-950/50 border-amber-500/40 text-amber-300'
+                : isLight ? 'bg-rose-50 border-rose-200 text-rose-900' : 'bg-rose-950/50 border-rose-500/40 text-rose-300'
             }`}>
-              <AlertCircle className={`w-4 h-4 shrink-0 ${isLight ? 'text-rose-600' : 'text-rose-400'}`} />
-              <span>{error}</span>
+              {lockoutCountdown ? (
+                <Lock className={`w-4 h-4 shrink-0 mt-0.5 ${isLight ? 'text-amber-600' : 'text-amber-400'} animate-pulse`} />
+              ) : (
+                <AlertCircle className={`w-4 h-4 shrink-0 mt-0.5 ${isLight ? 'text-rose-600' : 'text-rose-400'}`} />
+              )}
+              <div className="flex-1">
+                <span className="font-medium">{error}</span>
+                {lockoutCountdown !== null && lockoutCountdown > 0 && (
+                  <div className="mt-1.5 flex items-center gap-1.5 font-mono text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                    <span>Unlocks in: {formatLockout(lockoutCountdown)}</span>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -475,14 +521,25 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                   <div className="relative">
                     <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${isLight ? 'text-slate-400' : 'text-slate-500'}`} />
                     <input
-                      type="password"
+                      type={showNewPassword ? 'text' : 'password'}
                       required
                       minLength={8}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className={`${inputClass} pl-9`}
+                      className={`${inputClass} pl-9 pr-10`}
                       placeholder="At least 8 characters"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className={`absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md transition-colors ${
+                        isLight ? 'text-slate-400 hover:text-slate-700' : 'text-slate-500 hover:text-slate-200'
+                      }`}
+                      title={showNewPassword ? 'Hide password' : 'Show password'}
+                      aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
 
@@ -491,14 +548,25 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                   <div className="relative">
                     <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${isLight ? 'text-slate-400' : 'text-slate-500'}`} />
                     <input
-                      type="password"
+                      type={showConfirmPassword ? 'text' : 'password'}
                       required
                       minLength={8}
                       value={confirmNewPassword}
                       onChange={(e) => setConfirmNewPassword(e.target.value)}
-                      className={`${inputClass} pl-9`}
+                      className={`${inputClass} pl-9 pr-10`}
                       placeholder="Re-type new password"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className={`absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md transition-colors ${
+                        isLight ? 'text-slate-400 hover:text-slate-700' : 'text-slate-500 hover:text-slate-200'
+                      }`}
+                      title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                      aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -714,14 +782,25 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                   <div className="relative">
                     <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${isLight ? 'text-slate-400' : 'text-slate-500'}`} />
                     <input
-                      type="password"
+                      type={showPassword ? 'text' : 'password'}
                       required
                       minLength={mode === 'signup' ? 8 : undefined}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className={`${inputClass} pl-9`}
+                      className={`${inputClass} pl-9 pr-10`}
                       placeholder={mode === 'signup' ? 'Min 8 chars, numbers & symbols' : '••••••••'}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className={`absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md transition-colors ${
+                        isLight ? 'text-slate-400 hover:text-slate-700' : 'text-slate-500 hover:text-slate-200'
+                      }`}
+                      title={showPassword ? 'Hide password' : 'Show password'}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
 
@@ -750,7 +829,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (lockoutCountdown !== null && lockoutCountdown > 0)}
               className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 active:from-cyan-700 active:to-blue-700 text-white font-semibold text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/20 disabled:opacity-50 mt-4"
             >
               {loading ? (
@@ -767,6 +846,11 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                     : mode === 'reset_password'
                     ? 'Resetting Password...'
                     : 'Creating account...'}
+                </>
+              ) : lockoutCountdown !== null && lockoutCountdown > 0 ? (
+                <>
+                  <Lock className="w-4 h-4 text-amber-300" />
+                  Account Locked ({formatLockout(lockoutCountdown)})
                 </>
               ) : (
                 mode === 'signin'
