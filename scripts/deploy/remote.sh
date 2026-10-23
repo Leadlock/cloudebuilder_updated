@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs ON THE SERVER (scripts/deploy.sh sends it there over ssh; nothing has to be installed first).
-#   remote.sh prepare             checks the server is ready, then backs up the running version (source and build)
+#   remote.sh prepare             checks the server is ready, then backs up the running version (source, build and database)
 #   remote.sh activate <commit>   installs, builds and restarts the new version; goes back to the backup by itself if anything fails
 #   remote.sh rollback            puts the newest backup back and restarts
 # Every setting can be overridden by an environment variable (the tests do, to run this without a real server).
@@ -15,6 +15,10 @@ HEALTH_WAIT="${HEALTH_WAIT:-90}"        # seconds to wait for the site to answer
 STABLE_WAIT="${STABLE_WAIT:-10}"        # seconds the processes must stay up without restarting
 KEEP_BACKUPS="${KEEP_BACKUPS:-1}"
 KEEP_BUILDS="${KEEP_BUILDS:-1}"         # backups that also keep a copy of the build (large)
+KEEP_DB_BACKUPS="${KEEP_DB_BACKUPS:-1}"  # database dumps kept (the one just taken replaces the previous one)
+DB_CONTAINER="${DB_CONTAINER:-cloudcraft-pg}"
+DOCKER="${DOCKER_BIN:-docker}"
+PG_DUMP="${PG_DUMP_BIN:-pg_dump}"
 MIN_FREE_MB="${MIN_FREE_MB:-2048}"
 NODE_MEM="${NODE_MEM:-4096}"
 NPM="${NPM_BIN:-npm}"
@@ -97,6 +101,31 @@ restore_backup() {
   fi
 }
 
+# Dumps the app's Postgres database (DATABASE_URL in the server's .env) to $BACKUP_DIR/<id>.sql.gz, then removes the older dumps.
+# Through the Docker container when it is running (no password on a command line), else with pg_dump on the server. A database that cannot
+# be dumped stops the deploy: a backup that silently did not happen is worse than none. No DATABASE_URL means no database to back up.
+backup_database() {
+  local id="$1" url user db tmp
+  url="$(grep -E '^DATABASE_URL=' "$APP_DIR/.env" | tail -n1 | cut -d= -f2- | sed -e 's/^["'"'"']//' -e 's/["'"'"']$//')" || true
+  if [ -z "$url" ]; then warn "no DATABASE_URL in $APP_DIR/.env: the database is not backed up."; return 0; fi
+  tmp="$BACKUP_DIR/$id.sql.gz.part"
+  if command -v "$DOCKER" >/dev/null && "$DOCKER" ps --format '{{.Names}}' 2>/dev/null | grep -qx "$DB_CONTAINER"; then
+    user="$(printf '%s' "$url" | sed -E 's#^[a-z]+://([^:@/]+).*#\1#')"; db="$(printf '%s' "$url" | sed -E 's#^[^?]*/([^/?]+)(\?.*)?$#\1#')"
+    say "backing up the database $db from container $DB_CONTAINER to $BACKUP_DIR/$id.sql.gz"
+    "$DOCKER" exec "$DB_CONTAINER" pg_dump -U "$user" -d "$db" --no-owner | gzip > "$tmp" || { rm -f "$tmp"; die "the database backup failed (container $DB_CONTAINER). Nothing was changed."; }
+  elif command -v "$PG_DUMP" >/dev/null; then
+    say "backing up the database to $BACKUP_DIR/$id.sql.gz"
+    "$PG_DUMP" --dbname="$url" --no-owner | gzip > "$tmp" || { rm -f "$tmp"; die "the database backup failed. Nothing was changed."; }
+  else
+    die "cannot back up the database: container $DB_CONTAINER is not running and pg_dump is not installed. Nothing was changed."
+  fi
+  [ -s "$tmp" ] && gzip -t "$tmp" || { rm -f "$tmp"; die "the database backup is empty or damaged. Nothing was changed."; }
+  mv "$tmp" "$BACKUP_DIR/$id.sql.gz"
+  local i=0 f
+  for f in $(ls -1t "$BACKUP_DIR"/*.sql.gz 2>/dev/null); do i=$((i + 1)); [ "$i" -gt "$KEEP_DB_BACKUPS" ] && rm -f "$f"; done
+  say "database backup done. To restore it: gunzip -c $BACKUP_DIR/$id.sql.gz | docker exec -i $DB_CONTAINER psql -U <user> -d <db>"
+}
+
 cmd_prepare() {
   [ -d "$APP_DIR" ] || die "$APP_DIR does not exist."
   [ -f "$APP_DIR/package.json" ] || die "$APP_DIR has no package.json: is it the right folder?"
@@ -115,6 +144,7 @@ cmd_prepare() {
 
   lock
   local id; id="$(date +%Y%m%d-%H%M%S)"
+  backup_database "$id"
   say "backing up to $BACKUP_DIR/$id.tgz (source) and $id.next (build)"
   tar czf "$BACKUP_DIR/$id.tgz" --exclude=node_modules --exclude=.next -C "$(app_parent)" "$(app_base)"
   if [ -d "$APP_DIR/.next" ]; then cp -a "$APP_DIR/.next" "$BACKUP_DIR/$id.next"; fi
