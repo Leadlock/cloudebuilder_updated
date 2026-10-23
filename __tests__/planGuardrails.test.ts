@@ -14,7 +14,19 @@ describe('plan guardrails', () => {
   it('passes an ordinary plan', () => {
     const r = evaluatePlanGuardrails(plan(change('aws_vpc'), change('aws_instance'), change('aws_s3_bucket')), { maxResources: 200, allowedRegions: [] });
     expect(r.passed).toBe(true);
-    expect(r.checks).toHaveLength(5);
+    expect(r.checks).toHaveLength(6);
+  });
+
+  it('does not block a bucket whose encryption is a separate resource, or a scoped policy that contains "*"', () => {
+    const policy = JSON.stringify({ Statement: [{ Effect: 'Allow', Action: ['s3:GetObject'], Resource: 'arn:aws:s3:::b/*' }] });
+    const r = evaluatePlanGuardrails(plan(change('aws_s3_bucket'), change('aws_s3_bucket_server_side_encryption_configuration'), change('aws_iam_role_policy', { policy })), { maxResources: 200, allowedRegions: [] });
+    expect(r.checks.find((c) => c.id === 'opa-policies')?.details).toEqual([]);
+    expect(r.passed).toBe(true);
+  });
+
+  it('still refuses a real administrator policy', () => {
+    const policy = JSON.stringify({ Statement: [{ Effect: 'Allow', Action: '*', Resource: '*' }] });
+    expect(failed(plan(change('aws_iam_role_policy', { policy })))).toContain('iam-admin');
   });
 
   it('refuses a resource type CloudBuilder never generates (what an injected block would produce)', () => {

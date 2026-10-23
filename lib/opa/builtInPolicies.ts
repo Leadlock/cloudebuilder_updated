@@ -67,11 +67,9 @@ deny[sprintf("Canvas node %v exposes SSH or RDP to public traffic", [node.label]
 
 default allow = true
 
-deny[sprintf("S3 bucket %v lacks server-side encryption", [rc.address])] {
-    rc := input.plan.resource_changes[_]
-    rc.type == "aws_s3_bucket"
-    rc.change.after.server_side_encryption_configuration == null
-}
+# No plan-level S3 rule: since provider v4 encryption lives in a separate
+# aws_s3_bucket_server_side_encryption_configuration resource (and S3 encrypts by default),
+# so the bucket itself never carries the attribute and a rule on it denied every bucket.
 
 deny[sprintf("Storage bucket %v is configured without encryption on canvas", [node.label])] {
     node := input.canvas.nodes[_]
@@ -115,10 +113,10 @@ warn[sprintf("Production database %v has deletion protection disabled", [rc.addr
   {
     id: 'sec-iam-least-privilege',
     name: 'Disallow Wildcard Administrator IAM Policies (* on *)',
-    description: 'IAM role policies and custom policies must not grant wildcard Action "*" on wildcard Resource "*".',
+    description: 'IAM role policies and custom policies must not grant wildcard Action "*" on wildcard Resource "*". Enforced on real plans by the iam-admin guardrail, which parses the policy JSON; the string match below flagged any policy containing a "*" (e.g. arn:aws:s3:::bucket/*).',
     category: 'security',
     severity: 'deny',
-    enabled: true,
+    enabled: false,
     isBuiltIn: true,
     metadata: {
       benchmark: 'CIS AWS Foundations 1.16',
