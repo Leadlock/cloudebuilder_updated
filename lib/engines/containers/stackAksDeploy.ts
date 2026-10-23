@@ -180,6 +180,8 @@ resource "azurerm_kubernetes_cluster" "app" {
   automatic_channel_upgrade = "patch"
   oidc_issuer_enabled       = true
   workload_identity_enabled = true
+  # Azure turns this on by default; saying so keeps it on, and visible.
+  role_based_access_control_enabled = true
   tags                      = local.tags
 
   default_node_pool {

@@ -2,6 +2,7 @@
 #
 #   checks             type check, lint (errors fail it, warnings do not), and the whole test suite (no database or cloud needed)
 #   build              the production build, which catches what the type check cannot (route files, client/server mix-ups)
+#   scan-generated     scans the generated Terraform, Dockerfiles and manifests with Trivy against security/scan-policy.json
 #   terraform-validate generates Terraform for every verified Azure pattern and runs `terraform validate` on it
 #   docker-samples     builds and runs the sample app of every Container Templates stack, and a compose stack with every companion service
 #   databases          starts PostgreSQL, MySQL, MongoDB, Redis and RabbitMQ from the generated files (and the exact VM line), checks the password and that data survives
@@ -91,6 +92,30 @@ jobs:
         env:
           TERRAFORM_BIN: terraform
         run: npx tsx --tsconfig tsconfig.json scripts/validate-containers.ts "$RUNNER_TEMP/validate-containers"
+
+  # Scans the files CloudBuilder generates (Terraform, Dockerfiles, Kubernetes manifests) with Trivy, pinned by digest in security/trivy.json, and applies
+  # security/scan-policy.json: a new serious finding, a known gap that grew, or a decision about something that is gone fails the run.
+  scan-generated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Scan the generated files
+        run: npx tsx --tsconfig tsconfig.json scripts/scan-generated.ts "$RUNNER_TEMP/scan"
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-report
+          path: |
+            ${{ runner.temp }}/scan/scan-report.md
+            ${{ runner.temp }}/scan/scan-findings.json
+          if-no-files-found: ignore
 
   # Builds every stack's sample app with Docker, runs it and calls its health check; then starts one stack with every companion service and the HTTPS proxy.
   docker-samples:

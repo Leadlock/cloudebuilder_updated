@@ -1,0 +1,89 @@
+{
+ "failOn": "HIGH",
+ "rules": [
+  {
+   "id": "AWS-0104",
+   "action": "accept",
+   "reason": "Workloads must reach image registries, package mirrors and AWS APIs, so egress from a security group is open by default. A stricter allow-list or VPC endpoints is a per-customer decision the generated files do not make."
+  },
+  {
+   "id": "AZU-0051",
+   "action": "accept",
+   "reason": "Workloads must reach registries, package mirrors and Azure APIs, so outbound rules are open by default. A stricter allow-list or private endpoints is a per-customer decision the generated files do not make."
+  },
+  {
+   "id": "AZU-0047",
+   "action": "accept",
+   "reason": "The public service is open to the range the person chooses (everyone by default) and the generator warns when it is open to the whole internet; the other services are not."
+  },
+  {
+   "id": "AWS-0054",
+   "action": "accept",
+   "reason": "The load balancer serves plain HTTP only when no ACM certificate is given, and the generator warns about it. With a certificate, HTTP redirects to HTTPS."
+  },
+  {
+   "id": "AWS-0053",
+   "action": "accept",
+   "reason": "The load balancer is the public entry of a web service by design; who can reach it is set by allowed_cidr, and the tasks behind it accept traffic only from it."
+  },
+  {
+   "id": "AWS-0132",
+   "action": "accept",
+   "reason": "Buckets are encrypted with AES256 (S3-managed keys). Customer-managed keys need a KMS key and key policy per project, which is the customer's choice and not made by the generated files."
+  },
+  {
+   "id": "AZU-0013",
+   "action": "todo",
+   "max": 15,
+   "reason": "Key Vaults are protected by RBAC but have no network ACL block, so they answer from any network. A default-deny ACL needs private endpoints, and the in-app release writes secrets from outside the network, so it is not set yet."
+  },
+  {
+   "id": "AZU-0012",
+   "action": "todo",
+   "max": 3,
+   "reason": "A storage account's network rules default to allow. Setting default deny needs the customer's own address range or a private endpoint, which the files do not know yet."
+  },
+  {
+   "id": "AZU-0041",
+   "action": "todo",
+   "max": 2,
+   "reason": "An AKS API server is reachable from any address. Authorized ranges need the address of the person running kubectl, which the files do not know; to be offered as a setting."
+  },
+  {
+   "id": "AWS-0031",
+   "action": "todo",
+   "max": 17,
+   "reason": "ECR tags are mutable so a release can reuse a tag such as latest. Immutable tags need a unique tag for every release, which the release flow does not enforce yet."
+  },
+  {
+   "id": "KSV-0014",
+   "action": "todo",
+   "max": 10,
+   "reason": "The generated Deployments do not set a read-only root filesystem. It needs a writable temp volume per stack, to be added."
+  },
+  {
+   "id": "KSV-0118",
+   "action": "todo",
+   "max": 10,
+   "reason": "The generated Deployments rely on the container's own settings instead of a pod-level security context. To be added with the read-only root filesystem."
+  },
+  {
+   "id": "AWS-0011",
+   "action": "todo",
+   "max": 8,
+   "reason": "A CloudFront distribution has no web application firewall in front unless the design includes one. The generator should add one when the design is public."
+  },
+  {
+   "id": "AZU-0010",
+   "action": "todo",
+   "max": 7,
+   "reason": "Storage accounts let trusted Microsoft services bypass the network rules, which Azure's own services need for logs and backups; to be reviewed per design."
+  },
+  {
+   "id": "AZU-0043",
+   "action": "todo",
+   "max": 3,
+   "reason": "AKS clusters are created without a network policy. To be offered as a setting with a default."
+  }
+ ]
+}
