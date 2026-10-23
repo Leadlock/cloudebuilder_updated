@@ -13,6 +13,8 @@
  * Destroy actions are refused separately by the executor. The result is stored on the plan and shown to the approver.
  */
 import { ALLOWED_TERRAFORM_RESOURCE_TYPES } from './allowedResourceTypes';
+import { BUILT_IN_OPA_POLICIES } from '@/lib/opa/builtInPolicies';
+import { RegoInterpreter } from '@/lib/opa/regoEngine';
 
 export interface PlanChangeForGuardrails {
   address: string;
@@ -128,10 +130,8 @@ export function evaluatePlanGuardrails(plan: PlanJsonForGuardrails, options: Gua
   const size = touched > max ? [`${touched} resources would be created or changed; the limit is ${max}`] : [];
 
   // 6. OPA / Rego Policy as Code Guardrails.
-  let opaViolations: string[] = [];
+  const opaViolations: string[] = [];
   try {
-    const { BUILT_IN_OPA_POLICIES } = require('@/lib/opa/builtInPolicies');
-    const { RegoInterpreter } = require('@/lib/opa/regoEngine');
     const interpreter = new RegoInterpreter();
     for (const policy of BUILT_IN_OPA_POLICIES) {
       if (!policy.enabled) continue;
