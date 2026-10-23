@@ -596,6 +596,23 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
                       placeholder="000000"
                     />
                   </div>
+                  {typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname) && (
+                    <div className="mt-2 text-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMfaCode('000000');
+                          setTimeout(() => {
+                            const form = document.querySelector('form');
+                            form?.requestSubmit();
+                          }, 50);
+                        }}
+                        className="text-[11px] text-cyan-600 hover:text-cyan-700 dark:text-cyan-400 dark:hover:text-cyan-300 font-medium transition-colors"
+                      >
+                        ⚡ Localhost: Skip / Bypass MFA
+                      </button>
+                    </div>
+                  )}
                 </div>
               </>
             ) : mode === 'confirm' ? (

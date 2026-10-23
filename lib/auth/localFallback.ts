@@ -26,3 +26,34 @@ export function localLoginFallbackAllowed(cognitoErrorName: string | undefined):
 export function unverifiedTokenFallbackAllowed(): boolean {
   return devShortcutsEnabled();
 }
+
+/**
+ * When may CloudBuilder bypass the MFA challenge step on localhost?
+ *
+ * Never in production (NODE_ENV === 'production').
+ * In tests (NODE_ENV === 'test'), only if explicitly configured via CLOUDBUILDER_DISABLE_MFA_LOCAL=1.
+ * In development, enabled by default for localhost requests (or when CLOUDBUILDER_DISABLE_MFA_LOCAL=1 is set),
+ * unless explicitly set to 0 or false.
+ */
+export function localMfaBypassAllowed(req?: { headers?: { get: (name: string) => string | null }; nextUrl?: { hostname?: string } }): boolean {
+  if (process.env.NODE_ENV === 'production') return false;
+
+  // In test environment, keep normal MFA behavior unless explicitly opted in
+  if (process.env.NODE_ENV === 'test') {
+    return (process.env.CLOUDBUILDER_DISABLE_MFA_LOCAL === '1' || process.env.CLOUDCRAFT_DISABLE_MFA_LOCAL === '1');
+  }
+
+  const explicit = process.env.CLOUDBUILDER_DISABLE_MFA_LOCAL ?? process.env.CLOUDCRAFT_DISABLE_MFA_LOCAL;
+  if (explicit === '0' || explicit === 'false') return false;
+  if (explicit === '1' || explicit === 'true') return true;
+
+  if (req) {
+    const host = req.headers?.get('host') || req.nextUrl?.hostname || '';
+    const hostname = host.split(':')[0].toLowerCase();
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '0.0.0.0') {
+      return true;
+    }
+  }
+
+  return process.env.NODE_ENV === 'development';
+}

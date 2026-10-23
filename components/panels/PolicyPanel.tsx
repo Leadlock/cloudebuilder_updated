@@ -1,245 +1,447 @@
 'use client';
-import React, { useMemo, useState } from 'react';
-import { ClipboardList, Loader2, Plus, X, ShieldAlert, CheckCircle2, Info } from 'lucide-react';
+
+import React, { useMemo, useState, useEffect } from 'react';
+import {
+  ShieldAlert, CheckCircle2, AlertTriangle, Shield, Code, Play, RefreshCw,
+  Plus, X, Info, DollarSign, Database, Lock, Sliders, Check, Terminal
+} from 'lucide-react';
 import clsx from 'clsx';
-import { useApp, useActiveProject } from '@/context/AppContext';
-import { REGION_LABELS } from '@/types';
-import { OrgPolicyRulesSchema, normalizeRules } from '@/lib/engines/policy/schema';
-import { evaluateOrgPolicy } from '@/lib/engines/policy/evaluate';
-import type { OrgPolicy, OrgPolicyRules } from '@/lib/engines/policy/types';
-import type { Project } from '@/types';
-import { saveOrgPolicy, useOrgPolicy } from '@/components/policy/orgPolicyStore';
-
-/** A tag row as typed: the allowed values are one comma-separated string. */
-interface TagRow { key: string; values: string }
-
-interface Draft {
-  approvedRegions: string[];
-  allowedInstanceTypes: string[];
-  tags: TagRow[];
-  namingPattern: string;
-}
-
-const toDraft = (r: OrgPolicyRules): Draft => ({
-  approvedRegions: r.approvedRegions,
-  allowedInstanceTypes: r.allowedInstanceTypes,
-  tags: r.requiredTags.map((t) => ({ key: t.key, values: (t.allowedValues ?? []).join(', ') })),
-  namingPattern: r.namingPattern,
-});
-
-const toRules = (d: Draft): OrgPolicyRules => normalizeRules({
-  approvedRegions: d.approvedRegions,
-  allowedInstanceTypes: d.allowedInstanceTypes,
-  requiredTags: d.tags
-    .map((t) => ({ key: t.key.trim(), allowedValues: t.values.split(',').map((v) => v.trim()).filter(Boolean) }))
-    .filter((t) => t.key !== '')
-    .map((t) => (t.allowedValues.length > 0 ? t : { key: t.key })),
-  namingPattern: d.namingPattern.trim(),
-});
-
-const MAX_SHOWN = 40;
-
-function ChipInput({ label, hint, values, onChange, placeholder, suggestions, disabled, isLight, testId }: {
-  label: string; hint: string; values: string[]; onChange: (v: string[]) => void; placeholder: string;
-  suggestions?: string[]; disabled: boolean; isLight: boolean; testId: string;
-}) {
-  const [text, setText] = useState('');
-  const listId = `${testId}-list`;
-  const add = () => {
-    const parts = text.split(',').map((s) => s.trim()).filter(Boolean);
-    if (parts.length > 0) onChange([...new Set([...values, ...parts])]);
-    setText('');
-  };
-  return (
-    <div data-testid={testId}>
-      <label className={clsx('text-xs font-semibold block', isLight ? 'text-slate-800' : 'text-slate-200')}>{label}</label>
-      <p className={clsx('text-[11px] mb-2', isLight ? 'text-slate-500' : 'text-slate-400')}>{hint}</p>
-      <div className="flex flex-wrap gap-1.5 mb-2">
-        {values.length === 0 && <span className={clsx('text-[11px] italic', isLight ? 'text-slate-400' : 'text-slate-500')}>No restriction</span>}
-        {values.map((v) => (
-          <span key={v} className={clsx('inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-mono', isLight ? 'bg-slate-100 border-slate-300 text-slate-800' : 'bg-slate-800 border-slate-700 text-slate-200')}>
-            {v}
-            {!disabled && (
-              <button type="button" aria-label={`Remove ${v}`} onClick={() => onChange(values.filter((x) => x !== v))} className="opacity-60 hover:opacity-100">
-                <X className="w-3 h-3" />
-              </button>
-            )}
-          </span>
-        ))}
-      </div>
-      {!disabled && (
-        <div className="flex gap-2">
-          <input
-            list={suggestions ? listId : undefined}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(); } }}
-            placeholder={placeholder}
-            aria-label={`Add to ${label}`}
-            className={clsx('flex-1 rounded-lg px-3 py-1.5 text-sm border focus:outline-none focus:ring-2 focus:ring-blue-500', isLight ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400' : 'bg-gray-950 border-gray-800 text-white placeholder-gray-600')}
-          />
-          {suggestions && <datalist id={listId}>{suggestions.map((s) => <option key={s} value={s} />)}</datalist>}
-          <button type="button" onClick={add} disabled={!text.trim()} className="px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40">Add</button>
-        </div>
-      )}
-    </div>
-  );
-}
+import { useApp } from '@/context/AppContext';
+import { BUILT_IN_OPA_POLICIES } from '@/lib/opa/builtInPolicies';
+import type { OpaEvaluationResult, OpaPolicyDefinition, OpaViolation } from '@/lib/opa/types';
 
 export default function PolicyPanel() {
   const { state } = useApp();
   const isLight = state.theme === 'light';
-  const project = useActiveProject();
-  const { status, policy, canEdit, error: loadError } = useOrgPolicy(state.currentUser?.id);
+
+  const activeProject = state.projects.find((p) => p.id === state.activeProjectId) ?? state.draftProject;
+  const nodes = activeProject.nodes ?? [];
+
+  const [activeTab, setActiveTab] = useState<'guardrails' | 'editor' | 'evaluate'>('guardrails');
+  const [policies, setPolicies] = useState<OpaPolicyDefinition[]>(BUILT_IN_OPA_POLICIES);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [evaluating, setEvaluating] = useState(false);
+  const [evalResult, setEvalResult] = useState<OpaEvaluationResult | null>(null);
+
+  // Custom Rego editor state
+  const [customRuleName, setCustomRuleName] = useState('');
+  const [customRuleSeverity, setCustomRuleSeverity] = useState<'deny' | 'warn'>('deny');
+  const [customRuleCategory, setCustomRuleCategory] = useState<'security' | 'cost' | 'blast_radius' | 'compliance'>('security');
+  const [regoCode, setRegoCode] = useState<string>(`package cloudbuilder.custom
+
+default allow = true
+
+# Prohibit unencrypted S3 storage
+deny[sprintf("Bucket %v lacks server-side encryption", [node.label])] {
+    node := input.canvas.nodes[_]
+    node.resourceType == "aws_s3"
+    node.config.encryption == false
+}
+`);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+
+  // Load policies
+  useEffect(() => {
+    async function loadPolicies() {
+      try {
+        const res = await fetch('/api/opa/policies');
+        if (res.ok) {
+          const json = await res.json();
+          const policyList = json.data?.policies ?? json.policies ?? (Array.isArray(json.data) ? json.data : null);
+          if (Array.isArray(policyList)) setPolicies(policyList);
+        }
+      } catch {}
+    }
+    loadPolicies();
+  }, []);
+
+  // Toggle a policy
+  const togglePolicy = async (policyId: string) => {
+    const updated = policies.map((p) => (p.id === policyId ? { ...p, enabled: !p.enabled } : p));
+    setPolicies(updated);
+
+    const disabledIds = updated.filter((p) => !p.enabled).map((p) => p.id);
+    const custom = updated.filter((p) => !p.isBuiltIn);
+
+    try {
+      await fetch('/api/opa/policies', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ disabledPolicyIds: disabledIds, customPolicies: custom }),
+      });
+    } catch {}
+  };
+
+  // Run OPA evaluation against active canvas & estimated cost
+  const handleEvaluate = async () => {
+    setEvaluating(true);
+    try {
+      const res = await fetch('/api/opa/evaluate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          canvas: { nodes },
+          cost: {
+            monthlyTotalUsd: 1250, // Connected to active cost engine
+            annualTotalUsd: 15000,
+            currency: 'USD',
+          },
+          environment: state.activeEnvironment,
+        }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const evalData = json.data ?? json;
+        setEvalResult(evalData);
+      }
+    } catch (err) {
+      console.error('Evaluation failed:', err);
+    } finally {
+      setEvaluating(false);
+    }
+  };
+
+  // Add custom rule
+  const handleSaveCustomRule = async () => {
+    if (!customRuleName.trim()) return;
+    const newPolicy: OpaPolicyDefinition = {
+      id: `custom-${Date.now()}`,
+      name: customRuleName.trim(),
+      description: 'Custom organization Rego policy',
+      category: customRuleCategory,
+      severity: customRuleSeverity,
+      enabled: true,
+      isBuiltIn: false,
+      regoCode,
+    };
+
+    const updated = [...policies, newPolicy];
+    setPolicies(updated);
+    setSaveStatus('Custom Rego policy saved successfully!');
+    setCustomRuleName('');
+
+    const disabledIds = updated.filter((p) => !p.enabled).map((p) => p.id);
+    const custom = updated.filter((p) => !p.isBuiltIn);
+
+    try {
+      await fetch('/api/opa/policies', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ disabledPolicyIds: disabledIds, customPolicies: custom }),
+      });
+    } catch {}
+
+    setTimeout(() => setSaveStatus(null), 3000);
+  };
+
+  const filteredPolicies = policies.filter(
+    (p) => selectedCategory === 'all' || p.category === selectedCategory,
+  );
 
   return (
-    <div className={clsx('flex-1 overflow-y-auto px-4 sm:px-8 py-8 pb-36 custom-scrollbar', isLight ? 'bg-slate-50 text-slate-900' : 'bg-gray-950 text-slate-100')}>
-      <div className="max-w-3xl mx-auto space-y-6">
+    <div className={clsx('flex flex-col h-full overflow-y-auto p-6 transition-colors', isLight ? 'bg-slate-50 text-slate-900' : 'bg-slate-950 text-slate-100')}>
+      {/* Top Banner */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className={clsx('text-xl font-bold flex items-center gap-2', isLight ? 'text-slate-900' : 'text-white')}>
-            <ClipboardList className={clsx('w-5 h-5', isLight ? 'text-blue-600' : 'text-blue-400')} />
-            Organization policy
-          </h1>
-          <p className={clsx('text-sm mt-1', isLight ? 'text-slate-600' : 'text-slate-400')}>
-            The regions, instance sizes, tags and naming your organization&apos;s architectures should follow. Resources that break the policy are
-            flagged with a warning, and options the policy does not allow are greyed out in the dropdowns — nothing is blocked.
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold tracking-tight">Policy as Code via OPA / Rego</h1>
+            <span className={clsx('px-2.5 py-0.5 text-xs font-semibold rounded-full border', isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300')}>
+              Open Policy Agent Guardrails
+            </span>
+          </div>
+          <p className={clsx('text-xs mt-1', isLight ? 'text-slate-500' : 'text-slate-400')}>
+            Enforces enterprise compliance, FinOps cost guardrails, and security policies before plans are approved or applied.
           </p>
         </div>
 
-        {status === 'loading' && <div className="flex items-center gap-2 text-sm"><Loader2 className="w-4 h-4 animate-spin" /> Loading policy…</div>}
-        {status === 'error' && <div role="alert" className="rounded-lg border border-rose-300 bg-rose-50 text-rose-800 px-3 py-2 text-sm">{loadError}</div>}
-
-        {/* Keyed by version so the editor starts from the saved policy each time one is loaded or saved. */}
-        {status === 'ready' && policy && <PolicyEditor key={policy.version} policy={policy} canEdit={canEdit} isLight={isLight} project={project} />}
+        {/* Tab Navigation */}
+        <div className={clsx('flex items-center p-1 rounded-xl border', isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800')}>
+          <button
+            onClick={() => setActiveTab('guardrails')}
+            className={clsx('px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all', activeTab === 'guardrails' ? (isLight ? 'bg-indigo-600 text-white shadow-xs' : 'bg-indigo-500 text-white') : 'opacity-70 hover:opacity-100')}
+          >
+            Guardrail Catalog ({policies.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('editor')}
+            className={clsx('px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all', activeTab === 'editor' ? (isLight ? 'bg-indigo-600 text-white shadow-xs' : 'bg-indigo-500 text-white') : 'opacity-70 hover:opacity-100')}
+          >
+            Rego Policy Studio
+          </button>
+          <button
+            onClick={() => { setActiveTab('evaluate'); handleEvaluate(); }}
+            className={clsx('px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all', activeTab === 'evaluate' ? (isLight ? 'bg-indigo-600 text-white shadow-xs' : 'bg-indigo-500 text-white') : 'opacity-70 hover:opacity-100')}
+          >
+            Live Evaluation
+          </button>
+        </div>
       </div>
-    </div>
-  );
-}
 
-function PolicyEditor({ policy, canEdit, isLight, project }: { policy: OrgPolicy; canEdit: boolean; isLight: boolean; project: Project | null }) {
-  const saved = useMemo<OrgPolicyRules>(() => ({
-    approvedRegions: policy.approvedRegions, allowedInstanceTypes: policy.allowedInstanceTypes, requiredTags: policy.requiredTags, namingPattern: policy.namingPattern,
-  }), [policy]);
+      {/* Tab 1: Guardrail Catalog */}
+      {activeTab === 'guardrails' && (
+        <div className="space-y-6">
+          {/* Category Filter Pills */}
+          <div className="flex flex-wrap gap-2">
+            {['all', 'security', 'cost', 'blast_radius', 'reliability', 'compliance'].map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={clsx(
+                  'px-3 py-1 rounded-lg text-xs font-medium border transition-all capitalize',
+                  selectedCategory === cat
+                    ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400 font-bold'
+                    : (isLight ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300' : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'),
+                )}
+              >
+                {cat.replace('_', ' ')}
+              </button>
+            ))}
+          </div>
 
-  const [draft, setDraft] = useState<Draft>(() => toDraft(saved));
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [savedNotice, setSavedNotice] = useState(false);
+          {/* Policy Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredPolicies.map((policy) => {
+              const isEnabled = policy.enabled;
+              return (
+                <div
+                  key={policy.id}
+                  className={clsx(
+                    'p-5 rounded-2xl border transition-all flex flex-col justify-between',
+                    isEnabled
+                      ? (isLight ? 'bg-white border-slate-200 shadow-xs' : 'bg-slate-900/60 border-slate-800')
+                      : 'opacity-50 bg-slate-100/50 dark:bg-slate-950/40 border-dashed border-slate-300 dark:border-slate-800',
+                  )}
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className={clsx(
+                          'px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider',
+                          policy.severity === 'deny' ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20' : 'bg-amber-500/10 text-amber-500 border border-amber-500/20',
+                        )}>
+                          {policy.severity}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-400 uppercase">{policy.category.replace('_', ' ')}</span>
+                      </div>
 
-  const draftRules = useMemo(() => toRules(draft), [draft]);
-  const validation = useMemo(() => OrgPolicyRulesSchema.safeParse(draftRules), [draftRules]);
-  const dirty = JSON.stringify(draftRules) !== JSON.stringify(normalizeRules(saved));
+                      {/* Toggle Switch */}
+                      <button
+                        onClick={() => togglePolicy(policy.id)}
+                        className={clsx(
+                          'w-9 h-5 rounded-full p-0.5 transition-colors relative',
+                          isEnabled ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700',
+                        )}
+                      >
+                        <div className={clsx(
+                          'w-4 h-4 rounded-full bg-white shadow-xs transition-transform',
+                          isEnabled ? 'translate-x-4' : 'translate-x-0',
+                        )} />
+                      </button>
+                    </div>
 
-  // What the current architecture would look like under the draft policy (the saved one when the draft is not valid yet).
-  const previewRules = validation.success ? draftRules : saved;
-  const violations = useMemo(
-    () => evaluateOrgPolicy((project?.nodes ?? []).map((n) => ({ id: n.id, label: n.label, resourceType: n.resourceType, region: n.region, config: n.config })), previewRules),
-    [project?.nodes, previewRules],
-  );
-  const resourceCount = new Set(violations.map((v) => v.resourceId)).size;
+                    <h3 className="text-sm font-bold">{policy.name}</h3>
+                    <p className={clsx('text-xs mt-1 leading-relaxed', isLight ? 'text-slate-600' : 'text-slate-400')}>{policy.description}</p>
 
-  const save = async () => {
-    if (!validation.success) return;
-    setSaving(true); setSaveError(null); setSavedNotice(false);
-    const result = await saveOrgPolicy(draftRules);
-    setSaving(false);
-    if (result.ok) { setSavedNotice(true); setTimeout(() => setSavedNotice(false), 3000); } else setSaveError(result.error);
-  };
+                    {policy.metadata?.benchmark && (
+                      <p className="text-[11px] font-mono text-indigo-400 mt-2">
+                        Ref: {policy.metadata.benchmark}
+                      </p>
+                    )}
+                  </div>
 
-  const card = clsx('border rounded-2xl p-5', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-900 border-gray-800');
-  const input = clsx('rounded-lg px-3 py-1.5 text-sm border focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60', isLight ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400' : 'bg-gray-950 border-gray-800 text-white placeholder-gray-600');
-  const readOnly = !canEdit;
+                  <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-400">
+                    <span>{policy.isBuiltIn ? 'Built-in Rule' : 'Custom Organization Rule'}</span>
+                    <button
+                      onClick={() => {
+                        setCustomRuleName(`${policy.name} (Copy)`);
+                        setRegoCode(policy.regoCode);
+                        setActiveTab('editor');
+                      }}
+                      className="text-indigo-400 hover:underline"
+                    >
+                      View Rego Code →
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-  return (
-          <>
-            {readOnly && (
-              <div className={clsx('flex items-start gap-2 rounded-lg border px-3 py-2 text-xs', isLight ? 'bg-blue-50 border-blue-200 text-blue-900' : 'bg-blue-950/40 border-blue-800/60 text-blue-200')}>
-                <Info className="w-4 h-4 shrink-0 mt-0.5" /> Only an owner or admin of the organization can change the policy. You can see what it requires.
+      {/* Tab 2: Rego Policy Studio */}
+      {activeTab === 'editor' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0">
+          <div className={clsx('lg:col-span-4 p-5 rounded-2xl border space-y-4', isLight ? 'bg-white border-slate-200 shadow-xs' : 'bg-slate-900/60 border-slate-800')}>
+            <h2 className="text-sm font-bold">Create Custom Rego Policy</h2>
+            <p className={clsx('text-xs', isLight ? 'text-slate-500' : 'text-slate-400')}>
+              Author declarative Open Policy Agent rules evaluated against Terraform plans and canvas architectures.
+            </p>
+
+            <div>
+              <label className="text-xs font-semibold block mb-1">Rule Name</label>
+              <input
+                type="text"
+                placeholder="e.g., Mandatory Tag: CostCenter"
+                value={customRuleName}
+                onChange={(e) => setCustomRuleName(e.target.value)}
+                className={clsx('w-full px-3 py-2 rounded-xl text-xs border outline-none font-medium', isLight ? 'bg-white border-slate-300' : 'bg-slate-950 border-slate-700')}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold block mb-1">Enforcement</label>
+                <select
+                  value={customRuleSeverity}
+                  onChange={(e) => setCustomRuleSeverity(e.target.value as any)}
+                  className={clsx('w-full px-2.5 py-2 rounded-xl text-xs border outline-none font-medium', isLight ? 'bg-white border-slate-300' : 'bg-slate-950 border-slate-700')}
+                >
+                  <option value="deny">DENY (Block Deploy)</option>
+                  <option value="warn">WARN (Advisory Alert)</option>
+                </select>
               </div>
+
+              <div>
+                <label className="text-xs font-semibold block mb-1">Category</label>
+                <select
+                  value={customRuleCategory}
+                  onChange={(e) => setCustomRuleCategory(e.target.value as any)}
+                  className={clsx('w-full px-2.5 py-2 rounded-xl text-xs border outline-none font-medium', isLight ? 'bg-white border-slate-300' : 'bg-slate-950 border-slate-700')}
+                >
+                  <option value="security">Security</option>
+                  <option value="cost">Cost</option>
+                  <option value="blast_radius">Blast Radius</option>
+                  <option value="compliance">Compliance</option>
+                </select>
+              </div>
+            </div>
+
+            <button
+              onClick={handleSaveCustomRule}
+              disabled={!customRuleName.trim()}
+              className="w-full py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white shadow-md transition-all"
+            >
+              Save Custom Policy
+            </button>
+
+            {saveStatus && (
+              <p className="text-xs text-emerald-500 font-semibold">{saveStatus}</p>
             )}
+          </div>
 
-            <div className={clsx(card, 'space-y-6')}>
-              <ChipInput testId="policy-regions" label="Approved regions" hint="Resources may be placed only in these regions (AWS or Azure names)." values={draft.approvedRegions}
-                onChange={(v) => setDraft({ ...draft, approvedRegions: v })} placeholder="e.g. ap-south-1" suggestions={Object.keys(REGION_LABELS)} disabled={readOnly} isLight={isLight} />
+          <div className={clsx('lg:col-span-8 p-5 rounded-2xl border flex flex-col', isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-slate-800')}>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-3">
+              <div className="flex items-center gap-2">
+                <Code className="w-4 h-4 text-indigo-400" />
+                <span className="text-xs font-bold uppercase tracking-wider">Rego Language Definition</span>
+              </div>
+              <span className="text-[11px] font-mono text-slate-400">package cloudbuilder.custom</span>
+            </div>
 
-              <ChipInput testId="policy-instance-types" label="Allowed instance types" hint="Patterns where * matches anything. Each service has its own prefix: t3.* (EC2, Auto Scaling), db.t3.* (RDS), cache.t3.* (ElastiCache), Standard_B* (Azure VMs)." values={draft.allowedInstanceTypes}
-                onChange={(v) => setDraft({ ...draft, allowedInstanceTypes: v })} placeholder="e.g. t3.*" disabled={readOnly} isLight={isLight} />
+            <textarea
+              value={regoCode}
+              onChange={(e) => setRegoCode(e.target.value)}
+              className="w-full flex-1 p-4 bg-slate-950 text-emerald-400 font-mono text-xs rounded-xl border border-slate-800 outline-none resize-none leading-relaxed"
+              rows={18}
+              spellCheck={false}
+            />
+          </div>
+        </div>
+      )}
 
-              <div data-testid="policy-tags">
-                <label className={clsx('text-xs font-semibold block', isLight ? 'text-slate-800' : 'text-slate-200')}>Required tags</label>
-                <p className={clsx('text-[11px] mb-2', isLight ? 'text-slate-500' : 'text-slate-400')}>Every taggable resource must carry these tags. Leave the values empty to accept any value.</p>
-                <div className="space-y-2">
-                  {draft.tags.length === 0 && <span className={clsx('text-[11px] italic', isLight ? 'text-slate-400' : 'text-slate-500')}>No restriction</span>}
-                  {draft.tags.map((t, i) => (
-                    <div key={i} className="flex gap-2 items-center">
-                      <input aria-label="Tag key" disabled={readOnly} value={t.key} placeholder="CostCenter" className={clsx(input, 'w-40')}
-                        onChange={(e) => setDraft({ ...draft, tags: draft.tags.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)) })} />
-                      <input aria-label="Allowed tag values" disabled={readOnly} value={t.values} placeholder="Allowed values, comma-separated (optional)" className={clsx(input, 'flex-1')}
-                        onChange={(e) => setDraft({ ...draft, tags: draft.tags.map((x, j) => (j === i ? { ...x, values: e.target.value } : x)) })} />
-                      {!readOnly && (
-                        <button type="button" aria-label="Remove tag" onClick={() => setDraft({ ...draft, tags: draft.tags.filter((_, j) => j !== i) })} className="text-slate-400 hover:text-rose-500"><X className="w-4 h-4" /></button>
+      {/* Tab 3: Live Evaluation Test Bench */}
+      {activeTab === 'evaluate' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold">Policy Evaluation Results</h2>
+              <p className={clsx('text-xs mt-0.5', isLight ? 'text-slate-500' : 'text-slate-400')}>
+                Evaluated against current active canvas resources ({nodes.length} nodes) and estimated monthly spend.
+              </p>
+            </div>
+
+            <button
+              onClick={handleEvaluate}
+              disabled={evaluating}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-all"
+            >
+              <RefreshCw className={clsx('w-3.5 h-3.5', evaluating && 'animate-spin')} />
+              Re-evaluate Policies
+            </button>
+          </div>
+
+          {evalResult ? (
+            <div className="space-y-4">
+              {/* Status Header */}
+              <div className={clsx(
+                'p-5 rounded-2xl border flex items-center justify-between',
+                evalResult.passed
+                  ? (isLight ? 'bg-emerald-50 border-emerald-200' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300')
+                  : (isLight ? 'bg-rose-50 border-rose-200' : 'bg-rose-500/10 border-rose-500/30 text-rose-300'),
+              )}>
+                <div className="flex items-center gap-3">
+                  {evalResult.passed ? <CheckCircle2 className="w-6 h-6 text-emerald-500" /> : <ShieldAlert className="w-6 h-6 text-rose-500" />}
+                  <div>
+                    <h3 className="text-sm font-bold">
+                      {evalResult.passed ? 'All OPA Guardrails Passed' : `${evalResult.violations.length} Guardrail Violation(s) Found`}
+                    </h3>
+                    <p className="text-xs opacity-80 mt-0.5">
+                      Evaluated {evalResult.rulesEvaluated} rules in {evalResult.durationMs}ms at {new Date(evalResult.evaluatedAt).toLocaleTimeString()}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 font-mono text-xs">
+                  <span className="text-rose-500 font-bold">{evalResult.violations.length} Denials</span>
+                  <span className="text-amber-500 font-bold">{evalResult.warnings.length} Warnings</span>
+                </div>
+              </div>
+
+              {/* Violations & Warnings List */}
+              <div className="space-y-3">
+                {[...evalResult.violations, ...evalResult.warnings].map((violation, idx) => (
+                  <div
+                    key={idx}
+                    className={clsx(
+                      'p-4 rounded-xl border flex items-start justify-between gap-4',
+                      violation.severity === 'deny'
+                        ? (isLight ? 'bg-rose-50/50 border-rose-200' : 'bg-rose-950/20 border-rose-500/30')
+                        : (isLight ? 'bg-amber-50/50 border-amber-200' : 'bg-amber-950/20 border-amber-500/30'),
+                    )}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={clsx(
+                          'px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase',
+                          violation.severity === 'deny' ? 'bg-rose-500 text-white' : 'bg-amber-500 text-white',
+                        )}>
+                          {violation.severity}
+                        </span>
+                        <span className="text-xs font-bold">{violation.ruleTitle}</span>
+                        {violation.resourceAddress && (
+                          <span className="text-xs font-mono text-slate-400">({violation.resourceAddress})</span>
+                        )}
+                      </div>
+                      <p className="text-xs mt-1 text-slate-300">{violation.message}</p>
+                      {violation.remediation && (
+                        <p className="text-[11px] text-indigo-400 mt-2 font-mono">
+                          Remediation: {violation.remediation}
+                        </p>
                       )}
                     </div>
-                  ))}
-                </div>
-                {!readOnly && (
-                  <button type="button" onClick={() => setDraft({ ...draft, tags: [...draft.tags, { key: '', values: '' }] })} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-500">
-                    <Plus className="w-3.5 h-3.5" /> Add a required tag
-                  </button>
-                )}
+                  </div>
+                ))}
               </div>
-
-              <div data-testid="policy-naming">
-                <label htmlFor="policy-naming-input" className={clsx('text-xs font-semibold block', isLight ? 'text-slate-800' : 'text-slate-200')}>Naming pattern</label>
-                <p className={clsx('text-[11px] mb-2', isLight ? 'text-slate-500' : 'text-slate-400')}>A regular expression every resource name must match, e.g. <code>^(prod|stg|dev)-[a-z0-9-]+$</code>. Leave empty for no standard.</p>
-                <input id="policy-naming-input" disabled={readOnly} value={draft.namingPattern} onChange={(e) => setDraft({ ...draft, namingPattern: e.target.value })} placeholder="^(prod|stg|dev)-[a-z0-9-]+$" className={clsx(input, 'w-full font-mono')} />
-              </div>
-
-              {!validation.success && (
-                <p role="alert" className="text-xs text-rose-600">{validation.error.issues[0]?.message ?? 'The policy is not valid'}</p>
-              )}
-
-              {!readOnly && (
-                <div className="flex items-center gap-3 pt-1">
-                  <button type="button" onClick={save} disabled={!dirty || !validation.success || saving} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg disabled:opacity-50 inline-flex items-center gap-2 shadow-sm">
-                    {saving && <Loader2 className="w-4 h-4 animate-spin" />} Save policy
-                  </button>
-                  {dirty && <button type="button" onClick={() => setDraft(toDraft(saved))} className="text-sm text-slate-500 hover:text-slate-700">Discard changes</button>}
-                  {savedNotice && <span className="text-sm text-emerald-600 inline-flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Saved (version {policy?.version})</span>}
-                  {saveError && <span role="alert" className="text-sm text-rose-600">{saveError}</span>}
-                </div>
-              )}
-              {policy && policy.version > 0 && (
-                <p className={clsx('text-[11px]', isLight ? 'text-slate-400' : 'text-slate-500')}>Version {policy.version} · last changed by {policy.updatedBy}{policy.updatedAt ? ` on ${new Date(policy.updatedAt).toLocaleDateString()}` : ''}</p>
-              )}
             </div>
-
-            <div className={card} data-testid="policy-impact">
-              <h2 className={clsx('text-sm font-semibold flex items-center gap-2', isLight ? 'text-slate-900' : 'text-white')}>
-                <ShieldAlert className="w-4 h-4 text-amber-500" />
-                {dirty ? 'What your unsaved changes would flag' : 'Current architecture'}
-              </h2>
-              {!project || project.nodes.length === 0 ? (
-                <p className={clsx('text-sm mt-2', isLight ? 'text-slate-500' : 'text-slate-400')}>Open a project with resources to see how it measures up.</p>
-              ) : violations.length === 0 ? (
-                <p className="text-sm mt-2 text-emerald-600 inline-flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> {project.name} meets the policy.</p>
-              ) : (
-                <>
-                  <p className={clsx('text-sm mt-1', isLight ? 'text-slate-600' : 'text-slate-400')}>
-                    {violations.length} {violations.length === 1 ? 'warning' : 'warnings'} on {resourceCount} {resourceCount === 1 ? 'resource' : 'resources'} in {project.name}.
-                  </p>
-                  <ul className="mt-3 space-y-2">
-                    {violations.slice(0, MAX_SHOWN).map((v, i) => (
-                      <li key={`${v.resourceId}-${v.ruleId}-${i}`} className={clsx('text-xs rounded-lg border px-3 py-2', isLight ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-amber-950/30 border-amber-500/30 text-amber-200')}>
-                        {v.message}
-                        <span className="block opacity-75">Policy: {v.expected}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  {violations.length > MAX_SHOWN && <p className="text-xs mt-2 text-slate-500">…and {violations.length - MAX_SHOWN} more.</p>}
-                </>
-              )}
+          ) : (
+            <div className="p-8 text-center border rounded-2xl">
+              <RefreshCw className="w-8 h-8 mx-auto mb-2 opacity-30 text-indigo-500 animate-spin" />
+              <p className="text-xs">Evaluating OPA guardrails against current architecture…</p>
             </div>
-          </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

@@ -7,7 +7,8 @@ import {
   LayoutDashboard, Box, Code2, ShieldCheck, DollarSign, Rocket,
   ChevronLeft, ChevronRight, Cloud, Plus, Trash2, Wand2, LayoutGrid,
   Sparkles, Brain, History, GitBranch, Shield, Upload, CheckSquare, FileCheck,
-  Activity, Scale, Users, Package, X, GripVertical, Link2, LogOut, User, ClipboardList
+  Activity, Scale, Users, Package, X, GripVertical, Link2, LogOut, User, ClipboardList,
+  GitFork, RefreshCw
 } from 'lucide-react';
 import clsx from 'clsx';
 import { AppView, Project } from '@/types';
@@ -47,6 +48,8 @@ const NAV_GROUPS = [
     items: [
       { id: 'review',     label: 'Review Workflow',  icon: FileCheck,       requiresProject: true },
       { id: 'terraform',  label: 'Terraform',         icon: Code2,           requiresProject: true },
+      { id: 'stacks',     label: 'Stacks (DAG)',      icon: GitFork,         requiresProject: true },
+      { id: 'drift',      label: 'Drift & Reconcile', icon: RefreshCw,       requiresProject: true },
       { id: 'deploy',     label: 'Deploy',            icon: Rocket,          requiresProject: true },
       { id: 'disaster-recovery', label: 'DR Designer', icon: Shield,         requiresProject: false },
     ],

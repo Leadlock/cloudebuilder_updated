@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useEscapeKey } from '@/lib/ui/useEscapeKey';
 import { getResourcesByProvider } from '@/lib/resources';
 import { CloudProvider } from '@/types';
-import { CloudServiceIcon } from '@/components/icons/cloud/CloudServiceIcon';
+import { CloudServiceIcon, AwsIcon, AzureIcon } from '@/components/icons/cloud/CloudServiceIcon';
 import { useApp } from '@/context/AppContext';
 import { Search, X, Layers, Plus } from 'lucide-react';
 import clsx from 'clsx';
@@ -56,8 +56,14 @@ export default function AddResourceModal({
           <div className="flex items-center gap-2">
             <Layers className={clsx('w-5 h-5', isLight ? 'text-blue-600' : 'text-cyan-400')} />
             <h3 className={clsx('font-bold text-sm tracking-tight', isLight ? 'text-slate-900' : 'text-white')}>Add Cloud Resource</h3>
-            <span className={clsx('text-[10px] font-mono px-2 py-0.5 rounded border', isLight ? 'bg-slate-200 border-slate-300 text-slate-700' : 'bg-slate-800 border-slate-700 text-slate-400')}>
-              {provider.toUpperCase()}
+            <span className={clsx(
+              'inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-md border shadow-xs',
+              provider === 'azure'
+                ? (isLight ? 'bg-[#0078d4]/10 text-[#0078d4] border-[#0078d4]/30' : 'bg-[#0078d4] text-white border-[#0078d4]')
+                : (isLight ? 'bg-slate-100 text-slate-800 border-slate-300' : 'bg-[#1a232f] text-[#ff9900] border-[#ff9900]/35')
+            )}>
+              {provider === 'azure' ? <AzureIcon size={13} /> : <AwsIcon size={14} />}
+              <span>{provider === 'azure' ? 'Azure' : 'AWS'}</span>
             </span>
           </div>
           <button

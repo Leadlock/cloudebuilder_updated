@@ -8,7 +8,7 @@ import { formatCurrency } from '@/lib/currency/formatter';
 import { DollarSign, ArrowRightLeft, AlertTriangle, Cloud, Scale, RefreshCw } from 'lucide-react';
 import clsx from 'clsx';
 import { getResourceDefinition } from '@/lib/resources';
-import { CloudServiceIcon } from '@/components/icons/cloud/CloudServiceIcon';
+import { CloudServiceIcon, AwsIcon, AzureIcon } from '@/components/icons/cloud/CloudServiceIcon';
 import CostInsightsCard from './CostInsightsCard';
 
 /** Plain-language reasons a service costs very different amounts on the two clouds, for the services present in this architecture. */
@@ -257,9 +257,9 @@ export default function CostComparisonPanel() {
         <div className={clsx('border rounded-2xl p-6 mb-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl transition-all', isLight ? 'bg-white border-slate-200 text-slate-900 shadow-slate-100' : 'bg-gradient-to-r from-slate-900 to-slate-800 border-slate-700 text-white')}>
           <div className="flex-1 text-center md:text-left">
             <p className={clsx('text-xs mb-1 uppercase tracking-wider font-semibold', isLight ? 'text-slate-500' : 'text-slate-400')}>Current Provider</p>
-            <div className="flex items-center gap-2 justify-center md:justify-start">
-              <Cloud className={clsx("w-6 h-6", data.currentProvider === 'aws' ? 'text-orange-500' : 'text-blue-500')} />
-              <span className={clsx("text-3xl font-black uppercase", isLight ? 'text-slate-900' : 'text-white')}>{data.currentProvider}</span>
+            <div className="flex items-center gap-2.5 justify-center md:justify-start">
+              {data.currentProvider === 'aws' ? <AwsIcon size={28} /> : <AzureIcon size={28} />}
+              <span className={clsx("text-3xl font-black uppercase tracking-tight", isLight ? 'text-slate-900' : 'text-white')}>{data.currentProvider}</span>
             </div>
             <p className={clsx("text-2xl mt-2 font-mono font-bold", isLight ? 'text-slate-800' : 'text-slate-200')}>{formatCurrency(curMonthly, data.targetCurrency)}<span className={clsx("text-sm", isLight ? 'text-slate-400' : 'text-slate-500')}>/mo</span></p>
             <p className={clsx("text-xs mt-1", isLight ? 'text-slate-500' : 'text-slate-500')}>{data.current.pricingCoveragePct.toFixed(0)}% pricing coverage{data.current.unsupportedCount > 0 && ` · ${data.current.unsupportedCount} unpriced`}</p>
@@ -288,9 +288,9 @@ export default function CostComparisonPanel() {
 
           <div className="flex-1 text-center md:text-right">
             <p className={clsx('text-xs mb-1 uppercase tracking-wider font-semibold', isLight ? 'text-slate-500' : 'text-slate-400')}>Alternative Provider</p>
-            <div className="flex items-center gap-2 justify-center md:justify-end">
-              <span className={clsx("text-3xl font-black uppercase", isLight ? 'text-slate-900' : 'text-white')}>{data.targetProvider}</span>
-              <Cloud className={clsx("w-6 h-6", data.targetProvider === 'aws' ? 'text-orange-500' : 'text-blue-500')} />
+            <div className="flex items-center gap-2.5 justify-center md:justify-end">
+              <span className={clsx("text-3xl font-black uppercase tracking-tight", isLight ? 'text-slate-900' : 'text-white')}>{data.targetProvider}</span>
+              {data.targetProvider === 'aws' ? <AwsIcon size={28} /> : <AzureIcon size={28} />}
             </div>
             <p className={clsx("text-2xl mt-2 font-mono font-bold", isLight ? 'text-slate-800' : 'text-slate-200')}>{formatCurrency(tgtMonthly, data.targetCurrency)}<span className={clsx("text-sm", isLight ? 'text-slate-400' : 'text-slate-500')}>/mo</span></p>
             <p className={clsx("text-xs mt-1", isLight ? 'text-slate-500' : 'text-slate-500')}>{data.translated.pricingCoveragePct.toFixed(0)}% pricing coverage{data.translated.unsupportedCount > 0 && ` · ${data.translated.unsupportedCount} unpriced`}</p>

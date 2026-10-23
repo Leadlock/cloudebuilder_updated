@@ -16,6 +16,7 @@ interface CloudNodeData {
   hasErrors?: boolean;
   status?: 'ready' | 'warning' | 'error' | 'unconfigured';
   importState?: 'imported' | 'cloudbuilder-managed' | 'new' | 'modified' | 'planned';
+  driftState?: { status: 'in_sync' | 'drifted' | 'missing' };
   findingsSummary?: { critical: number; high: number; medium: number; total: number };
   showFindings?: boolean;
 }
@@ -35,6 +36,7 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
   const config = data.config || {};
   const isImported = data.importState === 'imported' || config.imported === true || config.importState === 'imported';
   const isPlanned = data.importState === 'new' || data.importState === 'planned';
+  const isDrifted = data.driftState?.status === 'drifted' || config.driftStatus === 'drifted' || !!config._simulatedDrift;
   const rawId = (config.resourceId as string) || (config.providerResourceId as string) || '';
 
   const specs: string[] = [];
@@ -140,12 +142,23 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
           isDeleting && '!border-rose-500/80 ring-2 ring-rose-500/30 shadow-rose-950/40',
           isStopped && '!border-amber-500/60 shadow-amber-950/30',
           isFailed && '!border-rose-500 ring-2 ring-rose-500/40',
+          isDrifted && !isDeleted && '!border-amber-500 ring-2 ring-amber-500/50 shadow-amber-500/20',
           isImported && !isDeleted && !isDeleting && !isStopped && !isFailed && (isLight ? '!border-[#0078d4] shadow-[#0078d4]/10' : '!border-[#0078d4]/60 shadow-[#0078d4]/20'),
           selected
             ? '!border-[#0078d4] !ring-2 !ring-[#0078d4]/40 shadow-lg shadow-[#0078d4]/20'
             : ''
         )}
       >
+        {/* Drift Badge (top-left) */}
+        {isDrifted && (
+          <div
+            className="absolute -top-2 -left-2 z-20 flex items-center justify-center px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 shadow-md border border-amber-300 pointer-events-none animate-pulse"
+            title="Drift Detected: live cloud differs from canvas"
+          >
+            Drift
+          </div>
+        )}
+
         {/* Security / Well-Architected Findings Badge */}
         {data.showFindings && data.findingsSummary && (
           <div

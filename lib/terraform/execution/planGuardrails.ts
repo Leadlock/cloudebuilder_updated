@@ -127,12 +127,32 @@ export function evaluatePlanGuardrails(plan: PlanJsonForGuardrails, options: Gua
   const max = options.maxResources ?? 200;
   const size = touched > max ? [`${touched} resources would be created or changed; the limit is ${max}`] : [];
 
+  // 6. OPA / Rego Policy as Code Guardrails.
+  let opaViolations: string[] = [];
+  try {
+    const { BUILT_IN_OPA_POLICIES } = require('@/lib/opa/builtInPolicies');
+    const { RegoInterpreter } = require('@/lib/opa/regoEngine');
+    const interpreter = new RegoInterpreter();
+    for (const policy of BUILT_IN_OPA_POLICIES) {
+      if (!policy.enabled) continue;
+      const hits = interpreter.evaluatePolicy(policy, { plan });
+      for (const hit of hits) {
+        if (hit.severity === 'deny') {
+          opaViolations.push(`[${policy.name}] ${hit.message}`);
+        }
+      }
+    }
+  } catch (opaErr) {
+    console.warn('[planGuardrails] OPA evaluation warning:', opaErr);
+  }
+
   const checks = [
     check('unexpected-types', 'Only resource types CloudBuilder generates', unexpected),
     check('iam-admin', 'No administrator-style IAM', iam),
     check('public-exposure', 'No public admin ports, databases or buckets', exposure),
     check('region', 'Allowed regions only', region),
     check('size', 'Within the resource limit', size),
+    check('opa-policies', 'OPA / Rego Policy as Code Guardrails', opaViolations),
   ];
   return { passed: checks.every((c) => c.passed), checks };
 }

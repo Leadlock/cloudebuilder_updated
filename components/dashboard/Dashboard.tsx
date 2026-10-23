@@ -19,22 +19,46 @@ function ScoreBadge({ score }: { score: number }) {
   return <span className={clsx('font-bold', color)}>{score}</span>;
 }
 
-function ProviderBadge({ provider, isLight }: { provider: CloudProvider; isLight?: boolean }) {
-  const badgeStyle = isLight
-    ? provider === 'aws'
-      ? 'bg-amber-50 text-amber-800 border-amber-200'
-      : provider === 'azure'
-      ? 'bg-[#0078d4] text-white border-[#0078d4]'
-      : 'bg-purple-50 text-purple-700 border-purple-200'
-    : provider === 'aws'
-    ? 'bg-amber-500/15 text-amber-300 border-amber-500/35'
-    : provider === 'azure'
-    ? 'bg-[#0078d4] text-white border-[#0078d4]'
-    : 'bg-purple-500/15 text-purple-300 border-purple-500/35';
+import { AwsIcon, AzureIcon } from '@/components/icons/cloud/CloudServiceIcon';
 
+function ProviderBadge({ provider, isLight }: { provider: CloudProvider; isLight?: boolean }) {
+  if (provider === 'aws') {
+    return (
+      <span className={clsx(
+        'inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-md font-semibold tracking-wide border shadow-xs',
+        isLight
+          ? 'bg-slate-100 text-slate-800 border-slate-300'
+          : 'bg-[#1a232f] text-[#ff9900] border-[#ff9900]/35'
+      )}>
+        <AwsIcon size={14} />
+        <span>AWS</span>
+      </span>
+    );
+  }
+  if (provider === 'azure') {
+    return (
+      <span className={clsx(
+        'inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-md font-semibold tracking-wide border shadow-xs',
+        isLight
+          ? 'bg-[#0078d4]/10 text-[#0078d4] border-[#0078d4]/30'
+          : 'bg-[#0078d4] text-white border-[#0078d4]'
+      )}>
+        <AzureIcon size={14} />
+        <span>Azure</span>
+      </span>
+    );
+  }
   return (
-    <span className={clsx('text-[10px] px-2 py-0.5 rounded-md font-semibold uppercase tracking-wider border shadow-xs', badgeStyle)}>
-      {provider === 'aws' ? 'AWS' : provider === 'azure' ? 'Azure' : 'Multi-cloud'}
+    <span className={clsx(
+      'inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-md font-semibold tracking-wide border shadow-xs',
+      isLight
+        ? 'bg-purple-50 text-purple-700 border-purple-200'
+        : 'bg-purple-500/15 text-purple-300 border-purple-500/35'
+    )}>
+      <AwsIcon size={12} />
+      <span className="text-gray-400 font-normal">/</span>
+      <AzureIcon size={12} />
+      <span>Multi</span>
     </span>
   );
 }

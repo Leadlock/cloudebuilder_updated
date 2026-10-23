@@ -5,7 +5,7 @@ import { ok, badRequest, unauthorized, internalError, apiError, parseBody } from
 import { AuthService } from '@/lib/api/authService';
 import { CognitoService } from '@/lib/auth/cognitoService';
 import { toPublicMethod, UNSUPPORTED_STEP_MESSAGE } from '@/lib/auth/challengeMethods';
-import { localLoginFallbackAllowed } from '@/lib/auth/localFallback';
+import { localLoginFallbackAllowed, localMfaBypassAllowed } from '@/lib/auth/localFallback';
 import { clearLoginFailures, limitAuthAttempt, loginLocked, recordLoginFailure } from '@/lib/api/authRateLimit';
 
 export const dynamic = 'force-dynamic';
@@ -33,6 +33,36 @@ export async function POST(req: NextRequest) {
       const cognitoAuth = await CognitoService.signIn(email, password);
 
       if ('challenge' in cognitoAuth && cognitoAuth.challenge) {
+        if (localMfaBypassAllowed(req)) {
+          const sub = cognitoAuth.challengeParameters?.USER_ID_FOR_SRP;
+          const user = await AuthService.syncCognitoUser({
+            id: sub,
+            email: cognitoAuth.email,
+            name: cognitoAuth.email.split('@')[0],
+          });
+
+          await clearLoginFailures(req, email);
+          const session = AuthService.createSession(user);
+
+          const response = NextResponse.json({
+            success: true,
+            user,
+            expiresAt: session.expiresAt,
+          });
+
+          response.cookies.set({
+            name: 'cloudbuilder_session',
+            value: session.token,
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: 24 * 60 * 60,
+          });
+
+          return response;
+        }
+
         const method = toPublicMethod(cognitoAuth.challengeName);
         if (!method) {
           // Answering it as an authenticator code would only fail: say so plainly. The service's own name for the step goes to the log, not to the person.

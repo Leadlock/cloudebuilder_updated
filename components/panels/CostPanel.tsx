@@ -6,7 +6,7 @@ import { costService } from '@/lib/services/CostService';
 import { CostItem } from '@/types';
 import { DollarSign, TrendingDown, Zap, CheckCircle2, AlertTriangle, Globe, ArrowRightLeft, Info } from 'lucide-react';
 import { getResourceDefinition } from '@/lib/resources';
-import { CloudServiceIcon } from '@/components/icons/cloud/CloudServiceIcon';
+import { CloudServiceIcon, AwsIcon, AzureIcon } from '@/components/icons/cloud/CloudServiceIcon';
 import { cloudRegionService } from '@/lib/cloud/regions/CloudRegionService';
 import { formatCurrency } from '@/lib/currency/formatter';
 import { getCurrencyDefinition } from '@/lib/currency/types';
@@ -352,13 +352,19 @@ export default function CostPanel() {
               <p className={clsx('text-[11px] mt-0.5', isLight ? 'text-slate-400' : 'text-gray-500')}>≈ {formatCurrency(annualUsd, 'USD')}</p>
             )}
           </div>
-          <div className={clsx('border rounded-2xl p-4 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-800 border-gray-700')}>
-            <p className={clsx('text-xs mb-1', isLight ? 'text-slate-500' : 'text-gray-400')}>AWS</p>
-            <p className="text-2xl font-bold text-orange-500">{formatCurrency(awsCost, valueCurrency)}</p>
+          <div className={clsx('border rounded-2xl p-4 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#1c1c1e] border-white/10')}>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <AwsIcon size={16} />
+              <p className={clsx('text-xs font-semibold tracking-wide', isLight ? 'text-slate-600' : 'text-slate-300')}>AWS</p>
+            </div>
+            <p className="text-2xl font-bold text-[#ff9900]">{formatCurrency(awsCost, valueCurrency)}</p>
           </div>
-          <div className={clsx('border rounded-2xl p-4 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-gray-800 border-gray-700')}>
-            <p className={clsx('text-xs mb-1', isLight ? 'text-slate-500' : 'text-gray-400')}>Azure</p>
-            <p className="text-2xl font-bold text-blue-500">{formatCurrency(azureCost, valueCurrency)}</p>
+          <div className={clsx('border rounded-2xl p-4 transition-all', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#1c1c1e] border-white/10')}>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <AzureIcon size={16} />
+              <p className={clsx('text-xs font-semibold tracking-wide', isLight ? 'text-slate-600' : 'text-slate-300')}>Azure</p>
+            </div>
+            <p className="text-2xl font-bold text-[#0078d4]">{formatCurrency(azureCost, valueCurrency)}</p>
           </div>
         </div>
 
@@ -413,12 +419,13 @@ export default function CostPanel() {
                           {item.nodeLabel}
                         </span>
                         <span className={clsx(
-                          'text-[10px] px-2 py-0.5 rounded-md border font-semibold uppercase tracking-wider shrink-0 shadow-xs',
+                          'inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-md border font-semibold tracking-wide shrink-0 shadow-xs',
                           isAzure
-                            ? 'bg-[#0078d4] text-white border-[#0078d4]'
-                            : (isLight ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-amber-500/15 text-amber-300 border-amber-500/30')
+                            ? (isLight ? 'bg-[#0078d4]/10 text-[#0078d4] border-[#0078d4]/30' : 'bg-[#0078d4] text-white border-[#0078d4]')
+                            : (isLight ? 'bg-slate-100 text-slate-800 border-slate-300' : 'bg-[#1a232f] text-[#ff9900] border-[#ff9900]/35')
                         )}>
-                          {item.provider.toUpperCase()}
+                          {isAzure ? <AzureIcon size={12} /> : <AwsIcon size={13} />}
+                          <span>{isAzure ? 'Azure' : 'AWS'}</span>
                         </span>
                         <TierBadge tier={item.pricingTier ?? 'FALLBACK_ESTIMATE'} stale={item.pricingIsStale} isLight={isLight} />
                       </div>
@@ -438,7 +445,7 @@ export default function CostPanel() {
                         className="h-full rounded-full transition-all"
                         style={{
                           width: `${pct.toFixed(1)}%`,
-                          backgroundColor: def?.color ?? (isAzure ? '#0078d4' : '#f59e0b')
+                          backgroundColor: isAzure ? '#0078d4' : '#ff9900'
                         }}
                       />
                     </div>

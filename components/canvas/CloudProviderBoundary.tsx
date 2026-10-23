@@ -4,6 +4,7 @@ import { Handle, Position, NodeProps } from 'reactflow';
 import clsx from 'clsx';
 import { MapPin, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { AwsIcon, AzureIcon } from '@/components/icons/cloud/CloudServiceIcon';
 
 export interface CloudProviderBoundaryData {
   label: string;
@@ -68,9 +69,15 @@ export const CloudProviderBoundary = memo(({ data, selected }: NodeProps<CloudPr
       {/* Microsoft Fluent Title Pill Floating on Top Edge */}
       <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
         <div
-          className="px-5 py-1.5 rounded-lg border border-[#0078d4] bg-[#0078d4] text-white text-xs font-semibold shadow-md select-none tracking-tight"
+          className={clsx(
+            "flex items-center gap-2 px-4 py-1.5 rounded-lg border text-xs font-semibold shadow-md select-none tracking-tight",
+            isAws
+              ? "bg-[#232F3E] border-[#FF9900]/40 text-white"
+              : "border-[#0078d4] bg-[#0078d4] text-white"
+          )}
         >
-          {titleText}
+          {isAws ? <AwsIcon size={16} /> : <AzureIcon size={16} />}
+          <span>{titleText}</span>
         </div>
       </div>
 

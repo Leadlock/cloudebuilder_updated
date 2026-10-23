@@ -10,6 +10,7 @@ import { SUPPORTED_CURRENCIES } from '@/lib/currency/types';
 import LoginModal from '@/components/auth/LoginModal';
 import { useOrgPolicy } from '@/components/policy/orgPolicyStore';
 import { isRegionAllowed } from '@/lib/engines/policy/allowed';
+import { AwsIcon, AzureIcon } from '@/components/icons/cloud/CloudServiceIcon';
 
 const VIEW_LABELS: Partial<Record<AppView, string>> = {
   dashboard: 'Dashboard',
@@ -118,7 +119,13 @@ export default function TopBar() {
                 onClick={() => dispatch({ type: 'SET_VIEW', view: 'canvas' })}
                 title={`Active Project: ${activeProject.name}`}
               >
-                <span className={clsx('w-2 h-2 rounded-full shrink-0', activeProject.provider === 'aws' ? 'bg-orange-500' : activeProject.provider === 'azure' ? 'bg-blue-500' : 'bg-purple-500')} />
+                {activeProject.provider === 'aws' ? (
+                  <AwsIcon size={14} className="shrink-0" />
+                ) : activeProject.provider === 'azure' ? (
+                  <AzureIcon size={14} className="shrink-0" />
+                ) : (
+                  <span className="w-2 h-2 rounded-full shrink-0 bg-purple-500" />
+                )}
                 <span className="truncate">{activeProject.name}</span>
               </button>
               <span className={clsx("text-xs shrink-0", isLight ? "text-slate-400" : "text-gray-700")}>/</span>

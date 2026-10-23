@@ -70,7 +70,9 @@ export type AppView =
   | 'review'
   | 'policy'
   | 'operator-access'
-  | 'team';
+  | 'team'
+  | 'drift'
+  | 'stacks';
 
 export type Environment = 'development' | 'staging' | 'production';
 export type ResourceCategory =

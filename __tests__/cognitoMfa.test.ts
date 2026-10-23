@@ -208,4 +208,104 @@ describe('Cognito MFA Flow', () => {
     expect(body.secretCode).toBe('JBSWY3DPEHPK3PXP');
     expect(body.session).toBe('sess-updated-67890');
   });
+
+  it('login route bypasses MFA on localhost when CLOUDBUILDER_DISABLE_MFA_LOCAL=1', async () => {
+    process.env.CLOUDBUILDER_DISABLE_MFA_LOCAL = '1';
+    try {
+      mockSignIn.mockResolvedValueOnce({
+        challenge: true,
+        challengeName: 'SOFTWARE_TOKEN_MFA',
+        session: 'sess-12345',
+        challengeParameters: { USER_ID_FOR_SRP: 'user-sub-123' },
+        email: 'alex@example.com',
+      });
+      mockSync.mockResolvedValueOnce({
+        id: 'user-sub-123',
+        email: 'alex@example.com',
+        name: 'alex',
+        role: 'user',
+        orgId: 'org-1',
+      });
+
+      const req = new NextRequest('http://localhost/api/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'alex@example.com', password: 'ValidPassword1!' }),
+      });
+
+      const res = await loginPost(req);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.requiresMfa).toBeUndefined();
+      expect(body.user.email).toBe('alex@example.com');
+      expect(res.cookies.get('cloudbuilder_session')?.value).toBe('session-user-sub-123');
+    } finally {
+      delete process.env.CLOUDBUILDER_DISABLE_MFA_LOCAL;
+    }
+  });
+
+  it('mfa/verify route completes authentication immediately on localhost when bypass enabled', async () => {
+    process.env.CLOUDBUILDER_DISABLE_MFA_LOCAL = '1';
+    try {
+      mockSync.mockResolvedValueOnce({
+        id: 'user-sub-bypass',
+        email: 'alex@example.com',
+        name: 'alex',
+        role: 'user',
+        orgId: 'org-1',
+      });
+
+      const req = new NextRequest('http://localhost/api/auth/mfa/verify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          email: 'alex@example.com',
+          session: 'sess-12345',
+          method: 'app',
+          code: 'any-code',
+        }),
+      });
+
+      const res = await mfaVerifyPost(req);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.user.email).toBe('alex@example.com');
+      // Cognito respondToMfaChallenge should not have been called because MFA was bypassed locally
+      expect(mockRespondToMfaChallenge).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.CLOUDBUILDER_DISABLE_MFA_LOCAL;
+    }
+  });
+
+  it('never bypasses MFA in production even if CLOUDBUILDER_DISABLE_MFA_LOCAL=1', async () => {
+    const originalEnv = process.env.NODE_ENV;
+    (process.env as Record<string, string | undefined>)['NODE_ENV'] = 'production';
+    process.env.CLOUDBUILDER_DISABLE_MFA_LOCAL = '1';
+    try {
+      mockSignIn.mockResolvedValueOnce({
+        challenge: true,
+        challengeName: 'SOFTWARE_TOKEN_MFA',
+        session: 'sess-prod-123',
+        challengeParameters: {},
+        email: 'alex@example.com',
+      });
+
+      const req = new NextRequest('http://localhost/api/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'alex@example.com', password: 'ValidPassword1!' }),
+      });
+
+      const res = await loginPost(req);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.requiresMfa).toBe(true);
+      expect(body.success).toBe(false);
+    } finally {
+      (process.env as Record<string, string | undefined>)['NODE_ENV'] = originalEnv;
+      delete process.env.CLOUDBUILDER_DISABLE_MFA_LOCAL;
+    }
+  });
 });

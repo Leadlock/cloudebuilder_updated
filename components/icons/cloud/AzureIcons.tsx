@@ -9,20 +9,64 @@ interface IconProps {
 // ─── Azure Provider Logo ──────────────────────────────────────────────────────
 export function AzureIcon({ size = 24, className = '' }: IconProps) {
   return (
+    <svg width={size} height={size} viewBox="0 0 96 96" fill="none" className={className} role="img" aria-label="Microsoft Azure">
+      <defs>
+        <linearGradient id="azure-sym-grad-a" x1="63.56" y1="28.06" x2="28.74" y2="72.18" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#1988EB" />
+          <stop offset="1" stopColor="#00539C" />
+        </linearGradient>
+        <linearGradient id="azure-sym-grad-b" x1="50.62" y1="12.44" x2="74.52" y2="70.08" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#5EA0EF" />
+          <stop offset="1" stopColor="#0078D4" />
+        </linearGradient>
+      </defs>
+      {/* Official Microsoft Azure 4-Facet Geometry */}
+      <path d="M50.4 12.8L28.8 68.8H12.8L38.4 12.8H50.4Z" fill="#0078D4" />
+      <path d="M52.8 12.8L32 68.8H48L76.8 28.8L52.8 12.8Z" fill="url(#azure-sym-grad-b)" />
+      <path d="M28.8 68.8L38.4 51.2L48 68.8H28.8Z" fill="#005A9E" />
+      <path d="M48 68.8L76.8 28.8L83.2 68.8H48Z" fill="url(#azure-sym-grad-a)" />
+    </svg>
+  );
+}
+
+// ─── Azure Cache for Redis ────────────────────────────────────────────────────
+export function AzureRedisIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#D83B01" fillOpacity="0.14" />
+      <path d="M12 20l12-7 12 7-12 7-12-7z" fill="#EA4335" />
+      <path d="M12 20v6l12 7v-6l-12-7z" fill="#B31412" />
+      <path d="M36 20v6l-12 7v-6l12-7z" fill="#D83B01" />
+      <path d="M12 28v5l12 6 12-6v-5l-12 6-12-6z" fill="#EA4335" fillOpacity="0.75" />
+      <path d="M25 15l-3 5h4l-3 6 6-7h-4l2-4h-2z" fill="#FFF" />
+    </svg>
+  );
+}
+
+// ─── Azure Database for PostgreSQL ───────────────────────────────────────────
+export function AzurePostgresIcon({ size = 24, className = '' }: IconProps) {
+  return (
     <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
       <rect width="48" height="48" rx="8" fill="#0078D4" fillOpacity="0.15" />
-      <path
-        d="M26.4 8.5h-8.8L8 31.2l6.2 8.3h14.7L26.4 8.5z"
-        fill="#0078D4"
-      />
-      <path
-        d="M26.4 8.5l-5.6 15.3 11 11.2L40 31.2 26.4 8.5z"
-        fill="#5EA0EF"
-      />
-      <path
-        d="M17.6 23.8L8 31.2l6.2 8.3h6.8l3.6-7.8-7-7.9z"
-        fill="#005A9E"
-      />
+      <ellipse cx="24" cy="14" rx="12" ry="5" fill="#5EA0EF" />
+      <path d="M12 14v18c0 3 5.4 5.5 12 5.5s12-2.5 12-5.5V14" stroke="#0078D4" strokeWidth="2" fill="none" />
+      <path d="M12 23c0 2.8 5.4 5 12 5s12-2.2 12-5" stroke="#0078D4" strokeWidth="2" fill="none" />
+      <path d="M12 32c0 2.8 5.4 5 12 5s12-2.2 12-5" stroke="#0078D4" strokeWidth="2" fill="none" />
+      <circle cx="24" cy="23" r="3.5" fill="#0078D4" />
+    </svg>
+  );
+}
+
+// ─── Azure Front Door ────────────────────────────────────────────────────────
+export function AzureFrontDoorIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#0078D4" fillOpacity="0.15" />
+      <circle cx="24" cy="24" r="14" stroke="#0078D4" strokeWidth="2" fill="none" />
+      <ellipse cx="24" cy="24" rx="6" ry="14" stroke="#0078D4" strokeWidth="1.6" fill="none" />
+      <path d="M10 24h28" stroke="#0078D4" strokeWidth="1.6" />
+      <rect x="20" y="18" width="8" height="12" rx="1.5" fill="#5EA0EF" stroke="#005A9E" strokeWidth="1.5" />
+      <circle cx="22" cy="24" r="0.8" fill="#FFF" />
     </svg>
   );
 }

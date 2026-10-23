@@ -22,6 +22,8 @@ import EnvironmentsPanel from '@/components/panels/EnvironmentsPanel';
 import WellArchitectedReview from '@/components/panels/WellArchitectedReview';
 import ReviewWorkflowPanel from '@/components/panels/ReviewWorkflowPanel';
 import AnalyzePanel from '@/components/panels/AnalyzePanel';
+import DriftPanel from '@/components/panels/DriftPanel';
+import MultiStackPanel from '@/components/panels/MultiStackPanel';
 import CostComparisonPanel from '@/components/panels/CostComparisonPanel';
 import TeamPanel from '@/components/panels/TeamPanel';
 import PolicyPanel from '@/components/panels/PolicyPanel';
@@ -51,6 +53,8 @@ function MainContent() {
     dashboard:          <Dashboard />,
     canvas:             <InfraCanvas />,
     terraform:          <TerraformPanel />,
+    stacks:             <MultiStackPanel />,
+    drift:              <DriftPanel />,
     security:           <SecurityPanel />,
     'well-architected': <WellArchitectedReview />,
     cost:               <CostPanel />,

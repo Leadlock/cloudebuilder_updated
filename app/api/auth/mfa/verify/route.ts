@@ -5,6 +5,7 @@ import { badRequest, unauthorized, internalError, apiError, parseBody } from '@/
 import { AuthService } from '@/lib/api/authService';
 import { CognitoService } from '@/lib/auth/cognitoService';
 import { fromPublicMethod, toPublicMethod, UNSUPPORTED_STEP_MESSAGE, VERIFICATION_METHODS, type VerificationMethod } from '@/lib/auth/challengeMethods';
+import { localMfaBypassAllowed } from '@/lib/auth/localFallback';
 import { clearLoginFailures, limitAuthAttempt, loginLocked, recordLoginFailure } from '@/lib/api/authRateLimit';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +29,34 @@ export async function POST(req: NextRequest) {
     // Rate limits: per client address, and per (address, email) for failed attempts
     const limited = await limitAuthAttempt(req, 'login', email) ?? await loginLocked(req, email);
     if (limited) return limited;
+
+    if (localMfaBypassAllowed(req)) {
+      const user = await AuthService.syncCognitoUser({
+        email,
+        name: email.split('@')[0],
+      });
+
+      await clearLoginFailures(req, email);
+      const appSession = AuthService.createSession(user);
+
+      const response = NextResponse.json({
+        success: true,
+        user,
+        expiresAt: appSession.expiresAt,
+      });
+
+      response.cookies.set({
+        name: 'cloudbuilder_session',
+        value: appSession.token,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 24 * 60 * 60,
+      });
+
+      return response;
+    }
 
     try {
       const cognitoRes = await CognitoService.respondToMfaChallenge({

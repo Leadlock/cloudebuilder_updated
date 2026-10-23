@@ -1,7 +1,7 @@
 'use client';
 import { getResourcesByProvider } from '@/lib/resources';
 import { CloudProvider, ResourceCategory, ResourceDefinition } from '@/types';
-import { CloudServiceIcon } from '@/components/icons/cloud/CloudServiceIcon';
+import { CloudServiceIcon, AwsIcon, AzureIcon } from '@/components/icons/cloud/CloudServiceIcon';
 import { useApp } from '@/context/AppContext';
 import clsx from 'clsx';
 import { useState, useMemo } from 'react';
@@ -120,8 +120,14 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
         )}
       >
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5">
-            <Layers className="w-4 h-4 text-[#0078d4]" />
+          <div className="flex items-center gap-2">
+            {provider === 'aws' ? (
+              <AwsIcon size={16} />
+            ) : provider === 'azure' ? (
+              <AzureIcon size={16} />
+            ) : (
+              <Layers className="w-4 h-4 text-[#0078d4]" />
+            )}
             <span className={clsx('font-bold text-xs tracking-wider uppercase', isLight ? 'text-slate-900' : 'text-white')}>
               {provider === 'aws' ? 'AWS Services' : provider === 'azure' ? 'Azure Services' : 'Cloud Services'}
             </span>

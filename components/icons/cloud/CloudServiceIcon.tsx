@@ -30,6 +30,7 @@ import {
   AwsEventBridgeIcon,
   AwsCognitoIcon,
   AwsStepFunctionsIcon,
+  AwsElastiCacheIcon,
 } from './AwsIcons';
 import {
   AzureIcon,
@@ -48,7 +49,13 @@ import {
   AzureNsgIcon,
   AzureNicIcon,
   AzureAppServiceIcon,
+  AzureRedisIcon,
+  AzurePostgresIcon,
+  AzureFrontDoorIcon,
 } from './AzureIcons';
+
+export { AwsIcon } from './AwsIcons';
+export { AzureIcon } from './AzureIcons';
 
 export interface CloudServiceIconProps {
   provider?: import('@/types').CloudProvider;
@@ -172,18 +179,24 @@ export function CloudServiceIcon({
       <AwsSgIcon size={size} className={className} />
     );
   }
-  if (type.includes('elasticache') || type.includes('redis')) {
+  if (type.includes('elasticache') || (type.includes('cache') && !type.includes('azure_') && provider !== 'azure')) {
+    return <AwsElastiCacheIcon size={size} className={className} />;
+  }
+  if (type.includes('redis') || (type.includes('cache') && (provider === 'azure' || type.startsWith('azure_')))) {
+    return <AzureRedisIcon size={size} className={className} />;
+  }
+  if (type.includes('front_door') || type.includes('frontdoor')) {
+    return <AzureFrontDoorIcon size={size} className={className} />;
+  }
+  if (type.includes('postgres') || type.includes('postgresql')) {
     return provider === 'azure' || type.startsWith('azure_') ? (
-      <AzureSqlIcon size={size} className={className} />
+      <AzurePostgresIcon size={size} className={className} />
     ) : (
       <AwsRdsIcon size={size} className={className} />
     );
   }
   if (type.includes('sqs') || type.includes('queue')) {
     return <AwsLambdaIcon size={size} className={className} />;
-  }
-  if (type.includes('front_door') || type.includes('frontdoor')) {
-    return <AzureAppGatewayIcon size={size} className={className} />;
   }
   if (type.includes('vmss') || type.includes('scale_set')) {
     return <AzureVmIcon size={size} className={className} />;
