@@ -40,7 +40,7 @@ function project(on: Layer[] = ['frontend', 'backend', 'api']): StackProject {
   return p;
 }
 const own = (layer: string, files: Record<string, string> = MY_CODE) => { const z = zipOf(files); return { [layer]: { sha256: sha256Hex(z), files: readZip(z).files } }; };
-const untar = (tgz: Buffer) => { const dir = mkdtempSync(join(tmpdir(), 'src-')); writeFileSync(join(dir, 'a.tgz'), tgz); spawnSync('tar', ['-xzf', 'a.tgz', '-C', dir], { cwd: dir }); const list = spawnSync('tar', ['-tzf', join(dir, 'a.tgz')], { encoding: 'utf8' }).stdout.trim().split('\n').sort(); return { dir, list }; };
+const untar = (tgz: Buffer) => { const dir = mkdtempSync(join(tmpdir(), 'src-')); writeFileSync(join(dir, 'a.tgz'), tgz); spawnSync('tar', ['-xzf', 'a.tgz'], { cwd: dir }); const list = spawnSync('tar', ['-tzf', 'a.tgz'], { cwd: dir, encoding: 'utf8' }).stdout.trim().split(/\r?\n/).map((s) => s.trim()).filter(Boolean).sort(); return { dir, list }; };
 
 describe('the archive a build is given', () => {
   test('without uploaded code it is the generated folder, sample app included', () => {

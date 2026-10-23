@@ -120,7 +120,10 @@ describe('deploy.sh', () => {
 
   test('stops with a clear message when a tool is missing', () => {
     const sb = sandbox(on());
-    const r = spawnSync('/bin/bash', [join(sb.dir, 'deploy.sh'), '--yes'], { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', DEPLOY_WAIT_SECONDS: '0' } as unknown as NodeJS.ProcessEnv });
+    const minPath = process.platform === 'win32'
+      ? 'C:\\Program Files\\Git\\usr\\bin;C:\\Program Files\\Git\\bin'
+      : '/usr/bin:/bin';
+    const r = spawnSync('bash', [join(sb.dir, 'deploy.sh'), '--yes'], { encoding: 'utf8', env: { ...process.env, PATH: minPath, DEPLOY_WAIT_SECONDS: '0' } });
     expect(r.status).not.toBe(0);
     expect(r.stdout).toMatch(/Missing tool: terraform/);
   });

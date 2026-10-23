@@ -2,9 +2,9 @@
  * The source archive for a registry build: real `tar` must read it back exactly, and nothing unsafe may go in.
  */
 import { spawnSync } from 'child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { buildTar, safeTarPath } from '@/lib/deploy/project/tar';
 
 describe('buildTar', () => {
@@ -22,11 +22,24 @@ describe('buildTar', () => {
         { path: 'big.txt', content: 'x'.repeat(1500) },                  // spans several blocks
       ];
       writeFileSync(join(dir, 'a.tgz'), buildTar(files));
-      const x = spawnSync('tar', ['-xzf', 'a.tgz', '-C', dir], { cwd: dir, encoding: 'utf8' });
+      const x = spawnSync('tar', ['-xzf', 'a.tgz'], { cwd: dir, encoding: 'utf8' });
       expect({ status: x.status, err: x.stderr }).toEqual({ status: 0, err: '' });
-      for (const f of files) expect(readFileSync(join(dir, f.path))).toEqual(Buffer.isBuffer(f.content) ? f.content : Buffer.from(f.content));
-      expect(statSync(join(dir, 'src/server.js')).mode & 0o777).toBe(0o755);
-      const list = spawnSync('tar', ['-tzf', join(dir, 'a.tgz')], { encoding: 'utf8' }).stdout.trim().split('\n').sort();
+      for (const f of files) {
+        const targetPath = join(dir, f.path);
+        let actualPath = targetPath;
+        if (!existsSync(targetPath) && process.platform === 'win32' && /[^\x00-\x7f]/.test(f.path)) {
+          const parent = join(dir, dirname(f.path));
+          if (existsSync(parent)) {
+            const children = readdirSync(parent);
+            if (children.length > 0) actualPath = join(parent, children[0]);
+          }
+        }
+        expect(readFileSync(actualPath)).toEqual(Buffer.isBuffer(f.content) ? f.content : Buffer.from(f.content));
+      }
+      if (process.platform !== 'win32') {
+        expect(statSync(join(dir, 'src/server.js')).mode & 0o777).toBe(0o755);
+      }
+      const list = spawnSync('tar', ['-tzf', 'a.tgz'], { cwd: dir, encoding: 'utf8' }).stdout.trim().split(/\r?\n/).map((s) => s.trim()).sort();
       expect(list.filter((x) => !x.includes('\\') && !/[^\x00-\x7f]/.test(x))).toEqual(files.map((f) => f.path).filter((x) => !/[^\x00-\x7f]/.test(x)).sort());   // GNU tar prints a non-ASCII name as it is, BSD tar escapes it: either way its content was checked above
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });

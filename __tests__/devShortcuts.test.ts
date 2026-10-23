@@ -79,7 +79,33 @@ describe('no code path switches a shortcut on from NODE_ENV alone', () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { spawnSync } = require('child_process') as typeof import('child_process');
     const r = spawnSync('grep', ['-rn', '--include=*.ts', '--include=*.tsx', "NODE_ENV === 'development'", 'app', 'lib', 'components', 'context', 'workers'], { encoding: 'utf8' });
-    const hits = r.stdout.split('\n').filter(Boolean)
+    let rawHits: string[] = [];
+    if (r.stdout) {
+      rawHits = r.stdout.split(/\r?\n/).filter(Boolean);
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const fs = require('fs') as typeof import('fs');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const path = require('path') as typeof import('path');
+      const scan = (d: string) => {
+        if (!fs.existsSync(d)) return;
+        for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+          const full = path.join(d, e.name);
+          if (e.isDirectory()) scan(full);
+          else if (e.name.endsWith('.ts') || e.name.endsWith('.tsx')) {
+            const content = fs.readFileSync(full, 'utf8');
+            content.split(/\r?\n/).forEach((line, i) => {
+              if (line.includes("NODE_ENV === 'development'")) {
+                rawHits.push(`${full.replace(/\\/g, '/')}:${i + 1}:${line}`);
+              }
+            });
+          }
+        }
+      };
+      ['app', 'lib', 'components', 'context', 'workers'].forEach(scan);
+    }
+    const hits = rawHits
+      .map((l) => l.replace(/\\/g, '/'))
       .filter((l) => !l.startsWith('lib/dev/shortcuts.ts'))              // the helper itself (and the comment explaining it)
       .filter((l) => !l.startsWith('lib/auth/localFallback.ts'));        // local sign-up already needs its own second flag
     expect(hits).toEqual([]);

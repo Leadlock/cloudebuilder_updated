@@ -4,7 +4,7 @@
  */
 
 import type { CanvasNode } from '@/types';
-import type { DagExecutionTier, DagValidationResult, StackDefinition, StackLayer } from './types';
+import type { DagExecutionTier, DagValidationResult, StackDefinition } from './types';
 
 export class DagEngine {
   /**

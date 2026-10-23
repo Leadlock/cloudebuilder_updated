@@ -134,7 +134,32 @@ case "$*" in
   *vault.azure.net/secrets/*) for a in "$@"; do u="$a"; done; n="\${u##*/secrets/}"; n="\${n%%\\?*}"; [ -f "${fixtures}/kv/$n" ] || exit 22; printf '{"value":"%s"}' "$(cat "${fixtures}/kv/$n")";;
   *) exit 22;;
 esac`);
-    stub('docker', `echo "docker $*" >> "${calls}"; [ "$1" = login ] && cat >/dev/null; exit 0`);
+  stub('docker', `echo "docker $*" >> "${calls}"; [ "$1" = login ] && cat >/dev/null; exit 0`);
+  const pyStub = join(bin, 'py_stub.cjs');
+  writeFileSync(pyStub, `
+    const fs = require("fs");
+    const code = process.argv[2] || "";
+    const arg = process.argv[3];
+    const stdin = fs.readFileSync(0, "utf8");
+    try {
+      const json = JSON.parse(stdin);
+      if (Array.isArray(json)) {
+        const map = {};
+        for (const item of json) map[item.name] = item.value;
+        process.stdout.write(map[arg] || "");
+      } else if (code.includes("access_token")) {
+        process.stdout.write(json.access_token || "");
+      } else if (code.includes("refresh_token")) {
+        process.stdout.write(json.refresh_token || "");
+      } else if (code.includes("value")) {
+        process.stdout.write(json.value || "");
+      }
+    } catch (e) {
+      process.exit(1);
+    }
+  `);
+  stub('python3', `if [ "$1" = "-c" ]; then shift; fi
+node "${pyStub.replace(/\\/g, '/')}" "$@"`);
   });
   afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -173,7 +198,9 @@ esac`);
     expect(env).toContain('TAG=v3');
     expect(env).toContain("POSTGRES_PASSWORD='dbpass123'");
     expect(env).toContain("JWT_SECRET='jwt.secret-1'");
-    expect(statSync(join(root, 'opt', 'shop', '.env')).mode & 0o077).toBe(0);
+    if (process.platform !== 'win32') {
+      expect(statSync(join(root, 'opt', 'shop', '.env')).mode & 0o077).toBe(0);
+    }
   });
 
   test('a secret that cannot be read, a missing compose file or a failed pull stops the start: nothing runs with an empty password', () => {

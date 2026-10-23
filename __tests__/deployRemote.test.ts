@@ -53,6 +53,33 @@ fi`, 0o755);
   // curl: 200 while the site is "up": the current build is not marked bad and the site was not switched off.
   put(join(bin, 'curl'), `#!/bin/bash
 if [ -f "${state}/SITE_DOWN" ] || grep -q bad "${app}/.next/BUILD_ID" 2>/dev/null; then echo 502; else echo 200; fi`, 0o755);
+  put(join(bin, 'python3'), `#!/bin/bash
+if [ "$1" = "-c" ]; then shift; fi
+shift
+node -e '
+  const fs = require("fs");
+  const want = (process.argv[1] || "").split(/\\s+/).filter(Boolean);
+  const input = fs.readFileSync(0, "utf8");
+  try {
+    const list = JSON.parse(input);
+    const procs = {};
+    for (const p of list) procs[p.name] = p.pm2_env;
+    let bad = false;
+    for (const name of want) {
+      const e = procs[name];
+      if (!e || e.status !== "online") {
+        console.log(name, "NOT-ONLINE");
+        bad = true;
+      } else {
+        console.log(name, e.restart_time || 0);
+      }
+    }
+    process.exit(bad ? 1 : 0);
+  } catch {
+    process.exit(1);
+  }
+' "$1"`, 0o755);
+  put(join(bin, 'rsync'), '#!/bin/bash\nexit 0', 0o755);
   writeFileSync(join(state, 'NEWBUILD'), 'new-build');
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
@@ -105,7 +132,9 @@ describe('a good deploy', () => {
     run(['prepare']);
     const id = read(join(backups, 'latest')).trim();
     const mode = (p: string) => statSync(p).mode & 0o077;
-    expect(mode(join(backups, `${id}.tgz`))).toBe(0);
+    if (process.platform !== 'win32') {
+      expect(mode(join(backups, `${id}.tgz`))).toBe(0);
+    }
   });
 });
 

@@ -44,8 +44,29 @@ describe('terraformSecretVars', () => {
     const { spawnSync } = require('child_process') as typeof import('child_process');
     // grep exits 1 when it finds nothing, which is the passing case.
     const r = spawnSync('grep', ['-rIlE', 'Pass123!|cloudbuilder@admin', 'lib', 'app', 'components', 'workers', 'scripts'], { encoding: 'utf8' });
-    expect(r.status === 0 || r.status === 1).toBe(true);
-    const hits = r.stdout.split('\n').filter(Boolean);
+    let hits: string[] = [];
+    if (r.status === 0 || r.status === 1) {
+      expect(r.status === 0 || r.status === 1).toBe(true);
+      hits = (r.stdout ?? '').split(/\r?\n/).filter(Boolean);
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const fs = require('fs') as typeof import('fs');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const path = require('path') as typeof import('path');
+      const regex = /Pass123!|cloudbuilder@admin/;
+      const scan = (d: string) => {
+        if (!fs.existsSync(d)) return;
+        for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+          const full = path.join(d, e.name);
+          if (e.isDirectory()) scan(full);
+          else if (e.isFile()) {
+            const content = fs.readFileSync(full, 'utf8');
+            if (regex.test(content)) hits.push(full.replace(/\\/g, '/'));
+          }
+        }
+      };
+      ['lib', 'app', 'components', 'workers', 'scripts'].forEach(scan);
+    }
     expect(hits).toEqual([]);
   });
 });

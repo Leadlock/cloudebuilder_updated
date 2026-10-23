@@ -1,7 +1,18 @@
-/**
- * Jest configuration for CloudBuilder backend tests.
- * Tests run in Node.js environment (no DOM).
- */
+import fs from 'fs';
+
+// On Windows, ensure Git tools (bash, grep) are in PATH so shell verification tests pass seamlessly
+if (process.platform === 'win32') {
+  const gitPaths = [
+    'C:\\Program Files\\Git\\usr\\bin',
+    'C:\\Program Files\\Git\\bin',
+  ];
+  for (const gp of gitPaths) {
+    if (fs.existsSync(gp) && !process.env.PATH?.includes(gp)) {
+      process.env.PATH = `${gp};${process.env.PATH ?? ''}`;
+    }
+  }
+}
+
 /** @type {import('jest').Config} */
 const config = {
   preset: 'ts-jest',

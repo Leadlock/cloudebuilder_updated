@@ -74,7 +74,9 @@ describe('the runner on the server', () => {
     expect(env).toContain('TAG=v9');
     expect(env).toContain("POSTGRES_PASSWORD='dbpass123'");
     expect(env).toContain("JWT_SECRET='jwt.secret-1'");
-    expect(statSync(join(dir(), '.env')).mode & 0o077).toBe(0);
+    if (process.platform !== 'win32') {
+      expect(statSync(join(dir(), '.env')).mode & 0o077).toBe(0);
+    }
     expect(readFileSync(join(dir(), 'compose.yml'), 'utf8')).toBe('services: {}\n');
   });
 

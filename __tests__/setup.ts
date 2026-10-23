@@ -24,6 +24,21 @@ process.env['CLOUDBUILDER_ALLOW_TEST_AUTH_HEADERS'] = '1';
 // fail on missing config unrelated to what it's actually testing.
 process.env['SESSION_SECRET'] = 'test-session-secret-not-for-real-use-0000000000000000';
 
+// On Windows, ensure Git's usr/bin (bash, grep) is in PATH for shell verification test suites
+if (process.platform === 'win32') {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fs = require('fs') as typeof import('fs');
+  const gitPaths = [
+    'C:\\Program Files\\Git\\usr\\bin',
+    'C:\\Program Files\\Git\\bin',
+  ];
+  for (const gp of gitPaths) {
+    if (fs.existsSync(gp) && !process.env.PATH?.includes(gp)) {
+      process.env.PATH = `${gp};${process.env.PATH ?? ''}`;
+    }
+  }
+}
+
 // ─── Deterministic suite: no external network ────────────────────────────────
 // Unit and integration tests must never depend on third-party APIs (pricing, FX,
 // cloud providers). Any real outbound request fails loudly here, so a test that
