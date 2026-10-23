@@ -1,3 +1,4 @@
+# Pull requests run only checks and build (cheap); the heavier jobs run on pushes to main (GitHub Actions minutes are billed per job).
 # Runs on every pull request and on every push to main. A red run means something that worked before no longer does.
 #
 #   checks             type check, lint (errors fail it, warnings do not), and the whole test suite (no database or cloud needed)
@@ -67,6 +68,7 @@ jobs:
         run: npm run build
 
   terraform-validate:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -96,6 +98,7 @@ jobs:
   # Scans the files CloudBuilder generates (Terraform, Dockerfiles, Kubernetes manifests) with Trivy, pinned by digest in security/trivy.json, and applies
   # security/scan-policy.json: a new serious finding, a known gap that grew, or a decision about something that is gone fails the run.
   scan-generated:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -119,6 +122,7 @@ jobs:
 
   # Builds every stack's sample app with Docker, runs it and calls its health check; then starts one stack with every companion service and the HTTPS proxy.
   docker-samples:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -132,6 +136,7 @@ jobs:
         run: npx tsx --tsconfig tsconfig.json scripts/build-samples.ts "$RUNNER_TEMP/build-samples"
 
   server-software:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -145,6 +150,7 @@ jobs:
         run: npx tsx --tsconfig tsconfig.json scripts/verify-server-software.ts
 
   databases:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -158,6 +164,7 @@ jobs:
         run: npx tsx --tsconfig tsconfig.json scripts/verify-databases.ts
 
   stack-project:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
