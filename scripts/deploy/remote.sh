@@ -93,7 +93,7 @@ restore_backup() {
   local tgz="$BACKUP_DIR/$id.tgz"
   [ -f "$tgz" ] || die "backup $tgz not found."
   say "restoring the source from $tgz"
-  tar "${TAR_OPTS[@]}" -xzf "$tgz" -C "$(app_parent)"
+  tar ${TAR_OPTS[@]+"${TAR_OPTS[@]}"} -xzf "$tgz" -C "$(app_parent)"
   if [ -d "$BACKUP_DIR/$id.next" ]; then
     say "restoring the previous build"
     rm -rf "$APP_DIR/.next"
@@ -148,7 +148,7 @@ cmd_prepare() {
   local id; id="$(date +%Y%m%d-%H%M%S)"
   backup_database "$id"
   say "backing up to $BACKUP_DIR/$id.tgz (source) and $id.next (build)"
-  tar "${TAR_OPTS[@]}" -czf "$BACKUP_DIR/$id.tgz" --exclude=node_modules --exclude=.next -C "$(app_parent)" "$(app_base)"
+  tar ${TAR_OPTS[@]+"${TAR_OPTS[@]}"} -czf "$BACKUP_DIR/$id.tgz" --exclude=node_modules --exclude=.next -C "$(app_parent)" "$(app_base)"
   if [ -d "$APP_DIR/.next" ]; then cp -a "$APP_DIR/.next" "$BACKUP_DIR/$id.next"; fi
   # The commit this backup holds, so a rollback can say what it went back to.
   cp "$APP_DIR/.deployed-commit" "$BACKUP_DIR/$id.commit" 2>/dev/null || echo "unknown" > "$BACKUP_DIR/$id.commit"
