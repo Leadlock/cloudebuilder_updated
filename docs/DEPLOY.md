@@ -23,7 +23,7 @@ Needs `ssh` and `rsync` here, and `rsync`, `python3`, `npm` and `pm2` on the ser
 In production CloudBuilder will not start unless `RESTRICTED_FEATURES_ALLOWED_EMAILS` is set in the server's `.env` (who may use Deploy, the AI Generator and Cloud Accounts). Only a value of `RESTRICTED_FEATURES_OPEN_TO_ALL=1` opens them to everyone, on purpose. If a deploy ever lands on a server without the lock, the processes exit, the health check fails and the deploy rolls back by itself. A missing `SUPER_ADMIN_EMAILS` only prints a warning.
 
 ## What it does
-1. **Checks the server** (folder, `.env`, free disk, tools, processes) and **backs up** the running version: the source (as `/root/cloudbuilder-backups/<time>.tgz`, only root can read it) and a copy of the build. The newest 5 source backups and 2 builds are kept.
+1. **Checks the server** (folder, `.env`, free disk, tools, processes) and **backs up** the running version: the source (as `/root/cloudbuilder-backups/<time>.tgz`, only root can read it) and a copy of the build. Only the newest backup is kept: the one just taken replaces the previous one (set `KEEP_BACKUPS` and `KEEP_BUILDS` on the server to keep more).
 2. **Copies** the tracked files (compared by content, nothing is deleted on the server).
 3. **Installs** only when `package-lock.json` changed, **builds**, **restarts only** `cloudcraft-web`, `cloudcraft-discovery` and `cloudcraft-tf-apply` (never the other apps on the server), then waits for the site to answer on port 3100 and for the processes to stay up without restarting.
 4. If anything fails it **goes back to the backup by itself**, restarts, and says so. The commit that is running is in `/root/CloudCraft/.deployed-commit`.
