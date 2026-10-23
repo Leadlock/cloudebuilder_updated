@@ -3,7 +3,8 @@
  * It is run here for real in a temporary folder, with small stand-ins for npm, pm2 and curl, so every path (success, failed build, site not answering,
  * crash loop, rollback, concurrent deploy, missing .env) is exercised without a server.
  */
-import { spawnSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
+import { gunzipSync } from 'zlib';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
@@ -105,6 +106,58 @@ describe('a good deploy', () => {
     const id = read(join(backups, 'latest')).trim();
     const mode = (p: string) => statSync(p).mode & 0o077;
     expect(mode(join(backups, `${id}.tgz`))).toBe(0);
+  });
+});
+
+describe('the database backup', () => {
+  // docker: `ps` lists the database container; `exec ... pg_dump` writes a dump that changes on every call (or fails when FAIL_DUMP exists).
+  const withDb = () => {
+    put(join(app, '.env'), 'SECRET=keep-me\nDATABASE_URL="postgresql://appuser:pw@localhost:5432/appdb"');
+    put(join(bin, 'docker'), `#!/bin/bash
+echo "docker $*" >> "${state}/dockercalls"
+if [ "$1" = ps ]; then echo cloudcraft-pg; exit 0; fi
+[ -f "${state}/FAIL_DUMP" ] && exit 1
+n=$(( $(cat "${state}/dumpn" 2>/dev/null || echo 0) + 1 )); echo $n > "${state}/dumpn"; echo "-- dump $n"`, 0o755);
+  };
+  const dumps = () => readdirSync(backups).filter((f) => f.endsWith('.sql.gz'));
+
+  test('dumps the database next to the source backup, without a password on a command line', () => {
+    withDb();
+    const r = run(['prepare']);
+    expect(r.status).toBe(0);
+    expect(dumps()).toHaveLength(1);
+    expect(gunzipSync(readFileSync(join(backups, dumps()[0]))).toString()).toContain('-- dump 1');
+    const calls = read(join(state, 'dockercalls'));
+    expect(calls).toContain('exec cloudcraft-pg pg_dump -U appuser -d appdb');
+    expect(calls).not.toContain('pw');
+  });
+
+  test('a new dump replaces the previous one', () => {
+    withDb();
+    run(['prepare']);
+    const first = dumps()[0];
+    execSync('sleep 1.1'); // a different second gives a different backup id
+    expect(run(['prepare']).status).toBe(0);
+    expect(dumps()).toHaveLength(1);
+    expect(dumps()[0]).not.toBe(first);
+    expect(gunzipSync(readFileSync(join(backups, dumps()[0]))).toString()).toContain('-- dump');
+  });
+
+  test('a database that cannot be dumped stops the deploy before anything is backed up or changed', () => {
+    withDb(); flag('FAIL_DUMP');
+    const r = run(['prepare']);
+    expect(r.status).not.toBe(0);
+    expect(out(r)).toContain('the database backup failed');
+    expect(dumps()).toHaveLength(0);
+    expect(existsSync(join(backups, 'latest'))).toBe(false);
+    expect(read(join(app, 'src.txt'))).toBe('OLD');
+  });
+
+  test('without a DATABASE_URL it says so and carries on', () => {
+    const r = run(['prepare']);
+    expect(r.status).toBe(0);
+    expect(out(r)).toContain('the database is not backed up');
+    expect(dumps()).toHaveLength(0);
   });
 });
 
