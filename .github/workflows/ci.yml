@@ -53,6 +53,9 @@ jobs:
       # Scores of every built-in template against the saved ones: a rule or default that lowers them shows up here, in the pull request that caused it.
       - name: Assessment trend
         run: npm run assessment:trend
+      # A high or critical advisory in a production dependency fails the build unless security/audit-policy.json accepts it with a reason.
+      - name: Dependency audit
+        run: npx tsx --tsconfig tsconfig.json scripts/audit-gate.ts
       # The real download: fetches the pinned Terraform from HashiCorp, checks it against the checksum in the code and runs it.
       - name: Terraform downloads and verifies itself
         run: npx tsx --tsconfig tsconfig.json scripts/install-terraform.ts --managed

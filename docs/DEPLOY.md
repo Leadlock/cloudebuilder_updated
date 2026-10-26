@@ -61,3 +61,8 @@ A key reads nothing else, and every bad key (none, malformed, unknown, revoked, 
 
 - `CLOUDBUILDER_GIT_ALLOWED_HOSTS`: the Git hosts the in-app release may take code from (comma separated, https only). Default `github.com,gitlab.com,bitbucket.org,dev.azure.com`.
   Add your own host (for example `git.example.com`) to use a self-hosted Git server. The server needs `git` installed.
+
+## Security of the server
+
+Run `ssh root@SERVER 'bash -s -- check' < scripts/server-security.sh` after a deploy and after any change to the server. See `docs/SERVER_SECURITY.md` for what it checks, how to turn SSH passwords off safely, and the firewall commands.
+`CLOUDBUILDER_ALLOWED_ORIGINS` (comma separated) lists other websites whose pages may make changes in the app; leave it empty unless you have a sibling subdomain that needs it.

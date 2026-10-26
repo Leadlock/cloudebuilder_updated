@@ -1,0 +1,12 @@
+{
+ "accepted": [
+  {
+   "package": "@azure/msal-node",
+   "reason": "GHSA-xcx6-jx8p-x3h5 is in MSAL Node's authorization-code flow (interactive sign-in). CloudBuilder only uses service-principal secrets (ClientSecretCredential), never that flow. The fix is two major versions up and not yet used by any @azure/identity release: move when @azure/identity depends on msal-node 7.1 or newer."
+  },
+  {
+   "package": "@azure/identity",
+   "reason": "High only through @azure/msal-node (see that entry): no advisory of its own. It is used for ClientSecretCredential, which does not use the affected flow."
+  }
+ ]
+}
