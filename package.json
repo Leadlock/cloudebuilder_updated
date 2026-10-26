@@ -28,6 +28,7 @@
     "terraform:destroy": "tsx scripts/destroy-infrastructure.ts",
     "auth:list-local-accounts": "tsx --env-file=.env --tsconfig tsconfig.json scripts/auth/list-local-accounts.ts",
     "docs:rule-matrix": "tsx --tsconfig tsconfig.json scripts/generate-rule-matrix.ts",
+    "assessment:trend": "tsx --tsconfig tsconfig.json scripts/assessment-trend.ts",
     "price:health": "tsx --env-file=.env --tsconfig tsconfig.json scripts/price-health.ts",
     "ai:dataset": "tsx --tsconfig tsconfig.json scripts/ai-dataset/build-dataset.ts",
     "ai:knowledge-base": "tsx --tsconfig tsconfig.json scripts/ai-dataset/build-knowledge-base.ts",

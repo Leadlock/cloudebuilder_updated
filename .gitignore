@@ -60,3 +60,4 @@ qa_recordings/
 
 # Reviews and deployment records kept between restarts (see ArchitectureReviewService)
 /.cloudbuilder-data/
+assessment-trend.md
