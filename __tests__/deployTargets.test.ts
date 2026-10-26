@@ -592,7 +592,7 @@ describe('AKS: secrets in Key Vault (CSI driver and workload identity)', () => {
     expect(dep.spec.serviceAccountName).toBe('orders-api');
     expect(dep.spec.volumes).toEqual([{ name: 'tmp', emptyDir: { sizeLimit: '128Mi' } }, { name: 'secrets-store', csi: { driver: 'secrets-store.csi.k8s.io', readOnly: true, volumeAttributes: { secretProviderClass: 'orders-api' } } }]);
     const ctr = dep.spec.containers[0];
-    expect(ctr.volumeMounts).toEqual([{ name: 'secrets-store', mountPath: '/mnt/secrets-store', readOnly: true }]);
+    expect(ctr.volumeMounts).toEqual([{ name: 'tmp', mountPath: '/tmp' }, { name: 'secrets-store', mountPath: '/mnt/secrets-store', readOnly: true }]);
     expect(ctr.env.find((e: { name: string }) => e.name === 'API_TOKEN').valueFrom.secretKeyRef).toEqual({ name: 'orders-api-secrets', key: 'API_TOKEN' });
     expect(parse(f['k8s/kustomization.yaml']!).resources).toEqual(expect.arrayContaining(['serviceaccount.yaml', 'secretproviderclass.yaml']));
     expect(JSON.stringify([...Object.values(f)])).not.toContain('hunter2');
