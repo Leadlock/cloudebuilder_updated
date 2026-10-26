@@ -20,7 +20,9 @@ export interface AgentPackageInput {
 
 export class AgentPackageError extends Error { constructor(message: string) { super(message); this.name = 'AgentPackageError'; } }
 
-const SAFE_FILE = /^[A-Za-z0-9._-]+\.(tf|tfvars\.example|md)$/;
+const SAFE_FILE = /^[A-Za-z0-9._-]+\.(tf|tfvars|tfvars\.example|md)$/;
+/** A value for something that looks like a secret, in a variables file: it should never be there, and is never sent on. */
+const SECRET_VALUE = /^\s*[A-Za-z0-9_]*(password|secret|token|private_?key|access_?key)[A-Za-z0-9_]*\s*=\s*"[^"]+"/im;
 
 export function agentPackageReadme(i: AgentPackageInput): string {
   const lines = [
@@ -47,6 +49,7 @@ export function buildAgentPackage(i: AgentPackageInput): Buffer {
   const files = i.files.filter((f) => f.content.trim() !== '').sort((a, b) => a.filename.localeCompare(b.filename));
   if (files.length === 0) throw new AgentPackageError('There is no Terraform to package: save an architecture with AWS resources first.');
   for (const f of files) if (!SAFE_FILE.test(f.filename)) throw new AgentPackageError(`The file name ${JSON.stringify(f.filename.slice(0, 40))} is not allowed in the package.`);
+  for (const f of files) if (f.filename.endsWith('.tfvars') && SECRET_VALUE.test(f.content)) throw new AgentPackageError(`${f.filename} holds a value that looks like a secret, so nothing was packaged. Remove it and try again.`);
   const entries: ZipEntry[] = [
     { path: 'README.md', content: agentPackageReadme({ ...i, files }) },
     ...files.map((f) => ({ path: `terraform/${f.filename}`, content: f.content })),

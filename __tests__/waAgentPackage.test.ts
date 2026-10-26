@@ -31,4 +31,10 @@ describe('the package', () => {
     expect(() => buildAgentPackage({ ...input, files: [{ filename: 'a b.tf', content: 'x' }] })).toThrow(/not allowed/);
     expect(() => buildAgentPackage({ ...input, files: [{ filename: 'terraform.tfstate', content: 'x' }] })).toThrow(/not allowed/);
   });
+  it('takes the generator\'s terraform.tfvars (names and region, secrets commented out), but never one that holds a secret value', () => {
+    const tfvars = 'environment  = "production"\naws_region   = "us-east-1"\n# TF_VAR_db_password = "..."\n';
+    expect(names(buildAgentPackage({ ...input, files: [...input.files, { filename: 'terraform.tfvars', content: tfvars }] }))).toContain('terraform/terraform.tfvars');
+    for (const leak of ['db_password = "hunter2"', 'api_token="abc"', 'aws_secret_access_key = "x"', 'sql_admin_password   = "p"'])
+      expect(() => buildAgentPackage({ ...input, files: [{ filename: 'terraform.tfvars', content: `${tfvars}${leak}\n` }] })).toThrow(/looks like a secret/);
+  });
 });
