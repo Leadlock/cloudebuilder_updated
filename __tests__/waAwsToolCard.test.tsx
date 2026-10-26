@@ -10,7 +10,8 @@ import WaAwsTool from '@/components/panels/WaAwsTool';
 
 const previewAwsTool = jest.fn();
 const syncAwsTool = jest.fn();
-jest.mock('@/lib/services/ApiWellArchitectedService', () => ({ apiWellArchitectedService: { previewAwsTool: (...a: unknown[]) => previewAwsTool(...a), syncAwsTool: (...a: unknown[]) => syncAwsTool(...a) } }));
+const downloadAgentPackage = jest.fn();
+jest.mock('@/lib/services/ApiWellArchitectedService', () => ({ apiWellArchitectedService: { previewAwsTool: (...a: unknown[]) => previewAwsTool(...a), syncAwsTool: (...a: unknown[]) => syncAwsTool(...a), downloadAgentPackage: (...a: unknown[]) => downloadAgentPackage(...a) } }));
 
 const PRACTICES = [
   { bp: 'SEC08-BP02', choiceId: 'sec_protect_data_rest_encrypt', title: 'Enforce encryption at rest', state: 'met', passed: 3, problems: [], unclear: 0 },
@@ -18,6 +19,9 @@ const PRACTICES = [
 ];
 
 beforeEach(() => {
+  downloadAgentPackage.mockReset().mockResolvedValue({ blob: new Blob(['zip']), filename: 'well-architected-agent-shop.zip' });
+  (global as unknown as { URL: { createObjectURL: () => string; revokeObjectURL: () => void } }).URL.createObjectURL = () => 'blob:x';
+  (global as unknown as { URL: { createObjectURL: () => string; revokeObjectURL: () => void } }).URL.revokeObjectURL = () => undefined;
   previewAwsTool.mockReset().mockResolvedValue({ dryRun: true, practices: PRACTICES, rulesetVersion: 'r', evaluatedAt: '2026-10-26T00:00:00Z' });
   syncAwsTool.mockReset().mockResolvedValue({ workloadId: 'a'.repeat(32), workloadName: 'Shop (CloudBuilder 12345678)', created: true, region: 'eu-north-1', consoleUrl: 'https://eu-north-1.console.aws.amazon.com/wellarchitected/home?region=eu-north-1#/workload/x', answered: [{ questionId: 'q', questionTitle: 'Q', added: ['c'] }], notesOnly: 1, unmatched: [], practices: PRACTICES });
   (global as unknown as { fetch: unknown }).fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ ok: true, data: [{ id: 'acc1', name: 'Ajinkya', provider: 'aws' }] }) }));
@@ -57,4 +61,11 @@ it('says why it is off for an unsaved project', () => {
   render(<WaAwsTool isLight disabledReason="Save the project to send it." />);
   expect(screen.getByText('Save the project to send it.')).toBeTruthy();
   expect(screen.queryByRole('button')).toBeNull();
+});
+
+it('downloads the Terraform package for the AWS Well-Architected Agent without sending anything to AWS', async () => {
+  render(<WaAwsTool isLight />);
+  fireEvent.click(screen.getByRole('button', { name: 'Download for the AWS Well-Architected Agent' }));
+  await waitFor(() => expect(downloadAgentPackage).toHaveBeenCalledTimes(1));
+  expect(syncAwsTool).not.toHaveBeenCalled();
 });

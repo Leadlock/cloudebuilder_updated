@@ -24,7 +24,7 @@ export default function WaAwsTool({ isLight, defaultRegion, disabledReason }: Pr
   const [accountId, setAccountId] = useState('');
   const [region, setRegion] = useState(defaultRegion && /^[a-z]{2}(-[a-z]+)+-\d$/.test(defaultRegion) ? defaultRegion : 'us-east-1');
   const [milestone, setMilestone] = useState(false);
-  const [busy, setBusy] = useState<'preview' | 'send' | null>(null);
+  const [busy, setBusy] = useState<'preview' | 'send' | 'package' | null>(null);
   const [result, setResult] = useState<ToolSyncResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,6 +57,16 @@ export default function WaAwsTool({ isLight, defaultRegion, disabledReason }: Pr
     finally { setBusy(null); }
   }
 
+  async function downloadPackage() {
+    setError(null); setBusy('package');
+    try {
+      const { blob, filename } = await apiWellArchitectedService.downloadAgentPackage();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    } catch (e) { setError(e instanceof Error ? e.message : 'The package could not be made.'); }
+    finally { setBusy(null); }
+  }
+
   const card = clsx('rounded-2xl border p-5', isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/60 border-slate-800');
   const muted = isLight ? 'text-slate-500' : 'text-slate-400';
   const heading = isLight ? 'text-slate-900' : 'text-white';
@@ -79,6 +89,12 @@ export default function WaAwsTool({ isLight, defaultRegion, disabledReason }: Pr
         and the questions about people and process stay for your team to answer. Each pre-filled answer carries a note saying it was read from the design.
       </p>
       {error && <p className={clsx('text-xs mt-2', isLight ? 'text-rose-700' : 'text-rose-300')} role="alert">{error}</p>}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => void downloadPackage()} disabled={busy !== null} className={btn}>
+          {busy === 'package' ? <span className="flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" />Preparing…</span> : 'Download for the AWS Well-Architected Agent'}
+        </button>
+        <span className={clsx('text-[11px]', muted)}>The generated Terraform as a zip, to upload to the agent (in preview) yourself. Nothing is sent to AWS from here.</span>
+      </div>
 
       {preview && (
         <>

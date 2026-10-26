@@ -178,6 +178,18 @@ class ApiWellArchitectedServiceImpl {
     return d.review;
   }
 
+  /** The project's generated Terraform as a zip for the AWS Well-Architected Agent (preview). Nothing is sent to AWS. */
+  async downloadAgentPackage(): Promise<{ blob: Blob; filename: string }> {
+    const projectId = _activeProjectId;
+    if (!projectId || projectId === 'draft-project') throw new Error('Save the project first');
+    const res = await fetch(`${getBaseUrl()}/api/projects/${projectId}/well-architected/agent-package`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ env: _activeEnvironment }),
+    });
+    if (!res.ok) { const j = await res.json().catch(() => ({})) as { error?: { message?: string } }; throw new Error(j.error?.message ?? 'The package could not be made'); }
+    const cd = res.headers.get('Content-Disposition') ?? '';
+    return { blob: await res.blob(), filename: /filename="([^"]+)"/.exec(cd)?.[1] ?? 'well-architected-agent.zip' };
+  }
+
   /** The same sheet as a Markdown file. */
   async downloadAzureReview(): Promise<{ blob: Blob; filename: string }> {
     const projectId = _activeProjectId;
