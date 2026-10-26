@@ -94,6 +94,12 @@ model Project {
   gitOperations        GitOperation[]
   githubConnections    GithubConnection[]
   findingReviews       FindingReview[]
+  readinessControls   ReadinessControl[]
+  readinessEvidence   ReadinessEvidence[]
+  readinessFindings   ReadinessFinding[]
+  readinessSignoffs   ReadinessSignoff[]
+  readinessReports   ReadinessReport[]
+  readinessSettings   ReadinessSetting[]
 
   @@index([orgId])
 }
@@ -842,4 +848,119 @@ model TemplateListing {
   updatedAt   String
 
   @@index([orgId])
+}
+
+// Compliance readiness (lib/compliance): what the team recorded about each control of SOC 2 / the AWS and Azure Well-Architected frameworks,
+// the evidence behind it, the findings with management's response, sign-offs, and the versions of the reports that were generated.
+// framework is soc2 | aws-waf | azure-waf. Evidence files are stored encrypted (lib/crypto/credentials), bound to the project and evidence id.
+
+model ReadinessControl {
+  id          String  @id @default(uuid())
+  projectId   String
+  framework   String
+  controlId   String
+  status      String? // implemented | partial | planned | none | not_applicable; empty until somebody answers
+  owner       String
+  note        String
+  naReason    String
+  reviewer    String
+  reviewedAt  String?
+  updatedBy   String
+  updatedAt   String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, framework])
+}
+
+model ReadinessEvidence {
+  id           String  @id @default(uuid())
+  projectId    String
+  title        String
+  description  String
+  kind         String  // file | link | note
+  origin       String  // system | manual
+  collectedAt  String
+  validUntil   String?
+  url          String?
+  fileName     String?
+  mimeType     String?
+  sizeBytes    Float?
+  sha256       String?
+  sealed       String? // the file, AES-256-GCM encrypted
+  controlsJson String  // ["soc2:CTL-01", ...]
+  uploadedBy   String
+  createdAt    String
+  deletedAt    String?
+  deletedBy    String?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model ReadinessFinding {
+  id                 String  @id @default(uuid())
+  projectId          String
+  framework          String
+  controlId          String
+  owner              String
+  targetDate         String?
+  status             String  // open | in_progress | closed | risk_accepted
+  managementResponse String
+  acceptedBy         String
+  retestedBy         String
+  retestedAt         String?
+  updatedBy          String
+  updatedAt          String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, framework])
+}
+
+model ReadinessSignoff {
+  id         String @id @default(uuid())
+  projectId  String
+  framework  String
+  role       String // preparer | reviewer | management
+  name       String
+  email      String
+  signedAt   String
+  reportHash String?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, framework])
+}
+
+model ReadinessReport {
+  id          String @id @default(uuid())
+  projectId   String
+  framework   String
+  version     Float
+  reportId    String
+  readiness   String
+  asOf        String
+  generatedBy String
+  generatedAt String
+  summaryJson String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, framework])
+}
+
+// Scope choices for a framework in one project: for SOC 2, which trust services categories are in scope and why the others are not.
+model ReadinessSetting {
+  id           String @id @default(uuid())
+  projectId    String
+  framework    String
+  settingsJson String
+  updatedBy    String
+  updatedAt    String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, framework])
 }

@@ -1,0 +1,917 @@
+[
+  {
+    "id": "table.readinessControl",
+    "label": "Create table \"readinessControl\"",
+    "summary": "Creates table \"readinessControl\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "readinessControl"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"readinessControl\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessControl\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"readinessControl\"",
+        "sql": "CREATE TABLE \"public\".\"readinessControl\" (\n  \"controlId\" text NOT NULL,\n  \"framework\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"naReason\" text NOT NULL,\n  \"note\" text NOT NULL,\n  \"owner\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"reviewedAt\" text,\n  \"reviewer\" text NOT NULL,\n  \"status\" text,\n  \"updatedAt\" text NOT NULL,\n  \"updatedBy\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"readinessControl\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessControl\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.readinessEvidence",
+    "label": "Create table \"readinessEvidence\"",
+    "summary": "Creates table \"readinessEvidence\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "readinessEvidence"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"readinessEvidence\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessEvidence\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"readinessEvidence\"",
+        "sql": "CREATE TABLE \"public\".\"readinessEvidence\" (\n  \"collectedAt\" text NOT NULL,\n  \"controlsJson\" text NOT NULL,\n  \"createdAt\" text NOT NULL,\n  \"deletedAt\" text,\n  \"deletedBy\" text,\n  \"description\" text NOT NULL,\n  \"fileName\" text,\n  \"id\" text NOT NULL,\n  \"kind\" text NOT NULL,\n  \"mimeType\" text,\n  \"origin\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"sealed\" text,\n  \"sha256\" text,\n  \"sizeBytes\" float8,\n  \"title\" text NOT NULL,\n  \"uploadedBy\" text NOT NULL,\n  \"url\" text,\n  \"validUntil\" text,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"readinessEvidence\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessEvidence\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.readinessFinding",
+    "label": "Create table \"readinessFinding\"",
+    "summary": "Creates table \"readinessFinding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "readinessFinding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"readinessFinding\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessFinding\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"readinessFinding\"",
+        "sql": "CREATE TABLE \"public\".\"readinessFinding\" (\n  \"acceptedBy\" text NOT NULL,\n  \"controlId\" text NOT NULL,\n  \"framework\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"managementResponse\" text NOT NULL,\n  \"owner\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"retestedAt\" text,\n  \"retestedBy\" text NOT NULL,\n  \"status\" text NOT NULL,\n  \"targetDate\" text,\n  \"updatedAt\" text NOT NULL,\n  \"updatedBy\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"readinessFinding\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessFinding\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.readinessReport",
+    "label": "Create table \"readinessReport\"",
+    "summary": "Creates table \"readinessReport\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "readinessReport"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"readinessReport\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessReport\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"readinessReport\"",
+        "sql": "CREATE TABLE \"public\".\"readinessReport\" (\n  \"asOf\" text NOT NULL,\n  \"framework\" text NOT NULL,\n  \"generatedAt\" text NOT NULL,\n  \"generatedBy\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"readiness\" text NOT NULL,\n  \"reportId\" text NOT NULL,\n  \"summaryJson\" text NOT NULL,\n  \"version\" float8 NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"readinessReport\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessReport\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.readinessSetting",
+    "label": "Create table \"readinessSetting\"",
+    "summary": "Creates table \"readinessSetting\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "readinessSetting"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"readinessSetting\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSetting\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"readinessSetting\"",
+        "sql": "CREATE TABLE \"public\".\"readinessSetting\" (\n  \"framework\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"settingsJson\" text NOT NULL,\n  \"updatedAt\" text NOT NULL,\n  \"updatedBy\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"readinessSetting\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSetting\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.readinessSignoff",
+    "label": "Create table \"readinessSignoff\"",
+    "summary": "Creates table \"readinessSignoff\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "readinessSignoff"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"readinessSignoff\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSignoff\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"readinessSignoff\"",
+        "sql": "CREATE TABLE \"public\".\"readinessSignoff\" (\n  \"email\" text NOT NULL,\n  \"framework\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"name\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"reportHash\" text,\n  \"role\" text NOT NULL,\n  \"signedAt\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"readinessSignoff\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSignoff\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.readinessControl.readinessControl_projectId_framework_idx_b5cffbad",
+    "label": "Create index \"readinessControl_projectId_framework_idx_b5cffbad\" on \"readinessControl\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "readinessControl_projectId_framework_idx_b5cffbad",
+        "table": "readinessControl"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"readinessControl_projectId_framework_idx_b5cffbad\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessControl_projectId_framework_idx_b5cffbad\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"readinessControl_projectId_framework_idx_b5cffbad\"",
+        "sql": "CREATE INDEX \"readinessControl_projectId_framework_idx_b5cffbad\" ON \"public\".\"readinessControl\" (\"projectId\", \"framework\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"readinessControl_projectId_framework_idx_b5cffbad\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessControl_projectId_framework_idx_b5cffbad\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.readinessControl.readinessControl_projectId_idx_a96e4d92",
+    "label": "Create index \"readinessControl_projectId_idx_a96e4d92\" on \"readinessControl\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "readinessControl_projectId_idx_a96e4d92",
+        "table": "readinessControl"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"readinessControl_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessControl_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"readinessControl_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"readinessControl_projectId_idx_a96e4d92\" ON \"public\".\"readinessControl\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"readinessControl_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessControl_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.readinessEvidence.readinessEvidence_projectId_idx_a96e4d92",
+    "label": "Create index \"readinessEvidence_projectId_idx_a96e4d92\" on \"readinessEvidence\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "readinessEvidence_projectId_idx_a96e4d92",
+        "table": "readinessEvidence"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"readinessEvidence_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessEvidence_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"readinessEvidence_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"readinessEvidence_projectId_idx_a96e4d92\" ON \"public\".\"readinessEvidence\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"readinessEvidence_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessEvidence_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.readinessFinding.readinessFinding_projectId_framework_idx_b5cffbad",
+    "label": "Create index \"readinessFinding_projectId_framework_idx_b5cffbad\" on \"readinessFinding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "readinessFinding_projectId_framework_idx_b5cffbad",
+        "table": "readinessFinding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"readinessFinding_projectId_framework_idx_b5cffbad\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessFinding_projectId_framework_idx_b5cffbad\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"readinessFinding_projectId_framework_idx_b5cffbad\"",
+        "sql": "CREATE INDEX \"readinessFinding_projectId_framework_idx_b5cffbad\" ON \"public\".\"readinessFinding\" (\"projectId\", \"framework\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"readinessFinding_projectId_framework_idx_b5cffbad\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessFinding_projectId_framework_idx_b5cffbad\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.readinessFinding.readinessFinding_projectId_idx_a96e4d92",
+    "label": "Create index \"readinessFinding_projectId_idx_a96e4d92\" on \"readinessFinding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "readinessFinding_projectId_idx_a96e4d92",
+        "table": "readinessFinding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"readinessFinding_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessFinding_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"readinessFinding_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"readinessFinding_projectId_idx_a96e4d92\" ON \"public\".\"readinessFinding\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"readinessFinding_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessFinding_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.readinessReport.readinessReport_projectId_framework_idx_b5cffbad",
+    "label": "Create index \"readinessReport_projectId_framework_idx_b5cffbad\" on \"readinessReport\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "readinessReport_projectId_framework_idx_b5cffbad",
+        "table": "readinessReport"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"readinessReport_projectId_framework_idx_b5cffbad\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessReport_projectId_framework_idx_b5cffbad\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"readinessReport_projectId_framework_idx_b5cffbad\"",
+        "sql": "CREATE INDEX \"readinessReport_projectId_framework_idx_b5cffbad\" ON \"public\".\"readinessReport\" (\"projectId\", \"framework\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"readinessReport_projectId_framework_idx_b5cffbad\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessReport_projectId_framework_idx_b5cffbad\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.readinessReport.readinessReport_projectId_idx_a96e4d92",
+    "label": "Create index \"readinessReport_projectId_idx_a96e4d92\" on \"readinessReport\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "readinessReport_projectId_idx_a96e4d92",
+        "table": "readinessReport"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"readinessReport_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessReport_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"readinessReport_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"readinessReport_projectId_idx_a96e4d92\" ON \"public\".\"readinessReport\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"readinessReport_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessReport_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.readinessSetting.readinessSetting_projectId_framework_idx_b5cffbad",
+    "label": "Create index \"readinessSetting_projectId_framework_idx_b5cffbad\" on \"readinessSetting\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "readinessSetting_projectId_framework_idx_b5cffbad",
+        "table": "readinessSetting"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"readinessSetting_projectId_framework_idx_b5cffbad\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSetting_projectId_framework_idx_b5cffbad\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"readinessSetting_projectId_framework_idx_b5cffbad\"",
+        "sql": "CREATE INDEX \"readinessSetting_projectId_framework_idx_b5cffbad\" ON \"public\".\"readinessSetting\" (\"projectId\", \"framework\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"readinessSetting_projectId_framework_idx_b5cffbad\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSetting_projectId_framework_idx_b5cffbad\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.readinessSetting.readinessSetting_projectId_idx_a96e4d92",
+    "label": "Create index \"readinessSetting_projectId_idx_a96e4d92\" on \"readinessSetting\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "readinessSetting_projectId_idx_a96e4d92",
+        "table": "readinessSetting"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"readinessSetting_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSetting_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"readinessSetting_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"readinessSetting_projectId_idx_a96e4d92\" ON \"public\".\"readinessSetting\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"readinessSetting_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSetting_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.readinessSignoff.readinessSignoff_projectId_framework_idx_b5cffbad",
+    "label": "Create index \"readinessSignoff_projectId_framework_idx_b5cffbad\" on \"readinessSignoff\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "readinessSignoff_projectId_framework_idx_b5cffbad",
+        "table": "readinessSignoff"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"readinessSignoff_projectId_framework_idx_b5cffbad\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSignoff_projectId_framework_idx_b5cffbad\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"readinessSignoff_projectId_framework_idx_b5cffbad\"",
+        "sql": "CREATE INDEX \"readinessSignoff_projectId_framework_idx_b5cffbad\" ON \"public\".\"readinessSignoff\" (\"projectId\", \"framework\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"readinessSignoff_projectId_framework_idx_b5cffbad\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSignoff_projectId_framework_idx_b5cffbad\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.readinessSignoff.readinessSignoff_projectId_idx_a96e4d92",
+    "label": "Create index \"readinessSignoff_projectId_idx_a96e4d92\" on \"readinessSignoff\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "readinessSignoff_projectId_idx_a96e4d92",
+        "table": "readinessSignoff"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"readinessSignoff_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSignoff_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"readinessSignoff_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"readinessSignoff_projectId_idx_a96e4d92\" ON \"public\".\"readinessSignoff\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"readinessSignoff_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSignoff_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.readinessControl.readinessControl_projectId_fkey",
+    "label": "Add foreign key \"readinessControl_projectId_fkey\" on \"readinessControl\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "readinessControl_projectId_fkey",
+        "table": "readinessControl"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"readinessControl_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessControl_projectId_fkey",
+          "public",
+          "\"public\".\"readinessControl\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"readinessControl_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"readinessControl\"\nADD CONSTRAINT \"readinessControl_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"readinessControl_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessControl_projectId_fkey",
+          "public",
+          "\"public\".\"readinessControl\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.readinessEvidence.readinessEvidence_projectId_fkey",
+    "label": "Add foreign key \"readinessEvidence_projectId_fkey\" on \"readinessEvidence\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "readinessEvidence_projectId_fkey",
+        "table": "readinessEvidence"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"readinessEvidence_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessEvidence_projectId_fkey",
+          "public",
+          "\"public\".\"readinessEvidence\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"readinessEvidence_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"readinessEvidence\"\nADD CONSTRAINT \"readinessEvidence_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"readinessEvidence_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessEvidence_projectId_fkey",
+          "public",
+          "\"public\".\"readinessEvidence\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.readinessFinding.readinessFinding_projectId_fkey",
+    "label": "Add foreign key \"readinessFinding_projectId_fkey\" on \"readinessFinding\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "readinessFinding_projectId_fkey",
+        "table": "readinessFinding"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"readinessFinding_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessFinding_projectId_fkey",
+          "public",
+          "\"public\".\"readinessFinding\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"readinessFinding_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"readinessFinding\"\nADD CONSTRAINT \"readinessFinding_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"readinessFinding_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessFinding_projectId_fkey",
+          "public",
+          "\"public\".\"readinessFinding\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.readinessReport.readinessReport_projectId_fkey",
+    "label": "Add foreign key \"readinessReport_projectId_fkey\" on \"readinessReport\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "readinessReport_projectId_fkey",
+        "table": "readinessReport"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"readinessReport_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessReport_projectId_fkey",
+          "public",
+          "\"public\".\"readinessReport\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"readinessReport_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"readinessReport\"\nADD CONSTRAINT \"readinessReport_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"readinessReport_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessReport_projectId_fkey",
+          "public",
+          "\"public\".\"readinessReport\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.readinessSetting.readinessSetting_projectId_fkey",
+    "label": "Add foreign key \"readinessSetting_projectId_fkey\" on \"readinessSetting\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "readinessSetting_projectId_fkey",
+        "table": "readinessSetting"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"readinessSetting_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessSetting_projectId_fkey",
+          "public",
+          "\"public\".\"readinessSetting\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"readinessSetting_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"readinessSetting\"\nADD CONSTRAINT \"readinessSetting_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"readinessSetting_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessSetting_projectId_fkey",
+          "public",
+          "\"public\".\"readinessSetting\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.readinessSignoff.readinessSignoff_projectId_fkey",
+    "label": "Add foreign key \"readinessSignoff_projectId_fkey\" on \"readinessSignoff\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "readinessSignoff_projectId_fkey",
+        "table": "readinessSignoff"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"readinessSignoff_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessSignoff_projectId_fkey",
+          "public",
+          "\"public\".\"readinessSignoff\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"readinessSignoff_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"readinessSignoff\"\nADD CONSTRAINT \"readinessSignoff_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"readinessSignoff_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessSignoff_projectId_fkey",
+          "public",
+          "\"public\".\"readinessSignoff\""
+        ]
+      }
+    ]
+  }
+]

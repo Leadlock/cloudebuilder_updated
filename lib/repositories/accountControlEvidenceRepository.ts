@@ -64,6 +64,7 @@ export const accountControlEvidenceRepository = {
 
   /** Forget every reading (for example when the connected account is no longer the one the project is checked against). */
   async clear(projectId: string): Promise<void> {
-    await db.orm.public.AccountControlEvidence.where({ projectId }).delete();
+    // .delete() removes a single row; every reading of the project has to go.
+    await db.orm.public.AccountControlEvidence.where({ projectId }).deleteAndCount();
   },
 };
