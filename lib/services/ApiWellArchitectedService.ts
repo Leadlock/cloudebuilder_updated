@@ -104,6 +104,9 @@ export interface ToolSyncResult {
   answered: { questionId: string; questionTitle: string; added: string[] }[]; notesOnly: number; unmatched: string[]; milestone?: number; practices: ToolPractice[];
 }
 
+export interface AzureReviewRow { code: string; pillar: string; title: string; state: 'gap' | 'met' | 'answer_needed' | 'not_assessed'; basis: string[] }
+export interface AzureReviewData { counts: Record<'gap' | 'met' | 'answer_needed' | 'not_assessed', number>; total: number; rows: AzureReviewRow[]; rulesetVersion: string; evaluatedAt: string }
+
 export interface AccountControlsData { controls: AccountControlReading[]; permissions: Record<string, string[]> }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -165,6 +168,26 @@ class ApiWellArchitectedServiceImpl {
     const projectId = _activeProjectId;
     if (!projectId || projectId === 'draft-project') throw new Error('Save the project first');
     return apiFetch<AccountControlsData>(`/api/projects/${projectId}/well-architected/account-controls`, { method: 'POST', body: JSON.stringify({ cloudAccountId }) });
+  }
+
+  /** The Azure Well-Architected review sheet of the active project (data). Throws so the card can say why. */
+  async getAzureReview(): Promise<AzureReviewData> {
+    const projectId = _activeProjectId;
+    if (!projectId || projectId === 'draft-project') throw new Error('Save the project first');
+    const d = await apiFetch<{ review: AzureReviewData }>(`/api/projects/${projectId}/well-architected/azure-review`, { method: 'POST', body: JSON.stringify({ env: _activeEnvironment, format: 'json' }) });
+    return d.review;
+  }
+
+  /** The same sheet as a Markdown file. */
+  async downloadAzureReview(): Promise<{ blob: Blob; filename: string }> {
+    const projectId = _activeProjectId;
+    if (!projectId || projectId === 'draft-project') throw new Error('Save the project first');
+    const res = await fetch(`${getBaseUrl()}/api/projects/${projectId}/well-architected/azure-review`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ env: _activeEnvironment, format: 'md' }),
+    });
+    if (!res.ok) { const j = await res.json().catch(() => ({})) as { error?: { message?: string } }; throw new Error(j.error?.message ?? 'The review sheet could not be made'); }
+    const cd = res.headers.get('Content-Disposition') ?? '';
+    return { blob: await res.blob(), filename: /filename="([^"]+)"/.exec(cd)?.[1] ?? 'azure-well-architected-review.md' };
   }
 
   /** What CloudBuilder has evidence for in the AWS Well-Architected Tool's Framework. Nothing leaves CloudBuilder. */

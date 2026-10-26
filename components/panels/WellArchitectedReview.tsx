@@ -8,6 +8,7 @@ import type { ReviewHistory } from '@/lib/engines/wellArchitected/history';
 import WaQuestionnaire from './WaQuestionnaire';
 import WaAccountChecks from './WaAccountChecks';
 import WaAwsTool from './WaAwsTool';
+import WaAzureReview from './WaAzureReview';
 import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedService';
 import type { WaAssessment, WaFinding, WaPillar, WaSeverity, ResourceState } from '@/lib/engines/wellArchitected/types';
 import {
@@ -566,6 +567,13 @@ export default function WellArchitectedReview() {
           isLight={isLight}
           defaultRegion={activeProject.region}
           disabledReason={activeProject.id === 'draft-project' ? 'Save the project to send it to the AWS Well-Architected Tool.' : undefined}
+        />
+      )}
+
+      {activeProject.nodes.some((n) => n.provider === 'azure') && (
+        <WaAzureReview
+          isLight={isLight}
+          disabledReason={activeProject.id === 'draft-project' ? 'Save the project to make the Azure review sheet.' : undefined}
         />
       )}
 
