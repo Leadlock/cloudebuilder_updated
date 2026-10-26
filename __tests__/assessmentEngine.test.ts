@@ -669,7 +669,7 @@ describe('Rule-specific evaluation (non-auto-fixable rules)', () => {
     ['AWS-RDS-004', 'aws_rds', { enableCloudwatchLogsExports: [] }, 'FAIL', { enableCloudwatchLogsExports: ['postgresql'] }],
     ['AWS-EBS-002', 'aws_ebs', { snapshotSchedule: 'none' }, 'FAIL', { snapshotSchedule: 'daily' }],
     ['AWS-ELB-001', 'aws_alb', { listenerProtocol: 'HTTPS', certificateArn: '' }, 'FAIL', { listenerProtocol: 'HTTPS', certificateArn: 'arn:aws:acm:us-east-1:111122223333:certificate/abc' }],
-    ['AWS-CF-002', 'aws_cloudfront', { webAclId: '' }, 'FAIL', { webAclId: 'arn:aws:wafv2:us-east-1:111122223333:global/webacl/x/1' }],
+    ['AWS-CF-002', 'aws_cloudfront', { webAclId: '', managedWaf: false }, 'FAIL', { webAclId: 'arn:aws:wafv2:us-east-1:111122223333:global/webacl/x/1' }],
     ['AWS-EKS-001', 'aws_eks', { endpointPublicAccess: true, publicAccessCidrs: '0.0.0.0/0' }, 'FAIL', { endpointPublicAccess: false }],
     ['AWS-IAM-001', 'aws_iam', { managedPolicyArns: ['arn:aws:iam::aws:policy/AdministratorAccess'] }, 'FAIL', { managedPolicyArns: ['arn:aws:iam::aws:policy/ReadOnlyAccess'] }],
     ['AWS-SQS-002', 'aws_sqs', { deadLetterTargetArn: '' }, 'FAIL', { deadLetterTargetArn: 'arn:aws:sqs:us-east-1:111122223333:dlq' }],

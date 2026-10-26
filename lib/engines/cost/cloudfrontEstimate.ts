@@ -7,6 +7,8 @@
  *   - AWS's always-free 1 TB and 10 million requests are per account, not per distribution, so they are not applied.
  * Before this there were two flat figures ($12/$16/$22 by price class in one table, a flat $12 in the other) that matched no traffic at all.
  */
+import { managedWafApplies, MANAGED_WAF_RULE_GROUPS } from '@/lib/engines/terraform/cloudfrontWaf';
+
 export const CLOUDFRONT_DEFAULT_GB = 1000;
 export const CLOUDFRONT_DEFAULT_REQUESTS = 10_000_000;
 
@@ -16,6 +18,8 @@ const EGRESS_PER_GB: Record<string, number> = { PriceClass_100: 0.085, PriceClas
 const PER_HTTPS_REQUEST = 0.01 / 10_000;
 /** WAF charges $0.60 per million requests it inspects; the web ACL itself is priced as its own resource. */
 const WAF_PER_REQUEST = 0.6 / 1_000_000;
+const WAF_ACL_MONTHLY = 5;
+const WAF_RULE_MONTHLY = 1;
 
 export interface CloudFrontEstimate {
   monthlyUsd: number;
@@ -42,9 +46,11 @@ export function estimateCloudFront(config: Record<string, unknown>): CloudFrontE
   const egress = dataGb * ratePerGb;
   const requestCost = requests * PER_HTTPS_REQUEST;
   const waf = config['webAclId'] ? requests * WAF_PER_REQUEST : 0;
+  // The managed web ACL the generated Terraform adds: $5 for the ACL, $1 for each of its two rule groups, and the requests it inspects.
+  const managed = managedWafApplies(config) ? WAF_ACL_MONTHLY + MANAGED_WAF_RULE_GROUPS.length * WAF_RULE_MONTHLY + requests * WAF_PER_REQUEST : 0;
 
   return {
-    monthlyUsd: egress + requestCost + waf,
+    monthlyUsd: egress + requestCost + waf + managed,
     ratePerGb,
     dataGb,
     requests,
@@ -53,6 +59,7 @@ export function estimateCloudFront(config: Record<string, unknown>): CloudFrontE
       { label: `Data transfer out (${dataGb.toLocaleString('en-US')} GB at $${ratePerGb}/GB, ${priceClass})`, monthlyUsd: egress },
       { label: `HTTPS requests (${requests.toLocaleString('en-US')})`, monthlyUsd: requestCost },
       ...(waf > 0 ? [{ label: 'Associated WAF request processing', monthlyUsd: waf }] : []),
+      ...(managed > 0 ? [{ label: `Managed AWS WAF (web ACL, ${MANAGED_WAF_RULE_GROUPS.length} rule groups, requests inspected)`, monthlyUsd: managed }] : []),
     ],
     assumptions: [
       `Assumed traffic: ${dataGb.toLocaleString('en-US')} GB out and ${requests.toLocaleString('en-US')} HTTPS requests a month (set estimatedDataTransferGb and estimatedRequests to change it)`,

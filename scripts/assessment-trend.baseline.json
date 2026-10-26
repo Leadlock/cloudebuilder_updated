@@ -9,11 +9,11 @@
    "findings": 20
   },
   "ref-aws-serverless-api": {
-   "overall": 79,
-   "security": 82,
+   "overall": 87,
+   "security": 93,
    "critical": 0,
    "high": 0,
-   "findings": 8
+   "findings": 7
   },
   "ref-aws-rest-api-docdb": {
    "overall": 54,
@@ -93,25 +93,25 @@
    "findings": 17
   },
   "web-applications-aws-02": {
-   "overall": 78,
-   "security": 79,
+   "overall": 81,
+   "security": 83,
    "critical": 0,
    "high": 0,
-   "findings": 17
+   "findings": 16
   },
   "aws-serverless-application": {
-   "overall": 67,
-   "security": 70,
+   "overall": 72,
+   "security": 76,
    "critical": 0,
    "high": 0,
-   "findings": 15
+   "findings": 14
   },
   "web-applications-aws-04": {
-   "overall": 79,
-   "security": 80,
+   "overall": 82,
+   "security": 84,
    "critical": 0,
    "high": 0,
-   "findings": 17
+   "findings": 16
   },
   "web-applications-aws-05": {
    "overall": 79,
@@ -121,18 +121,18 @@
    "findings": 16
   },
   "web-applications-aws-06": {
-   "overall": 74,
-   "security": 77,
+   "overall": 78,
+   "security": 81,
    "critical": 0,
    "high": 0,
-   "findings": 20
+   "findings": 19
   },
   "web-applications-aws-07": {
-   "overall": 78,
-   "security": 80,
+   "overall": 81,
+   "security": 84,
    "critical": 0,
    "high": 0,
-   "findings": 20
+   "findings": 19
   },
   "web-applications-aws-08": {
    "overall": 81,
@@ -149,11 +149,11 @@
    "findings": 17
   },
   "web-applications-aws-10": {
-   "overall": 67,
-   "security": 70,
+   "overall": 72,
+   "security": 76,
    "critical": 0,
    "high": 0,
-   "findings": 15
+   "findings": 14
   },
   "web-applications-azure-01": {
    "overall": 70,
@@ -303,11 +303,11 @@
    "findings": 20
   },
   "high-availability-aws-02": {
-   "overall": 59,
-   "security": 59,
+   "overall": 65,
+   "security": 68,
    "critical": 0,
    "high": 0,
-   "findings": 13
+   "findings": 12
   },
   "high-availability-aws-03": {
    "overall": 77,
@@ -345,11 +345,11 @@
    "findings": 13
   },
   "high-availability-aws-08": {
-   "overall": 59,
-   "security": 63,
+   "overall": 65,
+   "security": 71,
    "critical": 0,
    "high": 0,
-   "findings": 15
+   "findings": 14
   },
   "high-availability-aws-09": {
    "overall": 73,
@@ -506,11 +506,11 @@
    "findings": 24
   },
   "saas-aws-01": {
-   "overall": 78,
-   "security": 79,
+   "overall": 80,
+   "security": 83,
    "critical": 0,
    "high": 0,
-   "findings": 19
+   "findings": 18
   },
   "saas-aws-02": {
    "overall": 81,
@@ -562,11 +562,11 @@
    "findings": 15
   },
   "saas-aws-09": {
-   "overall": 71,
-   "security": 72,
+   "overall": 75,
+   "security": 78,
    "critical": 0,
    "high": 0,
-   "findings": 18
+   "findings": 17
   },
   "saas-aws-10": {
    "overall": 78,
@@ -716,11 +716,11 @@
    "findings": 24
   },
   "e-commerce-aws-01": {
-   "overall": 78,
-   "security": 79,
+   "overall": 80,
+   "security": 83,
    "critical": 0,
    "high": 0,
-   "findings": 19
+   "findings": 18
   },
   "e-commerce-aws-02": {
    "overall": 79,
@@ -730,18 +730,18 @@
    "findings": 16
   },
   "e-commerce-aws-03": {
-   "overall": 71,
-   "security": 72,
+   "overall": 75,
+   "security": 78,
    "critical": 0,
    "high": 0,
-   "findings": 18
+   "findings": 17
   },
   "e-commerce-aws-04": {
-   "overall": 67,
-   "security": 70,
+   "overall": 72,
+   "security": 76,
    "critical": 0,
    "high": 0,
-   "findings": 15
+   "findings": 14
   },
   "e-commerce-aws-05": {
    "overall": 79,
@@ -926,11 +926,11 @@
    "findings": 24
   },
   "aws-containerized-application": {
-   "overall": 79,
-   "security": 80,
+   "overall": 82,
+   "security": 84,
    "critical": 0,
    "high": 0,
-   "findings": 17
+   "findings": 16
   },
   "microservices-aws-02": {
    "overall": 70,
@@ -947,11 +947,11 @@
    "findings": 15
   },
   "microservices-aws-04": {
-   "overall": 74,
-   "security": 77,
+   "overall": 78,
+   "security": 81,
    "critical": 0,
    "high": 0,
-   "findings": 20
+   "findings": 19
   },
   "microservices-aws-05": {
    "overall": 76,
@@ -982,11 +982,11 @@
    "findings": 16
   },
   "microservices-aws-09": {
-   "overall": 58,
-   "security": 59,
+   "overall": 65,
+   "security": 68,
    "critical": 0,
    "high": 0,
-   "findings": 13
+   "findings": 12
   },
   "microservices-aws-10": {
    "overall": 77,
@@ -1164,11 +1164,11 @@
    "findings": 17
   },
   "data---analytics-aws-05": {
-   "overall": 58,
-   "security": 59,
+   "overall": 65,
+   "security": 68,
    "critical": 0,
    "high": 0,
-   "findings": 13
+   "findings": 12
   },
   "data---analytics-aws-06": {
    "overall": 73,
@@ -1199,11 +1199,11 @@
    "findings": 18
   },
   "data---analytics-aws-10": {
-   "overall": 58,
-   "security": 59,
+   "overall": 65,
+   "security": 68,
    "critical": 0,
    "high": 0,
-   "findings": 13
+   "findings": 12
   },
   "data---analytics-azure-01": {
    "overall": 70,
@@ -1374,11 +1374,11 @@
    "findings": 15
   },
   "disaster-recovery-aws-05": {
-   "overall": 59,
-   "security": 59,
+   "overall": 65,
+   "security": 68,
    "critical": 0,
    "high": 0,
-   "findings": 13
+   "findings": 12
   },
   "disaster-recovery-aws-06": {
    "overall": 80,
@@ -1563,11 +1563,11 @@
    "findings": 18
   },
   "multi-cloud-aws-02": {
-   "overall": 78,
-   "security": 80,
+   "overall": 81,
+   "security": 84,
    "critical": 0,
    "high": 0,
-   "findings": 20
+   "findings": 19
   },
   "multi-cloud-aws-03": {
    "overall": 70,
@@ -1598,11 +1598,11 @@
    "findings": 18
   },
   "multi-cloud-aws-07": {
-   "overall": 76,
-   "security": 77,
+   "overall": 79,
+   "security": 82,
    "critical": 0,
    "high": 0,
-   "findings": 18
+   "findings": 17
   },
   "multi-cloud-aws-08": {
    "overall": 67,

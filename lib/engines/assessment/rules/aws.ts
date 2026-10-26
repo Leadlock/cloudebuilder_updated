@@ -8,6 +8,7 @@
  * Severity starts from the official AWS Security Hub (FSBP) severity where one
  * exists and is adjusted only with a documented reason in `rationale`.
  */
+import { managedWafApplies } from '@/lib/engines/terraform/cloudfrontWaf';
 import type { AssessResource, RuleDefinition } from '../types';
 import { dayOf, isFresh } from '../accountEvidence';
 import {
@@ -896,7 +897,7 @@ export const awsRules: RuleDefinition[] = [
     id: 'AWS-CF-002', service: 'Amazon CloudFront', scope: 'resource', resourceTypes: ['aws_cloudfront'],
     domain: 'SECURITY', category: 'Edge protection', severity: 'MEDIUM', priority: 'RECOMMENDED_IMPROVEMENT',
     title: 'CloudFront distribution has no AWS WAF web ACL',
-    description: 'Neither a web ACL ID nor a connected AWS WAF (CLOUDFRONT scope) resource is present.',
+    description: 'No web ACL ID, no connected AWS WAF (CLOUDFRONT scope) resource, and the managed AWS WAF setting is off.',
     rationale: 'Security Hub CloudFront.6 (medium).',
     risk: 'Web exploits and abusive traffic reach the origin unfiltered.', impact: 'Application compromise or abuse.',
     wellArchitected: WA.sec('SEC 5 — Protect network resources'),
@@ -907,6 +908,8 @@ export const awsRules: RuleDefinition[] = [
     evaluate: configEvaluator([], {}, (c, r, ctx) => {
       const waf = ctx.neighbors(r.id).find((n) => n.resourceType === 'aws_waf');
       if (c.webAclId) return { status: 'PASS', observation: 'A web ACL ID is configured.', extraEvidence: [ev(r, 'webAclId')] };
+      // The generated Terraform adds a managed web ACL unless this is switched off (or the distribution was imported, so it is already what it is).
+      if (managedWafApplies(c)) return { status: 'PASS', observation: 'The generated Terraform puts a managed AWS WAF web ACL in front of this distribution.', extraEvidence: [ev(r, 'managedWaf', 'Enabled')] };
       if (waf) return { status: 'PASS', observation: `Connected to AWS WAF web ACL "${waf.label}".`, extraEvidence: [{ label: 'Diagram relationship', observed: `Connected to ${waf.label}`, basis: 'RELATIONSHIP' }] };
       return { status: 'FAIL', observation: 'No web ACL is configured or connected.', extraEvidence: [ev(r, 'webAclId', 'Web ACL ARN'), { label: 'Diagram relationship', observed: 'No connection to an AWS WAF web ACL', basis: 'RELATIONSHIP' }] };
     }),

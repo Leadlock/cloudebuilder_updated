@@ -134,10 +134,12 @@ describe('CloudFront: one estimate, both built-in fallbacks agree', () => {
   });
 
   test('default traffic is 1,000 GB and 10M requests, and the free tier is not applied', () => {
-    const e = estimateCloudFront({});
+    const e = estimateCloudFront({ managedWaf: false });
     expect(e.dataGb).toBe(1000);
     expect(e.requests).toBe(10_000_000);
     expect(e.monthlyUsd).toBeCloseTo(85 + 10, 2);
+    // by default the generated Terraform also adds a managed web ACL: $5 + 2 x $1 + $0.60 per million requests
+    expect(estimateCloudFront({}).monthlyUsd).toBeCloseTo(85 + 10 + 13, 2);
     expect(e.assumptions.join(' ')).toMatch(/not applied/);
   });
 

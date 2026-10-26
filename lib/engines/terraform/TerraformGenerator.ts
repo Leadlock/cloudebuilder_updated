@@ -10,6 +10,7 @@
  */
 import { isExternalServiceType } from '@/lib/engines/assessment/rules/externalService';
 import { placeholderProblems } from './placeholderChecks';
+import { managedWafApplies, MANAGED_WAF_RULE_GROUPS, WAF_PROVIDER_ALIAS } from './cloudfrontWaf';
 import { containerServiceBlocks } from './containerService';
 import { azureContainerServiceBlocks } from './azureContainerService';
 import { awsImage, awsStartup, awsWebSecurityGroup, azureStartup, azureWebNsg, openCidr } from './serverSoftware';
@@ -645,7 +646,16 @@ locals {
           const originDns = alb
             ? `${isAlbImported ? 'data.' : ''}aws_lb.${resolver.tfNameOf(alb.id) ?? 'main'}.dns_name`
             : '"origin.example.com"';
-          blocks.push(this._cloudfront(name, cfg, originDns));
+          // A WAF drawn next to the distribution is associated with it, when it can be (a CLOUDFRONT-scope web ACL); otherwise the managed one is added.
+          const wafNode = connections
+            .map((c) => (c.sourceId === r.id ? c.targetId : c.targetId === r.id ? c.sourceId : null))
+            .map((id) => (id ? resources.find((x) => x.id === id) : undefined))
+            .find((x) => x?.resourceType === 'aws_waf');
+          const wafCfg = wafNode ? this._cfg(wafNode) : null;
+          const usableWaf = wafNode && wafCfg && String(wafCfg['scope'] ?? 'REGIONAL') === 'CLOUDFRONT' ? wafNode : null;
+          if (wafNode && !usableWaf) warnings.push(`${wafNode.label} is connected to the CloudFront distribution ${r.label} but its scope is not CLOUDFRONT, so it cannot protect it (a regional web ACL cannot be attached to CloudFront). Set its scope to CLOUDFRONT.`);
+          const wafRef = usableWaf ? `aws_wafv2_web_acl.${resolver.tfNameOf(usableWaf.id) ?? 'main'}.arn` : undefined;
+          blocks.push(this._cloudfront(name, cfg, originDns, wafRef));
           resourceMap[r.id] = `aws_cloudfront_distribution.${name}`;
           break;
         }
@@ -1732,6 +1742,7 @@ ${tagLines.join('\n')}
 
     const lines: string[] = [
       `resource "aws_wafv2_web_acl" "${name}" {`,
+      ...(scope === 'CLOUDFRONT' ? [`  provider = aws.${WAF_PROVIDER_ALIAS}`] : []),
       `  name  = "${name}"`,
       `  scope = "${scope}"`,
       ``,
@@ -2616,7 +2627,7 @@ ${tagLines.join('\n')}
 }`;
   }
 
-  private _cloudfront(name: string, cfg: Record<string, unknown>, originDns: string): string {
+  private _cloudfront(name: string, cfg: Record<string, unknown>, originDns: string, wafRef?: string): string {
     const priceClass = (cfg['priceClass'] as string) || 'PriceClass_100';
     const defaultRoot = (cfg['defaultRootObject'] as string) || 'index.html';
     const enabled = cfg['enabled'] !== false;
@@ -2634,8 +2645,13 @@ ${tagLines.join('\n')}
       `  is_ipv6_enabled     = ${cfg['ipv6Enabled'] !== false}`,
       `  http_version        = "${cfg['httpVersion'] ?? 'http2'}"`,
     ];
+    const managedWaf = !wafRef && managedWafApplies(cfg);
     if (cfg['webAclId']) {
       lines.push(`  web_acl_id          = "${cfg['webAclId']}"`);
+    } else if (wafRef) {
+      lines.push(`  web_acl_id          = ${wafRef}`);
+    } else if (managedWaf) {
+      lines.push(`  web_acl_id          = aws_wafv2_web_acl.${name}_waf.arn`);
     }
     lines.push(
       ``,
@@ -2698,6 +2714,59 @@ ${tagLines.join('\n')}
     }
     lines.push(``, `  tags = {`, `    Name      = "${name}"`, `    ManagedBy = "CloudBuilder"`, ...tagLines, `  }`, `}`);
 
+    if (managedWaf) {
+      const rules = MANAGED_WAF_RULE_GROUPS.map((group, i) => [
+        ``,
+        `  rule {`,
+        `    name     = "${group}"`,
+        `    priority = ${i + 1}`,
+        ``,
+        `    override_action {`,
+        `      none {}`,
+        `    }`,
+        ``,
+        `    statement {`,
+        `      managed_rule_group_statement {`,
+        `        name        = "${group}"`,
+        `        vendor_name = "AWS"`,
+        `      }`,
+        `    }`,
+        ``,
+        `    visibility_config {`,
+        `      cloudwatch_metrics_enabled = true`,
+        `      metric_name                = "${name}-${group}"`,
+        `      sampled_requests_enabled   = true`,
+        `    }`,
+        `  }`,
+      ].join('\n'));
+      return [
+        lines.join('\n'),
+        [
+          `# A web ACL for CloudFront has to be created in us-east-1, whichever region the rest of the design is in (the aliased provider in providers.tf).`,
+          `resource "aws_wafv2_web_acl" "${name}_waf" {`,
+          `  provider = aws.${WAF_PROVIDER_ALIAS}`,
+          `  name     = "${name}-waf"`,
+          `  scope    = "CLOUDFRONT"`,
+          ``,
+          `  default_action {`,
+          `    allow {}`,
+          `  }`,
+          ...rules,
+          ``,
+          `  visibility_config {`,
+          `    cloudwatch_metrics_enabled = true`,
+          `    metric_name                = "${name}-waf"`,
+          `    sampled_requests_enabled   = true`,
+          `  }`,
+          ``,
+          `  tags = {`,
+          `    Name      = "${name}-waf"`,
+          `    ManagedBy = "CloudBuilder"`,
+          `  }`,
+          `}`,
+        ].join('\n'),
+      ].join('\n\n');
+    }
     return lines.join('\n');
   }
 
@@ -4639,7 +4708,14 @@ export class TerraformGenerator {
     files.push({ filename: 'main.tf', content: mainParts.join('\n'), provider: 'all' });
 
     // providers.tf
-    files.push({ filename: 'providers.tf', content: this._providersFile(providers), provider: 'all' });
+    // CloudFront web ACLs are global but must be created in us-east-1: a second AWS provider for them when the design has one.
+    const needsGlobalProvider = providers.includes('aws') && input.resources.some((r) => {
+      if (r.provider !== 'aws') return false;
+      let c: Record<string, unknown> = {};
+      try { c = JSON.parse(r.configJson) as Record<string, unknown>; } catch { /* no settings */ }
+      return (r.resourceType === 'aws_cloudfront' && managedWafApplies(c)) || (r.resourceType === 'aws_waf' && String(c['scope'] ?? 'REGIONAL') === 'CLOUDFRONT');
+    });
+    files.push({ filename: 'providers.tf', content: this._providersFile(providers, needsGlobalProvider), provider: 'all' });
 
     // variables.tf
     files.push({ filename: 'variables.tf', content: this._variablesFile(providers, input), provider: 'all' });
@@ -4653,7 +4729,7 @@ export class TerraformGenerator {
     return files;
   }
 
-  private _providersFile(providers: string[]): string {
+  private _providersFile(providers: string[], globalAwsProvider = false): string {
     const hasAws   = providers.includes('aws');
     const hasAzure = providers.includes('azure');
 
@@ -4678,6 +4754,14 @@ ${required.join('\n')}
   # No credentials in Terraform — use AWS_ACCESS_KEY_ID env var or an instance profile
 }
 `);
+      if (globalAwsProvider) {
+        parts.push(`# AWS requires the web ACL of a CloudFront distribution to be created in us-east-1.
+provider "aws" {
+  alias  = "${WAF_PROVIDER_ALIAS}"
+  region = "us-east-1"
+}
+`);
+      }
     }
 
     if (hasAzure) {

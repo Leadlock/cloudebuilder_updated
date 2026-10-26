@@ -56,12 +56,6 @@
    "reason": "ECR tags are mutable so a release can reuse a tag such as latest. Immutable tags need a unique tag for every release, which the release flow does not enforce yet."
   },
   {
-   "id": "AWS-0011",
-   "action": "todo",
-   "max": 8,
-   "reason": "A CloudFront distribution has no web application firewall in front unless the design includes one. The generator should add one when the design is public."
-  },
-  {
    "id": "AZU-0010",
    "action": "todo",
    "max": 7,

@@ -436,7 +436,8 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
   });
 
   test('CloudFront cost follows the traffic and the price class (it used to be a flat $12/$16/$22)', () => {
-    const cfg = (extra: Record<string, unknown>) => makeResource({ resourceType: 'aws_cloudfront', provider: 'aws', configJson: JSON.stringify(extra) });
+    // managedWaf off: this test is about traffic; the managed web ACL has its own test below.
+    const cfg = (extra: Record<string, unknown>) => makeResource({ resourceType: 'aws_cloudfront', provider: 'aws', configJson: JSON.stringify({ managedWaf: false, ...extra }) });
     const price = (r: ReturnType<typeof makeResource>) => estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [r] }, 'TEST').items[0].monthlyUsd;
     // Default traffic: 1,000 GB out at $0.085 plus 10M HTTPS requests at $0.01 per 10,000. The always-free tier is per account, so it is not applied.
     expect(price(cfg({}))).toBeCloseTo(1000 * 0.085 + 10_000_000 * 0.000001, 2);
@@ -448,7 +449,7 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
   });
 
   test('CloudFront cost adds a WAF request-processing line when webAclId is set', () => {
-    const noWaf = makeResource({ resourceType: 'aws_cloudfront', provider: 'aws', configJson: '{}' });
+    const noWaf = makeResource({ resourceType: 'aws_cloudfront', provider: 'aws', configJson: JSON.stringify({ managedWaf: false }) });
     const withWaf = makeResource({ resourceType: 'aws_cloudfront', provider: 'aws', configJson: JSON.stringify({ webAclId: 'arn:aws:wafv2:us-east-1:123456789012:global/webacl/my-acl/abc' }) });
     const noWafResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [noWaf] }, 'TEST');
     const withWafResult = estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [withWaf] }, 'TEST');
@@ -456,6 +457,17 @@ describe('CloudProviderPricingService & CostEstimator Integration', () => {
     // 10M requests inspected at $0.60 per million
     expect(withWafResult.items[0].monthlyUsd - noWafResult.items[0].monthlyUsd).toBeCloseTo(6, 2);
     expect(withWafResult.items[0].breakdown.some((b) => b.label.includes('WAF'))).toBe(true);
+  });
+
+  test('CloudFront cost includes the managed AWS WAF the generated Terraform adds ($5 web ACL, $2 for two rule groups, $0.60 per million requests), unless it is turned off or the distribution has its own', () => {
+    const price = (c: Record<string, unknown>) => estimator.estimate({ architectureId: 'arch-1', projectId: 'proj-1', resources: [makeResource({ resourceType: 'aws_cloudfront', provider: 'aws', configJson: JSON.stringify(c) })] }, 'TEST').items[0];
+    const off = price({ managedWaf: false }).monthlyUsd;
+    const on = price({});
+    expect(on.monthlyUsd - off).toBeCloseTo(5 + 2 + 6, 2);
+    expect(on.breakdown.some((b) => b.label.includes('Managed AWS WAF'))).toBe(true);
+    expect(price({ managedWaf: true }).monthlyUsd).toBeCloseTo(on.monthlyUsd, 2);
+    expect(price({ webAclId: 'arn:aws:wafv2:us-east-1:1:global/webacl/x/1' }).monthlyUsd - off).toBeCloseTo(6, 2);   // its own ACL: only the requests
+    expect(price({ importState: 'imported' }).monthlyUsd).toBeCloseTo(off, 2);                                          // an imported distribution is what it is
   });
 
   test('DynamoDB cost scales with configured capacity/usage (previously a flat $5 regardless of config)', () => {

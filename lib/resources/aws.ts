@@ -569,7 +569,7 @@ export const awsResources: ResourceDefinition[] = [
       compressionEnabled: true, httpVersion: 'http2', ipv6Enabled: true,
       geoRestrictionType: 'none', geoRestrictionCountries: [],
       useCustomCertificate: false, customCertificateArn: '', minimumProtocolVersion: 'TLSv1.2_2021',
-      webAclId: '', loggingEnabled: false, loggingBucket: '', estimatedDataTransferGb: 1000, estimatedRequests: 10000000, tags: {},
+      managedWaf: true, webAclId: '', loggingEnabled: false, loggingBucket: '', estimatedDataTransferGb: 1000, estimatedRequests: 10000000, tags: {},
     },
     configSchema: [
       { key: 'name', label: 'Distribution Name', type: 'text', defaultValue: 'my-cdn', required: true },
@@ -598,6 +598,10 @@ export const awsResources: ResourceDefinition[] = [
           { label: 'HTTPS Only', value: 'https-only' },
           { label: 'Allow HTTP and HTTPS', value: 'allow-all' },
         ],
+      },
+      {
+        key: 'managedWaf', label: 'Protect with AWS WAF (managed rules)', type: 'boolean', defaultValue: true, section: 'Security',
+        description: 'Adds a web ACL with the AWS core and known-bad-inputs rule groups in front of the distribution (about $7 a month plus $0.60 per million requests). It is created in us-east-1, where AWS requires it. Not added when a Web ACL ID is set or a WAF is connected.',
       },
       { key: 'useCustomCertificate', label: 'Custom SSL Certificate', type: 'boolean', defaultValue: false, section: 'Security' },
       {
