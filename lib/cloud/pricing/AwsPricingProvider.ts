@@ -25,6 +25,7 @@
  *   estimator's fallback provider), which this provider intentionally does
  *   not duplicate.
  */
+import { isExternalServiceResource, externalServiceNormalizedPrice } from './externalServicePrice';
 import { PricingClient, GetProductsCommand } from '@aws-sdk/client-pricing';
 import { estimateCloudFront } from '@/lib/engines/cost/cloudfrontEstimate';
 import type { ICloudPricingProvider, NormalizedPrice, PriceQuery } from './types';
@@ -344,6 +345,7 @@ export class AwsPricingProvider implements ICloudPricingProvider {
 
   async getPrice(query: PriceQuery): Promise<NormalizedPrice | null> {
     const { resourceType, region, configuration } = query;
+    if (isExternalServiceResource(resourceType)) return externalServiceNormalizedPrice('aws', region || 'us-east-1', configuration);
     const cleanRegion = (region || 'us-east-1').toLowerCase().trim();
     const factor = getRegionFactor(cleanRegion);
 

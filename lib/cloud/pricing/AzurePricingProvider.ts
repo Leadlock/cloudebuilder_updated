@@ -6,6 +6,7 @@
  *
  * Requires NO credentials. Publicly accessible and returns real-time retail list prices.
  */
+import { isExternalServiceResource, externalServiceNormalizedPrice } from './externalServicePrice';
 import type { ICloudPricingProvider, NormalizedPrice, PriceQuery } from './types';
 import { HOURS_PER_MONTH, monthlyFromRetailItem, type AzureRetailPriceItem } from './azureRetail';
 import { AZURE_METER_SOURCES, azureMeterFilter, pickAzureMeters } from '@/lib/cost/ai/meterPicker';
@@ -41,6 +42,7 @@ export class AzurePricingProvider implements ICloudPricingProvider {
 
   async getPrice(query: PriceQuery): Promise<NormalizedPrice | null> {
     const { resourceType, region, configuration } = query;
+    if (isExternalServiceResource(resourceType)) return externalServiceNormalizedPrice('azure', region || 'eastus', configuration);
     const cleanRegion = (region || 'eastus').toLowerCase().replace(/\s+/g, '');
 
     try {

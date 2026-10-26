@@ -171,6 +171,12 @@ export async function fetchGitSource(
     // The folder must exist before git runs in it.
     mkdirSync(repoDir, { recursive: true });
     mkdirSync(home, { recursive: true });
+    // The token reaches git through GIT_CONFIG_COUNT/KEY/VALUE, which git understands from 2.31. An older git would ignore it and fail as if the token were wrong.
+    if (checked.token) {
+      const v = await run(['--version'], opts);
+      const m = /(\d+)\.(\d+)/.exec(v.stdout);
+      if (m && (Number(m[1]) < 2 || (Number(m[1]) === 2 && Number(m[2]) < 31))) throw new GitSourceError(`The server's git (${m[0]}) is too old to pass an access token safely: it needs 2.31 or newer. Upgrade git on the server, or upload a zip.`);
+    }
     await step(['init', '-q'], 'init');
     await step(['remote', 'add', 'origin', checked.url.toString()], 'remote');
     await step(['fetch', '-q', '--depth', '1', '--no-tags', '--no-recurse-submodules', 'origin', checked.ref], `fetch ${checked.ref}`);

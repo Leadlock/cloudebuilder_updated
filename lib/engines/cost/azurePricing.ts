@@ -16,6 +16,7 @@
  * will drift over time — expected for a fallback path, not a correctness bug.
  */
 
+import { externalServiceLineItem } from '@/lib/cloud/pricing/externalServicePrice';
 import type { PricingProvider, CostLineItem } from './types';
 import type { DbArchitectureResource } from '@/lib/repositories/architectureRepository';
 
@@ -101,6 +102,7 @@ export class AzurePricingProvider implements PricingProvider {
     const mult = regionMultiplier(region);
 
     switch (resource.resourceType) {
+      case 'azure_external_service': return externalServiceLineItem(resource, 'azure', region, config);
       case 'azure_vm':              return this._vm(resource, config, region, mult);
       case 'azure_sql':             return this._sql(resource, config, region, mult);
       case 'azure_storage':         return this._storage(resource, config, region, mult);

@@ -25,6 +25,7 @@
  * expected and acceptable for a fallback path, not a correctness bug.
  */
 
+import { externalServiceLineItem } from '@/lib/cloud/pricing/externalServicePrice';
 import type { PricingProvider, CostLineItem } from './types';
 import type { DbArchitectureResource } from '@/lib/repositories/architectureRepository';
 import { autoScalingAsInstances } from './autoScaling';
@@ -167,6 +168,7 @@ export class AwsPricingProvider implements PricingProvider {
       case 'aws_ecs':        return this._ecs(resource, config, region, mult);
       case 'aws_route53':    return this._route53(resource, config, region, mult);
       case 'aws_waf':        return this._waf(resource, config, region, mult);
+      case 'aws_external_service': return externalServiceLineItem(resource, 'aws', region, config);
       case 'aws_kms':        return this._kms(resource, config, region, mult);
       case 'aws_cloudwatch': return this._cloudwatch(resource, config, region, mult);
       case 'aws_vpc':

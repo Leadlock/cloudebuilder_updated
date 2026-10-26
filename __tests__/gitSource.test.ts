@@ -84,6 +84,16 @@ describe('how git is run', () => {
     expect(calls[0]!.env['GIT_CONFIG_COUNT']).toBeUndefined();
   });
 
+  it('refuses to send a token through a git too old to take it (it would be dropped and look like a wrong token)', async () => {
+    const old: GitRunner = async (args) => ({ code: 0, stdout: args.includes('--version') ? 'git version 2.25.1' : '', stderr: '', timedOut: false });
+    await expect(fetchGitSource({ url: 'https://github.com/a/b', token: 'ghp_x' }, policy, { run: old, resolve: async () => ['140.82.112.3'] })).rejects.toThrow(/needs 2\.31 or newer/);
+    // without a token, an old git is fine; and a current git with one is fine
+    const calls: string[][] = [];
+    const ok: GitRunner = async (args) => { calls.push(args); return { code: 0, stdout: args.includes('--version') ? 'git version 2.39.5' : args.includes('rev-parse') ? 'a'.repeat(40) : '', stderr: '', timedOut: false }; };
+    await fetchGitSource({ url: 'https://github.com/a/b', token: 'ghp_x' }, policy, { run: ok, resolve: async () => ['140.82.112.3'] }).catch(() => undefined);
+    expect(calls.some((a) => a.includes('init'))).toBe(true);
+  });
+
   it('says when the repository cannot be read, without guessing why', async () => {
     await expect(fetchGitSource({ url: 'https://github.com/a/b' }, policy, { run: fake('remote: Repository not found.'), resolve: async () => ['140.82.112.3'] })).rejects.toThrow(/does not exist or needs an access token \(none was given\)/);
   });

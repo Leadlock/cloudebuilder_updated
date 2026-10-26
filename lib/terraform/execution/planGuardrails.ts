@@ -13,6 +13,7 @@
  * Destroy actions are refused separately by the executor. The result is stored on the plan and shown to the approver.
  */
 import { ALLOWED_TERRAFORM_RESOURCE_TYPES } from './allowedResourceTypes';
+import { WAF_PROVIDER_ALIAS } from '@/lib/engines/terraform/cloudfrontWaf';
 import { BUILT_IN_OPA_POLICIES } from '@/lib/opa/builtInPolicies';
 import { RegoInterpreter } from '@/lib/opa/regoEngine';
 
@@ -118,6 +119,9 @@ export function evaluatePlanGuardrails(plan: PlanJsonForGuardrails, options: Gua
   const allowed = options.allowedRegions ?? [];
   if (allowed.length > 0) {
     for (const [name, cfg] of Object.entries(plan.configuration?.provider_config ?? {})) {
+      // The web ACL of a CloudFront distribution has to be created in us-east-1 whatever region the design uses, so the generated Terraform has one
+      // aliased provider for it (lib/engines/terraform/cloudfrontWaf.ts). It exists only for that: the unexpected-types check still limits what is created.
+      if (name === `aws.${WAF_PROVIDER_ALIAS}`) continue;
       const value = cfg.expressions?.region?.constant_value;
       if (typeof value !== 'string') { if (name === 'aws') region.push(`provider "${name}" region could not be verified`); continue; }
       if (!allowed.includes(value)) region.push(`provider "${name}" uses ${value}, which is not in the allowed regions`);

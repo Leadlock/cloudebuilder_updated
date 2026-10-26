@@ -24,6 +24,15 @@ describe('plan guardrails', () => {
     expect(r.passed).toBe(true);
   });
 
+  it('does not refuse the us-east-1 provider the generated CloudFront web ACL needs, when only another region is allowed', () => {
+    const cfg = (r: string) => ({ expressions: { region: { constant_value: r } } });
+    const p = { resource_changes: [change('aws_cloudfront_distribution'), change('aws_wafv2_web_acl')], configuration: { provider_config: { aws: cfg('eu-west-1'), 'aws.us_east_1': cfg('us-east-1') } } };
+    expect(failed(p, { allowedRegions: ['eu-west-1'] })).toEqual([]);
+    // but the main provider is still checked, and so is any other alias
+    expect(failed({ ...p, configuration: { provider_config: { aws: cfg('us-west-2'), 'aws.us_east_1': cfg('us-east-1') } } }, { allowedRegions: ['eu-west-1'] })).toEqual(['region']);
+    expect(failed({ ...p, configuration: { provider_config: { aws: cfg('eu-west-1'), 'aws.other': cfg('us-east-1') } } }, { allowedRegions: ['eu-west-1'] })).toEqual(['region']);
+  });
+
   it('still refuses a real administrator policy', () => {
     const policy = JSON.stringify({ Statement: [{ Effect: 'Allow', Action: '*', Resource: '*' }] });
     expect(failed(plan(change('aws_iam_role_policy', { policy })))).toContain('iam-admin');

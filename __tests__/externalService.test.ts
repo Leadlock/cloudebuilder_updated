@@ -109,3 +109,32 @@ describe('Terraform', () => {
     expect(out.warnings.some((w) => /third-party service/.test(w) && w.includes('Datadog'))).toBe(true);
   });
 });
+
+describe('the cost estimate', () => {
+  // The cost engine never read the node's costCalculator hook: the entered monthly cost was dropped and the service counted as "no pricing data".
+  const { CostEstimator } = jest.requireActual('@/lib/engines/cost/CostEstimator') as typeof import('@/lib/engines/cost/CostEstimator');
+  const res = (cloud: 'aws' | 'azure', config: Record<string, unknown>) => ({ id: 'x', resourceType: `${cloud}_external_service`, provider: cloud, label: 'Datadog', positionX: 0, positionY: 0, configJson: JSON.stringify(config), region: null, groupId: null, locked: false, architectureId: 'a' });
+  const total = (cloud: 'aws' | 'azure', config: Record<string, unknown>) => new CostEstimator().estimate({ architectureId: 'a', projectId: 'p', resources: [res(cloud, config) as never] }, 'TEST').items[0]!;
+
+  it.each(['aws', 'azure'] as const)('counts what the team entered for a %s design, labelled as entered by the team', (cloud) => {
+    const item = total(cloud, { vendor: 'Datadog', monthlyCostUsd: 450 });
+    expect(item.monthlyUsd).toBe(450);
+    expect(item.pricingSource).toBe('entered-by-team');
+    expect(item.assumptions.join(' ')).toMatch(/entered by the team/);
+  });
+  it('counts $0, and says so, when nothing was entered; and ignores a negative or silly figure', () => {
+    expect(total('aws', {}).monthlyUsd).toBe(0);
+    expect(total('aws', {}).assumptions.join(' ')).toMatch(/No monthly cost has been entered/);
+    expect(total('aws', { monthlyCostUsd: -50 }).monthlyUsd).toBe(0);
+    expect(total('aws', { monthlyCostUsd: 'abc' }).monthlyUsd).toBe(0);
+    expect(total('aws', { monthlyCostUsd: 9e12 }).monthlyUsd).toBe(1_000_000);
+  });
+  it('is also what the live pricing path returns', async () => {
+    const { AwsPricingProvider } = jest.requireActual('@/lib/cloud/pricing/AwsPricingProvider') as typeof import('@/lib/cloud/pricing/AwsPricingProvider');
+    const { AzurePricingProvider } = jest.requireActual('@/lib/cloud/pricing/AzurePricingProvider') as typeof import('@/lib/cloud/pricing/AzurePricingProvider');
+    const aws = await new AwsPricingProvider().getPrice({ provider: 'aws', resourceType: 'aws_external_service', region: 'eu-west-1', configuration: { monthlyCostUsd: 99 } });
+    const az = await new AzurePricingProvider().getPrice({ provider: 'azure', resourceType: 'azure_external_service', region: 'westeurope', configuration: { monthlyCostUsd: 99 } });
+    expect(aws).toMatchObject({ monthlyPrice: 99, source: 'entered-by-team' });
+    expect(az).toMatchObject({ monthlyPrice: 99, source: 'entered-by-team' });
+  });
+});

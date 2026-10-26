@@ -199,6 +199,7 @@ What it will and will not do (`lib/deploy/project/gitSource.ts`):
   password, port, query or fragment in the address. A host that resolves to a private, loopback or link-local address is refused, so it cannot be used to reach the network.
 - `git` runs without a shell, with hooks, submodules, redirects, prompts and every protocol but https turned off, with no user or system configuration, a two-minute limit
   and a size limit on what is downloaded. Symbolic links are not followed (they arrive as small text files). A repository's own `.git` folder is never included.
+- The server needs `git` 2.31 or newer when a token is used (the token is passed with `GIT_CONFIG_COUNT`, which older versions ignore); the fetch refuses with a clear message otherwise.
 - The token for a private repository goes to git through its environment (an `Authorization` header), never a command line, a file or a log, and is not stored. Errors have it
   removed. It is a personal access token the person creates with read access (GitHub: `x-access-token`; GitLab: `oauth2`; Bitbucket: `x-token-auth`; Azure DevOps: a PAT).
 - Limits are the zip limits: 5 MB zipped, 30 MB expanded, 2000 files. For a larger repository use `subdir` or upload a zip.
