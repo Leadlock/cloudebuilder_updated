@@ -1,6 +1,7 @@
 import { ResourceDefinition } from '@/types';
 import { SOFTWARE } from '@/lib/engines/servers/software';
 import { azureServiceResources } from './azureServices';
+import { externalServiceResources } from './externalService';
 
 /** The software CloudBuilder can install on a server, as the options of the "Install on the server" setting. */
 const SOFTWARE_OPTIONS = SOFTWARE.map((s) => ({ label: `${s.label} (${s.kind})`, value: s.id }));
@@ -1211,4 +1212,4 @@ const coreAzureResources: ResourceDefinition[] = [
 ];
 
 /** The core Azure catalog plus the managed services in azureServices.ts. */
-export const azureResources: ResourceDefinition[] = [...coreAzureResources, ...azureServiceResources];
+export const azureResources: ResourceDefinition[] = [...coreAzureResources, ...azureServiceResources, ...externalServiceResources.filter((r) => r.provider === 'azure')];

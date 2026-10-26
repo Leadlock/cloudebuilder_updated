@@ -1,4 +1,5 @@
 import { ResourceDefinition } from '@/types';
+import { externalServiceResources } from './externalService';
 import { AUTHORITATIVE_AWS_REGIONS } from '@/lib/cloud/regions/CloudRegionService';
 
 function subnetAzOptions(): { label: string; value: string }[] {
@@ -2235,4 +2236,5 @@ export const awsResources: ResourceDefinition[] = [
       { key: 'region', label: 'Primary Region', type: 'text', defaultValue: 'us-east-1', required: true },
     ],
   },
+  ...externalServiceResources.filter((r) => r.provider === 'aws'),
 ];

@@ -8,6 +8,7 @@
  * SECURITY: No cloud credentials are included in generated output.
  * Generated Terraform uses variables for all sensitive values.
  */
+import { isExternalServiceType } from '@/lib/engines/assessment/rules/externalService';
 import { placeholderProblems } from './placeholderChecks';
 import { containerServiceBlocks } from './containerService';
 import { azureContainerServiceBlocks } from './azureContainerService';
@@ -4565,10 +4566,13 @@ export class TerraformGenerator {
 
     const resolver = new ReferenceResolver(input.resources);
     const projectName = input.projectName ?? 'cloudbuilder';
-    const awsResources   = input.resources.filter((r) => r.provider === 'aws');
-    const azureResources = input.resources.filter((r) => r.provider === 'azure');
+    // A third-party service (Datadog, Atlas ...) is drawn and reviewed but is not in the cloud account: no Terraform for it, and no "unsupported" warning.
+    const external = input.resources.filter((r) => isExternalServiceType(r.resourceType));
+    const awsResources   = input.resources.filter((r) => r.provider === 'aws' && !isExternalServiceType(r.resourceType));
+    const azureResources = input.resources.filter((r) => r.provider === 'azure' && !isExternalServiceType(r.resourceType));
 
     const warnings: string[] = [];
+    if (external.length > 0) warnings.push(`${external.length} third-party service${external.length === 1 ? '' : 's'} (${external.map((r) => r.label).join(', ')}) ${external.length === 1 ? 'is' : 'are'} in the design and the review only: no infrastructure code is generated for ${external.length === 1 ? 'it' : 'them'}.`);
     const blocking: string[] = [];
     const resourceMap: Record<string, string> = {};
     const providers: string[] = [];

@@ -76,6 +76,9 @@ export const CANVAS_ONLY_TYPES: ReadonlySet<string> = new Set([
   'aws_eventbridge',
   'aws_cognito',
   'aws_step_functions',
+  // A third-party service is reviewed from the team's answers about it, which a model cannot give.
+  'aws_external_service',
+  'azure_external_service',
 ]);
 export const CATALOG_TYPES: string[] = allResources.map((r) => r.type).filter((t) => !NOT_USABLE.test(t) && !CANVAS_ONLY_TYPES.has(t));
 const CATALOG_SET = new Set(CATALOG_TYPES);

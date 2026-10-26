@@ -11,6 +11,8 @@
  *
  * Every rule that can return NOT_EVALUATED must have an entry (enforced by tests).
  */
+import { EXTERNAL_QUESTIONS } from './externalQuestions';
+
 export type EvidenceAvailabilityClass =
   | 'DESIGN_TIME_SUPPORTED'
   | 'DISCOVERY_SUPPORTED'
@@ -83,6 +85,17 @@ export const EVIDENCE_AVAILABILITY: Record<string, EvidenceAvailability> = {
     evidenceSource: 'Microsoft Graph conditional access policies and authentication methods reports.',
   },
 };
+
+/** Third-party service questions: nothing about the service can be read from the cloud account, so every answer is the team's. */
+for (const q of EXTERNAL_QUESTIONS) {
+  for (const code of ['AWS', 'AZ']) {
+    EVIDENCE_AVAILABILITY[`${code}-${q.id}`] = {
+      classes: ['ORGANIZATIONAL_EVIDENCE_REQUIRED'],
+      explanation: 'The service lives outside the cloud account, so this can only be answered by the team (from the provider\'s documentation, contract and audit report), not read from a configuration.',
+      evidenceSource: 'The team\'s answer in the third-party service\'s settings, ideally backed by the provider\'s audit report and contract.',
+    };
+  }
+}
 
 export const EVIDENCE_CLASS_LABEL: Record<EvidenceAvailabilityClass, string> = {
   DESIGN_TIME_SUPPORTED: 'Design-time supported',

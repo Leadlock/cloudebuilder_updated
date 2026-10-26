@@ -18,6 +18,7 @@ import { runAssessment } from '@/lib/engines/assessment/AssessmentEngine';
 import { getResourceDefinition } from '@/lib/resources';
 import { TerraformGenerator } from '@/lib/engines/terraform/TerraformGenerator';
 import type { CanvasNode } from '@/types';
+import { EXTERNAL_QUESTIONS } from '@/lib/engines/assessment/externalQuestions';
 
 /** `type.setting` → why changing it cannot change the Terraform today. */
 const KNOWN_TERRAFORM_GAPS: Record<string, string> = {
@@ -27,6 +28,8 @@ const KNOWN_TERRAFORM_GAPS: Record<string, string> = {
   'aws_container_service.scanImage': 'AWS-CTR-003: a property of the GitHub Actions workflow (Container Templates), not of the instance Terraform creates.',
   'aws_ebs.snapshotSchedule': 'AWS-EBS-002: the generator does not emit AWS Backup or Data Lifecycle Manager resources, so the rule is manual-only.',
   'aws_s3.loggingEnabled': 'AWS-S3-003: the generator does not emit aws_s3_bucket_logging (it needs a target log bucket), so the rule is manual-only.',
+  // A third-party service is outside the cloud account: Terraform creates nothing for it, and its review answers are the team's.
+  ...Object.fromEntries(['aws', 'azure'].flatMap((c) => EXTERNAL_QUESTIONS.map((q) => [`${c}_external_service.${q.key}`, `${q.id}: an answer about a service outside the cloud account; Terraform creates nothing for it.`]))),
 };
 
 /** Settings that only take effect together with another setting, so the probe sets that one first. */

@@ -3,9 +3,10 @@ import { awsRules } from './aws';
 import { azureRules } from './azure';
 import { azureServiceRules } from './azureServices';
 import { containerServiceRules, azureContainerServiceRules } from './containerService';
+import { externalServiceRules } from './externalService';
 import { QUESTION_RULES } from '../questionnaire/questionRules';
 
-export const ALL_RULES: RuleDefinition[] = [...awsRules, ...azureRules, ...azureServiceRules, ...containerServiceRules, ...azureContainerServiceRules];
+export const ALL_RULES: RuleDefinition[] = [...awsRules, ...azureRules, ...azureServiceRules, ...containerServiceRules, ...azureContainerServiceRules, ...externalServiceRules];
 
 export const RULES_BY_ID: Map<string, RuleDefinition> = (() => {
   const m = new Map<string, RuleDefinition>();
