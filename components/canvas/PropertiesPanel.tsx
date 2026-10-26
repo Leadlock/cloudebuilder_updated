@@ -349,7 +349,8 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
   function handleChange(key: string, value: unknown) {
     if (!node) return;
     const newConfig = { ...node.config, [key]: value };
-    const newLabel = key === 'name' ? (value as string) || node.label : node.label;
+    // A third-party service is named after its vendor, so the review's findings and the canvas say which one they are about.
+    const newLabel = key === 'name' || (key === 'vendor' && typeof value === 'string' && value.trim() !== '') ? (value as string) || node.label : node.label;
     onUpdate(node.id, newConfig, newLabel);
   }
 
