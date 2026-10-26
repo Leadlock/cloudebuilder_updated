@@ -63,6 +63,7 @@
     "@aws-sdk/client-ssm": "^3.1152.0",
     "@aws-sdk/client-sts": "^3.1127.0",
     "@aws-sdk/client-wafv2": "^3.1138.0",
+    "@aws-sdk/client-wellarchitected": "^3.1156.0",
     "@azure/arm-appservice": "^19.0.0",
     "@azure/arm-cdn": "^10.0.0",
     "@azure/arm-compute": "^25.1.1",

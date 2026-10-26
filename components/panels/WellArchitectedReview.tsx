@@ -7,6 +7,7 @@ import type { AiWellArchitectedReview } from '@/lib/services/AiReviewService';
 import type { ReviewHistory } from '@/lib/engines/wellArchitected/history';
 import WaQuestionnaire from './WaQuestionnaire';
 import WaAccountChecks from './WaAccountChecks';
+import WaAwsTool from './WaAwsTool';
 import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedService';
 import type { WaAssessment, WaFinding, WaPillar, WaSeverity, ResourceState } from '@/lib/engines/wellArchitected/types';
 import {
@@ -557,6 +558,14 @@ export default function WellArchitectedReview() {
           isLight={isLight}
           onChecked={() => { void handleRunAnalysis(); }}
           disabledReason={activeProject.id === 'draft-project' ? 'Save the project to check the AWS account.' : undefined}
+        />
+      )}
+
+      {activeProject.nodes.some((n) => n.provider === 'aws') && (
+        <WaAwsTool
+          isLight={isLight}
+          defaultRegion={activeProject.region}
+          disabledReason={activeProject.id === 'draft-project' ? 'Save the project to send it to the AWS Well-Architected Tool.' : undefined}
         />
       )}
 

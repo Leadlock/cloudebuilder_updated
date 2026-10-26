@@ -97,6 +97,13 @@ export interface AccountControlReading {
   observedAt: string;
   accountLabel: string;
 }
+export interface ToolPractice { bp: string; choiceId: string; title: string; state: 'met' | 'not_met' | 'unknown'; passed: number; problems: string[]; unclear: number }
+export interface ToolPreview { dryRun: true; practices: ToolPractice[]; rulesetVersion: string; evaluatedAt: string }
+export interface ToolSyncResult {
+  workloadId: string; workloadName: string; created: boolean; region: string; consoleUrl: string;
+  answered: { questionId: string; questionTitle: string; added: string[] }[]; notesOnly: number; unmatched: string[]; milestone?: number; practices: ToolPractice[];
+}
+
 export interface AccountControlsData { controls: AccountControlReading[]; permissions: Record<string, string[]> }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -158,6 +165,20 @@ class ApiWellArchitectedServiceImpl {
     const projectId = _activeProjectId;
     if (!projectId || projectId === 'draft-project') throw new Error('Save the project first');
     return apiFetch<AccountControlsData>(`/api/projects/${projectId}/well-architected/account-controls`, { method: 'POST', body: JSON.stringify({ cloudAccountId }) });
+  }
+
+  /** What CloudBuilder has evidence for in the AWS Well-Architected Tool's Framework. Nothing leaves CloudBuilder. */
+  async previewAwsTool(): Promise<ToolPreview> {
+    const projectId = _activeProjectId;
+    if (!projectId || projectId === 'draft-project') throw new Error('Save the project first');
+    return apiFetch<ToolPreview>(`/api/projects/${projectId}/well-architected/aws-tool`, { method: 'POST', body: JSON.stringify({ env: _activeEnvironment, dryRun: true }) });
+  }
+
+  /** Creates (or updates) the project's workload in the AWS Well-Architected Tool of a connected account. Throws so the card can say why it failed. */
+  async syncAwsTool(input: { cloudAccountId: string; region: string; milestone: boolean }): Promise<ToolSyncResult> {
+    const projectId = _activeProjectId;
+    if (!projectId || projectId === 'draft-project') throw new Error('Save the project first');
+    return apiFetch<ToolSyncResult>(`/api/projects/${projectId}/well-architected/aws-tool`, { method: 'POST', body: JSON.stringify({ env: _activeEnvironment, dryRun: false, ...input }) });
   }
 
   /**
