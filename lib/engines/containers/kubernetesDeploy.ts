@@ -111,6 +111,7 @@ const runAsUser = (stack: ContainerStack) => (stack === 'static' ? 101 : 1001);
  * own user, such as the official nginx). "Run as non-root" then only makes Kubernetes refuse an image that would run as root.
  */
 const userId = (c: ContainerConfig): number | null => (usesExistingImage(c) ? null : runAsUser(c.stack));
+const readOnlyRoot = (c: ContainerConfig): boolean => !usesExistingImage(c);
 const nonRoot = (c: ContainerConfig): boolean => (usesExistingImage(c) ? c.runAsNonRoot : c.runAsNonRoot || c.stack === 'static');
 /** Official images that start as root and listen on a privileged port: they cannot run under the hardened settings as they are. */
 const ROOT_IMAGE = /^(?:docker\.io\/)?(?:library\/)?(nginx|httpd)(?::|@|$)/;
@@ -182,15 +183,21 @@ function containerBlock(c: ContainerConfig, image: string, indent: number, helm:
   if (usesExistingImage(c) && !c.runAsNonRoot) lines.push(`      add: [${ROOT_IMAGE_CAPS.map((x) => `"${x}"`).join(', ')}]`);
   lines.push('    seccompProfile:');
   lines.push('      type: RuntimeDefault');
+  // A built image is ours: every stack's sample app runs with a read-only root filesystem and a writable /tmp (scripts/build-samples.ts, READ_ONLY=1).
+  // A ready-made image is not: it may write anywhere, so it keeps its own filesystem.
+  if (readOnlyRoot(c)) lines.push(helm ? '    readOnlyRootFilesystem: {{ .Values.readOnlyRootFilesystem }}' : '    readOnlyRootFilesystem: true');
   if (nonRoot(c)) {
     lines.push('    runAsNonRoot: true');
     const uid = userId(c);
     if (uid !== null) lines.push(`    runAsUser: ${uid}`);
   }
   if (helm) {
-    lines.push('  {{- if .Values.keyVault.enabled }}', '  volumeMounts:', '    - name: secrets-store', '      mountPath: /mnt/secrets-store', '      readOnly: true', '  {{- end }}');
-  } else if (usesKeyVault(c)) {
-    lines.push('  volumeMounts:', '    - name: secrets-store', '      mountPath: /mnt/secrets-store', '      readOnly: true');
+    if (readOnlyRoot(c)) lines.push('  volumeMounts:', '    {{- if .Values.readOnlyRootFilesystem }}', '    - name: tmp', '      mountPath: /tmp', '    {{- end }}');
+    lines.push('  {{- if .Values.keyVault.enabled }}', ...(readOnlyRoot(c) ? [] : ['  volumeMounts:']), '    - name: secrets-store', '      mountPath: /mnt/secrets-store', '      readOnly: true', '  {{- end }}');
+  } else if (readOnlyRoot(c) || usesKeyVault(c)) {
+    lines.push('  volumeMounts:');
+    if (readOnlyRoot(c)) lines.push('    - name: tmp', '      mountPath: /tmp');
+    if (usesKeyVault(c)) lines.push('    - name: secrets-store', '      mountPath: /mnt/secrets-store', '      readOnly: true');
   }
   return lines.map((l) => pad + l).join('\n');
 }
@@ -222,11 +229,16 @@ ${selector(c, 6)}
 ${labels(c, 8)}${usesKeyVault(c) ? '\n        azure.workload.identity/use: "true"' : ''}
     spec:
 ${usesKeyVault(c) ? `      serviceAccountName: ${c.appName}\n` : ''}      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault${nonRoot(c) ? '\n        runAsNonRoot: true' : ''}
       terminationGracePeriodSeconds: 30
       containers:
 ${containerBlock(c, k.image, 8, false)}
-${usesKeyVault(c) ? `      volumes:
-        - name: secrets-store
+${readOnlyRoot(c) || usesKeyVault(c) ? '      volumes:\n' : ''}${readOnlyRoot(c) ? `        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+` : ''}${usesKeyVault(c) ? `        - name: secrets-store
           csi:
             driver: secrets-store.csi.k8s.io
             readOnly: true
@@ -422,6 +434,8 @@ env:${plain.length === 0 ? ' {}' : '\n' + plain.map((v) => `  ${v.key}: ${yq(v.v
 secretName: ${c.appName}-secrets
 secretNames:${secrets.length === 0 ? ' []' : '\n' + secrets.map((s) => `  - ${s}`).join('\n')}
 nonRoot: ${nonRoot(c)}
+# A read-only root filesystem with a writable /tmp (the built images are tested that way). Set false only if your code writes elsewhere.
+readOnlyRootFilesystem: ${readOnlyRoot(c)}
 # The numeric user to force. Empty lets the image choose (always the case for a ready-made image).
 runAsUser: ${userId(c) ?? '""'}
 # Secrets from Azure Key Vault (Secrets Store CSI driver + workload identity). Fill these from the Terraform outputs (vault_name, tenant_id, workload_client_id).
@@ -475,12 +489,27 @@ spec:
       serviceAccountName: {{ include "app.name" . }}
       {{- end }}
       automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        {{- if .Values.nonRoot }}
+        runAsNonRoot: true
+        {{- end }}
       terminationGracePeriodSeconds: 30
       containers:
 ${container}
-      {{- if .Values.keyVault.enabled }}
+${readOnlyRoot(c) ? `      {{- if or .Values.readOnlyRootFilesystem .Values.keyVault.enabled }}
       volumes:
-        - name: secrets-store
+      {{- end }}
+      {{- if .Values.readOnlyRootFilesystem }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+      {{- end }}
+      {{- if .Values.keyVault.enabled }}
+        - name: secrets-store` : `      {{- if .Values.keyVault.enabled }}
+      volumes:
+        - name: secrets-store`}
           csi:
             driver: secrets-store.csi.k8s.io
             readOnly: true

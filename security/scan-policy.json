@@ -56,18 +56,6 @@
    "reason": "ECR tags are mutable so a release can reuse a tag such as latest. Immutable tags need a unique tag for every release, which the release flow does not enforce yet."
   },
   {
-   "id": "KSV-0014",
-   "action": "todo",
-   "max": 10,
-   "reason": "The generated Deployments do not set a read-only root filesystem. It needs a writable temp volume per stack, to be added."
-  },
-  {
-   "id": "KSV-0118",
-   "action": "todo",
-   "max": 10,
-   "reason": "The generated Deployments rely on the container's own settings instead of a pod-level security context. To be added with the read-only root filesystem."
-  },
-  {
    "id": "AWS-0011",
    "action": "todo",
    "max": 8,

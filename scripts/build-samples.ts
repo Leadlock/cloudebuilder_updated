@@ -42,7 +42,10 @@ async function sample(stack: ContainerStack): Promise<void> {
   const build = sh('docker', ['build', '-t', image, '.'], dir);
   if (build.status !== 0) { failed++; console.log(`${stack}: BUILD FAILED\n${tail(build)}`); return; }
   const hostPort = 18000 + STACKS.indexOf(stack);
-  const run = sh('docker', ['run', '-d', '--rm', '--name', image, '-p', `${hostPort}:${c.port}`, image], dir);
+  // READ_ONLY=1 runs the image the way the generated Kubernetes manifests do: a read-only root filesystem with a writable /tmp (and any
+  // paths named in WRITABLE, comma separated), to find what each stack needs to write to.
+  const readOnly = process.env['READ_ONLY'] === '1' ? ['--read-only', '--tmpfs', '/tmp', ...(process.env['WRITABLE'] ?? '').split(',').filter(Boolean).flatMap((p) => ['--tmpfs', p])] : [];
+  const run = sh('docker', ['run', '-d', '--rm', '--name', image, ...readOnly, '-p', `${hostPort}:${c.port}`, image], dir);
   if (run.status !== 0) { failed++; console.log(`${stack}: RUN FAILED\n${tail(run)}`); return; }
   try {
     const up = await waitFor(`http://127.0.0.1:${hostPort}${c.healthPath}`, 120);
