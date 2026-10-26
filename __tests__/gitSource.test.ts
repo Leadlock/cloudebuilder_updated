@@ -1,12 +1,13 @@
 /**
  * Code from a Git repository: what is refused before git runs, that git runs safely, and that a real repository becomes the same safe zip an upload is.
- * The "remote" in the real-git tests is a local repository (file://), allowed only through the test-only policy flag.
+ * The real-git tests run the real git against a local repository: the request is an ordinary https address on an allowed host, and a test runner swaps it
+ * for the local path just before git runs (and allows git's file protocol for that), so the code under test has no test-only switches.
  */
 import { execFileSync } from 'child_process';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { checkRequest, fetchGitSource, gitPolicyFromEnv, isPrivateAddress, DEFAULT_GIT_HOSTS, GitSourceError, type GitPolicy, type GitRunner } from '@/lib/deploy/project/gitSource';
+import { checkRequest, fetchGitSource, gitPolicyFromEnv, isPrivateAddress, runGit, DEFAULT_GIT_HOSTS, GitSourceError, type GitPolicy, type GitRunner } from '@/lib/deploy/project/gitSource';
 import { readZip } from '@/lib/deploy/project/zip';
 
 const policy: GitPolicy = { allowedHosts: DEFAULT_GIT_HOSTS };
@@ -102,8 +103,10 @@ describe('how git is run', () => {
 describe('a real repository', () => {
   let remote: string; let first: string; let second: string;
   const git = (...a: string[]) => execFileSync('git', ['-c', 'user.email=t@t.t', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', ...a], { cwd: remote, encoding: 'utf8' }).trim();
-  const local: GitPolicy = { allowedHosts: [], allowFile: true, skipDns: true };
-  const url = () => `file://${remote}`;
+  const ADDRESS = 'https://github.com/acme/shop';
+  // The real runner, with the address swapped for the local repository and git's file protocol allowed: nothing else about the run changes.
+  const viaLocal: GitRunner = (args, opts) => runGit(['-c', 'protocol.file.allow=always', ...args.map((a) => (a === ADDRESS ? `file://${remote}` : a))], opts);
+  const get = (req: { ref?: string; subdir?: string } = {}) => fetchGitSource({ url: ADDRESS, ...req }, policy, { run: viaLocal, resolve: async () => ['140.82.112.3'] });
   const zipOf = (r: { zip: Buffer }) => readZip(r.zip).files.map((f) => f.path).sort();
 
   beforeAll(() => {
@@ -124,41 +127,41 @@ describe('a real repository', () => {
   afterAll(() => rmSync(remote, { recursive: true, force: true }));
 
   it('becomes a zip of the files, without the repository folder, and says which commit it is', async () => {
-    const r = await fetchGitSource({ url: url() }, local);
+    const r = await get();
     expect(r.commit).toBe(first);
     expect(zipOf(r)).toEqual(['index.js', 'link-to-passwd', 'package.json', 'services/api/main.py']);
     expect(zipOf(r).some((p) => p.startsWith('.git'))).toBe(false);
   });
 
   it('never follows a symbolic link: it arrives as a small text file holding the link\'s target, not the file it points to', async () => {
-    const link = readZip((await fetchGitSource({ url: url() }, local)).zip).files.find((f) => f.path === 'link-to-passwd')!;
+    const link = readZip((await get()).zip).files.find((f) => f.path === 'link-to-passwd')!;
     expect(link.content.toString()).toBe('/etc/passwd');
   });
 
   it('takes a branch, a tag and a commit', async () => {
-    const feature = await fetchGitSource({ url: url(), ref: 'feature' }, local);
+    const feature = await get({ ref: 'feature' });
     expect(feature.commit).toBe(second);
     expect(zipOf(feature)).toContain('second.txt');
-    expect((await fetchGitSource({ url: url(), ref: 'v1' }, local)).commit).toBe(first);
-    expect((await fetchGitSource({ url: url(), ref: first }, local)).commit).toBe(first);
+    expect((await get({ ref: 'v1' })).commit).toBe(first);
+    expect((await get({ ref: first })).commit).toBe(first);
   });
 
   it('takes one folder of a repository', async () => {
-    const r = await fetchGitSource({ url: url(), subdir: 'services/api' }, local);
+    const r = await get({ subdir: 'services/api' });
     expect(zipOf(r)).toEqual(['main.py']);
-    await expect(fetchGitSource({ url: url(), subdir: 'nope' }, local)).rejects.toThrow(/does not exist/);
+    await expect(get({ subdir: 'nope' })).rejects.toThrow(/does not exist/);
   });
 
   it('is deterministic: the same commit gives the same zip, so the approval hash is stable', async () => {
-    const a = await fetchGitSource({ url: url() }, local); const b = await fetchGitSource({ url: url() }, local);
+    const a = await get(); const b = await get();
     expect(a.zip.equals(b.zip)).toBe(true);
   });
 
   it('refuses an unknown ref, and code over the size limit', async () => {
-    await expect(fetchGitSource({ url: url(), ref: 'nonexistent' }, local)).rejects.toBeInstanceOf(GitSourceError);
+    await expect(get({ ref: 'nonexistent' })).rejects.toBeInstanceOf(GitSourceError);
     writeFileSync(join(remote, 'big.bin'), Buffer.alloc(6 * 1024 * 1024, 7));
     git('checkout', '-q', '-b', 'big'); git('add', '-A'); git('commit', '-q', '-m', 'big');
-    await expect(fetchGitSource({ url: url(), ref: 'big' }, local)).rejects.toThrow(/larger than 5 MB/);
+    await expect(get({ ref: 'big' })).rejects.toThrow(/larger than 5 MB/);
     git('checkout', '-q', 'main');
   });
 
@@ -167,7 +170,7 @@ describe('a real repository', () => {
     mkdirSync(join(remote, '.githooks'), { recursive: true });
     writeFileSync(join(remote, '.githooks/post-checkout'), `#!/bin/sh\ntouch ${marker}\n`, { mode: 0o755 });
     git('checkout', '-q', '-b', 'hooks'); git('add', '-A'); git('commit', '-q', '-m', 'hook');
-    await fetchGitSource({ url: url(), ref: 'hooks' }, local);
+    await get({ ref: 'hooks' });
     expect(() => execFileSync('test', ['-e', marker])).toThrow();
     git('checkout', '-q', 'main');
   });

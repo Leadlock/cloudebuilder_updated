@@ -23,10 +23,6 @@ export class GitSourceError extends Error { constructor(message: string) { super
 export interface GitSourceRequest { url: string; ref?: string; subdir?: string; token?: string }
 export interface GitPolicy {
   allowedHosts: string[];
-  /** Tests only: allow a local repository (file://). Never set from a request or the environment. */
-  allowFile?: boolean;
-  /** Tests only: do not look the host up. */
-  skipDns?: boolean;
   timeoutMs?: number;
   /** Stop when what has been downloaded and checked out is bigger than this. */
   maxRepoBytes?: number;
@@ -59,9 +55,6 @@ export interface CheckedRequest { url: URL; ref: string; subdir: string; token: 
 export function checkRequest(req: GitSourceRequest, policy: GitPolicy): CheckedRequest {
   let url: URL;
   try { url = new URL(String(req.url ?? '').trim()); } catch { throw new GitSourceError('The repository address is not a valid URL.'); }
-  if (url.protocol === 'file:' && policy.allowFile) {
-    return { url, ref: checkRef(req.ref), subdir: checkSubdir(req.subdir), token: '', host: 'local', repo: url.pathname };
-  }
   if (url.protocol !== 'https:') throw new GitSourceError('Use the https address of the repository (https://…).');
   if (url.username || url.password) throw new GitSourceError('Do not put a user name or password in the address: use the access token field for a private repository.');
   if (url.port && url.port !== '443') throw new GitSourceError('The repository address must use the standard https port.');
@@ -130,12 +123,11 @@ export async function fetchGitSource(
   const run = deps.run ?? runGit;
   const limits = DEFAULT_ZIP_LIMITS;
 
-  if (checked.url.protocol === 'https:' && !policy.skipDns) {
-    const resolve = deps.resolve ?? (async (h: string) => (await lookup(h, { all: true })).map((a) => a.address));
-    let addresses: string[];
-    try { addresses = await resolve(checked.host); } catch { throw new GitSourceError(`The address ${checked.host} could not be found.`); }
-    if (addresses.length === 0 || addresses.some(isPrivateAddress)) throw new GitSourceError(`${checked.host} does not resolve to a public address, so it is not used.`);
-  }
+  // The host must resolve to public addresses only (git then looks it up again itself: the allow-list is what pins the host).
+  const resolve = deps.resolve ?? (async (h: string) => (await lookup(h, { all: true })).map((a) => a.address));
+  let addresses: string[];
+  try { addresses = await resolve(checked.host); } catch { throw new GitSourceError(`The address ${checked.host} could not be found.`); }
+  if (addresses.length === 0 || addresses.some(isPrivateAddress)) throw new GitSourceError(`${checked.host} does not resolve to a public address, so it is not used.`);
 
   const work = mkdtempSync(join(tmpdir(), 'cb-git-'));
   const repoDir = join(work, 'repo');
@@ -152,7 +144,7 @@ export async function fetchGitSource(
     }
     const safe = [
       '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', '-c', 'core.symlinks=false', '-c', 'http.followRedirects=false', '-c', 'submodule.recurse=false',
-      '-c', 'protocol.allow=never', '-c', `protocol.${checked.url.protocol === 'file:' ? 'file' : 'https'}.allow=always`, '-c', 'advice.detachedHead=false', '-c', 'gc.auto=0',
+      '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always', '-c', 'advice.detachedHead=false', '-c', 'gc.auto=0',
     ];
     const limit = policy.maxRepoBytes ?? 200 * 1024 * 1024;
     const opts = { cwd: repoDir, env, timeoutMs: policy.timeoutMs ?? 120_000, watch: () => dirBytes(repoDir, limit) > limit };

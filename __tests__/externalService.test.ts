@@ -33,13 +33,6 @@ describe('the resource', () => {
       expect(def!.terraform).toBeUndefined();
     }
   });
-
-  it('costs what the team enters, and nothing by default', () => {
-    const def = getResourceDefinition('aws_external_service')!;
-    expect(def.costCalculator!({ monthlyCostUsd: 0 }).monthlyCost).toBe(0);
-    expect(def.costCalculator!({ monthlyCostUsd: 450 }).monthlyCost).toBe(450);
-    expect(def.costCalculator!({ monthlyCostUsd: -5 }).monthlyCost).toBe(0);
-  });
 });
 
 describe('the rules', () => {
@@ -111,7 +104,7 @@ describe('Terraform', () => {
 });
 
 describe('the cost estimate', () => {
-  // The cost engine never read the node's costCalculator hook: the entered monthly cost was dropped and the service counted as "no pricing data".
+  // The entered monthly cost reaches the estimate (it used to be dropped: the service counted as "no pricing data").
   const { CostEstimator } = jest.requireActual('@/lib/engines/cost/CostEstimator') as typeof import('@/lib/engines/cost/CostEstimator');
   const res = (cloud: 'aws' | 'azure', config: Record<string, unknown>) => ({ id: 'x', resourceType: `${cloud}_external_service`, provider: cloud, label: 'Datadog', positionX: 0, positionY: 0, configJson: JSON.stringify(config), region: null, groupId: null, locked: false, architectureId: 'a' });
   const total = (cloud: 'aws' | 'azure', config: Record<string, unknown>) => new CostEstimator().estimate({ architectureId: 'a', projectId: 'p', resources: [res(cloud, config) as never] }, 'TEST').items[0]!;

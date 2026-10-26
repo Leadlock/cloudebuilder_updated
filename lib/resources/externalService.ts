@@ -1,6 +1,6 @@
 /**
  * The "Third-party service" canvas node: a SaaS or hosted product the workload depends on (Datadog, MongoDB Atlas, Auth0, Stripe, Cloudflare ...).
- * It is drawn and connected like any resource, counts in the cost estimate when a monthly cost is entered, and is reviewed through the questions
+ * It is drawn and connected like any resource, counts in the cost estimate when a monthly cost is entered (lib/cloud/pricing/externalServicePrice.ts), and is reviewed through the questions
  * in lib/engines/assessment/externalQuestions.ts, whose answers are stored as settings of the node. It creates NO infrastructure: Terraform
  * skips it (see TerraformGenerator), because the service is not in the cloud account.
  */
@@ -74,10 +74,6 @@ function definition(cloud: 'aws' | 'azure'): ResourceDefinition {
     monthlyBaseCost: 0,
     defaultConfig: { ...EXTERNAL_DEFAULT_CONFIG },
     configSchema,
-    costCalculator: (config) => {
-      const cost = Math.max(0, Number(config['monthlyCostUsd']) || 0);
-      return { monthlyCost: cost, breakdown: [{ label: 'Subscription or usage, as entered', cost }] };
-    },
   };
 }
 
