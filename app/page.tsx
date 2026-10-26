@@ -22,6 +22,7 @@ import EnvironmentsPanel from '@/components/panels/EnvironmentsPanel';
 import WellArchitectedReview from '@/components/panels/WellArchitectedReview';
 import ReviewWorkflowPanel from '@/components/panels/ReviewWorkflowPanel';
 import AnalyzePanel from '@/components/panels/AnalyzePanel';
+import ReadinessPanel from '@/components/panels/ReadinessPanel';
 import DriftPanel from '@/components/panels/DriftPanel';
 import MultiStackPanel from '@/components/panels/MultiStackPanel';
 import CostComparisonPanel from '@/components/panels/CostComparisonPanel';
@@ -57,6 +58,7 @@ function MainContent() {
     drift:              <DriftPanel />,
     security:           <SecurityPanel />,
     'well-architected': <WellArchitectedReview />,
+    readiness:          <ReadinessPanel />,
     cost:               <CostPanel />,
     'cost-comparison':  <CostComparisonPanel />,
     deploy:             <DeployPanel />,

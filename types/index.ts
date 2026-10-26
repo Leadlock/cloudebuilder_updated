@@ -61,6 +61,7 @@ export type AppView =
   | 'advisor'
   | 'analyze'
   | 'well-architected'
+  | 'readiness'
   | 'disaster-recovery'
   | 'import'
   | 'container-templates'

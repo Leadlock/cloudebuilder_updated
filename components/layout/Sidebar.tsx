@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, Cloud, Plus, Trash2, Wand2, LayoutGrid,
   Sparkles, Brain, History, GitBranch, Shield, Upload, CheckSquare, FileCheck,
   Activity, Scale, Users, Package, X, GripVertical, Link2, LogOut, User, ClipboardList,
-  GitFork, RefreshCw
+  GitFork, RefreshCw, FileText
 } from 'lucide-react';
 import clsx from 'clsx';
 import { AppView, Project } from '@/types';
@@ -37,6 +37,7 @@ const NAV_GROUPS = [
     items: [
       { id: 'analyze',    label: 'Overview',          icon: Activity,        requiresProject: true },
       { id: 'well-architected', label: 'Well-Architected', icon: CheckSquare, requiresProject: true },
+      { id: 'readiness',  label: 'Readiness Reports', icon: FileText,       requiresProject: true },
       { id: 'security',   label: 'Security',          icon: ShieldCheck,     requiresProject: true },
       { id: 'cost',       label: 'Cost Estimate',     icon: DollarSign,      requiresProject: true },
       { id: 'cost-comparison', label: 'Cost Comparison', icon: Scale,        requiresProject: true },
