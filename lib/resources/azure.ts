@@ -845,7 +845,7 @@ const coreAzureResources: ResourceDefinition[] = [
     defaultConfig: {
       name: 'my-aks', dnsPrefix: 'my-aks', kubernetesVersion: '', nodeVmSize: 'Standard_D2s_v3', nodeCount: 3,
       enableAutoScaling: false, minNodeCount: 1, maxNodeCount: 5, skuTier: 'Free', privateClusterEnabled: false,
-      networkPlugin: 'azure', rbacEnabled: true, tags: {},
+      networkPlugin: 'azure', networkPolicy: 'azure', rbacEnabled: true, tags: {},
     },
     configSchema: [
       { key: 'name', label: 'Cluster Name', type: 'text', defaultValue: 'my-aks', required: true },
@@ -883,6 +883,11 @@ const coreAzureResources: ResourceDefinition[] = [
         ],
       },
       { key: 'privateClusterEnabled', label: 'Private Cluster', type: 'boolean', defaultValue: false, section: 'Networking' },
+      {
+        key: 'networkPolicy', label: 'Network policy engine', type: 'select', defaultValue: 'azure', section: 'Networking', advanced: true,
+        description: 'Enforces Kubernetes NetworkPolicy between pods; without one the policies are ignored. Azure needs the Azure network plugin. Changing it on a running cluster replaces the cluster.',
+        options: [{ label: 'Azure network policy', value: 'azure' }, { label: 'Calico', value: 'calico' }, { label: 'None', value: 'none' }],
+      },
       {
         key: 'networkPlugin', label: 'Network Plugin', type: 'select', defaultValue: 'azure', section: 'Networking', advanced: true,
         options: [

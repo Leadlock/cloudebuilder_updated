@@ -2040,16 +2040,16 @@ describe('TerraformGenerator — Azure', () => {
       expect(main.content).toContain('days = 14');
     });
 
-    test('networkDefaultAction=Deny generates a network_rules block; Allow (default) omits it', () => {
+    test('networkDefaultAction=Deny writes default_action Deny; Allow (default) writes Allow; both let Azure\'s own services through', () => {
       const denied = makeResource({ id: 'st-1', resourceType: 'azure_storage', provider: 'azure', configJson: JSON.stringify({ name: 'restricted', networkDefaultAction: 'Deny' }) });
       const deniedResult = gen.generate(azureInput([denied]));
       const deniedMain = deniedResult.files.find((f) => f.filename === 'main.tf')!;
-      expect(deniedMain.content).toContain('network_rules {');
+      expect(deniedMain.content).toMatch(/network_rules \{\n\s+default_action = "Deny"\n\s+bypass\s+= \["AzureServices"\]/);
 
       const open = makeResource({ id: 'st-2', resourceType: 'azure_storage', provider: 'azure', configJson: JSON.stringify({ name: 'open' }) });
       const openResult = gen.generate(azureInput([open]));
       const openMain = openResult.files.find((f) => f.filename === 'main.tf')!;
-      expect(openMain.content).not.toContain('network_rules {');
+      expect(openMain.content).toMatch(/network_rules \{\n\s+default_action = "Allow"\n\s+bypass\s+= \["AzureServices"\]/);
     });
   });
 

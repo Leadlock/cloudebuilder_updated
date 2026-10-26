@@ -178,6 +178,8 @@ resource "azurerm_kubernetes_cluster" "app" {
   network_profile {
     network_plugin      = "azure"
     network_plugin_mode = "overlay"
+    # Enforces Kubernetes NetworkPolicy objects between pods (without an engine they are ignored). Azure network policy works with Azure CNI Overlay.
+    network_policy      = "azure"
   }
 
   oms_agent {

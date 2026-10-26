@@ -3547,9 +3547,9 @@ data "azurerm_network_security_group" "${name}" {
       lines.push(`  }`);
     }
 
-    if (cfg['networkDefaultAction'] === 'Deny') {
-      lines.push(`  network_rules {`, `    default_action = "Deny"`, `  }`);
-    }
+    // Azure's own services (logs, backups, monitoring) reach a storage account as trusted services; with the default action "Allow" this is what Azure does
+    // anyway, and with "Deny" it keeps them working. Written out so it is a decision in the files and not an accident.
+    lines.push(`  network_rules {`, `    default_action = "${cfg['networkDefaultAction'] === 'Deny' ? 'Deny' : 'Allow'}"`, `    bypass         = ["AzureServices"]`, `  }`);
 
     if (cfg['staticWebsite'] === true && (cfg['kind'] ?? 'StorageV2') === 'StorageV2') {
       // Document names are file names: keep them to the characters a blob name normally has.
@@ -3778,7 +3778,9 @@ data "azurerm_network_security_group" "${name}" {
     }
     lines.push(`  }`, ``);
     lines.push(`  identity {`, `    type = "SystemAssigned"`, `  }`);
-    lines.push(``, `  network_profile {`, `    network_plugin = "${cfg['networkPlugin'] ?? 'azure'}"`, `  }`);
+    // A network policy engine, when the design asks for one. A saved design without the setting is left as it was: changing it on a running cluster replaces the cluster.
+    const policy = typeof cfg['networkPolicy'] === 'string' && ['azure', 'calico'].includes(cfg['networkPolicy']) && (cfg['networkPolicy'] === 'calico' || (cfg['networkPlugin'] ?? 'azure') === 'azure') ? cfg['networkPolicy'] : '';
+    lines.push(``, `  network_profile {`, `    network_plugin = "${cfg['networkPlugin'] ?? 'azure'}"`, ...(policy ? [`    network_policy = "${policy}"`] : []), `  }`);
     lines.push(``, `  role_based_access_control_enabled = ${cfg['rbacEnabled'] !== false}`);
     if (cfg['rbacEnabled'] !== false) {
       lines.push(``, `  azure_active_directory_role_based_access_control {`, `    managed            = true`, `    azure_rbac_enabled = true`, `  }`);

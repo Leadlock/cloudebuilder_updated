@@ -54,18 +54,6 @@
    "action": "todo",
    "max": 17,
    "reason": "ECR tags are mutable so a release can reuse a tag such as latest. Immutable tags need a unique tag for every release, which the release flow does not enforce yet."
-  },
-  {
-   "id": "AZU-0010",
-   "action": "todo",
-   "max": 7,
-   "reason": "Storage accounts let trusted Microsoft services bypass the network rules, which Azure's own services need for logs and backups; to be reviewed per design."
-  },
-  {
-   "id": "AZU-0043",
-   "action": "todo",
-   "max": 3,
-   "reason": "AKS clusters are created without a network policy. To be offered as a setting with a default."
   }
  ]
 }
