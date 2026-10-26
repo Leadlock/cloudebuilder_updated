@@ -515,3 +515,15 @@ export function AwsStepFunctionsIcon({ size = 24, className = '' }: IconProps) {
   );
 }
 
+
+// ─── Third-party service (neutral: it is not an AWS or Azure product) ────────
+export function ExternalServiceIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#64748B" fillOpacity="0.15" />
+      <path d="M17 31l14-14" stroke="#64748B" strokeWidth="3" strokeLinecap="round" />
+      <path d="M21 14.5l3-3a6 6 0 018.5 8.5l-3 3" stroke="#64748B" strokeWidth="3" strokeLinecap="round" />
+      <path d="M27 33.5l-3 3A6 6 0 0115.5 28l3-3" stroke="#64748B" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}

@@ -31,6 +31,7 @@ import {
   AwsCognitoIcon,
   AwsStepFunctionsIcon,
   AwsElastiCacheIcon,
+  ExternalServiceIcon,
 } from './AwsIcons';
 import {
   AzureIcon,
@@ -74,6 +75,9 @@ export function CloudServiceIcon({
 }: CloudServiceIconProps) {
   // Normalize resourceType
   const type = resourceType.toLowerCase();
+
+  // A third-party service is neither an AWS nor an Azure product: a neutral icon, whichever cloud the design is on.
+  if (type.endsWith('_external_service')) return <ExternalServiceIcon size={size} className={className} />;
 
   // AWS Icons mapping
   if (type.includes('vpc') && !type.includes('subnet') && !type.includes('endpoint')) {

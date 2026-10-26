@@ -726,7 +726,7 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
               <div className={clsx('text-xs flex justify-between', isLight ? 'text-slate-800' : 'text-slate-300')}>
                 <span className={isLight ? 'text-slate-600' : 'text-slate-400'}>Est. Base Cost</span>
                 <span className={clsx('font-semibold', isLight ? 'text-emerald-700' : 'text-emerald-400')}>
-                  {def.monthlyBaseCost > 0 ? `$${def.monthlyBaseCost.toFixed(2)} / mo` : 'Free Tier'}
+                  {def.monthlyBaseCost > 0 ? `$${def.monthlyBaseCost.toFixed(2)} / mo` : node.resourceType.endsWith('_external_service') ? 'As entered' : 'Free Tier'}
                 </span>
               </div>
             </div>
