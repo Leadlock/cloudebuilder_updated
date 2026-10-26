@@ -94,7 +94,7 @@ export function deriveFindings(defs: readonly ControlDef[], results: readonly Co
     const rec = records[r.id];
     out.push({
       id: `F-${r.id}`, controlId: r.id, group: r.group, severity: sevOf(r),
-      title: failing.length ? `${r.title}: a check found a problem` : r.score === 0 ? `${r.title}: not in place` : `${r.title}: not yet supported by evidence`,
+      title: `${r.title.replace(/[?:.]+$/, '')} — ${failing.length ? 'a check found a problem' : r.score === 0 ? 'not in place' : 'not yet supported by evidence'}`,
       condition: failing.length ? failing.slice(0, 3).map((s) => s.text).join(' ') : r.reasons.join(' '),
       cause: failing.length ? 'The configuration does not meet what the check expects.' : r.score === 0 ? 'The control has not been put in place.' : 'The control is not documented or evidenced well enough to rely on.',
       effect: d.effect,
