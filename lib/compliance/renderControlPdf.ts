@@ -179,7 +179,8 @@ function controls(p: Page, r: ReadinessReport) {
 function back(p: Page, r: ReadinessReport) {
   p.h1('Limits and method');
   p.h2('What this report cannot tell you');
-  r.limitations.length ? p.table([{ h: 'ID', w: 0.8 }, { h: 'What is missing or limited', w: 5 }, { h: 'Effect', w: 4 }], r.limitations.map((l) => [l.id, l.item, l.effect]), { size: 8 }) : p.text('No limitations recorded.', { color: K.muted });
+  if (r.limitations.length) p.table([{ h: 'ID', w: 0.8 }, { h: 'What is missing or limited', w: 5 }, { h: 'Effect', w: 4 }], r.limitations.map((l) => [l.id, l.item, l.effect]), { size: 8 });
+  else p.text('No limitations recorded.', { color: K.muted });
   p.h2('Evidence index', 100);
   p.table([{ h: 'Ref', w: 0.8 }, { h: 'Title', w: 4 }, { h: 'Source', w: 1.4 }, { h: 'Dated', w: 1.3 }, { h: 'Used for', w: 2.5 }], r.evidenceIndex.map((e) => [e.ref, e.title, e.origin === 'system' ? 'System export' : 'By hand', e.collectedAt, e.controls.join(', ')]), { size: 8, empty: 'No evidence has been attached yet.' });
   p.h2('How scores are decided', 160);
