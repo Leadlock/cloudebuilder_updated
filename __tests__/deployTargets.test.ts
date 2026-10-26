@@ -573,7 +573,8 @@ describe('AKS: secrets in Key Vault (CSI driver and workload identity)', () => {
     expect(balanced(f['aks/main.tf']!)).toBe(true);
     expect(shellSyntaxOk(f['deploy.sh']!)).toBe(true);
     expect(f['deploy.sh']).not.toContain('az keyvault');
-    expect(parse(f['k8s/deployment.yaml']!).spec.template.spec.volumes).toBeUndefined();
+    // no vault volume: only the writable /tmp a read-only root filesystem needs
+    expect(parse(f['k8s/deployment.yaml']!).spec.template.spec.volumes).toEqual([{ name: 'tmp', emptyDir: { sizeLimit: '128Mi' } }]);
   });
   it('the manifests: a service account for the identity, a SecretProviderClass that syncs the Secret the app reads, and a pod that mounts it', () => {
     const f = files();
@@ -589,7 +590,7 @@ describe('AKS: secrets in Key Vault (CSI driver and workload identity)', () => {
     const dep = parse(f['k8s/deployment.yaml']!).spec.template;
     expect(dep.metadata.labels['azure.workload.identity/use']).toBe('true');
     expect(dep.spec.serviceAccountName).toBe('orders-api');
-    expect(dep.spec.volumes).toEqual([{ name: 'secrets-store', csi: { driver: 'secrets-store.csi.k8s.io', readOnly: true, volumeAttributes: { secretProviderClass: 'orders-api' } } }]);
+    expect(dep.spec.volumes).toEqual([{ name: 'tmp', emptyDir: { sizeLimit: '128Mi' } }, { name: 'secrets-store', csi: { driver: 'secrets-store.csi.k8s.io', readOnly: true, volumeAttributes: { secretProviderClass: 'orders-api' } } }]);
     const ctr = dep.spec.containers[0];
     expect(ctr.volumeMounts).toEqual([{ name: 'secrets-store', mountPath: '/mnt/secrets-store', readOnly: true }]);
     expect(ctr.env.find((e: { name: string }) => e.name === 'API_TOKEN').valueFrom.secretKeyRef).toEqual({ name: 'orders-api-secrets', key: 'API_TOKEN' });

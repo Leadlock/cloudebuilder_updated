@@ -95,6 +95,10 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
   /** The zips of the person's own code, by service: what the server returned for each upload (never the file). */
   const [sources, setSources] = useState<Record<string, { id: string; name: string; files: number; bytes: number; replaced: string[] }>>({});
+  /** The "from a Git repository" form of each service. The token lives only here, is sent once, and is cleared as soon as the request is made. */
+  const [git, setGit] = useState<Record<string, { open: boolean; url: string; ref: string; subdir: string; token: string }>>({});
+  const gitOf = (layer: string) => git[layer] ?? { open: false, url: '', ref: '', subdir: '', token: '' };
+  const setGitField = (layer: string, patch: Partial<{ open: boolean; url: string; ref: string; subdir: string; token: string }>) => setGit((cur) => ({ ...cur, [layer]: { ...(cur[layer] ?? { open: false, url: '', ref: '', subdir: '', token: '' }), ...patch } }));
   const builtLayers = LAYERS.filter((l) => l !== 'database' && stack.layers[l].enabled && stack.layers[l].config.image === '');
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const base = projectId ? `/api/projects/${projectId}/releases` : '';
@@ -192,6 +196,26 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
       const body = await res.json().catch(() => ({}));
       if (!res.ok) return fail(body?.error?.message ?? 'Could not upload the zip');
       setSources((cur) => ({ ...cur, [layer]: { id: body.data.sourceId, name: file.name, files: body.data.files, bytes: body.data.bytes, replaced: body.data.replaced ?? [] } }));
+      setBusy(false);
+    } catch { fail('Could not reach the server'); }
+  }
+
+  async function fromGit(layer: string) {
+    const g = gitOf(layer);
+    if (!g.url.trim()) return;
+    setError(null); setBusy(true);
+    const token = g.token;
+    setGitField(layer, { token: '' }); // the token is never kept: it is sent now and has to be typed again
+    try {
+      const res = await fetch(`${base}/sources/git`, {
+        method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ layer, url: g.url.trim(), ...(g.ref.trim() ? { ref: g.ref.trim() } : {}), ...(g.subdir.trim() ? { subdir: g.subdir.trim() } : {}), ...(token ? { token } : {}) }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) return fail(body?.error?.message ?? 'Could not get the code from the repository');
+      const d = body.data as { sourceId: string; files: number; bytes: number; replaced?: string[]; git: { repo: string; ref: string; commit: string; subdir: string } };
+      setSources((cur) => ({ ...cur, [layer]: { id: d.sourceId, name: `${d.git.repo}${d.git.subdir ? `/${d.git.subdir}` : ''} @ ${d.git.commit.slice(0, 7)}`, files: d.files, bytes: d.bytes, replaced: d.replaced ?? [] } }));
+      setGitField(layer, { open: false });
       setBusy(false);
     } catch { fail('Could not reach the server'); }
   }
@@ -375,7 +399,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
           </div>
           <div className="col-span-2 space-y-2" data-testid="own-code">
             <p className={label}>Your code (optional)</p>
-            <p className={clsx('text-[11px]', muted)}>Without it, each service is built from the generated sample app. Upload a zip (up to 5 MB) of a service&apos;s code to build that instead. CloudBuilder&apos;s own Dockerfile is used, not one from the zip.</p>
+            <p className={clsx('text-[11px]', muted)}>Without it, each service is built from the generated sample app. Upload a zip (up to 5 MB) of a service&apos;s code, or take it from a Git repository, to build that instead. CloudBuilder&apos;s own Dockerfile is used, not one from the zip.</p>
             {builtLayers.map((layer) => (
               <div key={layer} className="flex flex-wrap items-center gap-2 text-xs">
                 <label className="font-medium w-20" htmlFor={`code-${layer}`}>{LAYER_LABEL[layer]}</label>
@@ -385,7 +409,24 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
                     <button type="button" className="text-rose-500" onClick={() => setSources(({ [layer]: _gone, ...rest }) => rest)}>Remove</button>
                   </>
                 ) : (
-                  <input id={`code-${layer}`} type="file" accept=".zip,application/zip" disabled={busy} onChange={(e) => { void upload(layer, e.target.files?.[0]); e.target.value = ''; }} />
+                  <>
+                    <input id={`code-${layer}`} type="file" accept=".zip,application/zip" disabled={busy} onChange={(e) => { void upload(layer, e.target.files?.[0]); e.target.value = ''; }} />
+                    <button type="button" className="underline" disabled={busy} onClick={() => setGitField(layer, { open: !gitOf(layer).open })}>{gitOf(layer).open ? 'Cancel' : 'or from a Git repository'}</button>
+                  </>
+                )}
+                {!sources[layer] && gitOf(layer).open && (
+                  <div className="basis-full grid grid-cols-2 gap-2 pl-[5.5rem]" data-testid={`git-${layer}`}>
+                    <input aria-label={`${LAYER_LABEL[layer]} repository address`} placeholder="https://github.com/your-org/your-repo" value={gitOf(layer).url} onChange={(e) => setGitField(layer, { url: e.target.value })}
+                      className={clsx('col-span-2 rounded-lg border px-2 py-1.5', isLight ? 'bg-white border-slate-300' : 'bg-slate-950 border-slate-700')} />
+                    <input aria-label={`${LAYER_LABEL[layer]} branch, tag or commit`} placeholder="Branch, tag or commit (default branch if empty)" value={gitOf(layer).ref} onChange={(e) => setGitField(layer, { ref: e.target.value })}
+                      className={clsx('rounded-lg border px-2 py-1.5', isLight ? 'bg-white border-slate-300' : 'bg-slate-950 border-slate-700')} />
+                    <input aria-label={`${LAYER_LABEL[layer]} folder in the repository`} placeholder="Folder, e.g. services/api (optional)" value={gitOf(layer).subdir} onChange={(e) => setGitField(layer, { subdir: e.target.value })}
+                      className={clsx('rounded-lg border px-2 py-1.5', isLight ? 'bg-white border-slate-300' : 'bg-slate-950 border-slate-700')} />
+                    <input aria-label={`${LAYER_LABEL[layer]} access token`} type="password" autoComplete="off" placeholder="Access token, only for a private repository" value={gitOf(layer).token} onChange={(e) => setGitField(layer, { token: e.target.value })}
+                      className={clsx('col-span-2 rounded-lg border px-2 py-1.5', isLight ? 'bg-white border-slate-300' : 'bg-slate-950 border-slate-700')} />
+                    <p className={clsx('col-span-2 text-[11px]', muted)}>The token is used once to read the repository and is never stored. A commit is taken, so the release builds exactly what you approve.</p>
+                    <button type="button" disabled={busy || !gitOf(layer).url.trim()} onClick={() => void fromGit(layer)} className="col-span-2 justify-self-start px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-40">Get the code</button>
+                  </div>
                 )}
               </div>
             ))}

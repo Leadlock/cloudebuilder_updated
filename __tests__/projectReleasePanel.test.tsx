@@ -556,3 +556,70 @@ describe('the state storage', () => {
     expect((screen.getByLabelText('State: S3 bucket') as HTMLInputElement).value).toBe('cloudbuilder-tfstate-1-eu-north-1');
   });
 });
+
+describe('code from a Git repository', () => {
+  let gitCalls: Array<{ path: string; body: Record<string, unknown> }> = [];
+  beforeEach(() => {
+    gitCalls = [];
+    const base = (global as unknown as { fetch: jest.Mock }).fetch;
+    (global as unknown as { fetch: unknown }).fetch = jest.fn(async (path: string, init: RequestInit = {}) => {
+      if (path.endsWith('/releases/sources/git')) {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        gitCalls.push({ path, body });
+        if (String(body['url']).includes('private')) return { ok: false, status: 400, json: async () => ({ ok: false, error: { code: 'BAD_REQUEST', message: 'The repository could not be read: it does not exist or needs an access token (none was given).' } }) };
+        return { ok: true, status: 201, json: async () => ({ ok: true, data: { sourceId: 'src-git', layer: body['layer'], files: 41, bytes: 90000, replaced: [], git: { host: 'github.com', repo: 'acme/shop', ref: 'main', commit: 'abcdef1234567890abcdef1234567890abcdef12', subdir: String(body['subdir'] ?? '') } } }) };
+      }
+      return base(path, init);
+    });
+  });
+  const open = async (layer: string) => {
+    mount();
+    await screen.findByLabelText(layer);
+    fireEvent.click(screen.getAllByRole('button', { name: 'or from a Git repository' })[layer === 'Backend' ? 0 : 1]!);
+  };
+
+  test('asks for the address, branch, folder and a token, and sends them with the service', async () => {
+    routes.unshift([/POST \/api\/projects\/p1\/releases$/, () => ({ status: 201, data: PLAN })]);
+    await open('API');
+    fireEvent.change(screen.getByLabelText('API repository address'), { target: { value: 'https://github.com/acme/shop' } });
+    fireEvent.change(screen.getByLabelText('API branch, tag or commit'), { target: { value: 'release/1' } });
+    fireEvent.change(screen.getByLabelText('API folder in the repository'), { target: { value: 'services/api' } });
+    fireEvent.change(screen.getByLabelText('API access token'), { target: { value: 'ghp_secret' } });
+    expect((screen.getByLabelText('API access token') as HTMLInputElement).type).toBe('password');
+    fireEvent.click(screen.getByRole('button', { name: 'Get the code' }));
+    await screen.findByText(/acme\/shop\/services\/api @ abcdef1: 41 files/);
+    expect(gitCalls).toEqual([{ path: '/api/projects/p1/releases/sources/git', body: { layer: 'api', url: 'https://github.com/acme/shop', ref: 'release/1', subdir: 'services/api', token: 'ghp_secret' } }]);
+
+    // then the release is planned with the stored code's id, like an upload
+    await waitFor(() => expect((screen.getByLabelText('State: resource group') as HTMLInputElement).value).toBe('rg-state'));
+    fireEvent.click(screen.getByRole('button', { name: 'Plan the deployment' }));
+    await screen.findByTestId('release-plan');
+    expect(calls.find((c) => c.method === 'POST' && c.path === '/api/projects/p1/releases')!.body).toMatchObject({ sources: { api: 'src-git' } });
+  });
+
+  test('sends nothing the person left empty, and never keeps the token', async () => {
+    await open('API');
+    fireEvent.change(screen.getByLabelText('API repository address'), { target: { value: 'https://github.com/acme/shop' } });
+    fireEvent.change(screen.getByLabelText('API access token'), { target: { value: 'ghp_secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Get the code' }));
+    await screen.findByText(/acme\/shop @ abcdef1/);
+    expect(gitCalls[0]!.body).toEqual({ layer: 'api', url: 'https://github.com/acme/shop', token: 'ghp_secret' });
+    expect(document.body.innerHTML).not.toContain('ghp_secret');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: 'or from a Git repository' }))[1]!);
+    expect((screen.getByLabelText('API access token') as HTMLInputElement).value).toBe('');
+  });
+
+  test('shows why a repository could not be read, and keeps asking', async () => {
+    await open('API');
+    fireEvent.change(screen.getByLabelText('API repository address'), { target: { value: 'https://github.com/acme/private-repo' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Get the code' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/needs an access token/);
+    expect(screen.getByLabelText('API repository address')).toBeTruthy();
+  });
+
+  test('the button waits for an address', async () => {
+    await open('API');
+    expect((screen.getByRole('button', { name: 'Get the code' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});

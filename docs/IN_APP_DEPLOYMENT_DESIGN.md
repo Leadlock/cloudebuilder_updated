@@ -98,6 +98,7 @@ Container Templates produces Dockerfiles and an optional sample app; real code i
 | Source | Phase | Notes |
 |---|---|---|
 | The generated sample apps | 1 | Proves the whole pipeline end to end with no source handling |
+| Git repository per service | after 4 | The code of a service can be taken from a Git repository instead of a zip (see below). |
 | Zip upload per service | 1 | Size cap, zip-slip and symlink rejection, no executable bits needed, stored encrypted with a short TTL |
 | Git repository + branch/commit | 3 | Read-only deploy token stored encrypted, host allow-list, SSRF checks, shallow clone in an isolated temp dir |
 
@@ -169,7 +170,7 @@ Phase 0 is not optional: the generated Terraform and start scripts have never ru
 
 ## 11. Decisions (taken 2026-10-16)
 
-1. **Source in v1:** the generated sample apps plus zip upload. Git comes in phase 3.
+1. **Source in v1:** the generated sample apps plus zip upload. Git: done, see "Code from a Git repository" below.
 2. **AWS builds:** CodeBuild in the customer's account (phase 2).
 3. **Who can deploy:** only the restricted-features list (today `ajinkya@neozaar.com`), with the existing approval mode (password confirmation by default). Nothing new to configure.
 4. **Environments:** one deployment per project **environment**, as the Deploy tab does (the state key, the release record and the approval all carry the environment).
@@ -182,3 +183,23 @@ Phase 0 is not optional: the generated Terraform and start scripts have never ru
 - **Azure calls use the cloud's REST APIs with `@azure/identity` tokens**, not new SDK packages (the registry-build and Key Vault data-plane SDKs are not dependencies yet). A small `AzureOps` interface wraps them, so every step is tested with a fake and the real implementation is one file.
 - **The release is behind a switch.** `CLOUDBUILDER_PROJECT_RELEASES=1` turns it on; it is off by default until phase 0 (a real test deployment from the terminal) has been done, because none of the generated Terraform or start scripts has run on a real cloud yet.
 - **Release records keep the compose file and tag of every release**, so a rollback needs no rebuild and no plan.
+
+
+## Code from a Git repository
+
+Each built service can take its code from a Git repository instead of an uploaded zip: `POST /api/projects/{id}/releases/sources/git` with `layer`, `url`, and optionally
+`ref` (branch, tag or commit), `subdir` (a folder of the repository) and `token` (for a private repository). The repository is fetched on the server, turned into the same
+kind of zip an upload is, read again with the same strict checks (`lib/deploy/project/zip.ts`) and stored with the same short TTL. The response carries the commit that
+was taken, and the approval covers the SHA-256 of exactly that content, so a release builds what was approved even if the branch moves. Everything after that is the same
+as an uploaded zip: the generated Dockerfile is used, not one from the repository.
+
+What it will and will not do (`lib/deploy/project/gitSource.ts`):
+
+- Only `https`, only hosts on the allow-list: `CLOUDBUILDER_GIT_ALLOWED_HOSTS` (comma separated; default `github.com,gitlab.com,bitbucket.org,dev.azure.com`). No user name,
+  password, port, query or fragment in the address. A host that resolves to a private, loopback or link-local address is refused, so it cannot be used to reach the network.
+- `git` runs without a shell, with hooks, submodules, redirects, prompts and every protocol but https turned off, with no user or system configuration, a two-minute limit
+  and a size limit on what is downloaded. Symbolic links are not followed (they arrive as small text files). A repository's own `.git` folder is never included.
+- The token for a private repository goes to git through its environment (an `Authorization` header), never a command line, a file or a log, and is not stored. Errors have it
+  removed. It is a personal access token the person creates with read access (GitHub: `x-access-token`; GitLab: `oauth2`; Bitbucket: `x-token-auth`; Azure DevOps: a PAT).
+- Limits are the zip limits: 5 MB zipped, 30 MB expanded, 2000 files. For a larger repository use `subdir` or upload a zip.
+- The audit log records who took which repository and commit, and whether a token was used (never its value).
