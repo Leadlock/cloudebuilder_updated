@@ -7,22 +7,22 @@ import { SCORE_LABEL, SCORE_MEANING, type ControlResult, type Score } from './ty
 import { EVIDENCE_WINDOW_DAYS } from './scoring';
 import type { ReadinessReport } from './report';
 
-type Doc = PDFKit.PDFDocument;
-const P = { w: 595.28, h: 841.89, m: 50, top: 64, bottom: 56 };
-const CW = P.w - P.m * 2;
-const K = {
+export type Doc = PDFKit.PDFDocument;
+export const P = { w: 595.28, h: 841.89, m: 50, top: 64, bottom: 56 };
+export const CW = P.w - P.m * 2;
+export const K = {
   navy: '#1F3A5F', teal: '#0F766E', text: '#1F2937', muted: '#5B6573', line: '#D5DCE5', band: '#F1F4F8', white: '#FFFFFF',
   score: ['#B91C1C', '#C2410C', '#A16207', '#15803D', '#0F766E'] as string[], scoreBg: ['#FBE4E6', '#FDE9D6', '#FFF4C7', '#DDF1E2', '#C9EBD5'] as string[], none: '#64748B', noneBg: '#E7EAEE',
   sev: { High: '#B91C1C', Medium: '#A16207', Low: '#1D4ED8' } as Record<string, string>,
   ready: { Ready: '#15803D', 'Ready with conditions': '#A16207', 'Not ready': '#B91C1C', Incomplete: '#64748B' } as Record<string, string>,
 };
-const s = (x: unknown) => pdfSafe(x);
-const plural = (n: number, a: string, b = `${a}s`) => `${n} ${n === 1 ? a : b}`;
-const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+export const s = (x: unknown) => pdfSafe(x);
+export const plural = (n: number, a: string, b = `${a}s`) => `${n} ${n === 1 ? a : b}`;
+export const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 const scoreColor = (r: ControlResult) => (r.score === null ? K.none : K.score[r.score]!);
 const scoreBg = (r: ControlResult) => (r.score === null ? K.noneBg : K.scoreBg[r.score]!);
 
-class Page {
+export class Page {
   constructor(public doc: Doc) {}
   get y() { return this.doc.y; }
   ensure(h: number) { if (this.doc.y + h > P.h - P.bottom) this.add(); }
@@ -82,8 +82,8 @@ function cover(p: Page, r: ReadinessReport) {
   d.font('Helvetica').fontSize(8.5).fillColor(K.muted).text(s('This report was prepared by the company with CloudBuilder. Scores come from checks CloudBuilder ran on the architecture, from readings of the cloud account, and from what the team answered and attached. It is not an audit or a certification and gives no opinion. Where something was not provided, the report says so.'), P.m, 650, { width: CW, lineGap: 2 });
 }
 
-function glance(p: Page, r: ReadinessReport) {
-  const sm = r.summary; const d = p.doc;
+export function glance(p: Page, r: ReadinessReport, opt: { groupLabel?: string; summary?: ReadinessReport['summary']; bars?: boolean } = {}) {
+  const sm = opt.summary ?? r.summary; const d = p.doc;
   p.h1('Where you stand');
   const y0 = d.y;
   d.roundedRect(P.m, y0, CW, 74, 6).fillColor(K.band).fill(); d.rect(P.m, y0, 5, 74).fillColor(K.ready[r.readiness]!).fill();
@@ -112,17 +112,17 @@ function glance(p: Page, r: ReadinessReport) {
   d.y = legendY + Math.ceil(parts.length / 3) * 15 + 12;
 
   // by pillar
-  p.h2('By pillar', 120);
+  p.h2(`By ${(opt.groupLabel ?? 'pillar').toLowerCase()}`, 120);
   const rows = sm.groups.map((g) => [g.group, String(g.controls), g.average === null ? 'n/a' : String(g.average), String(g.belowTarget), String(g.notAssessed), g.confidence]);
-  p.table([{ h: 'Pillar', w: 3.4 }, { h: 'Controls', w: 1.2, align: 'right' }, { h: 'Average (0-4)', w: 1.6, align: 'right' }, { h: 'Below 3', w: 1.2, align: 'right' }, { h: 'Not assessed', w: 2, align: 'right' }, { h: 'Confidence', w: 1.5 }], rows, { size: 9 });
+  p.table([{ h: opt.groupLabel ?? 'Pillar', w: 3.4 }, { h: 'Controls', w: 1.2, align: 'right' }, { h: 'Average (0-4)', w: 1.6, align: 'right' }, { h: 'Below 3', w: 1.2, align: 'right' }, { h: 'Not assessed', w: 2, align: 'right' }, { h: 'Confidence', w: 1.5 }], rows, { size: 9 });
   // average bars
-  const bars = sm.groups.filter((g) => g.average !== null); if (bars.length) {
+  const bars = sm.groups.filter((g) => g.average !== null); if (bars.length && opt.bars !== false) {
     p.text('Average score by pillar (0 to 4)', { size: 9, color: K.muted, after: 2 });
     bars.forEach((g) => { p.ensure(16); const y = d.y; d.font('Helvetica').fontSize(8.5).fillColor(K.text).text(s(g.group), P.m, y + 2, { width: 150, lineBreak: false }); d.rect(P.m + 160, y + 2, CW - 200, 9).fillColor('#EDF0F4').fill(); d.rect(P.m + 160, y + 2, (CW - 200) * ((g.average as number) / 4), 9).fillColor(K.score[Math.min(4, Math.round(g.average as number))]!).fill(); d.font('Helvetica-Bold').fontSize(8.5).fillColor(K.text).text(String(g.average), P.m + CW - 32, y + 2, { lineBreak: false }); d.y = y + 16; });
   }
 }
 
-function attention(p: Page, r: ReadinessReport) {
+export function attention(p: Page, r: ReadinessReport) {
   const open = r.findings.filter((f) => f.status === 'open' || f.status === 'in_progress');
   p.h1('What needs attention');
   p.text(open.length ? `${plural(open.length, 'finding')} ${open.length === 1 ? 'is' : 'are'} open. The most serious come first. Each one is a control that is missing, only informal, only partly shown, or has a failing check.` : 'No finding is open.', { color: K.muted, after: 6 });
@@ -136,7 +136,7 @@ function attention(p: Page, r: ReadinessReport) {
   if (open.length > 14) p.text(`${open.length - 14} more are listed with their controls.`, { color: K.muted, size: 9 });
 }
 
-function controlBlock(p: Page, r: ReadinessReport, c: ControlResult) {
+export function controlBlock(p: Page, r: ReadinessReport, c: ControlResult) {
   const d = p.doc; const def = r.defs.find((x) => x.id === c.id)!;
   const lines: string[] = [];
   const fails = c.signals.filter((x) => x.result === 'fail'); const passes = c.signals.filter((x) => x.result === 'pass'); const unclear = c.signals.filter((x) => x.result === 'unclear');
@@ -167,16 +167,15 @@ function controlBlock(p: Page, r: ReadinessReport, c: ControlResult) {
   d.y = y + h;
 }
 
-function controls(p: Page, r: ReadinessReport) {
-  p.h1('Every control');
-  p.text('Grouped by pillar. The coloured bar and label show the score; the lines under it show what the score rests on.', { color: K.muted, after: 6 });
+export function controls(p: Page, r: ReadinessReport, opt: { heading?: boolean } = {}) {
+  if (opt.heading !== false) { p.h1('Every control'); p.text('Grouped by pillar. The coloured bar and label show the score; the lines under it show what the score rests on.', { color: K.muted, after: 6 }); }
   for (const g of [...new Set(r.results.map((x) => x.group))]) {
     p.h2(g, 140);
     r.results.filter((x) => x.group === g).forEach((c) => controlBlock(p, r, c));
   }
 }
 
-function back(p: Page, r: ReadinessReport) {
+export function back(p: Page, r: ReadinessReport) {
   p.h1('Limits and method');
   p.h2('What this report cannot tell you');
   if (r.limitations.length) p.table([{ h: 'ID', w: 0.8 }, { h: 'What is missing or limited', w: 5 }, { h: 'Effect', w: 4 }], r.limitations.map((l) => [l.id, l.item, l.effect]), { size: 8 });
@@ -189,13 +188,7 @@ function back(p: Page, r: ReadinessReport) {
   p.box(`Prepared by ${r.preparedBy || 'the company'} with CloudBuilder (rule set ${r.rulesetVersion}). Report ${r.reportId}, ${r.version}, generated ${longDate(r.generatedAt)}. This report is a working document for the control owners and for an auditor. A control marked as operating reflects the evidence and checks described, not an independent test of the control.`);
 }
 
-export async function renderControlPdf(r: ReadinessReport): Promise<Buffer> {
-  const PDFDocument = (await import('pdfkit')).default;
-  const doc = new PDFDocument({ size: 'A4', margins: { top: P.top, bottom: P.bottom - 20, left: P.m, right: P.m }, bufferPages: true, info: { Title: `${r.title}: ${r.company}`, Author: 'CloudBuilder', Subject: `${r.system.name} as of ${r.asOf}`, Keywords: r.reportId } });
-  const chunks: Buffer[] = []; doc.on('data', (c: Buffer) => chunks.push(c));
-  const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
-  const p = new Page(doc);
-  cover(p, r); glance(p, r); attention(p, r); controls(p, r); back(p, r);
+export function addFooters(doc: Doc, r: ReadinessReport) {
   const range = doc.bufferedPageRange();
   for (let i = 1; i < range.count; i++) {
     doc.switchToPage(range.start + i);
@@ -204,6 +197,16 @@ export async function renderControlPdf(r: ReadinessReport): Promise<Buffer> {
     doc.text(`Page ${i + 1} of ${range.count}`, P.m + CW * 0.8, P.h - 38, { width: CW * 0.2, align: 'right', lineBreak: false });
     doc.page.margins.bottom = bm;
   }
+}
+
+export async function renderControlPdf(r: ReadinessReport): Promise<Buffer> {
+  const PDFDocument = (await import('pdfkit')).default;
+  const doc = new PDFDocument({ size: 'A4', margins: { top: P.top, bottom: P.bottom - 20, left: P.m, right: P.m }, bufferPages: true, info: { Title: `${r.title}: ${r.company}`, Author: 'CloudBuilder', Subject: `${r.system.name} as of ${r.asOf}`, Keywords: r.reportId } });
+  const chunks: Buffer[] = []; doc.on('data', (c: Buffer) => chunks.push(c));
+  const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+  const p = new Page(doc);
+  cover(p, r); glance(p, r); attention(p, r); controls(p, r); back(p, r);
+  addFooters(doc, r);
   doc.end();
   return done;
 }

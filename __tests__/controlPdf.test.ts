@@ -9,3 +9,12 @@ describe.each(['aws-waf', 'azure-waf'] as const)('control PDF (%s)', (fw) => {
     expect((buf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length).toBeGreaterThan(3);
   });
 });
+
+describe('SOC 2 readiness PDF', () => {
+  it('is a real multi-page PDF that carries the disclaimer and no certification claim', async () => {
+    const { renderSoc2Pdf } = await import('@/lib/compliance/renderSoc2Pdf');
+    const buf = await renderSoc2Pdf(fixtureReport('soc2'));
+    expect(buf.subarray(0, 5).toString()).toBe('%PDF-');
+    expect((buf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length).toBeGreaterThan(10);
+  });
+});

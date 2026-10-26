@@ -69,7 +69,8 @@ export const apiReadinessService = {
   downloadEvidence: async (projectId: string, framework: FrameworkId, id: string) => fileOf(await fetch(`${base(projectId, framework)}/evidence/${id}`, { credentials: 'include' }), 'evidence'),
 
   /** A draft of the report as it stands (not recorded as a version). */
-  draft: async (projectId: string, framework: FrameworkId, env = 'production') => fileOf(await fetch(`${base(projectId, framework)}/report${q(env)}`, { credentials: 'include' }), 'report'),
+  draft: async (projectId: string, framework: FrameworkId, env = 'production', format?: 'pdf' | 'docx') =>
+    fileOf(await fetch(`${base(projectId, framework)}/report${q(env)}${format ? `&format=${format}` : ''}`, { credentials: 'include' }), 'report'),
   /** Issues the report: takes the next version number, records it, and returns the file. */
   issue: async (projectId: string, framework: FrameworkId, env = 'production') =>
     fileOf(await fetch(`${base(projectId, framework)}/report${q(env)}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' }), 'report'),

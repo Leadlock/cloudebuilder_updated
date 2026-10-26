@@ -130,13 +130,15 @@ describe('scope and reports', () => {
     guard.mockResolvedValue(caller({ framework: 'aws-waf', isAdmin: true }));
     expect((await (scopeRoute.PUT as H)(json('/x', 'PUT', { categories: ['security'] }), ctx({}, 'aws-waf'))).status).toBe(404);
   });
-  it('SOC 2 is a Word file and AWS a PDF; the wrong format is refused', async () => {
+  it('SOC 2 is a Word file (or a PDF to read) and AWS a PDF; Word for AWS is refused', async () => {
     const docx = await (reportRoute.GET as H)(new NextRequest('http://localhost/x?format=docx'), ctx());
     expect(docx.status).toBe(200);
     expect(docx.headers.get('content-disposition')).toMatch(/\.docx"$/);
     expect(docx.headers.get('content-disposition')).toContain('-draft');
     expect(Buffer.from(await docx.arrayBuffer()).subarray(0, 2).toString()).toBe('PK');
-    expect((await (reportRoute.GET as H)(new NextRequest('http://localhost/x?format=pdf'), ctx())).status).toBe(400);
+    const spdf = await (reportRoute.GET as H)(new NextRequest('http://localhost/x?format=pdf'), ctx());
+    expect(spdf.status).toBe(200);
+    expect(Buffer.from(await spdf.arrayBuffer()).subarray(0, 5).toString()).toBe('%PDF-');
     guard.mockResolvedValue(caller({ framework: 'aws-waf' }));
     build.mockResolvedValue({ ok: true, report: fixtureReport('aws-waf'), input: fixtureInput('aws-waf') });
     const pdf = await (reportRoute.GET as H)(new NextRequest('http://localhost/x'), ctx({}, 'aws-waf'));

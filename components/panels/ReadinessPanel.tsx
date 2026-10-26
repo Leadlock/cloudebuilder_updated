@@ -59,10 +59,10 @@ export default function ReadinessPanel() {
 
   if (!project) return <div className={clsx('flex-1 flex items-center justify-center', isLight ? 'bg-slate-50 text-slate-500' : 'bg-slate-950 text-slate-400')}><p>Select or create a project first.</p></div>;
 
-  async function download(kind: 'draft' | 'issue') {
+  async function download(kind: 'draft' | 'issue' | 'pdf') {
     if (!projectId) return;
     setBusy(kind); setError(null);
-    try { saveBlob(kind === 'draft' ? await apiReadinessService.draft(projectId, framework) : await apiReadinessService.issue(projectId, framework)); if (kind === 'issue') await load(); }
+    try { saveBlob(kind === 'draft' ? await apiReadinessService.draft(projectId, framework) : kind === 'pdf' ? await apiReadinessService.draft(projectId, framework, 'production', 'pdf') : await apiReadinessService.issue(projectId, framework)); if (kind === 'issue') await load(); }
     catch (e) { setError(e instanceof Error ? e.message : 'The report could not be made.'); } finally { setBusy(null); }
   }
   async function sign(role: Signoff['role']) {
@@ -111,6 +111,7 @@ export default function ReadinessPanel() {
             </div>
             <div className="flex flex-wrap items-center gap-2 mt-4">
               <button type="button" className={t.btn} disabled={busy !== null} onClick={() => void download('draft')}>{busy === 'draft' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : `Download draft (${fw.file})`}</button>
+              {framework === 'soc2' && <button type="button" className={t.btnQuiet} disabled={busy !== null} onClick={() => void download('pdf')}>{busy === 'pdf' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Download draft (PDF, to read)'}</button>}
               <button type="button" className={t.btnQuiet} disabled={busy !== null} onClick={() => void download('issue')} title="Takes the next version number and records it">{busy === 'issue' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Issue a version'}</button>
               <button type="button" className={t.btnQuiet} disabled={loading} onClick={() => { setRefreshing(true); void load().finally(() => setRefreshing(false)); }} aria-label="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
               <span className={clsx('text-[11px]', t.muted)}>{view.versions.length ? `Last issued: v${view.versions[0]!.version} on ${view.versions[0]!.generatedAt.slice(0, 10)}` : 'No version issued yet'}</span>

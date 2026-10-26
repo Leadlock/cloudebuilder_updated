@@ -4,7 +4,7 @@
  * GET  ?format=docx|pdf|json — a DRAFT of the report as it stands now (not recorded as a version).
  * POST { format } — ISSUES the report: takes the next version number, records it (id, readiness, date, who), and returns the file.
  *
- * SOC 2 is a Word document (editable, so the auditor and the company can work in it); the AWS and Azure control reports are PDF. Either can be asked
+ * SOC 2 is a Word document by default (editable, so the auditor and the company can work in it) and can also be a PDF to read or review; the AWS and Azure control reports are PDF. Either can be asked
  * for as JSON. A report is a readiness report: it is never called a SOC 2 report, a certification or an opinion.
  */
 import { NextRequest, NextResponse } from 'next/server';
@@ -14,6 +14,7 @@ import { guardReadiness } from '@/lib/compliance/routeGuard';
 import { buildProjectReport } from '@/lib/compliance/service';
 import { renderSoc2Docx } from '@/lib/compliance/renderSoc2Docx';
 import { renderControlPdf } from '@/lib/compliance/renderControlPdf';
+import { renderSoc2Pdf } from '@/lib/compliance/renderSoc2Pdf';
 import { readinessRepository } from '@/lib/repositories/readinessRepository';
 import type { FrameworkId } from '@/lib/compliance/types';
 
@@ -29,7 +30,6 @@ async function produce(req: NextRequest, p: { id: string; framework: string }, f
   if ('response' in caller) return caller.response;
   const fmt = format ?? defaultFormat(caller.framework);
   if (fmt === 'docx' && caller.framework !== 'soc2') return badRequest('The AWS and Azure control reports are PDF.');
-  if (fmt === 'pdf' && caller.framework === 'soc2') return badRequest('The SOC 2 readiness report is a Word document, so the company and its auditor can work in it.');
   const built = await buildProjectReport({ orgId: caller.orgId, projectId: caller.projectId, framework: caller.framework, env: caller.env, preparedBy: caller.email });
   if (!built.ok) return built.reason === 'project_not_found' ? notFound('Project') : badRequest('Save the architecture first: the report is built from the saved architecture.');
   const { report } = built;
@@ -41,7 +41,7 @@ async function produce(req: NextRequest, p: { id: string; framework: string }, f
   }
   const base = `cloudbuilder-${caller.framework}-readiness-${report.version}-${report.reportId}${issue ? '' : '-DRAFT'}`.toLowerCase();
   if (fmt === 'json') return ok({ report });
-  const bytes = fmt === 'docx' ? await renderSoc2Docx(report) : await renderControlPdf(report);
+  const bytes = fmt === 'docx' ? await renderSoc2Docx(report) : caller.framework === 'soc2' ? await renderSoc2Pdf(report) : await renderControlPdf(report);
   return new NextResponse(new Uint8Array(bytes), {
     status: 200,
     headers: {
