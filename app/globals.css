@@ -14,26 +14,14 @@
 }
 
 html,
-body,
-button,
-input,
-select,
-textarea,
-p,
-span,
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-fluent) !important;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-}
-
-html,
 body {
   height: 100%;
   margin: 0;
   padding: 0;
+  font-family: var(--font-fluent);
   scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* â”€â”€â”€ Microsoft Fluent Dark Mode (Default / .dark) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
@@ -45,7 +33,7 @@ html.dark {
 html:not(.light) body,
 html.dark body {
   background-color: #111113 !important;
-  color: #f8fafc !important;
+  color: #f5f5f7 !important;
 }
 
 /* Base Canvas & Shell in Dark Mode */
@@ -477,8 +465,7 @@ button.bg-cyan-600:active {
   border-color: #005a9e !important;
 }
 
-
-/* GöÇGöÇGöÇ CloudBuilder authentication experience GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ */
+/* â”€â”€â”€ CloudBuilder authentication experience â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .auth-shell {
   --auth-navy: #001d4a;
   --auth-teal: #006992;
@@ -778,7 +765,7 @@ html:not(.light) .auth-card input:not([type="checkbox"]):not([type="radio"]):foc
   box-shadow: 0 0 0 4px rgba(0,105,146,.11) !important;
 }
 
-/* GöÇGöÇGöÇ CloudBuilder application shell GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+/* â”€â”€â”€ CloudBuilder application shell â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    Shared with the authentication experience: navy, teal, amber and lime.
    These rules are intentionally scoped so infrastructure canvas semantics and
    provider-specific colours remain intact. */
@@ -1079,7 +1066,7 @@ html.dark .cloudbuilder-app.is-dark .cloudbuilder-dashboard [class*="bg-[#141416
   background-color: rgba(10,39,61,.74) !important;
 }
 
-/* Dashboard information architecture GÇö spacious, task-led workspace. */
+/* Dashboard information architecture â€” spacious, task-led workspace. */
 .cloudbuilder-dashboard .dashboard-heading {
   margin-bottom: 28px !important;
 }
@@ -1271,7 +1258,7 @@ html.dark .cloudbuilder-app.is-dark .dashboard-launch-action:not(:disabled):hove
   .dashboard-projects-heading > div:last-child { justify-content: space-between; }
 }
 
-/* Architecture template library GÇö simplified for fast comparison. */
+/* Architecture template library â€” simplified for fast comparison. */
 .template-gallery {
   background:
     radial-gradient(circle at 88% 0, rgba(34,146,164,.11), transparent 26%),
@@ -1353,7 +1340,7 @@ html.dark .cloudbuilder-app.is-dark .template-result-count strong { color: #f5fb
   .template-card { min-height: auto; }
 }
 
-/* Architecture wizard GÇö focused five-step decision flow. */
+/* Architecture wizard â€” focused five-step decision flow. */
 .architecture-wizard {
   background:
     radial-gradient(circle at 88% 0, rgba(34,146,164,.1), transparent 27%),
