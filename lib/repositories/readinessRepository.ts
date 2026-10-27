@@ -8,6 +8,7 @@ import { randomBytes, randomUUID } from 'crypto';
 import { db } from '@/src/prisma/db';
 import { encrypt, decrypt } from '@/lib/crypto/credentials';
 import { controlKey, evidenceControls } from '@/lib/compliance/evidenceInput';
+import type { EntryKind, EntryRow } from '@/lib/compliance/entries';
 import { AUDITOR_TOKEN_PREFIX, hashAuditorToken, looksLikeAuditorToken } from '@/lib/compliance/auditorToken';
 import type { SnapshotControl, SnapshotRecord, SnapshotTrigger } from '@/lib/compliance/snapshots';
 import type { ControlRecord, ControlStatus, FindingRecord, FindingStatus, FrameworkId, Signoff } from '@/lib/compliance/types';
@@ -207,11 +208,50 @@ class ReadinessRepository {
     await db.orm.public.ReadinessAuditorAccess.where({ id: row.id }).update({ lastUsedAt: now(), useCount: row.useCount + 1 });
   }
 
+
+  // ── team records (changes, walkthroughs, complementary controls, provider reviews ...) ──
+  async entries(projectId: string, framework: FrameworkId): Promise<EntryRow[]> {
+    return await db.orm.public.ReadinessEntry.where({ projectId, framework }).select('id', 'kind', 'key', 'dataJson', 'updatedBy', 'updatedAt').all() as EntryRow[];
+  }
+
+  /** A keyed record is kept once per subject: saving again replaces it. Returns the record's id. */
+  async saveEntry(projectId: string, framework: FrameworkId, kind: EntryKind, key: string | null, data: Record<string, string>, by: string): Promise<string> {
+    const stamp = now();
+    if (key !== null) {
+      const existing = await db.orm.public.ReadinessEntry.where({ projectId, framework, kind, key }).select('id').first() as { id: string } | null;
+      if (existing) { await db.orm.public.ReadinessEntry.where({ id: existing.id, projectId }).update({ dataJson: JSON.stringify(data), updatedBy: by, updatedAt: stamp }); return existing.id; }
+    }
+    const id = randomUUID();
+    await db.orm.public.ReadinessEntry.create({ id, projectId, framework, kind, key, dataJson: JSON.stringify(data), createdBy: by, createdAt: stamp, updatedBy: by, updatedAt: stamp });
+    return id;
+  }
+
+  async entryById(projectId: string, id: string): Promise<(EntryRow & { framework: string }) | null> {
+    return ((await db.orm.public.ReadinessEntry.where({ id, projectId }).select('id', 'kind', 'key', 'framework', 'dataJson', 'updatedBy', 'updatedAt').first()) as (EntryRow & { framework: string }) | null) ?? null;
+  }
+
+  async updateEntry(projectId: string, id: string, data: Record<string, string>, by: string): Promise<void> {
+    await db.orm.public.ReadinessEntry.where({ id, projectId }).update({ dataJson: JSON.stringify(data), updatedBy: by, updatedAt: now() });
+  }
+
+  async deleteEntry(projectId: string, id: string): Promise<boolean> {
+    const e = await this.entryById(projectId, id);
+    if (!e) return false;
+    await db.orm.public.ReadinessEntry.where({ id, projectId }).deleteAndCount();
+    return true;
+  }
+
   // ── scope ─────────────────────────────────────────────────────────────────
   async settings<T extends object>(projectId: string, framework: FrameworkId): Promise<Partial<T>> {
     const row = await db.orm.public.ReadinessSetting.where({ projectId, framework }).select('settingsJson').first() as { settingsJson: string } | null;
     if (!row) return {};
     try { const v = JSON.parse(row.settingsJson); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+  }
+
+  /** Changes some settings and keeps the rest (scope and engagement settings share one record). */
+  async updateSettings(projectId: string, framework: FrameworkId, patch: object, by: string): Promise<void> {
+    const cur = await this.settings<Record<string, unknown>>(projectId, framework);
+    await this.saveSettings(projectId, framework, { ...cur, ...patch }, by);
   }
 
   async saveSettings(projectId: string, framework: FrameworkId, settings: object, by: string): Promise<void> {

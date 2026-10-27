@@ -1,5 +1,6 @@
 /** A realistic sample of the readiness report's input, for the renderer tests and for looking at the output by eye. */
 import { createHash } from 'crypto';
+import { groupEntries, type EntryRow } from '@/lib/compliance/entries';
 import type { ConfigRow } from '@/lib/compliance/configuration';
 import type { Evaluation } from '@/lib/engines/assessment/types';
 import { buildReadinessReport, type ReadinessReport, type ReportInput } from '@/lib/compliance/report';
@@ -21,6 +22,21 @@ export const FIXTURE_CONFIG: ConfigRow[] = [
   cfg('web-sg', 'Security group', 'AWS', 'eu-west-1', 'SSH from the internet', 'Closed', 'Closed', 'Pass', 'Discovered', { readAt: '2026-10-22T08:00:00Z' }),
   cfg('reports-store', 'Storage account', 'Azure', 'westeurope', 'Secure transfer', 'Required', 'Required', 'Pass', 'Design'),
 ];
+
+const row = (kind: string, key: string | null, data: Record<string, string>, n: number): EntryRow => ({ id: `entry-${n}`, kind, key, dataJson: JSON.stringify(data), updatedBy: 'priya@northwind.example', updatedAt: `2026-10-${String(10 + (n % 15)).padStart(2, '0')}T09:00:00Z` });
+export const FIXTURE_TEAM = groupEntries([
+  row('change', null, { date: '2026-09-14', change: 'Moved the orders database from a single instance to Multi-AZ.', systems: 'orders-db', criteria: 'A1.2, CC7.5', impact: 'Failover now automatic; recovery test repeated.', reviewedBy: 'Dana Li' }, 1),
+  row('change', null, { date: '2026-08-02', change: 'Replaced the monitoring vendor.', systems: 'Monitoring', criteria: 'CC7.2', impact: 'Alert rules re-created and tested.', reviewedBy: 'Dana Li' }, 2),
+  row('prior_finding', null, { priorId: 'PF-3', report: 'Internal review, March 2026', condition: 'No tested recovery plan.', remediation: 'Recovery plan written and tested in June.', closureEvidence: 'EV-004', statusNow: 'Closed', retestedBy: 'Dana Li', retestedOn: '2026-09-30' }, 3),
+  row('walkthrough', 'CTL-01', { participant: 'Priya Nair (HR)', date: '2026-10-08', documents: 'Code of conduct v3; acceptance log', observed: 'New joiners accept the code in the onboarding tool; the log shows 41 of 41.', population: 'HR system joiner list, reconciled to the acceptance log', conclusion: 'Designed and in place.', preparer: 'Sam Okafor', reviewer: 'Dana Li' }, 4),
+  row('cuec', 'CUEC-1', { status: 'Confirmed', contracts: 'Order form, clause 7.2', communicated: 'Customer onboarding guide' }, 5),
+  row('cuec', 'CUEC-3', { status: 'Gap', note: 'The incident contact is not in the contract template yet; legal to add by 30 November.' }, 6),
+  row('csoc', 'CSOC-1.1', { status: 'Confirmed', report: 'AWS SOC 2 Type 2, 1 Oct 2025 to 30 Sep 2026', ourControl: 'Annual review of the provider report' }, 7),
+  row('provider_review', 'Amazon Web Services', { treatment: 'Carve-out', reportType: 'SOC 2 Type 2', period: '1 Oct 2025 to 30 Sep 2026', coversPeriod: 'No', bridgeLetter: '1 Oct 2026 to 26 Oct 2026', opinion: 'Unqualified; no exceptions relevant to our use.', reviewedBy: 'Dana Li', reviewedOn: '2026-10-20' }, 8),
+  row('review_conclusion', 'main', { conclusion: 'AWS controls are adequately covered for the criteria in scope once the bridge letter is received. Azure and the two third-party services are not yet reviewed.', acceptedBy: 'Chief executive' }, 9),
+  row('limitation_note', 'L-01', { owner: 'Sam Okafor', note: 'Evidence requested from HR.' }, 10),
+  row('finding_plan', 'CTL-23', { milestones: 'Maintenance window booked 14 Nov; encryption enabled 15 Nov.', acceptance: 'The database reports encrypted storage and a re-scan passes.', closureEvidence: '' }, 11),
+], { cpaFirm: 'Harbor & Pike LLP', scanProvider: 'Northwind Pen Tests Ltd', scanFrequency: 'annually' });
 
 /** Weekly snapshots over the quarter before AS_OF, with a few controls that dipped and a two-week hole in September. */
 function fixturePeriod(framework: FrameworkId, ids: string[]) {
@@ -53,6 +69,8 @@ export function fixtureInput(framework: FrameworkId = 'soc2'): ReportInput {
     accountRead: true,
     period: fixturePeriod(framework, defs.map((d) => d.id)),
     configuration: FIXTURE_CONFIG,
+    team: FIXTURE_TEAM,
+    architectureHistory: [{ date: '2026-10-12', label: 'Add Auth0 sign-in', summary: 'Added a third-party identity service.', author: 'Priya Nair' }, { date: '2026-09-14', label: 'Enable Multi-AZ', summary: 'orders-db', author: 'Sam Okafor' }],
   };
 }
 

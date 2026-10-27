@@ -132,6 +132,10 @@
       "model": "ReadinessControl",
       "namespace": "public"
     },
+    "readinessEntry": {
+      "model": "ReadinessEntry",
+      "namespace": "public"
+    },
     "readinessEvidence": {
       "model": "ReadinessEvidence",
       "namespace": "public"
@@ -3778,6 +3782,21 @@
                   "namespace": "public"
                 }
               },
+              "readinessEntries": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "projectId"
+                  ]
+                },
+                "to": {
+                  "model": "ReadinessEntry",
+                  "namespace": "public"
+                }
+              },
               "readinessEvidence": {
                 "cardinality": "1:N",
                 "on": {
@@ -4581,6 +4600,133 @@
               },
               "namespaceId": "public",
               "table": "readinessControl"
+            }
+          },
+          "ReadinessEntry": {
+            "fields": {
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdBy": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "dataJson": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "framework": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "key": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "kind": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "projectId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "updatedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "updatedBy": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "project": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "projectId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Project",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "createdBy": {
+                  "column": "createdBy"
+                },
+                "dataJson": {
+                  "column": "dataJson"
+                },
+                "framework": {
+                  "column": "framework"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "key": {
+                  "column": "key"
+                },
+                "kind": {
+                  "column": "kind"
+                },
+                "projectId": {
+                  "column": "projectId"
+                },
+                "updatedAt": {
+                  "column": "updatedAt"
+                },
+                "updatedBy": {
+                  "column": "updatedBy"
+                }
+              },
+              "namespaceId": "public",
+              "table": "readinessEntry"
             }
           },
           "ReadinessEvidence": {
@@ -10107,6 +10253,105 @@
               },
               "uniques": []
             },
+            "readinessEntry": {
+              "columns": {
+                "createdAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "createdBy": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "dataJson": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "framework": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "key": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "kind": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "projectId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "updatedAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "updatedBy": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "projectId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "readinessEntry"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "project"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "projectId",
+                    "framework",
+                    "kind"
+                  ],
+                  "name": "readinessEntry_projectId_framework_kind_idx_e213b5e9",
+                  "prefix": "readinessEntry_projectId_framework_kind_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "projectId"
+                  ],
+                  "name": "readinessEntry_projectId_idx_a96e4d92",
+                  "prefix": "readinessEntry_projectId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
             "readinessEvidence": {
               "columns": {
                 "collectedAt": {
@@ -11934,10 +12179,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "afc22488d844c97bf2fb3e1cb982272e97bcc89e2b82ddf32b202f557d5a3845"
+    "storageHash": "a797a6e3ac3ec09ef317c5ae3b8465f4b7491465b429f15b4e53d0e743c0140d"
   },
   "execution": {
-    "executionHash": "89381c4cf1a1e265e03fa7c145dfcf12906e5412ce064686e138faed826f19a5",
+    "executionHash": "ee3ecf04518ba86c3fe6771429193783f9499615d5047f52112acffed547169e",
     "mutations": {
       "defaults": [
         {
@@ -12257,6 +12502,17 @@
             "column": "id",
             "namespace": "public",
             "table": "readinessControl"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "readinessEntry"
           }
         },
         {

@@ -102,6 +102,7 @@ model Project {
   readinessSettings   ReadinessSetting[]
   readinessSnapshots  ReadinessSnapshot[]
   readinessAuditors   ReadinessAuditorAccess[]
+  readinessEntries    ReadinessEntry[]
 
   @@index([orgId])
 }
@@ -1004,4 +1005,24 @@ model ReadinessAuditorAccess {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, framework])
+}
+
+// What the team records for the SOC 2 readiness report beyond control answers: significant changes, prior-period findings, walkthroughs, complementary controls,
+// subservice provider reviews, limitation owners, remediation plans. One table, one row per record; kind says which, key identifies a record that is kept once per
+// subject (a control, a provider, a limitation) so saving again replaces it. The fields are checked per kind in lib/compliance/entries.ts.
+model ReadinessEntry {
+  id        String  @id @default(uuid())
+  projectId String
+  framework String
+  kind      String
+  key       String?
+  dataJson  String
+  createdBy String
+  createdAt String
+  updatedBy String
+  updatedAt String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, framework, kind])
 }

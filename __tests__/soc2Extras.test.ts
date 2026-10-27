@@ -1,4 +1,4 @@
-import { categoryRows, consistencyChecks, controlLibrary, cpaItems, criterionRows, gapRegister, independence, remediationTracker, worksheetRows, conclusion } from '@/lib/compliance/soc2Extras';
+import { changeRows, csocRows, cuecRows, limitationRegister, priorFindingRows, providerRows, findingPlan, categoryRows, consistencyChecks, controlLibrary, cpaItems, criterionRows, gapRegister, independence, remediationTracker, worksheetRows, conclusion } from '@/lib/compliance/soc2Extras';
 import { configRows, configSummary } from '@/lib/compliance/configuration';
 import { buildReadinessReport } from '@/lib/compliance/report';
 import { fixtureInput, fixtureReport } from './helpers/complianceFixture';
@@ -92,7 +92,9 @@ describe('worksheet, library and conclusion', () => {
   it('has a worksheet row for every control, with what is not recorded yet marked as such', () => {
     const w = worksheetRows(report);
     expect(w).toHaveLength(report.results.length);
-    expect(w[0]!.walkthrough).toBe('[to be recorded]');
+    expect(w[0]!.walkthrough).toBe('Priya Nair (HR), 2026-10-08');
+    expect(w[1]!.walkthrough).toBe('[to be recorded]');
+    expect(w[0]!.population).toMatch(/HR system joiner list/);
   });
   it('the library is the whole starting set, whatever is in scope', () => {
     expect(controlLibrary()).toHaveLength(63);
@@ -123,5 +125,55 @@ describe('the configuration appendix data', () => {
     const rows = configRows(nodes, [ev({ evidence: [{ label: 'Backup retention', observed: '7 days', expected: '7 days or more', basis: 'CONFIGURATION', source: 'DESIGN', discoveredValue: '1 day' }], status: 'PASS' })]);
     expect(rows[0]!.accountValue).toBe('1 day');
     expect(configSummary(rows)).toMatchObject({ resources: 1, settings: 1, differing: 1, designOnly: 1 });
+  });
+});
+
+describe('what the team recorded, merged with what CloudBuilder knows', () => {
+  const blank = buildReadinessReport({ ...fixtureInput('soc2'), team: undefined, architectureHistory: undefined });
+  it('the significant-changes log is the team\'s entries first, then the architecture history marked as not reviewed', () => {
+    const rows = changeRows(report);
+    expect(rows.map((r) => r.source)).toEqual(['team', 'team', 'history', 'history']);
+    expect(rows[0]!.date <= rows[1]!.date).toBe(true);
+    expect(rows[2]).toMatchObject({ reviewedBy: '[not reviewed]' });
+    expect(rows[2]!.change).toMatch(/^Architecture saved: Add Auth0 sign-in/);
+    expect(changeRows(blank)).toEqual([]);
+  });
+  it('limitations get the owner and resolved date the team gave them, and "to be assigned" otherwise', () => {
+    const l = limitationRegister(report);
+    expect(l.find((x) => x.id === 'L-01')).toMatchObject({ owner: 'Sam Okafor' });
+    expect(l.find((x) => x.id === 'L-02')).toMatchObject({ owner: '[to be assigned]' });
+  });
+  it('complementary controls start as suggestions, take the team\'s status, and keep any the team added', () => {
+    const c = cuecRows(report);
+    expect(c.map((x) => x.status)).toEqual(['Confirmed', 'Not confirmed', 'Gap', 'Not confirmed']);
+    expect(c[2]!.note).toMatch(/incident contact/);
+    expect(csocRows(report).find((x) => x.id === 'CSOC-1.1')).toMatchObject({ status: 'Confirmed', a: expect.stringMatching(/AWS SOC 2 Type 2/) });
+    expect(csocRows(blank).every((x) => x.status === 'Not confirmed')).toBe(true);
+  });
+  it('providers show the review where one is recorded and a prompt where not', () => {
+    const p = providerRows(report);
+    expect(p.find((x) => x.name === 'Amazon Web Services')).toMatchObject({ recorded: true, treatment: 'Carve-out', covers: 'No', reviewed: 'Dana Li, 2026-10-20' });
+    expect(p.find((x) => x.name === 'Auth0')).toMatchObject({ recorded: false, reviewed: '[to be recorded]' });
+  });
+  it('prior findings and remediation plans come through', () => {
+    expect(priorFindingRows(report)[0]![0]).toBe('PF-3');
+    expect(findingPlan(report, 'CTL-23').milestones).toMatch(/Maintenance window/);
+    expect(findingPlan(report, 'CTL-24').milestones).toBe('[to be recorded]');
+  });
+  it('the checks that waited for this information now react to it', () => {
+    expect(check(blank, 'Provider agrees').result).toBe('Note');
+    expect(check(report, 'Provider agrees')).toMatchObject({ result: 'Pass', detail: expect.stringMatching(/Northwind Pen Tests Ltd, annually/) });
+    expect(check(report, 'Complementary controls agree')).toMatchObject({ result: 'Fail', detail: expect.stringMatching(/1 complementary control\(s\) are marked Gap/) });
+    expect(check(blank, 'Complementary controls agree').result).toBe('Note');
+    expect(check(report, 'Subservice reports').result).toBe('Note');
+    const noBridge = buildReadinessReport({ ...fixtureInput('soc2'), team: { ...fixtureInput('soc2').team!, providers: { 'Amazon Web Services': { ...fixtureInput('soc2').team!.providers['Amazon Web Services']!, data: { treatment: 'Carve-out', coversPeriod: 'No', bridgeLetter: '' } } } } });
+    expect(check(noBridge, 'Subservice reports').result).toBe('Fail');
+  });
+  it('the CPA list reflects prior findings and provider reviews', () => {
+    const items = cpaItems(report);
+    expect(items.find((x) => x.label.startsWith('Prior-period'))!.state).toBe('Done');
+    expect(items.find((x) => x.label.startsWith('Prior-period'))!.state).not.toBe('Open');
+    expect(cpaItems(blank).find((x) => x.label.startsWith('Prior-period'))!.state).toBe('Confirm');
+    expect(items.find((x) => x.label.startsWith('Provider reports'))!.state).toBe('Open');
   });
 });

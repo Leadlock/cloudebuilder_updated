@@ -14,6 +14,8 @@ import { findingReviewRepository } from '@/lib/repositories/findingReviewReposit
 import { gatherPlatformFacts } from './facts';
 import { buildReadinessReport, type ReadinessReport, type ReportInput, type SystemFacts } from './report';
 import { configRows } from './configuration';
+import { groupEntries, type Engagement } from './entries';
+import { db } from '@/src/prisma/db';
 import { analyzePeriod } from './snapshots';
 import type { Soc2Category } from './soc2/criteria';
 import type { EvidenceRef, FrameworkId } from './types';
@@ -45,6 +47,21 @@ export function systemFacts(project: { name: string; description: string; region
   return { name: project.name, description: project.description, environment, providers: [...providers], regions: [...regions].filter(Boolean).sort(), services, thirdParties };
 }
 
+export async function loadEngagement(projectId: string): Promise<Engagement> {
+  const s = await readinessRepository.settings<Partial<Engagement>>(projectId, 'soc2').catch(() => ({} as Partial<Engagement>));
+  const str = (v: unknown) => (typeof v === 'string' ? v : '');
+  return { cpaFirm: str(s.cpaFirm), scanProvider: str(s.scanProvider), scanFrequency: str(s.scanFrequency), ...(typeof s.assessmentDate === 'string' && s.assessmentDate ? { assessmentDate: s.assessmentDate } : {}) };
+}
+
+/** Saved versions of the architecture in the year up to the assessment date: the raw material for the significant-changes log (the team reviews them). */
+async function architectureHistory(projectId: string, asOf: Date) {
+  try {
+    const since = new Date(asOf.getTime() - 365 * 86_400_000).toISOString();
+    const rows = await db.orm.public.ArchitectureVersion.where({ projectId }).select('label', 'summary', 'author', 'createdAt').all() as Array<{ label: string; summary: string; author: string; createdAt: string }>;
+    return rows.filter((r) => r.createdAt >= since && r.createdAt <= asOf.toISOString()).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 25).map((r) => ({ date: r.createdAt.slice(0, 10), label: r.label, summary: r.summary, author: r.author }));
+  } catch { return []; }
+}
+
 export async function loadScope(projectId: string): Promise<ReadinessScope> {
   const s = await readinessRepository.settings<ReadinessScope>(projectId, 'soc2');
   const valid = (s.categories ?? []).filter((c): c is Soc2Category => c === 'security' || c === 'availability' || c === 'confidentiality');
@@ -59,9 +76,11 @@ export async function loadReportInput(args: { orgId: string; projectId: string; 
   const env = args.env ?? 'production';
   const ctx = await resolveArchitecture(args.projectId, args.orgId, env);
   if ('error' in ctx) return { ok: false, reason: ctx.error === 'project_not_found' ? 'project_not_found' : 'no_architecture' };
-  const asOf = args.asOf ?? new Date();
+  const engagement = args.framework === 'soc2' ? await loadEngagement(args.projectId) : { cpaFirm: '', scanProvider: '', scanFrequency: '' };
+  // The assessment date the team set (the date the report is about); otherwise today.
+  const asOf = args.asOf ?? (engagement.assessmentDate ? new Date(`${engagement.assessmentDate}T23:59:59Z`) : new Date());
   const { nodes, edges } = toCanvas(ctx.arch.resources, ctx.arch.connections);
-  const [questionnaire, accountEvidence, reviews, records, evidence, findingRecords, signoffs, scope, facts, org, version, snapshots] = await Promise.all([
+  const [questionnaire, accountEvidence, reviews, records, evidence, findingRecords, signoffs, scope, facts, org, version, entryRows, history, snapshots] = await Promise.all([
     loadQuestionnaire(args.projectId),
     loadAccountEvidence(args.projectId),
     findingReviewRepository.activeReviews(args.projectId).catch(() => []),
@@ -73,6 +92,8 @@ export async function loadReportInput(args: { orgId: string; projectId: string; 
     gatherPlatformFacts(args.orgId, args.projectId, asOf),
     orgRepository.findOrg(args.orgId).catch(() => null),
     args.version ?? readinessRepository.nextVersion(args.projectId, args.framework),
+    readinessRepository.entries(args.projectId, args.framework).catch(() => []),
+    args.framework === 'soc2' ? architectureHistory(args.projectId, asOf) : Promise.resolve([]),
     // The year before the report date: what a Type 2 examination would look back over.
     args.framework === 'soc2' ? readinessRepository.snapshots(args.projectId, args.framework, new Date(asOf.getTime() - 365 * 86_400_000).toISOString()).catch(() => []) : Promise.resolve([]),
   ]);
@@ -90,6 +111,7 @@ export async function loadReportInput(args: { orgId: string; projectId: string; 
       records, evidence: refs, evaluations: assessment.evaluations, ...(facts ? { facts } : {}), findingRecords, signoffs,
       accountRead: assessment.evaluations.some((e) => e.provenance !== 'DESIGN_TIME'), preparedBy: args.preparedBy,
       configuration: configRows(nodes, assessment.evaluations),
+      team: groupEntries(entryRows, engagement), architectureHistory: history,
       ...(args.framework === 'soc2' ? { period: analyzePeriod('soc2', snapshots, new Date(asOf.getTime() - 365 * 86_400_000), asOf) } : {}),
     },
   };

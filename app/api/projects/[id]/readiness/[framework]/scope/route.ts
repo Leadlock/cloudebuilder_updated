@@ -20,7 +20,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!parsed.ok) return parsed.response;
     const scope = checkScope(parsed.data);
     if (!scope.ok) return badRequest(scope.message);
-    await readinessRepository.saveSettings(caller.projectId, 'soc2', { categories: scope.categories, exclusions: scope.exclusions }, caller.email);
+    await readinessRepository.updateSettings(caller.projectId, 'soc2', { categories: scope.categories, exclusions: scope.exclusions }, caller.email);
     await readinessRepository.clearSignoffs(caller.projectId, 'soc2');
     return ok({ categories: scope.categories, exclusions: scope.exclusions, signoffsCleared: true });
   } catch (err) {

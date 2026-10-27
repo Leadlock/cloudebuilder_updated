@@ -136,4 +136,35 @@ describe('readiness records on real Postgres', () => {
     expect(await r.revokeAuditorAccess(pA, row.id)).toBe(true);
     expect(auditorAccessUsable((await r.findAuditorAccess(token))!)).toBe(false);
   });
+
+  maybe('team records: a keyed record is kept once per subject, others are added, and projects are kept apart', async () => {
+    const { readinessRepository: r } = await import('@/lib/repositories/readinessRepository');
+    const { groupEntries } = await import('@/lib/compliance/entries');
+    const a = await r.saveEntry(pA, 'soc2', 'walkthrough', 'CTL-01', { participant: 'First' }, 'a@x.com');
+    const b = await r.saveEntry(pA, 'soc2', 'walkthrough', 'CTL-01', { participant: 'Second' }, 'b@x.com');
+    expect(b).toBe(a);
+    await r.saveEntry(pA, 'soc2', 'change', null, { date: '2026-09-01', change: 'One' }, 'a@x.com');
+    await r.saveEntry(pA, 'soc2', 'change', null, { date: '2026-09-02', change: 'Two' }, 'a@x.com');
+    await r.saveEntry(pB, 'soc2', 'walkthrough', 'CTL-01', { participant: 'Other project' }, 'c@x.com');
+    const rows = await r.entries(pA, 'soc2');
+    expect(rows.filter((x) => x.kind === 'change')).toHaveLength(2);
+    expect(rows.filter((x) => x.kind === 'walkthrough')).toHaveLength(1);
+    const team = groupEntries(rows, { cpaFirm: '', scanProvider: '', scanFrequency: '' });
+    expect(team.walkthroughs['CTL-01']!.data['participant']).toBe('Second');
+    expect(team.changes.map((c) => c.data['change'])).toEqual(['One', 'Two']);
+    expect(await r.entryById(pB, a)).toBeNull();
+    await r.updateEntry(pA, a, { participant: 'Third' }, 'a@x.com');
+    expect(JSON.parse((await r.entryById(pA, a))!.dataJson).participant).toBe('Third');
+    expect(await r.deleteEntry(pB, a)).toBe(false);
+    expect(await r.deleteEntry(pA, a)).toBe(true);
+    expect((await r.entries(pA, 'soc2')).some((x) => x.id === a)).toBe(false);
+  });
+
+  maybe('settings are merged, so scope and engagement do not overwrite each other', async () => {
+    const { readinessRepository: r } = await import('@/lib/repositories/readinessRepository');
+    await r.saveSettings(pB, 'soc2', { categories: ['security'], exclusions: {} }, 'a@x.com');
+    await r.updateSettings(pB, 'soc2', { cpaFirm: 'Harbor & Pike LLP' }, 'a@x.com');
+    await r.updateSettings(pB, 'soc2', { categories: ['security', 'availability'] }, 'a@x.com');
+    expect(await r.settings(pB, 'soc2')).toEqual({ categories: ['security', 'availability'], exclusions: {}, cpaFirm: 'Harbor & Pike LLP' });
+  });
 });

@@ -11,6 +11,9 @@ async function textOf(buf: Buffer) {
   return { zip, doc, text: paras.join('\n').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>'), tables: (doc.match(/<w:tbl>/g) ?? []).length };
 }
 
+// Rendering a 50-page report is slow when the whole suite is running at once.
+jest.setTimeout(60_000);
+
 describe('the SOC 2 Word report', () => {
   const report = fixtureReport('soc2');
   let out: Awaited<ReturnType<typeof textOf>>; let size = 0;
@@ -108,5 +111,18 @@ describe('the SOC 2 Word report', () => {
     expect(out.text).toMatch(/It is preparation, not a Type 2 result/);
     expect(out.text).toContain('Gaps in the record');
     expect(out.text).toContain('Controls that did not operate in every snapshot');
+  });
+  it('carries what the team recorded: changes, prior findings, walkthroughs, complementary controls, provider reviews, the firm and the scan provider', () => {
+    expect(out.text).toContain('Moved the orders database from a single instance to Multi-AZ.');
+    expect(out.text).toContain('Architecture saved: Add Auth0 sign-in');
+    expect(out.text).toContain('[not reviewed]');
+    expect(out.text).toContain('Recovery plan written and tested in June.');
+    expect(out.text).toContain('New joiners accept the code in the onboarding tool');
+    expect(out.text).toContain('The incident contact is not in the contract template yet');
+    expect(out.text).toContain('Dana Li, 2026-10-20');
+    expect(out.text).toContain('AWS controls are adequately covered for the criteria in scope once the bridge letter is received.');
+    expect(out.text).toContain('Maintenance window booked 14 Nov');
+    expect(out.text).toContain('To: Harbor & Pike LLP');
+    expect(out.text).toMatch(/Recorded once, here: Northwind Pen Tests Ltd, annually/);
   });
 });

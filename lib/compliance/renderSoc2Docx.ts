@@ -11,7 +11,7 @@ import { SOC2_CATEGORY_LABEL, SOC2_CATEGORY_RANGE, SOC2_CRITERIA_BY_ID } from '.
 import { periodRows, periodSentence } from './snapshots';
 import { configSummary } from './configuration';
 import { bridgeLetter, representationLetter } from './soc2Letters';
-import { categoryRows, conclusion, consistencyChecks, controlLibrary, cpaItems, criterionRows, gapRegister, independence, remediationTracker, worksheetRows, TO_RECORD } from './soc2Extras';
+import { categoryRows, changeRows, conclusion, consistencyChecks, controlLibrary, cpaItems, criterionRows, csocRows, cuecRows, findingPlan, gapRegister, independence, limitationRegister, priorFindingRows, providerRows, remediationTracker, walkthroughOf, worksheetRows, TO_RECORD } from './soc2Extras';
 import type { ReadinessReport } from './report';
 import { EVIDENCE_WINDOW_DAYS } from './scoring';
 
@@ -177,12 +177,12 @@ function scopeSection(r: ReadinessReport): Block {
     bullet('Evidence was reviewed as provided by control owners. Items not provided are reported as limitations (section 2.6), never assumed to exist.'),
     bullet('Design conclusions relate only to the date stated. Later changes are outside this assessment.'),
     h2('2.5 Significant changes during the period'),
-    p('Record every change to the system, its services, its providers, its people or its controls up to the assessment date, including changes the company did not treat as significant, so the CPA firm can judge that. CloudBuilder does not record changes yet: list them here, using the architecture version history as a starting point.'),
-    ...table(W_PORTRAIT, [{ header: 'Date', width: 1 }, { header: 'Change', width: 3 }, { header: 'Systems or processes affected', width: 2 }, { header: 'Criteria affected', width: 1.4 }, { header: 'Control impact', width: 1.6 }, { header: 'Reviewed by', width: 1.2 }], [[TO_RECORD, '', '', '', '', '']], { size: 17 }),
+    p('Record every change to the system, its services, its providers, its people or its controls up to the assessment date, including changes the company did not treat as significant, so the CPA firm can judge that. Rows that begin "Architecture saved" come from the saved version history and have not been reviewed: confirm each one, or remove it from the log if it was not a change to the system.'),
+    ...table(W_PORTRAIT, [{ header: 'Date', width: 1 }, { header: 'Change', width: 3 }, { header: 'Systems or processes affected', width: 2 }, { header: 'Criteria affected', width: 1.4 }, { header: 'Control impact', width: 1.6 }, { header: 'Reviewed by', width: 1.2 }], (() => { const rows = changeRows(r).map((c) => [c.date, c.change, c.systems, c.criteria, c.impact, c.reviewedBy]); return rows.length ? rows : [[TO_RECORD, '', '', '', '', '']]; })(), { size: 16 }),
     h2('2.6 Limitations register'),
     p('Every item that was not provided, could not be tested, or limits a conclusion. A limitation stays open until the evidence is provided or the conclusion is revised.'),
     ...table(W_PORTRAIT, [{ header: 'ID', width: 0.8 }, { header: 'Item not provided or not testable', width: 3 }, { header: 'Control', width: 1.2 }, { header: 'Effect on conclusion', width: 3 }, { header: 'Owner', width: 1.2 }, { header: 'Resolved', width: 1 }],
-      r.limitations.map((l) => [l.id, l.item, l.controlId ?? 'Report', l.effect, '[to be assigned]', '']), { size: 16, empty: 'No limitations recorded.' }),
+      limitationRegister(r).map((l) => [l.id, l.item, l.control, l.effect, l.owner, l.resolved]), { size: 16, empty: 'No limitations recorded.' }),
   ];
 }
 
@@ -253,13 +253,13 @@ function findingsSection(r: ReadinessReport): Block {
     p('A finding is raised for every control that is missing, informal, only partly implemented, or has a failing check. Each records the condition, the criterion affected, the cause and effect, and a recommendation.'),
     ...table(W_LANDSCAPE, [{ header: 'Finding', width: 1 }, { header: 'Control and criterion', width: 1.4 }, { header: 'Severity', width: 1 }, { header: 'Condition', width: 3.4 }, { header: 'Cause', width: 2.2 }, { header: 'Effect', width: 2.6 }, { header: 'Recommendation', width: 2.6 }, { header: 'Status', width: 1 }], rows, { size: 15, empty: 'No findings.' }),
     h2('6.2 Prior-period findings follow-up'),
-    p('List every finding from the previous internal or external report. Each one shows whether the fix was made, with evidence, and whether it was retested in the current period. A finding that recurs is raised again above. CloudBuilder does not hold earlier reports, so record them here.'),
-    ...table(W_LANDSCAPE, [{ header: 'Prior finding', width: 1.2 }, { header: 'Prior report and date', width: 1.6 }, { header: 'Original condition', width: 3 }, { header: 'Remediation action', width: 2.4 }, { header: 'Evidence of closure', width: 2 }, { header: 'Status this period', width: 1.4 }, { header: 'Retested by and date', width: 1.6 }], [[TO_RECORD, '', '', '', '', '', '']], { size: 16 }),
+    p('List every finding from the previous internal or external report. Each one shows whether the fix was made, with evidence, and whether it was retested in the current period. A finding that recurs is raised again above. CloudBuilder does not hold earlier reports, so the team records them.'),
+    ...table(W_LANDSCAPE, [{ header: 'Prior finding', width: 1.2 }, { header: 'Prior report and date', width: 1.6 }, { header: 'Original condition', width: 3 }, { header: 'Remediation action', width: 2.4 }, { header: 'Evidence of closure', width: 2 }, { header: 'Status this period', width: 1.4 }, { header: 'Retested by and date', width: 1.6 }], (() => { const rows = priorFindingRows(r); return rows.length ? rows : [[TO_RECORD, '', '', '', '', '', '']]; })(), { size: 16 }),
   ];
 }
 
 function responseSection(r: ReadinessReport): Block {
-  const rows = r.findings.map((f) => [f.id, f.managementResponse || TBD, f.owner || 'No owner', TO_RECORD, TO_RECORD, f.retestedAt ? `${f.retestedAt.slice(0, 10)}: ${f.status === 'closed' ? 'passed' : 'not closed'}` : 'Not retested']);
+  const rows = r.findings.map((f) => { const plan = findingPlan(r, f.controlId); return [f.id, f.managementResponse || TBD, f.owner || 'No owner', plan.milestones, plan.acceptance, f.retestedAt ? `${f.retestedAt.slice(0, 10)}: ${f.status === 'closed' ? 'passed' : 'not closed'}` : 'Not retested']; });
   return [
     h1('7. Management Response and Remediation Plan'),
     p('Management responds to each finding. A finding is closed only after the corrective action is retested and the evidence is filed. Closing needs someone other than the finding\'s owner.'),
@@ -313,9 +313,9 @@ function appendixAtoJ(r: ReadinessReport): Block {
       worksheetRows(r).map((w) => [w.control, `${w.objective}\n${w.activity}`, w.ownerFrequency, `${w.population}\n${w.walkthrough}`, w.evidence, w.score, w.basis, w.nextStep, w.reviewer]), { size: 14 }),
 
     h1('Appendix C. Walkthrough Workpaper'),
-    p('One walkthrough per control: who was interviewed, what was observed, and which documents were inspected. A design conclusion needs the walkthrough and at least one design document. CloudBuilder does not record walkthroughs yet; complete the cells below.'),
+    p('One walkthrough per control: who was interviewed, what was observed, and which documents were inspected. A design conclusion needs the walkthrough and at least one design document. Walkthroughs are recorded in CloudBuilder by the team; a blank row has no walkthrough yet.'),
     ...table(W_LANDSCAPE, [{ header: 'Control', width: 1 }, { header: 'Walkthrough participant', width: 2 }, { header: 'Date', width: 1 }, { header: 'Documents inspected', width: 3 }, { header: 'What was observed', width: 3 }, { header: 'Design conclusion', width: 2.2 }, { header: 'Preparer and reviewer', width: 1.6 }],
-      r.results.map((x) => [x.id, x.owner || '', '', '', '', '', '']), { size: 15 }),
+      r.results.map((x) => { const w = walkthroughOf(r, x.id); return [x.id, w?.['participant'] ?? (x.owner || ''), w?.['date'] ?? '', w?.['documents'] ?? '', w?.['observed'] ?? '', w?.['conclusion'] ?? '', w ? `${w['preparer'] ?? ''}${w['reviewer'] ? ` / ${w['reviewer']}` : ''}` : '']; }), { size: 15 }),
 
     h1('Appendix D. Evidence Index'),
     p('Every piece of evidence attached to a control, with who added it, when it was produced, the period it covers and its full SHA-256 fingerprint. The CPA firm uses the fingerprint to confirm a file has not changed; two files never share one.'),
@@ -358,23 +358,23 @@ function appendixAtoJ(r: ReadinessReport): Block {
     h1('Appendix I. Complementary Controls Register'),
     p('Every control that the description assumes customers operate (CUECs), and every control that a provider must operate (CSOCs). The CPA firm checks each one against customer contracts and provider reports. Each needs a status of Confirmed or Gap; a gap closes only with evidence. The entries below are suggestions: management confirms what applies.'),
     h2('I.1 Complementary user entity controls (CUECs)'),
-    ...table(W_LANDSCAPE, [{ header: 'ID', width: 0.8 }, { header: 'CUEC as stated in the description', width: 5 }, { header: 'Criteria', width: 1.2 }, { header: 'Where it appears in customer contracts', width: 2.4 }, { header: 'How it is communicated', width: 2 }, { header: 'Status', width: 1.2 }],
-      ['Customers keep their own sign-in credentials secure and use a second factor where offered.', 'Customers review the access given to their own users and remove it when it is no longer needed.', 'Customers tell the company promptly about suspected security incidents affecting their data.', 'Customers configure the service as the documentation describes.'].map((x, i) => [`CUEC-${i + 1}`, x, i < 2 ? 'CC6.1, CC6.2' : i === 2 ? 'CC7.3' : 'CC2.3', TO_RECORD, TO_RECORD, 'Not confirmed']), { size: 16 }),
+    ...table(W_LANDSCAPE, [{ header: 'ID', width: 0.8 }, { header: 'CUEC as stated in the description', width: 4.6 }, { header: 'Criteria', width: 1.1 }, { header: 'Where it appears in customer contracts', width: 2.2 }, { header: 'How it is communicated', width: 1.8 }, { header: 'Status', width: 1.2 }],
+      cuecRows(r).map((x) => [x.id, x.statement, x.criteria, x.a, x.b, { text: `${x.status}${x.note ? `\n${x.note}` : ''}`, fill: x.status === 'Confirmed' ? SCORE_FILL[3] : x.status === 'Gap' ? SCORE_FILL[0] : SCORE_FILL[2], bold: true }]), { size: 16 }),
     h2('I.2 Complementary subservice organisation controls (CSOCs)'),
-    ...table(W_LANDSCAPE, [{ header: 'ID', width: 0.8 }, { header: 'Provider and CSOC', width: 5 }, { header: 'Criteria', width: 1.2 }, { header: 'Provider report that covers it (period)', width: 2.4 }, { header: 'Our complementary control', width: 2.4 }, { header: 'Status', width: 1.2 }],
-      providers.flatMap((p0, i) => ['Physical access to the data centres is controlled by the provider.', 'Power, cooling and network connectivity of the data centres are the provider\'s responsibility.', 'The underlying host and virtualization layer is secured and patched by the provider.'].map((x, k) => [`CSOC-${i + 1}.${k + 1}`, `${p0}: ${x}`, k === 0 ? 'CC6.4' : k === 1 ? 'A1.2' : 'CC6.6, CC7.1', TO_RECORD, TO_RECORD, 'Not confirmed'])), { size: 16, empty: 'No cloud provider in the design.' }),
+    ...table(W_LANDSCAPE, [{ header: 'ID', width: 0.8 }, { header: 'Provider and CSOC', width: 4.6 }, { header: 'Criteria', width: 1.1 }, { header: 'Provider report that covers it (period)', width: 2.2 }, { header: 'Our complementary control', width: 1.8 }, { header: 'Status', width: 1.2 }],
+      csocRows(r).map((x) => [x.id, x.statement, x.criteria, x.a, x.b, { text: `${x.status}${x.note ? `\n${x.note}` : ''}`, fill: x.status === 'Confirmed' ? SCORE_FILL[3] : x.status === 'Gap' ? SCORE_FILL[0] : SCORE_FILL[2], bold: true }]), { size: 16, empty: 'No cloud provider in the design.' }),
     p('Confirm each criterion reference against the official criteria before use.', { color: GREY, size: 19 }),
 
     h1('Appendix J. Subservice Organisation Review'),
     p('The review of each subservice organisation that supports in-scope services. It supports vendor and business partner risk (CC9.2). Complete it for every provider, whether carved out or included.'),
     h2('J.1 Provider summary'),
     ...table(W_LANDSCAPE, [{ header: 'Provider and service', width: 3 }, { header: 'Carve-out or inclusive', width: 1.6 }, { header: 'Report type and period', width: 1.8 }, { header: 'Covers the audit period?', width: 1.4 }, { header: 'Bridge letter needed (dates)', width: 1.6 }, { header: 'Opinion and exceptions noted', width: 2 }, { header: 'Reviewed by and date', width: 1.5 }],
-      orgs.map((o) => [`${o.name}\n${o.what}`, o.kind === 'cloud' ? 'Usually carve-out; the CPA firm confirms' : TO_RECORD, TO_RECORD, TO_RECORD, TO_RECORD, TO_RECORD, TO_RECORD]), { size: 15, empty: 'No provider in the design.' }),
+      providerRows(r).map((o) => [`${o.name}\n${o.what}`, o.treatment, o.report, o.covers, o.bridge, o.opinion, o.reviewed]), { size: 15, empty: 'No provider in the design.' }),
     h2('J.2 Complementary controls relied on, and gaps'),
     ...table(W_LANDSCAPE, [{ header: 'Provider', width: 2 }, { header: 'Control relied on', width: 3 }, { header: 'Our evidence it operates', width: 2.4 }, { header: 'Gap in the provider report', width: 2 }, { header: 'Compensating action', width: 2 }, { header: 'Status', width: 1 }],
-      providers.map((x) => [x, 'Physical and environmental controls, and host infrastructure', TO_RECORD, TO_RECORD, TO_RECORD, 'Not reviewed']), { size: 15, empty: 'No provider in the design.' }),
+      providerRows(r).map((o) => [o.name, o.relied, o.evidence, o.gap, o.compensating, o.recorded ? 'Reviewed' : 'Not reviewed']), { size: 15, empty: 'No provider in the design.' }),
     h2('J.3 Review conclusion'),
-    p(`[State whether the providers' controls are adequately covered for the criteria in scope, the gaps that remain, and who accepted the residual risk.] ${TBD}.`, { color: GREY }),
+    p(r.team.conclusion ? `${r.team.conclusion.data['conclusion'] ?? ''}${r.team.conclusion.data['acceptedBy'] ? ` Residual risk accepted by ${r.team.conclusion.data['acceptedBy']}.` : ''}` : `[State whether the providers' controls are adequately covered for the criteria in scope, the gaps that remain, and who accepted the residual risk.] ${TBD}.`, { color: r.team.conclusion ? undefined : GREY }),
   ];
 }
 

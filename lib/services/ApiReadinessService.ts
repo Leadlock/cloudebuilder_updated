@@ -24,6 +24,8 @@ export interface SnapshotsView {
 }
 export interface AuditorAccessItem { id: string; name: string; email: string; tokenPrefix: string; createdBy: string; createdAt: string; expiresAt: string; revokedAt: string | null; lastUsedAt: string | null; useCount: number }
 
+export interface EngagementInput { cpaFirm: string; scanProvider: string; scanFrequency: string; assessmentDate?: string }
+
 export interface NewEvidence { kind: 'file' | 'link' | 'note'; title: string; description: string; origin: 'system' | 'manual'; collectedAt: string; validUntil?: string; url?: string; controls: string[]; file?: File }
 
 const base = (projectId: string, framework: FrameworkId) => `/api/projects/${projectId}/readiness/${framework}`;
@@ -73,6 +75,11 @@ export const apiReadinessService = {
   linkEvidence: (projectId: string, framework: FrameworkId, id: string, controls: string[]) => send<{ saved: boolean }>(`${base(projectId, framework)}/evidence/${id}`, { method: 'PUT', json: { controls } }),
   removeEvidence: (projectId: string, framework: FrameworkId, id: string) => send<{ removed: boolean }>(`${base(projectId, framework)}/evidence/${id}`, { method: 'DELETE' }),
   downloadEvidence: async (projectId: string, framework: FrameworkId, id: string) => fileOf(await fetch(`${base(projectId, framework)}/evidence/${id}`, { credentials: 'include' }), 'evidence'),
+
+  saveEntry: (projectId: string, input: { kind: string; key?: string; data: Record<string, string> }) => send<{ id: string; replaced: boolean }>(`${base(projectId, 'soc2')}/entries`, { method: 'POST', json: input }),
+  updateEntry: (projectId: string, id: string, data: Record<string, string>) => send<{ saved: boolean }>(`${base(projectId, 'soc2')}/entries/${id}`, { method: 'PUT', json: { data } }),
+  removeEntry: (projectId: string, id: string) => send<{ removed: boolean }>(`${base(projectId, 'soc2')}/entries/${id}`, { method: 'DELETE' }),
+  saveEngagement: (projectId: string, input: EngagementInput) => send<{ engagement: EngagementInput }>(`${base(projectId, 'soc2')}/engagement`, { method: 'PUT', json: input }),
 
   snapshots: (projectId: string, framework: FrameworkId) => send<SnapshotsView>(`${base(projectId, framework)}/snapshots`),
   takeSnapshot: (projectId: string, framework: FrameworkId) => send<{ id: string }>(`${base(projectId, framework)}/snapshots`, { method: 'POST', json: {} }),

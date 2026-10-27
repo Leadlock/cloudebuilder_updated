@@ -9,6 +9,7 @@ import { configSummary } from './configuration';
 import { soc2Defs } from './frameworks';
 import { FORBIDDEN_CLAIMS, type ReadinessReport } from './report';
 import { isSamePerson } from './rules';
+import { CSOC_SEEDS, CUEC_SEEDS } from './seeds';
 import { SOC2_CATEGORY_LABEL, SOC2_CRITERIA, SOC2_CRITERIA_BY_ID, type Soc2Category } from './soc2/criteria';
 import type { ControlResult } from './types';
 
@@ -79,7 +80,9 @@ export function consistencyChecks(r: ReadinessReport): ConsistencyCheck[] {
     cs.differing > 0 ? 'Fail' : cs.settings === 0 || cs.fromAccount === 0 ? 'Note' : 'Pass',
     cs.settings === 0 ? 'No resource settings were examined (the architecture may be empty).' : cs.differing > 0 ? `${cs.differing} setting(s) differ between the design and the cloud account. See Appendix G.` : cs.fromAccount === 0 ? `All ${cs.settings} settings come from the design only; none was read from the cloud account. See Appendix G.` : `${cs.fromAccount} of ${cs.settings} settings were read from the cloud account and none differs from the design.`));
 
-  out.push(c('Provider agrees', 'Vulnerability scanning and penetration testing name the same provider and frequency wherever they appear', 'Note', 'The scan and penetration-test provider is not recorded in CloudBuilder yet. Confirm it in the system description and the control matrix.'));
+  const eng = r.team.engagement;
+  out.push(c('Provider agrees', 'Vulnerability scanning and penetration testing name the same provider and frequency wherever they appear', eng.scanProvider ? 'Pass' : 'Note',
+    eng.scanProvider ? `Recorded once, here: ${eng.scanProvider}${eng.scanFrequency ? `, ${eng.scanFrequency}` : ''}. Use these words wherever the scan or test is mentioned (the system description and the control matrix).` : 'The scan and penetration-test provider is not recorded. Record it in the engagement settings, then use the same words in the system description and the control matrix.'));
 
   const ids = r.defs.map((d) => d.id);
   const dup = ids.filter((id, i) => ids.indexOf(id) !== i);
@@ -97,8 +100,14 @@ export function consistencyChecks(r: ReadinessReport): ConsistencyCheck[] {
     r.evidenceIndex.length === 0 ? 'No evidence is attached yet.' : bad.length === 0 ? `All ${r.evidenceIndex.length} items are dated within ${EVIDENCE_WINDOW_DAYS} days of ${r.asOf} and unexpired.` : `${bad.length} item(s) are undated, older than ${EVIDENCE_WINDOW_DAYS} days, expired or have no named person.`));
   if (r.evidenceIndex.length === 0) out[out.length - 1]!.result = 'Note';
 
-  out.push(c('Complementary controls agree', 'Each customer-side and provider-side control in the description appears in Appendix I with a status', 'Note', 'The suggested controls in Appendix I have not been confirmed yet. Mark each one Confirmed or Gap.'));
-  out.push(c('Subservice reports', 'Each provider report covers the period, with bridge letters for any gap', 'Note', 'Provider reports are not recorded in CloudBuilder yet (Appendix J). Record each provider\'s latest report and its period.'));
+  const comp = [...cuecRows(r), ...csocRows(r)];
+  const unconfirmed = comp.filter((x) => x.status === 'Not confirmed').length; const gapsOpen = comp.filter((x) => x.status === 'Gap').length;
+  out.push(c('Complementary controls agree', 'Each customer-side and provider-side control in the description appears in Appendix I with a status', gapsOpen > 0 ? 'Fail' : unconfirmed > 0 ? 'Note' : 'Pass',
+    gapsOpen > 0 ? `${gapsOpen} complementary control(s) are marked Gap. A gap closes only with evidence.` : unconfirmed > 0 ? `${unconfirmed} of ${comp.length} have not been confirmed yet. Mark each one Confirmed or Gap.` : `All ${comp.length} are confirmed.`));
+  const provs = providerRows(r);
+  const notReviewed = provs.filter((x) => !x.recorded); const notBridged = provs.filter((x) => x.recorded && x.covers === 'No' && !/\d/.test(x.bridge));
+  out.push(c('Subservice reports', 'Each provider report covers the period, with bridge letters for any gap', notBridged.length > 0 ? 'Fail' : notReviewed.length > 0 ? 'Note' : 'Pass',
+    notBridged.length > 0 ? `${notBridged.map((x) => x.name).join(', ')}: the report does not cover the audit period and no bridge letter dates are recorded.` : notReviewed.length > 0 ? `${notReviewed.length} of ${provs.length} provider(s) have no review recorded (Appendix J): ${notReviewed.map((x) => x.name).join(', ')}.` : provs.length === 0 ? 'No provider is drawn in the design.' : `All ${provs.length} provider reviews are recorded.`));
 
   const sm = r.summary;
   const byCat = categoryRows(r);
@@ -144,6 +153,8 @@ export function cpaItems(r: ReadinessReport): CpaItem[] {
     item('All findings are closed or formally risk-accepted by management', 'Sections 6 and 7', open.length === 0, 'No finding is open.', `${open.length} finding(s) are still open.`),
     item('Vulnerability scan and penetration test scope matches the system boundary; reports and retests of critical and high findings are filed', 'Appendices A, D', null, '', 'Not recorded in CloudBuilder. File the reports as evidence and link them to the controls.'),
     item('Gap register and remediation tracker are current', 'Appendix F', true, 'Built from the live data on the date of this report.', ''),
+    item('Prior-period findings are followed up, with evidence of closure and retest', 'Section 6.2', r.team.priorFindings.length === 0 ? null : r.team.priorFindings.every((e) => e.data['statusNow'] === 'Closed'), 'Every prior finding is closed and retested.', r.team.priorFindings.length === 0 ? 'No earlier report is recorded. If there is one, list its findings; if not, say so to the CPA firm.' : 'Some prior findings are still open, recur, or are risk-accepted.'),
+    item('Provider reports are reviewed, with bridge letters for any gap', 'Appendix J', providerRows(r).length > 0 && providerRows(r).every((x) => x.recorded), 'Every provider review is recorded.', 'One or more provider reviews are not recorded.'),
     item('The report is reviewed by someone independent of the controls', 'Section 9', signed('reviewer'), 'Signed.', 'Not signed.'),
   ];
 }
@@ -173,7 +184,7 @@ export function worksheetRows(r: ReadinessReport): WorksheetRow[] {
     const crit = SOC2_CRITERIA_BY_ID.get(x.group);
     const basis = x.signals.length ? [...new Set(x.signals.map((s) => ({ design: 'Design check', discovered: 'Read from the account', live: 'Live check', answer: "Team's answer", platform: 'CloudBuilder record' }[s.basis])))].join('; ') : x.evidence.length ? 'Inspected evidence' : 'Statement only';
     return {
-      control: `${x.id}: ${x.title}\n${x.group}`, objective: crit?.asks ?? '', activity: d?.activity ?? '', ownerFrequency: `${x.owner || 'No owner'}\n${d?.frequency ?? ''}`, population: TO_RECORD, walkthrough: TO_RECORD,
+      control: `${x.id}: ${x.title}\n${x.group}`, objective: crit?.asks ?? '', activity: d?.activity ?? '', ownerFrequency: `${x.owner || 'No owner'}\n${d?.frequency ?? ''}`, population: dash(walkthroughOf(r, x.id)?.['population']), walkthrough: walkthroughOf(r, x.id) ? `${walkthroughOf(r, x.id)!['participant']}, ${walkthroughOf(r, x.id)!['date']}` : TO_RECORD,
       evidence: x.evidence.map((e) => e.id).join(', ') || 'None', score: x.score === null ? x.scoreLabel : `${x.score} ${x.scoreLabel}\n${x.confidence}`, basis, nextStep: x.nextStep, reviewer: x.reviewer ? `${x.reviewer}${x.reviewedAt ? `\n${x.reviewedAt.slice(0, 10)}` : ''}` : TO_RECORD,
     };
   });
@@ -193,3 +204,57 @@ export function conclusion(r: ReadinessReport): string {
   const lead = { Ready: 'Every control in scope operates and no serious finding is open.', 'Ready with conditions': 'Every control is at least implemented, but some are not yet shown to operate or findings remain open.', 'Not ready': 'At least one control is missing or only informal, or a serious finding is open.', Incomplete: 'Some controls have not been assessed, so no conclusion can be drawn yet.' }[r.readiness];
   return `${lead} ${sm.coveragePct}% of the ${sm.total - sm.notApplicable} controls in scope have been assessed, with an average score of ${sm.average ?? 'n/a'} out of 4. ${notReady} ${notReady === 1 ? 'control is' : 'controls are'} missing or informal, and ${open.length} ${open.length === 1 ? 'finding is' : 'findings are'} open${high ? `, ${high} of them high` : ''}.`;
 }
+
+// ── What the team recorded, merged with what CloudBuilder knows ───────────────
+export const providersOf = (r: ReadinessReport): string[] => r.system.providers.map((x) => (x === 'aws' ? 'Amazon Web Services' : 'Microsoft Azure'));
+const dash = (v: string | undefined, fallback = TO_RECORD) => (v && v.trim() ? v : fallback);
+
+export interface ChangeRow { date: string; change: string; systems: string; criteria: string; impact: string; reviewedBy: string; source: 'team' | 'history' }
+/** The team's own log first; then the saved architecture versions in the year before the report date, marked as not yet reviewed. */
+export function changeRows(r: ReadinessReport): ChangeRow[] {
+  const team: ChangeRow[] = r.team.changes.map((e) => ({ date: e.data['date'] ?? '', change: e.data['change'] ?? '', systems: dash(e.data['systems'], ''), criteria: dash(e.data['criteria'], ''), impact: dash(e.data['impact'], ''), reviewedBy: dash(e.data['reviewedBy'], '[not reviewed]'), source: 'team' }));
+  const history: ChangeRow[] = r.architectureHistory.map((h) => ({ date: h.date, change: `Architecture saved: ${h.label}${h.summary ? `. ${h.summary}` : ''} (by ${h.author})`, systems: TO_RECORD, criteria: TO_RECORD, impact: TO_RECORD, reviewedBy: '[not reviewed]', source: 'history' }));
+  return [...team, ...history];
+}
+
+export function priorFindingRows(r: ReadinessReport): string[][] {
+  return r.team.priorFindings.map((e) => [e.data['priorId'] ?? '', dash(e.data['report'], ''), e.data['condition'] ?? '', dash(e.data['remediation'], ''), dash(e.data['closureEvidence'], ''), e.data['statusNow'] ?? '', e.data['retestedBy'] ? `${e.data['retestedBy']}${e.data['retestedOn'] ? `, ${e.data['retestedOn']}` : ''}` : '']);
+}
+
+export interface LimitationRow { id: string; item: string; control: string; effect: string; owner: string; resolved: string }
+export function limitationRegister(r: ReadinessReport): LimitationRow[] {
+  return r.limitations.map((l) => { const n = r.team.limitationNotes[l.id]?.data; return { id: l.id, item: l.item, control: l.controlId ?? 'Report', effect: l.effect, owner: dash(n?.['owner'], '[to be assigned]'), resolved: n?.['resolvedOn'] ?? '' }; });
+}
+
+export interface ComplementaryRow { id: string; statement: string; criteria: string; a: string; b: string; status: 'Confirmed' | 'Gap' | 'Not confirmed'; note: string }
+/** The suggested complementary controls, with what the team recorded laid over them, plus any the team added. */
+export function cuecRows(r: ReadinessReport): ComplementaryRow[] {
+  const seeded = CUEC_SEEDS.map(([statement, criteria], i): ComplementaryRow => { const k = `CUEC-${i + 1}`; const d = r.team.cuecs[k]?.data; return { id: k, statement: dash(d?.['statement'], statement), criteria: dash(d?.['criteria'], criteria), a: dash(d?.['contracts']), b: dash(d?.['communicated']), status: (d?.['status'] as ComplementaryRow['status']) || 'Not confirmed', note: d?.['note'] ?? '' }; });
+  const extra = Object.entries(r.team.cuecs).filter(([k]) => !seeded.some((s) => s.id === k)).map(([k, e]): ComplementaryRow => ({ id: k, statement: dash(e.data['statement'], ''), criteria: dash(e.data['criteria'], ''), a: dash(e.data['contracts']), b: dash(e.data['communicated']), status: (e.data['status'] as ComplementaryRow['status']) || 'Not confirmed', note: e.data['note'] ?? '' }));
+  return [...seeded, ...extra];
+}
+export function csocRows(r: ReadinessReport): ComplementaryRow[] {
+  const seeded = providersOf(r).flatMap((prov, i) => CSOC_SEEDS.map(([statement, criteria], k): ComplementaryRow => { const id = `CSOC-${i + 1}.${k + 1}`; const d = r.team.csocs[id]?.data; return { id, statement: dash(d?.['statement'], `${prov}: ${statement}`), criteria: dash(d?.['criteria'], criteria), a: dash(d?.['report']), b: dash(d?.['ourControl']), status: (d?.['status'] as ComplementaryRow['status']) || 'Not confirmed', note: d?.['note'] ?? '' }; }));
+  const extra = Object.entries(r.team.csocs).filter(([k]) => !seeded.some((s) => s.id === k)).map(([k, e]): ComplementaryRow => ({ id: k, statement: dash(e.data['statement'], ''), criteria: dash(e.data['criteria'], ''), a: dash(e.data['report']), b: dash(e.data['ourControl']), status: (e.data['status'] as ComplementaryRow['status']) || 'Not confirmed', note: e.data['note'] ?? '' }));
+  return [...seeded, ...extra];
+}
+
+export interface ProviderRow { name: string; what: string; cloud: boolean; treatment: string; report: string; covers: string; bridge: string; opinion: string; reviewed: string; relied: string; evidence: string; gap: string; compensating: string; recorded: boolean }
+/** Every provider in the design (the cloud providers and each third-party service), with the team's review laid over it. */
+export function providerRows(r: ReadinessReport): ProviderRow[] {
+  const base = [...providersOf(r).map((name) => ({ name, what: 'Cloud hosting: physical security, environment, network and host infrastructure', cloud: true })), ...r.system.thirdParties.map((x) => ({ name: x.vendor, what: `${x.use}. Data held: ${x.dataHeld || 'not stated'}`, cloud: false }))];
+  return base.map((b) => {
+    const e = r.team.providers[b.name]; const d = e?.data;
+    return {
+      ...b, recorded: !!e, treatment: d?.['treatment'] || (b.cloud ? 'Usually carve-out; the CPA firm confirms' : TO_RECORD), report: d?.['reportType'] ? `${d['reportType']}${d['period'] ? `, ${d['period']}` : ''}` : TO_RECORD,
+      covers: d?.['coversPeriod'] || TO_RECORD, bridge: dash(d?.['bridgeLetter'], d?.['coversPeriod'] === 'Yes' ? 'Not needed' : TO_RECORD), opinion: dash(d?.['opinion']), reviewed: d?.['reviewedBy'] ? `${d['reviewedBy']}${d['reviewedOn'] ? `, ${d['reviewedOn']}` : ''}` : TO_RECORD,
+      relied: dash(d?.['controlsRelied'], 'Physical and environmental controls, and host infrastructure'), evidence: dash(d?.['ourEvidence']), gap: dash(d?.['gap']), compensating: dash(d?.['compensating']),
+    };
+  });
+}
+
+export function findingPlan(r: ReadinessReport, controlId: string) {
+  const d = r.team.findingPlans[controlId]?.data;
+  return { milestones: dash(d?.['milestones']), acceptance: dash(d?.['acceptance']), closureEvidence: d?.['closureEvidence'] ?? '' };
+}
+export function walkthroughOf(r: ReadinessReport, controlId: string) { return r.team.walkthroughs[controlId]?.data; }

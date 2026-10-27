@@ -10,6 +10,7 @@ import { defsFor, FRAMEWORK_LABEL } from './frameworks';
 import type { PlatformFacts } from './signals';
 import type { ControlRecord, ControlResult, EvidenceRef, Finding, FindingRecord, FrameworkId, Limitation, Readiness, Signoff } from './types';
 import type { ConfigRow } from './configuration';
+import { emptyTeam, type TeamRecords } from './entries';
 import type { PeriodAnalysis } from './snapshots';
 import type { Soc2Category } from './soc2/criteria';
 import { SOC2_CATEGORY_LABEL } from './soc2/criteria';
@@ -50,7 +51,13 @@ export interface ReportInput {
   period?: PeriodAnalysis;
   /** The settings of every resource the assessment examined (the configuration appendix). */
   configuration?: ConfigRow[];
+  /** What the team recorded beyond control answers (changes, walkthroughs, complementary controls, provider reviews ...). */
+  team?: TeamRecords;
+  /** Versions of the architecture up to the assessment date, offered as a starting point for the significant-changes log. */
+  architectureHistory?: ArchitectureChange[];
 }
+
+export interface ArchitectureChange { date: string; label: string; summary: string; author: string }
 
 export interface EvidenceIndexRow extends EvidenceRef { ref: string; controls: string[] }
 
@@ -82,6 +89,8 @@ export interface ReadinessReport {
   cpaChecks: CpaCheck[];
   period?: PeriodAnalysis;
   configuration: ConfigRow[];
+  team: TeamRecords;
+  architectureHistory: ArchitectureChange[];
 }
 
 const ALL: Soc2Category[] = ['security', 'availability', 'confidentiality'];
@@ -108,7 +117,7 @@ export function buildReadinessReport(i: ReportInput): ReadinessReport {
   const signoffs = (i.signoffs ?? []).filter((s) => ['preparer', 'reviewer', 'management'].includes(s.role));
   const exclusions = (Object.entries(i.exclusions ?? {}) as Array<[Soc2Category, string]>).filter(([c]) => !categories.includes(c)).map(([c, reason]) => ({ category: SOC2_CATEGORY_LABEL[c], reason }));
 
-  const core = { f: i.framework, v: i.version, asOf: i.asOf.toISOString().slice(0, 10), r: results.map((r) => [r.id, r.score, r.confidence, r.evidence.map((e) => e.id)]), fi: findings.map((f) => [f.id, f.status]), ev: index.map((e) => [e.ref, e.sha256 ?? e.title]), cf: (i.configuration ?? []).map((c) => [c.resourceId, c.setting, c.observed, c.result, c.source]) };
+  const core = { f: i.framework, v: i.version, asOf: i.asOf.toISOString().slice(0, 10), r: results.map((r) => [r.id, r.score, r.confidence, r.evidence.map((e) => e.id)]), fi: findings.map((f) => [f.id, f.status]), ev: index.map((e) => [e.ref, e.sha256 ?? e.title]), tm: JSON.stringify(i.team ?? null), cf: (i.configuration ?? []).map((c) => [c.resourceId, c.setting, c.observed, c.result, c.source]) };
   const reportId = `${i.framework === 'soc2' ? 'S2' : i.framework === 'aws-waf' ? 'AW' : 'AZ'}-${createHash('sha256').update(JSON.stringify(core)).digest('hex').slice(0, 10).toUpperCase()}`;
 
   const report: ReadinessReport = {
@@ -119,6 +128,8 @@ export function buildReadinessReport(i: ReportInput): ReadinessReport {
     cpaChecks: [],
     ...(i.period ? { period: i.period } : {}),
     configuration: i.configuration ?? [],
+    team: i.team ?? emptyTeam(),
+    architectureHistory: i.architectureHistory ?? [],
   };
   report.cpaChecks = cpaChecks(report);
   return report;

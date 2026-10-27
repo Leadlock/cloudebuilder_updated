@@ -15,6 +15,7 @@ import ControlsList from './readiness/ControlsList';
 import FindingsList from './readiness/FindingsList';
 import EvidenceVault from './readiness/EvidenceVault';
 import OverTimeAndAuditors from './readiness/OverTimeAndAuditors';
+import TeamRecords from './readiness/TeamRecords';
 import { pill, readinessTone, theme } from './readiness/ui';
 
 const FRAMEWORKS: Array<{ id: FrameworkId; label: string; file: string }> = [
@@ -22,7 +23,7 @@ const FRAMEWORKS: Array<{ id: FrameworkId; label: string; file: string }> = [
   { id: 'aws-waf', label: 'AWS Well-Architected', file: 'PDF' },
   { id: 'azure-waf', label: 'Azure Well-Architected', file: 'PDF' },
 ];
-type Tab = 'controls' | 'findings' | 'evidence' | 'signoff' | 'auditor';
+type Tab = 'controls' | 'findings' | 'evidence' | 'records' | 'signoff' | 'auditor';
 
 export default function ReadinessPanel() {
   const { state } = useApp();
@@ -125,6 +126,7 @@ export default function ReadinessPanel() {
             {tabBtn('controls', `Controls (${r.results.length})`)}
             {tabBtn('findings', `Findings (${r.findings.length})`)}
             {tabBtn('evidence', `Evidence (${evidence.length})`)}
+            {framework === 'soc2' && tabBtn('records', 'Records')}
             {tabBtn('signoff', 'Sign-off and limits')}
             {tabBtn('auditor', 'Over time and auditors')}
           </div>
@@ -132,6 +134,7 @@ export default function ReadinessPanel() {
           {tab === 'controls' && <ControlsList view={view} projectId={projectId} framework={framework} isLight={isLight} evidence={evidence} onChanged={load} onAttach={(k) => { setPreset(k); setTab('evidence'); }} />}
           {tab === 'findings' && <FindingsList view={view} projectId={projectId} framework={framework} isLight={isLight} onChanged={load} />}
           {tab === 'evidence' && <EvidenceVault view={view} projectId={projectId} framework={framework} isLight={isLight} evidence={evidence} presetControl={preset} onChanged={load} />}
+          {tab === 'records' && framework === 'soc2' && <TeamRecords view={view} projectId={projectId} isLight={isLight} onChanged={load} />}
           {tab === 'auditor' && <OverTimeAndAuditors view={view} projectId={projectId} framework={framework} isLight={isLight} />}
           {tab === 'signoff' && (
             <div className="space-y-4">

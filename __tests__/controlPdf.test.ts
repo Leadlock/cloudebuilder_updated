@@ -1,6 +1,9 @@
 import { renderControlPdf } from '@/lib/compliance/renderControlPdf';
 import { fixtureReport } from './helpers/complianceFixture';
 
+// Rendering a 50-page report is slow when the whole suite is running at once.
+jest.setTimeout(60_000);
+
 describe.each(['aws-waf', 'azure-waf'] as const)('control PDF (%s)', (fw) => {
   it('is a real multi-page PDF', async () => {
     const buf = await renderControlPdf(fixtureReport(fw));

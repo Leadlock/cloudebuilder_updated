@@ -10,7 +10,7 @@ const dateLong = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { da
 export function bridgeLetter(r: ReadinessReport): string[] {
   return [
     '[Provider or company letterhead]',
-    `To: ${r.company} and [CPA firm name]`,
+    `To: ${r.company} and ${r.team.engagement.cpaFirm || '[CPA firm name]'}`,
     'Date: [DD Month YYYY]',
     'Subject: Bridge letter for [gap start date] to [gap end date], covering [service name]',
     '',
@@ -34,7 +34,7 @@ export function representationLetter(r: ReadinessReport): string[] {
   const cats = r.categories.map((c) => SOC2_CATEGORY_LABEL[c]).join(', ');
   return [
     '[Company letterhead]',
-    'To: [CPA firm name]',
+    `To: ${r.team.engagement.cpaFirm || '[CPA firm name]'}`,
     'Date: [DD Month YYYY]',
     '',
     `In connection with your examination of the description of ${r.system.name}, and of the suitability of the design of its controls as of ${dateLong(r.asOf)}, relevant to the trust services criteria for ${cats}, we confirm, to the best of our knowledge and belief, the following.`,
