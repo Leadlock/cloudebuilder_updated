@@ -8,16 +8,7 @@
   <title>CloudBuilder — From Code to Production. Faster.</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23050505'/%3E%3Cpath d='M43 19a18 18 0 1 0 0 26' fill='none' stroke='%23ff5a1f' stroke-width='8' stroke-linecap='round'/%3E%3Cpath d='M29 25h14M29 32h18M29 39h14' stroke='%23ff8a3d' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
   <script>
-    const previewPath = window.location.pathname.replace(/\/$/, "");
-    if (["/dupe", "/dupli", "/duplicate"].includes(previewPath)) {
-      document.documentElement.classList.add("dupe-page");
-    }
-    if (previewPath === "/dupli") {
-      document.documentElement.classList.add("dupli-page");
-    }
-    if (previewPath === "/duplicate") {
-      document.documentElement.classList.add("duplicate-page");
-    }
+    document.documentElement.classList.add("duplicate-page");
   </script>
   <style>
     :root{--ink:#06132f;--navy:#08193c;--panel:#0d214d;--cyan:#3de7ff;--blue:#5b7cff;--sky:#b9f6ff;--mist:#edf8ff;--white:#fff;--muted:#98a9c5;--line:rgba(121,190,255,.18);--green:#73f6c2;--radius:22px;--max:1180px}
@@ -557,40 +548,12 @@
     @keyframes cc-console-float-mobile{0%,100%{transform:perspective(1100px) translateY(0) rotateY(-2deg)}50%{transform:perspective(1100px) translateY(-9px) rotateY(1deg)}}
     @media(prefers-reduced-motion:reduce){.hero *,.hero *::before,.hero *::after{animation:none!important;transition:none!important}.hero .hero-motion{display:none}.hero .hero-aurora{animation:none}.hero .console{transform:none!important}.hero .hero-copy>*{opacity:1!important;translate:none!important;filter:none!important}.hero .activity-track::after{width:100%}.hero .flowline::before{display:none}}
   </style>
-  <style id="cloudbuilder-aurora-stripes">
-    /* Static-site adaptation of the supplied layered aurora background. */
-    .hero .hero-motion{display:none}
-    .hero .hero-aurora{
-      --stripes:repeating-linear-gradient(90deg,rgba(245,239,237,.62) 0px,rgba(245,239,237,.3) 6px,rgba(245,239,237,.04) 20px,rgba(245,239,237,.08) 31px,rgba(245,239,237,.65) 33px,rgba(245,239,237,.24) 44px);
-      --rainbow:repeating-linear-gradient(90deg,#a8d494 0%,#e0e98d 12%,#afd398 23%,#b8d8ba 34%,#ead17f 43%,#f08b82 53%,#ef9c98 64%,#b4d59c 76%,#e3e899 88%,#a8d494 100%);
-      inset:-2px;z-index:0;background-color:#F5EFED;
-      background-image:var(--stripes),var(--rainbow);
-      background-size:100% 100%,200% 100%;background-position:0px 50%,50% 50%;
-      filter:blur(.35px);opacity:.88;
-      mask-image:linear-gradient(180deg,#0F0A0A 0%,rgba(15,10,10,.95) 25%,rgba(15,10,10,.72) 58%,rgba(15,10,10,.3) 84%,transparent 100%);
-      -webkit-mask-image:linear-gradient(180deg,#0F0A0A 0%,rgba(15,10,10,.95) 25%,rgba(15,10,10,.72) 58%,rgba(15,10,10,.3) 84%,transparent 100%);
-      animation:cc-stripe-drift 60s linear infinite;
-    }
-    html.dupe-page .hero .hero-aurora{
-      --rainbow:repeating-linear-gradient(90deg,
-        #dceeff 0%, #a9d5f5 12%, #67b7ea 23%, #0078d4 34%,
-        #6eb9e8 43%, #ffd47a 53%, #ffb23f 64%, #ff9900 76%,
-        #ffe3a3 88%, #dceeff 100%);
-    }
-    html.dupli-page .hero{background:#f7f9fc}
-    html.dupli-page .hero .hero-aurora{display:none}
-    html.dupli-page .hero-wave-grid{
-      position:absolute;inset:0;z-index:0;width:100%;height:100%;display:block;
-      background:linear-gradient(135deg,#f8fafc 0%,#f4f8fc 55%,#fff9ed 100%);
-      pointer-events:auto;
-    }
-    html.dupli-page .hero::before{opacity:.055}
-    html.dupli-page .hero::after{
-      display:block;background:linear-gradient(90deg,rgba(247,249,252,.68),rgba(247,249,252,.24) 38%,transparent 68%);
-    }
-    html[data-theme="dark"].dupli-page .hero-wave-grid{filter:brightness(.32) saturate(.8)}
-    html.duplicate-page .hero{background:#fff;perspective:2000px;transform-style:preserve-3d}
-    html.duplicate-page .hero .hero-aurora{display:none}
+  <style id="cloudbuilder-perspective-grid">
+    /* 3D Perspective Cloud Service Grid (Default Hero Style) */
+    .hero{background:#fff;perspective:2000px;transform-style:preserve-3d}
+    .hero .hero-aurora, .hero .hero-motion{display:none!important}
+    .hero::before{opacity:.04}
+    .hero::after{display:none!important}
     .perspective-grid-bg{position:absolute;inset:0;z-index:0;overflow:hidden;background:#fff;perspective:2000px;transform-style:preserve-3d}
     .perspective-grid-plane{
       position:absolute;left:50%;top:50%;width:80rem;aspect-ratio:1;display:grid;
@@ -627,24 +590,12 @@
         radial-gradient(ellipse at 32% 53%,rgba(255,255,255,.64) 0%,rgba(255,255,255,.25) 38%,transparent 67%),
         radial-gradient(circle,transparent 25%,rgba(255,255,255,.96) 80%);
     }
-    html.duplicate-page .hero::before{opacity:.04}
-    html.duplicate-page .hero::after{display:none}
-    html[data-theme="dark"].duplicate-page .hero,html[data-theme="dark"].duplicate-page .perspective-grid-bg{background:#0F0A0A}
-    html[data-theme="dark"].duplicate-page .perspective-grid-tile{border-color:rgba(113,128,150,.34)}
-    html[data-theme="dark"].duplicate-page .perspective-grid-overlay{background:
+    html[data-theme="dark"] .hero,html[data-theme="dark"] .perspective-grid-bg{background:#0F0A0A}
+    html[data-theme="dark"] .perspective-grid-tile{border-color:rgba(113,128,150,.34)}
+    html[data-theme="dark"] .perspective-grid-overlay{background:
       linear-gradient(180deg,rgba(15,10,10,.94) 0%,rgba(15,10,10,.5) 16%,transparent 38%),
       radial-gradient(ellipse at 32% 53%,rgba(15,10,10,.64) 0%,rgba(15,10,10,.25) 38%,transparent 67%),
       radial-gradient(circle,transparent 25%,rgba(15,10,10,.96) 80%)}
-    .hero .hero-aurora::after{
-      content:"";inset:0;background-image:var(--stripes),var(--rainbow);
-      background-size:100% 100%,200% 100%;background-position:0px 50%,50% 50%;
-      opacity:.3;mix-blend-mode:soft-light;
-      animation:cc-stripe-drift 60s linear infinite reverse;
-    }
-    .hero::after{display:block;position:absolute;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse at 23% 52%,rgba(245,239,237,.36),rgba(245,239,237,.16) 35%,transparent 65%)}
-    @keyframes cc-stripe-drift{from{background-position:0px 50%,50% 50%}to{background-position:440px 50%,450% 50%}}
-    @media(max-width:760px){.hero::after{background:radial-gradient(ellipse at 40% 25%,rgba(245,239,237,.38),rgba(245,239,237,.16) 45%,transparent 75%)}}
-    @media(prefers-reduced-motion:reduce){.hero .hero-aurora,.hero .hero-aurora::after{animation:none!important}}
   </style>
   <style id="cloudbuilder-spotlight-navbar">
     @property --spotlight-x{syntax:'<length>';inherits:false;initial-value:0px}
@@ -762,7 +713,6 @@
   </style>
   <script>
     document.addEventListener('DOMContentLoaded', function () {
-      if (!document.documentElement.classList.contains('duplicate-page')) return;
       const hero = document.querySelector('.hero');
       if (!hero) return;
 
@@ -867,207 +817,6 @@
     });
   </script>
   <script>
-    document.addEventListener('DOMContentLoaded', function () {
-      if (!document.documentElement.classList.contains('dupli-page')) return;
-
-      const hero = document.querySelector('.hero');
-      if (!hero) return;
-
-      /* Mirrors the supplied WaveGridBackground defaults. Values stay in
-         grid/world units and are translated to pixels only while drawing. */
-      const waveProps = {
-        gridSize:40,
-        cubeScale:1.25,
-        colorBase:'#ffffff',
-        waveColors:['#A8D494','#E0E98D','#AFD398','#B8D8BA','#EAD17F','#F08B82','#EF9C98','#B4D59C','#E3E899'],
-        waveAmplitude:.4,
-        waveSpeed:6,
-        waveFrequency:1.2,
-        waveWidth:3,
-        waveMaxHeight:.4,
-        waveJitter:.2,
-        autoAnimate:true,
-        vignette:true
-      };
-
-      const canvas = document.createElement('canvas');
-      canvas.className = 'hero-wave-grid';
-      canvas.setAttribute('aria-hidden', 'true');
-      hero.prepend(canvas);
-
-      const context = canvas.getContext('2d');
-      const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
-      let width = 1, height = 1, ratio = 1, frame = 0, visible = true;
-      let lastFrame = performance.now(), lastMove = 0, autoTimer = 0;
-      let lastTrailPoint = null;
-      const trail = [];
-      const maxTrail = 128;
-      let rippleColorIndex = 0;
-
-      function hexToRgb(hex) {
-        const value = parseInt(hex.slice(1), 16);
-        return [(value >> 16) & 255,(value >> 8) & 255,value & 255];
-      }
-
-      function addRipple(x, y, force) {
-        if (lastTrailPoint && !force) {
-          const distance = Math.hypot(x - lastTrailPoint.x, y - lastTrailPoint.y);
-          if (distance < Math.max(5, Math.min(width, height) / waveProps.gridSize * .35)) return;
-        }
-        trail.push({
-          x:x,y:y,age:0,force:force ? .72 : 1,
-          color:hexToRgb(waveProps.waveColors[rippleColorIndex++ % waveProps.waveColors.length])
-        });
-        if (trail.length > maxTrail) trail.shift();
-        lastTrailPoint = { x:x, y:y };
-      }
-
-      function resizeGrid() {
-        const bounds = hero.getBoundingClientRect();
-        ratio = Math.min(window.devicePixelRatio || 1, 1.6);
-        width = Math.max(1, Math.round(bounds.width));
-        height = Math.max(1, Math.round(bounds.height));
-        canvas.width = Math.round(width * ratio);
-        canvas.height = Math.round(height * ratio);
-        canvas.style.width = width + 'px';
-        canvas.style.height = height + 'px';
-        context.setTransform(ratio, 0, 0, ratio, 0, 0);
-        drawGrid(performance.now());
-      }
-
-      function hash(column, row) {
-        const value = Math.sin(column * 127.1 + row * 311.7) * 43758.5453123;
-        return (value - Math.floor(value)) - .5;
-      }
-
-      function mixChannel(from, to, amount) {
-        return Math.round(from + (to - from) * amount);
-      }
-
-      function drawCube(x, y, size, lift, normalizedHeight, waveColor) {
-        const gap = Math.max(.32, size * .0125);
-        const cube = size - gap;
-        const py = y - lift;
-        const highlight = Math.abs(normalizedHeight);
-        const base = [255,255,255];
-        const colorAmount = Math.min(.38, highlight * .38);
-        const fill = 'rgb(' + mixChannel(base[0],waveColor[0],colorAmount) + ',' +
-          mixChannel(base[1],waveColor[1],colorAmount) + ',' + mixChannel(base[2],waveColor[2],colorAmount) + ')';
-
-        if (lift > .7) {
-          context.fillStyle = 'rgba(28,54,91,' + Math.min(.085, lift / size * .11) + ')';
-          context.fillRect(x + gap, py + cube, cube, Math.min(lift, size * .6));
-        }
-        context.fillStyle = fill;
-        context.fillRect(x + gap * .5, py + gap * .5, cube, cube);
-        context.strokeStyle = 'rgba(' + waveColor.join(',') + ',' + (.1 + highlight * .16) + ')';
-        context.lineWidth = Math.max(.45, size * .018);
-        context.strokeRect(x + gap * .5, py + gap * .5, cube, cube);
-
-        /* Restrained color fringe, matching the reference post pass. */
-        if (waveProps.vignette && highlight > .14) {
-          context.strokeStyle = 'rgba(' + waveColor.join(',') + ',' + highlight * .12 + ')';
-          context.strokeRect(x + gap * .1, py + gap * .2, cube, cube);
-          context.strokeStyle = 'rgba(255,255,255,' + highlight * .14 + ')';
-          context.strokeRect(x + gap * .9, py + gap * .65, cube, cube);
-        }
-      }
-
-      function drawGrid(time) {
-        context.clearRect(0, 0, width, height);
-        context.fillStyle = waveProps.colorBase;
-        context.fillRect(0, 0, width, height);
-        const cell = Math.max(18, Math.min(width, height) / waveProps.gridSize) * waveProps.cubeScale;
-        const columns = Math.ceil(width / cell) + 2;
-        const rows = Math.ceil(height / cell) + 2;
-
-        for (let row = -1; row < rows; row++) {
-          for (let column = -1; column < columns; column++) {
-            const jitterX = hash(column, row) * waveProps.waveJitter * cell;
-            const jitterY = hash(row + 19, column + 7) * waveProps.waveJitter * cell;
-            const centerX = column * cell + cell * .5 + jitterX;
-            const centerY = row * cell + cell * .5 + jitterY;
-            let waveHeight = 0, totalWeight = 0, dominantWeight = 0;
-            let waveColor = [168,212,148];
-
-            for (let index = 0; index < trail.length; index++) {
-              const source = trail[index];
-              const distance = Math.hypot(centerX - source.x, centerY - source.y) / cell;
-              const wavefront = waveProps.waveSpeed * source.age;
-              const relativeDistance = distance - wavefront;
-              const windowWeight = Math.exp(-(relativeDistance * relativeDistance) /
-                (waveProps.waveWidth * waveProps.waveWidth));
-              const fade = Math.exp(-source.age / 2);
-              const attenuation = 1 / (1 + distance * .1);
-              const weight = fade * windowWeight * attenuation * source.force;
-              waveHeight += weight * Math.cos(waveProps.waveFrequency * relativeDistance);
-              totalWeight += weight;
-              if (weight > dominantWeight) {
-                dominantWeight = weight;
-                waveColor = source.color;
-              }
-            }
-
-            waveHeight /= Math.max(totalWeight, 1);
-            const displacement = Math.max(-waveProps.waveMaxHeight,
-              Math.min(waveProps.waveMaxHeight, waveHeight * waveProps.waveAmplitude));
-            drawCube(column * cell, row * cell, cell, displacement * cell * 1.55,
-              displacement / waveProps.waveMaxHeight,waveColor);
-          }
-        }
-
-        if (waveProps.vignette) {
-          const vignette = context.createRadialGradient(width * .5,height * .48,
-            Math.min(width,height) * .22,width * .5,height * .48,Math.max(width,height) * .72);
-          vignette.addColorStop(0,'rgba(255,255,255,0)');
-          vignette.addColorStop(1,'rgba(215,225,238,.2)');
-          context.fillStyle = vignette;
-          context.fillRect(0,0,width,height);
-        }
-      }
-
-      function animate(time) {
-        const delta = Math.min(.05, (time - lastFrame) / 1000);
-        lastFrame = time;
-        for (let index = trail.length - 1; index >= 0; index--) {
-          trail[index].age += delta;
-          if (trail[index].age > 8) trail.splice(index, 1);
-        }
-        if (waveProps.autoAnimate && time - lastMove > 3000) {
-          autoTimer += delta;
-          if (autoTimer > 1.5) {
-            addRipple(width * (.25 + Math.random() * .5),height * (.2 + Math.random() * .6),true);
-            lastTrailPoint = null;
-            autoTimer = 0;
-          }
-        } else autoTimer = 0;
-        drawGrid(time);
-        if (!reduceMotion.matches && visible) frame = requestAnimationFrame(animate);
-      }
-
-      hero.addEventListener('pointermove', function (event) {
-        const bounds = hero.getBoundingClientRect();
-        addRipple(event.clientX - bounds.left,event.clientY - bounds.top,false);
-        lastMove = performance.now();
-      }, { passive:true });
-
-      hero.addEventListener('pointerleave', function () { lastTrailPoint = null; }, { passive:true });
-      new ResizeObserver(resizeGrid).observe(hero);
-      new IntersectionObserver(function (entries) {
-        visible = entries[0].isIntersecting;
-        cancelAnimationFrame(frame);
-        if (visible && !reduceMotion.matches) frame = requestAnimationFrame(animate);
-      }).observe(hero);
-      reduceMotion.addEventListener('change', function () {
-        cancelAnimationFrame(frame);
-        drawGrid(performance.now());
-        if (!reduceMotion.matches && visible) frame = requestAnimationFrame(animate);
-      });
-
-      resizeGrid();
-      if (!reduceMotion.matches) frame = requestAnimationFrame(animate);
-    });
-  </script>
   <script>
     document.addEventListener('DOMContentLoaded', function () {
       const word = document.querySelector('.hero .rotating-keyword');

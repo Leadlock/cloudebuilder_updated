@@ -51,8 +51,6 @@ const nextConfig: NextConfig = {
     return {
       beforeFiles: [
         { source: '/', destination: '/CloudBuilder-Frontend/index.html' },
-        { source: '/dupe', destination: '/CloudBuilder-Frontend/index.html' },
-        { source: '/dupli', destination: '/CloudBuilder-Frontend/index.html' },
         { source: '/duplicate', destination: '/CloudBuilder-Frontend/index.html' },
       ],
     };
