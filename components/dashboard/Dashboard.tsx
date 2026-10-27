@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import {
   Plus, Box, Server, ShieldCheck, DollarSign, Clock, Trash2,
-  Cloud, LayoutGrid, Wand2, Sparkles, Upload
+  Cloud, LayoutGrid, Wand2, Sparkles, Upload, ArrowRight
 } from 'lucide-react';
 import clsx from 'clsx';
 import { CloudProvider, CanvasNode, CanvasEdge } from '@/types';
@@ -112,74 +112,69 @@ export default function Dashboard() {
   ];
 
   const isLight = state.theme === 'light';
+  const firstName = state.currentUser?.name?.trim().split(/\s+/)[0] || 'there';
+  const metrics = [
+    { label: 'Projects', value: projects.length, note: 'active workspaces', icon: Box },
+    { label: 'Resources', value: totalResources, note: 'mapped components', icon: Server },
+    { label: 'Security', value: scoredProjects.length ? `${avgScore}/100` : 'Pending', note: scoredProjects.length ? 'average posture' : 'run first assessment', icon: ShieldCheck },
+    { label: 'Monthly cost', value: formatCurrency(totalCost, activeCurrency), note: `estimated in ${activeCurrency}`, icon: DollarSign },
+  ];
 
   return (
     <div className={clsx(
-      "flex-1 overflow-y-auto p-4 sm:p-6 pb-32 custom-scrollbar transition-colors",
+      "cloudbuilder-dashboard flex-1 overflow-y-auto p-4 sm:p-6 pb-32 custom-scrollbar transition-colors",
       isLight ? "bg-slate-50 text-slate-900" : "bg-gray-950 text-white"
     )}>
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      {/* Page heading */}
+      <div className="dashboard-heading flex flex-col sm:flex-row sm:items-end justify-between gap-5">
         <div>
-          <h1 className={clsx("text-xl sm:text-2xl font-bold", isLight ? "text-slate-900" : "text-white")}>Dashboard</h1>
-          <p className={clsx("text-xs sm:text-sm mt-0.5 font-medium", isLight ? "text-slate-500" : "text-gray-400")}>Design, scale, deploy, and manage cloud infrastructure</p>
+          <p className="dashboard-kicker">Workspace overview</p>
+          <h1 className={clsx("font-bold", isLight ? "text-slate-900" : "text-white")}>Good to see you, {firstName}.</h1>
+          <p className={clsx("text-sm mt-2", isLight ? "text-slate-500" : "text-gray-400")}>Review your cloud portfolio, then continue with the work that matters.</p>
         </div>
-        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 sm:gap-3">
-          <button
-            id="btn-open-visual-builder"
-            onClick={() => {
-              dispatch({ type: 'SET_ACTIVE_PROJECT', id: 'draft-project' });
-              dispatch({ type: 'SET_VIEW', view: 'canvas' });
-            }}
-            className="flex items-center gap-2 px-4 py-2 bg-[#0078d4] hover:bg-[#0067b8] active:bg-[#005a9e] text-white rounded-lg text-xs sm:text-sm font-semibold shadow-sm transition-all transform active:scale-98"
-          >
-            <Box className="w-4 h-4 text-white" /> <span className="text-white font-semibold">Open Visual Builder</span>
-          </button>
-          <button
-            id="btn-new-project"
-            onClick={() => setShowNewProject(true)}
-            className={clsx(
-              "flex items-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all border shadow-xs active:scale-[0.98]",
-              isLight
-                ? "bg-white hover:bg-slate-100 text-slate-800 border-slate-300"
-                : "bg-[#242426] hover:bg-[#2c2c2e] text-slate-200 border-white/[0.12]"
-            )}
-          >
-            <Plus className="w-4 h-4" /> New Project
-          </button>
-        </div>
+        <button id="btn-new-project" onClick={() => setShowNewProject(true)} className="dashboard-secondary-action flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all">
+          <Plus className="w-4 h-4" /> New project
+        </button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
-        {[
-          { label: 'Total Projects', value: projects.length, icon: Box, color: isLight ? 'text-blue-600' : 'text-blue-400', bg: isLight ? 'bg-blue-50 border border-blue-200/80' : 'bg-blue-900/30' },
-          { label: 'Total Resources', value: totalResources, icon: Server, color: isLight ? 'text-purple-600' : 'text-purple-400', bg: isLight ? 'bg-purple-50 border border-purple-200/80' : 'bg-purple-900/30' },
-          { label: 'Avg Security Score', value: scoredProjects.length ? `${avgScore}/100` : 'Not assessed', icon: ShieldCheck, color: avgScore >= 80 ? (isLight ? 'text-emerald-600' : 'text-emerald-400') : (isLight ? 'text-amber-600' : 'text-yellow-400'), bg: avgScore >= 80 ? (isLight ? 'bg-emerald-50 border border-emerald-200/80' : 'bg-emerald-900/30') : (isLight ? 'bg-amber-50 border border-amber-200/80' : 'bg-yellow-900/30') },
-          { label: `Est. Monthly Cost (${activeCurrency})`, value: formatCurrency(totalCost, activeCurrency), icon: DollarSign, color: isLight ? 'text-orange-600' : 'text-orange-400', bg: isLight ? 'bg-orange-50 border border-orange-200/80' : 'bg-orange-900/30' },
-        ].map(({ label, value, icon: Icon, color, bg }) => (
-          <div key={label} className={clsx(
-            "rounded-xl p-4 border transition-all shadow-xs",
-            isLight ? "bg-white border-slate-200" : "bg-gray-900/90 border-gray-800"
-          )}>
-            <div className="flex items-start justify-between">
-              <div>
-                <p className={clsx("text-xs font-medium mb-1", isLight ? "text-slate-500" : "text-gray-400")}>{label}</p>
-                <p className={clsx('text-xl sm:text-2xl font-bold', color)}>{value}</p>
-              </div>
-              <div className={clsx('w-9 h-9 rounded-lg flex items-center justify-center shrink-0', bg)}>
-                <Icon className={clsx('w-5 h-5', color)} />
-              </div>
-            </div>
+      {/* Primary workspace overview */}
+      <div className="dashboard-overview-grid">
+        <section className="dashboard-command-panel" aria-labelledby="command-panel-title">
+          <div className="dashboard-status"><i /> Ready for your next workload</div>
+          <h2 id="command-panel-title">Design infrastructure your team can review.</h2>
+          <p>Start from a blank canvas, connect services visually, and keep every production decision in your hands.</p>
+          <div className="dashboard-command-actions">
+            <button id="btn-open-visual-builder" onClick={() => { dispatch({ type: 'SET_ACTIVE_PROJECT', id: 'draft-project' }); dispatch({ type: 'SET_VIEW', view: 'canvas' }); }}>
+              Open visual builder <ArrowRight className="w-4 h-4" />
+            </button>
+            <span>{projects.length} project{projects.length !== 1 ? 's' : ''} in this workspace</span>
           </div>
-        ))}
+        </section>
+
+        <section className="dashboard-signal-panel" aria-labelledby="portfolio-signal-title">
+          <div className="dashboard-section-heading">
+            <div><span>Portfolio signal</span><h2 id="portfolio-signal-title">At a glance</h2></div>
+            <span className="dashboard-live-label"><i /> Live</span>
+          </div>
+          <div className="dashboard-metric-grid">
+            {metrics.map(({ label, value, note, icon: Icon }) => (
+              <div className="dashboard-metric" key={label}>
+                <Icon className="w-4 h-4" />
+                <div><span>{label}</span><strong>{value}</strong><small>{note}</small></div>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
 
-      {/* Quick actions */}
-      <div className="mb-6">
-        <h2 className={clsx("font-semibold text-xs sm:text-sm mb-3 uppercase tracking-wider", isLight ? "text-slate-500" : "text-gray-400")}>Quick Start</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {quickActions.map(({ icon: Icon, label, desc, view, color }) => {
+      {/* Starting routes */}
+      <section className="dashboard-launch-panel" aria-labelledby="launch-panel-title">
+        <div className="dashboard-section-heading">
+          <div><span>Choose a starting point</span><h2 id="launch-panel-title">Move work forward</h2></div>
+          <p>Four focused paths. Pick the one that matches what you have today.</p>
+        </div>
+        <div className="dashboard-launch-grid">
+          {quickActions.map(({ icon: Icon, label, desc, view }, index) => {
             const locked = view === 'ai-generator' && state.currentUser?.restrictedFeatures === false;
             return (
             <button
@@ -187,26 +182,26 @@ export default function Dashboard() {
               disabled={locked}
               onClick={() => dispatch({ type: 'SET_VIEW', view })}
               title={locked ? `${label} — ${RESTRICTED_FEATURE_LABEL}` : undefined}
-              className={clsx(
-                'text-left p-3.5 rounded-xl border transition-all shadow-xs',
-                locked
-                  ? 'opacity-50 grayscale cursor-not-allowed ' + (isLight ? 'bg-slate-100 border-slate-200' : 'bg-gray-900 border-gray-800')
-                  : 'hover:scale-[1.01] active:scale-[0.99] ' + (isLight ? 'bg-white border-slate-200 hover:border-blue-400 hover:shadow-md' : color)
-              )}
+              className={clsx('dashboard-launch-action', locked && 'is-locked')}
             >
-              <Icon className={clsx("w-5 h-5 mb-2", isLight ? "text-blue-600" : "text-inherit")} />
-              <p className={clsx("text-sm font-semibold", isLight ? "text-slate-900" : "text-white")}>{label}</p>
-              <p className={clsx("text-xs mt-0.5", isLight ? "text-slate-500" : "text-gray-400")}>{locked ? RESTRICTED_FEATURE_LABEL : desc}</p>
+              <span className="dashboard-launch-index">0{index + 1}</span>
+              <span className="dashboard-launch-icon"><Icon className="w-5 h-5" /></span>
+              <span className="dashboard-launch-copy"><strong>{label}</strong><small>{locked ? RESTRICTED_FEATURE_LABEL : desc}</small></span>
+              <ArrowRight className="dashboard-launch-arrow w-4 h-4" />
             </button>
             );
           })}
         </div>
-      </div>
+      </section>
 
       {/* Projects */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+      <div className="dashboard-projects-heading flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <p className="dashboard-kicker">Cloud portfolio</p>
+          <h2>Your projects</h2>
+          <p>Open a workspace to continue designing, reviewing, or preparing deployment.</p>
+        </div>
         <div className="flex items-center gap-3">
-          <h2 className={clsx("font-semibold text-xs sm:text-sm uppercase tracking-wider", isLight ? "text-slate-500" : "text-gray-400")}>Projects</h2>
           {/* Provider tabs */}
           <div className={clsx(
             "flex gap-1 rounded-lg p-0.5 border transition-colors",
@@ -223,10 +218,10 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
-        </div>
-        <span className={clsx("text-xs sm:text-sm font-medium", isLight ? "text-slate-500" : "text-gray-500")}>
+        <span className="dashboard-project-count">
           {filteredProjects.length} project{filteredProjects.length !== 1 ? 's' : ''}
         </span>
+        </div>
       </div>
 
       {filteredProjects.length === 0 && state.currentUser && !state.apiLoaded ? (
@@ -241,6 +236,7 @@ export default function Dashboard() {
         </div>
       ) : filteredProjects.length === 0 ? (
         <div className={clsx(
+          "dashboard-empty-state",
           "flex flex-col items-center justify-center py-16 sm:py-20 text-center rounded-2xl border",
           isLight ? "bg-white border-slate-200 shadow-xs" : "bg-gray-900/40 border-gray-800/80"
         )}>
@@ -257,7 +253,7 @@ export default function Dashboard() {
             <div
               key={project.id}
               className={clsx(
-                "rounded-xl p-4 sm:p-5 transition-all group cursor-pointer shadow-xs hover:shadow-md border",
+                "dashboard-project-card rounded-xl p-4 sm:p-5 transition-all group cursor-pointer shadow-xs hover:shadow-md border",
                 isLight
                   ? "bg-white border-slate-200 hover:border-blue-400"
                   : "bg-gray-900 border-gray-800 hover:border-gray-700"
@@ -313,7 +309,7 @@ export default function Dashboard() {
 
               {/* Stats */}
               <div className={clsx(
-                "grid grid-cols-4 gap-2 mb-3 p-2.5 rounded-lg border transition-colors",
+                "dashboard-project-metrics grid grid-cols-4 gap-2 mb-3 p-2.5 rounded-lg border transition-colors",
                 isLight ? "bg-slate-50/80 border-slate-200" : "bg-gray-950/60 border-gray-800/80"
               )}>
                 <div className="text-center">

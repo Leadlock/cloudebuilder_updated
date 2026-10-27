@@ -235,7 +235,7 @@ export class AwsDiscoveryAdapter implements InfrastructureDiscoveryProvider {
       stsClient.send(
         new AssumeRoleCommand({
           RoleArn: own.roleArn,
-          RoleSessionName: 'cloudcraft-discovery',
+          RoleSessionName: 'cloudbuilder-discovery',
           ExternalId: own.externalId || undefined,
           DurationSeconds: 3600,
         }),

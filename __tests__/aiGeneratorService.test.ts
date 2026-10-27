@@ -228,7 +228,7 @@ describe('AiGeneratorService.generateValidatedArchitecture — compile, gate, re
     expect(result.ok).toBe(true);
     expect(result.attempts.map((a) => a.ok)).toEqual([false, true]);
     const repairInput = mockCreate.mock.calls[1]![0].input as { role: string; content: string }[];
-    expect(repairInput[1]!.content).toContain('failed CloudCraft validation');
+    expect(repairInput[1]!.content).toContain('failed CloudBuilder validation');
   });
 
   it('never returns a graph that failed the gates — it reports the remaining issues instead', async () => {

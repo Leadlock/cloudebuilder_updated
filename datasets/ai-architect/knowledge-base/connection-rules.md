@@ -1,6 +1,6 @@
 # Connection rules
 
-Direction matters: connect from the caller to the callee. The lists below are the connections used by gate-verified designs, with the protocol and port CloudCraft infers (do not supply them). The engine accepts some other pairs (it is permissive), but they are not meaningful architectures; prefer these.
+Direction matters: connect from the caller to the callee. The lists below are the connections used by gate-verified designs, with the protocol and port CloudBuilder infers (do not supply them). The engine accepts some other pairs (it is permissive), but they are not meaningful architectures; prefer these.
 
 ## aws_alb connects to
 - aws_auto_scaling (LOAD_BALANCES, HTTP:80; seen in 12 verified designs)

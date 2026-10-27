@@ -176,45 +176,23 @@ export default function TemplateGallery() {
 
   return (
     <div className={clsx(
-      "flex-1 overflow-y-auto px-4 sm:px-6 py-6 pb-36 custom-scrollbar transition-colors",
+      "template-gallery flex-1 overflow-y-auto px-4 sm:px-6 py-6 pb-36 custom-scrollbar transition-colors",
       isLight ? "bg-slate-50 text-slate-900" : "bg-gray-950 text-white"
     )}>
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className={clsx(
-          "flex items-center justify-between mb-6 pb-6 border-b transition-colors",
-          isLight ? "border-slate-200" : "border-gray-800"
-        )}>
-          <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 bg-gradient-to-tr from-purple-600 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-900/30">
-              <LayoutGrid className="w-5 h-5 text-white" />
-            </div>
+        <div className="template-gallery-header">
+          <p className="template-gallery-kicker">Blueprint library</p>
+          <div className="template-gallery-title-row">
             <div>
-              <h1 className={clsx("font-bold text-xl tracking-tight", isLight ? "text-slate-900" : "text-white")}>Architecture Templates</h1>
-              <p className={clsx("text-xs mt-0.5 font-medium", isLight ? "text-slate-500" : "text-gray-400")}>Production-grade cloud architecture blueprints & reference architectures</p>
+              <h1>Choose a proven starting point.</h1>
+              <p>Start with a reviewable cloud pattern, then adapt services and controls to your workload.</p>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {(['all', 'aws', 'azure', 'multi'] as const).map((p) => (
-              <button
-                key={p}
-                onClick={() => setProviderFilter(p)}
-                className={clsx(
-                  'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all capitalize',
-                  providerFilter === p
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                    : isLight
-                    ? 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-100 shadow-2xs'
-                    : 'bg-gray-900 text-gray-400 hover:text-white border border-gray-800 hover:bg-gray-800'
-                )}
-              >
-                {p === 'multi' ? 'Multi-cloud' : p.toUpperCase()}
-              </button>
-            ))}
+            <div className="template-result-count"><strong>{filtered.length}</strong><span>templates available</span></div>
           </div>
         </div>
 
-        {state.currentUser?.role === 'admin' && <ApiKeysCard isLight={isLight} />}
+        {state.currentUser?.role === 'admin' && <div className="template-admin-tools"><ApiKeysCard isLight={isLight} /></div>}
         {project && project.nodes.length > 0 && (
           <div className="mb-5" data-testid="save-as-template">
             {!saveOpen ? (
@@ -237,47 +215,44 @@ export default function TemplateGallery() {
         )}
         {saveMessage && <p role="status" className={clsx('mb-4 text-xs', saveMessage.ok ? 'text-emerald-500' : 'text-rose-500')}>{saveMessage.text}</p>}
 
-        {/* Category tabs */}
-        <div className="flex gap-1.5 overflow-x-auto pb-3 mb-6 no-scrollbar">
-          {categories.map((c) => (
-            <button
-              key={c}
-              onClick={() => setFilter(c)}
-              className={clsx(
-                'px-3 py-1.5 rounded-full text-xs transition-colors shrink-0',
-                filter === c
-                  ? isLight
-                    ? 'bg-slate-900 text-white shadow-sm font-semibold'
-                    : 'bg-gray-800 text-white border border-gray-700 font-semibold'
-                  : isLight
-                  ? 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/90 font-medium'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-900 font-medium'
-              )}
-            >
-              {c}
-            </button>
-          ))}
+        {/* Compact filters */}
+        <div className="template-filter-bar">
+          <div className="template-provider-filter" aria-label="Filter by cloud provider">
+            {(['all', 'aws', 'azure', 'multi'] as const).map((p) => (
+              <button key={p} onClick={() => setProviderFilter(p)} className={providerFilter === p ? 'is-active' : ''}>
+                {p === 'multi' ? 'Multi-cloud' : p === 'all' ? 'All providers' : p.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <label className="template-category-filter">
+            <span>Architecture type</span>
+            <select value={filter} onChange={(e) => setFilter(e.target.value)}>
+              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          {(filter !== 'All' || providerFilter !== 'all') && (
+            <button className="template-clear-filter" onClick={() => { setFilter('All'); setProviderFilter('all'); }}>Clear filters</button>
+          )}
         </div>
 
         {/* Cards grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+        <div className="template-card-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {filtered.map((t) => (
             <div
               key={t.id}
               onMouseEnter={() => setHoveredId(t.id)}
               onMouseLeave={() => setHoveredId(null)}
               className={clsx(
-                "rounded-2xl p-5 transition-all flex flex-col justify-between group shadow-sm hover:shadow-xl",
+                "template-card rounded-2xl p-5 transition-all flex flex-col justify-between group shadow-sm hover:shadow-xl",
                 isLight
                   ? "bg-white border border-slate-200 hover:border-blue-500 hover:shadow-blue-500/10"
                   : "bg-gray-900/90 border border-gray-800 hover:border-blue-500/50 hover:bg-gray-900 hover:shadow-blue-500/10"
               )}
             >
               <div>
-                {/* Provider badge + category */}
-                <div className="flex items-center justify-between mb-3">
+                <div className="template-card-eyebrow">
                   <span className={clsx(
-                    'text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider',
+                    'template-provider-badge text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider',
                     isLight
                       ? t.provider === 'aws'
                         ? 'bg-amber-50 text-amber-800 border border-amber-200 font-bold'
@@ -292,98 +267,27 @@ export default function TemplateGallery() {
                   )}>
                     {t.provider === 'multi' ? 'Multi-cloud' : t.provider.toUpperCase()}
                   </span>
-                  <span className={clsx("text-xs font-medium", isLight ? "text-slate-500" : "text-gray-500")}>{t.category}</span>
+                  <span>{t.category}</span>
                 </div>
 
-                <h3 className={clsx(
-                  "font-bold text-base mb-1.5 transition-colors leading-snug",
-                  isLight ? "text-slate-900 group-hover:text-blue-600" : "text-white group-hover:text-blue-300"
-                )}>
-                  {t.name}
-                </h3>
-                <p className={clsx(
-                  "text-xs line-clamp-2 mb-4 leading-relaxed",
-                  isLight ? "text-slate-600" : "text-gray-400"
-                )}>
-                  {t.description}
-                </p>
+                <h3>{t.name}</h3>
+                <p className="template-card-description">{t.description}</p>
 
-                {/* Architecture tags */}
-                <div className="flex items-center gap-2 mb-3">
-                  <span className={clsx('text-[10px] font-semibold px-2 py-0.5 rounded', architectureBadgeClass(t, isLight))}>
-                    {t.architecturePattern ?? t.category}
-                  </span>
-                  <span className={clsx(
-                    'text-[10px] px-2 py-0.5 rounded font-medium',
-                    isLight
-                      ? t.complexity === 'complex'
-                        ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                        : t.complexity === 'moderate'
-                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : t.complexity === 'complex'
-                      ? 'bg-red-950/50 text-red-400 border border-red-900/40'
-                      : t.complexity === 'moderate'
-                      ? 'bg-yellow-950/50 text-yellow-400 border border-yellow-900/40'
-                      : 'bg-emerald-950/50 text-emerald-400 border border-emerald-900/40'
-                  )}>
-                    {t.complexity}
-                  </span>
-                </div>
-
-                {/* Features */}
-                <div className="flex flex-wrap gap-1 mb-4">
-                  {t.features.slice(0, 3).map((f) => (
-                    <span
-                      key={f}
-                      className={clsx(
-                        "text-[10px] px-2 py-0.5 rounded font-medium",
-                        isLight
-                          ? "bg-slate-50 text-slate-700 border border-slate-200"
-                          : "bg-gray-800 text-gray-300 border border-gray-700/60"
-                      )}
-                    >
-                      {f}
-                    </span>
-                  ))}
-                  {t.features.length > 3 && (
-                    <span className={clsx("text-[10px] font-medium", isLight ? "text-slate-400" : "text-gray-500")}>
-                      +{t.features.length - 3}
-                    </span>
-                  )}
+                <div className="template-card-facts">
+                  <div><span>Pattern</span><strong>{t.architecturePattern ?? t.category}</strong></div>
+                  <div><span>Complexity</span><strong className="capitalize">{t.complexity}</strong></div>
+                  <div><span>Resources</span><strong>{t.resourceCount}</strong></div>
                 </div>
               </div>
 
-              <div>
-                {/* Stats */}
-                <div className={clsx(
-                  "flex items-center justify-between text-xs mb-4 pt-3 border-t",
-                  isLight ? "border-slate-100 text-slate-500" : "border-gray-800/80 text-gray-400"
-                )}>
-                  <span className="flex items-center gap-1.5">
-                    <Server className={clsx("w-3.5 h-3.5", isLight ? "text-slate-400" : "text-gray-500")} />
-                    <span className={isLight ? "text-slate-700 font-medium" : ""}>{t.resourceCount} resources</span>
-                  </span>
-                  <span
-                    className={clsx(
-                      "flex items-center gap-1 font-semibold",
-                      isLight ? "text-emerald-600 font-bold" : "text-emerald-400"
-                    )}
-                    title="Estimated from static reference rates against this template's actual resource graph."
-                  >
-                    <DollarSign className={clsx("w-3.5 h-3.5", isLight ? "text-emerald-600" : "text-emerald-500")} />
-                    ~{formatCurrency(estimateTemplateCostUsd(t.id, () => t.generate({})) * (activeCurrency === 'USD' ? 1.0 : exchangeRate), activeCurrency)}/mo
-                  </span>
-                </div>
-
-                {/* Action */}
+              <div className="template-card-footer">
+                <div><span>Estimated monthly cost</span><strong>~{formatCurrency(estimateTemplateCostUsd(t.id, () => t.generate({})) * (activeCurrency === 'USD' ? 1.0 : exchangeRate), activeCurrency)}</strong></div>
                 <button
                   type="button"
                   onClick={() => handleOpenTemplateModal(t)}
-                  className="w-full py-2.5 rounded-xl text-xs font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 !text-white shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-1.5 active:scale-[0.98]"
+                  className="template-use-action"
                 >
-                  <span className="!text-white font-bold">Use Template</span>
-                  <ArrowRight className="w-3.5 h-3.5 !text-white" />
+                  <span>View template</span><ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>

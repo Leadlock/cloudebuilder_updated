@@ -110,7 +110,7 @@ export const SPEC_JSON_SHAPE =
 
 /** Constant system prompt used for fine-tuning and for inference with the fine-tuned model. */
 export const ARCHITECT_SYSTEM_PROMPT = [
-  'You are CloudCraft\'s cloud architect. Turn the user\'s requirements into a complete, deployable AWS, Azure or multi-cloud architecture that follows the AWS and Azure Well-Architected Frameworks.',
+  'You are CloudBuilder\'s cloud architect. Turn the user\'s requirements into a complete, deployable AWS, Azure or multi-cloud architecture that follows the AWS and Azure Well-Architected Frameworks.',
   'Reply with ONLY one JSON object of this shape: ' + SPEC_JSON_SHAPE + '.',
   'Rules: use only the resource types listed below; every resource has the parent its containment rule requires (top-level cloud boundaries and the types listed as having no container omit "parent"); every resource is connected; connect from the caller to the callee (compute → database, never the reverse); put workloads in private subnets, entry points in public subnets, data stores in data subnets; span two availability zones for anything highly available; do not output coordinates; set config only where it differs from the secure defaults.',
   'Available resource types:\n' + catalogVocabulary(),

@@ -93,7 +93,7 @@ describe('repair loop', () => {
     const out = await generateWithRepair(async (m) => { seen.push(m[1].content); return replies.shift()!; }, 'Design something', 3);
     expect(out.ok).toBe(true);
     expect(out.attempts.map((a) => a.ok)).toEqual([false, true]);
-    expect(seen[1]).toContain('failed CloudCraft validation');
+    expect(seen[1]).toContain('failed CloudBuilder validation');
     expect(seen[1]).toContain('Validation issues:');
   });
   test('gives up after maxAttempts', async () => {
@@ -102,7 +102,7 @@ describe('repair loop', () => {
     expect(out.attempts).toHaveLength(2);
   });
   test('buildRepairPrompt is the format used in training data', () => {
-    expect(buildRepairPrompt('P', '{}', 'parse', [{ code: 'C', message: 'm' }])).toBe('P\n\nYour previous design failed CloudCraft validation. Fix every issue and return the complete corrected JSON.\nPrevious design:\n{}\nValidation issues:\n- [parse] C: m');
+    expect(buildRepairPrompt('P', '{}', 'parse', [{ code: 'C', message: 'm' }])).toBe('P\n\nYour previous design failed CloudBuilder validation. Fix every issue and return the complete corrected JSON.\nPrevious design:\n{}\nValidation issues:\n- [parse] C: m');
   });
 });
 
@@ -146,7 +146,7 @@ const hasDataset = existsSync(join(dir, 'train.jsonl'));
     expect(val.filter((r) => trained.has(design(r)))).toHaveLength(0);
   });
   test('requests are phrased in many styles, including vague ones that rely on defaults', () => {
-    const users = train.map((r) => r.messages[1].content as string).filter((u) => !u.includes('failed CloudCraft validation') && !u.includes('Verified design:'));
+    const users = train.map((r) => r.messages[1].content as string).filter((u) => !u.includes('failed CloudBuilder validation') && !u.includes('Verified design:'));
     expect(users.some((u) => /^I need /.test(u))).toBe(true);        // vague: cloud + kind + scale only
     expect(users.some((u) => /^hey, we need /.test(u))).toBe(true);  // casual
     expect(users.some((u) => /^What's a good /.test(u))).toBe(true); // question
@@ -155,7 +155,7 @@ const hasDataset = existsSync(join(dir, 'train.jsonl'));
     for (const u of users.filter((x) => /^I need /.test(x))) expect(u).not.toMatch(/(us|eu|ap|ca|sa|me|af)-[a-z]+-d|eastus|westeurope|northeurope|westus/);
   });
   test('repair examples use the same hinted message format as the app and cover the mistakes models actually make', () => {
-    const repairs = train.map((r) => r.messages[1].content as string).filter((u) => u.includes('failed CloudCraft validation'));
+    const repairs = train.map((r) => r.messages[1].content as string).filter((u) => u.includes('failed CloudBuilder validation'));
     expect(repairs.length).toBeGreaterThan(100);
     expect(repairs.some((u) => u.includes('Valid settings for') && u.includes('camelCase'))).toBe(true);   // snake_case settings
     expect(repairs.some((u) => u.includes('must be placed inside one of'))).toBe(true);                    // wrong parent

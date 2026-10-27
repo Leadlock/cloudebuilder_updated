@@ -1,0 +1,4 @@
+/* Content remains visible without JavaScript; motion is enabled progressively. */
+.reveal,.reveal.visible{opacity:1;transform:none;will-change:auto}
+.entrance-pending{opacity:0;translate:0 42px}
+@media(prefers-reduced-motion:reduce){.entrance-pending{opacity:1;translate:none}}

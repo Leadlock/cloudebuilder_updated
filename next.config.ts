@@ -47,6 +47,16 @@ const nextConfig: NextConfig = {
   // Don't advertise the framework version in a response header.
   poweredByHeader: false,
   devIndicators: false,
+  async rewrites() {
+    return {
+      beforeFiles: [
+        { source: '/', destination: '/CloudBuilder-Frontend/index.html' },
+        { source: '/dupe', destination: '/CloudBuilder-Frontend/index.html' },
+        { source: '/dupli', destination: '/CloudBuilder-Frontend/index.html' },
+        { source: '/duplicate', destination: '/CloudBuilder-Frontend/index.html' },
+      ],
+    };
+  },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },

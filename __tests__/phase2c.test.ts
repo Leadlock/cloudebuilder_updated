@@ -132,8 +132,8 @@ jest.mock('@aws-sdk/client-sts', () => ({
       if (name === 'GetCallerIdentityCommand') {
         return Promise.resolve({
           Account: '123456789012',
-          Arn: 'arn:aws:sts::123456789012:assumed-role/CloudBuilderReadOnly/cloudcraft-discovery',
-          UserId: 'AROATEST:cloudcraft-discovery',
+          Arn: 'arn:aws:sts::123456789012:assumed-role/CloudBuilderReadOnly/cloudbuilder-discovery',
+          UserId: 'AROATEST:cloudbuilder-discovery',
         });
       }
       return Promise.resolve({});

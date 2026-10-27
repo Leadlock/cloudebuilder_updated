@@ -16,7 +16,7 @@ import contractJson from './contract.json' with { type: 'json' };
 type DbClient = ReturnType<typeof postgres<Contract>>;
 
 declare global {
-  var __cloudcraft_db__: DbClient | undefined;
+  var __cloudbuilder_db__: DbClient | undefined;
 }
 
 function createDb(): DbClient {
@@ -42,11 +42,11 @@ function makeLazyDb(): DbClient {
 
   const getClient = () => {
     if (!_client) {
-      if (global.__cloudcraft_db__) {
-        _client = global.__cloudcraft_db__;
+      if (global.__cloudbuilder_db__) {
+        _client = global.__cloudbuilder_db__;
       } else {
         _client = createDb();
-        global.__cloudcraft_db__ = _client;
+        global.__cloudbuilder_db__ = _client;
       }
     }
     return _client;

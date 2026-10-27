@@ -13,7 +13,7 @@ export function formatIssues(stage: string, issues: SpecIssue[]): string {
 
 /** User message asking the model to fix a design that failed validation. */
 export function buildRepairPrompt(originalPrompt: string, previousDesign: string, stage: string, issues: SpecIssue[]): string {
-  return `${originalPrompt}\n\nYour previous design failed CloudCraft validation. Fix every issue and return the complete corrected JSON.\nPrevious design:\n${previousDesign}\nValidation issues:\n${formatIssues(stage, issues)}`;
+  return `${originalPrompt}\n\nYour previous design failed CloudBuilder validation. Fix every issue and return the complete corrected JSON.\nPrevious design:\n${previousDesign}\nValidation issues:\n${formatIssues(stage, issues)}`;
 }
 
 /** Models occasionally wrap JSON in a code fence; accept that, nothing more. */

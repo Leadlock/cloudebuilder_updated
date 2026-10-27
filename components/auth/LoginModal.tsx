@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, Lock, Mail, User as UserIcon, Building2, AlertCircle, Loader2, KeyRound, ArrowLeft, RefreshCw, CheckCircle2, Copy, Check, Smartphone, QrCode } from 'lucide-react';
 import QRCode from 'qrcode';
 import type { AuthUser } from '@/lib/api/authService';
@@ -36,6 +36,27 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
   const [resending, setResending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [authTransition, setAuthTransition] = useState<'idle' | 'exit-left' | 'exit-right' | 'enter-left' | 'enter-right'>('idle');
+  const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (transitionTimer.current) clearTimeout(transitionTimer.current);
+  }, []);
+
+  function switchPrimaryMode(nextMode: 'signin' | 'signup') {
+    if (mode === nextMode || authTransition !== 'idle') return;
+
+    const movingForward = nextMode === 'signup';
+    setAuthTransition(movingForward ? 'exit-left' : 'exit-right');
+    transitionTimer.current = setTimeout(() => {
+      setMode(nextMode);
+      setError(null);
+      setInfoMessage(null);
+      setAuthTransition(movingForward ? 'enter-right' : 'enter-left');
+
+      requestAnimationFrame(() => requestAnimationFrame(() => setAuthTransition('idle')));
+    }, 170);
+  }
 
   useEffect(() => {
     if (mfaSecret && email) {
@@ -57,7 +78,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
 
   if (!isOpen) return null;
 
-  const inputClass = `w-full rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors ${
+  const inputClass = `auth-input w-full rounded-xl px-3 py-2 text-xs focus:outline-none transition-colors ${
     isLight
       ? 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white'
       : 'bg-slate-950 border border-slate-800 text-white placeholder-slate-500'
@@ -299,12 +320,44 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
   }
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center ${isLight ? 'bg-slate-900/40' : 'bg-slate-950/80'} backdrop-blur-sm p-4`}>
-      <div className={`${isLight ? 'bg-white border-slate-200 shadow-2xl' : 'bg-slate-900 border-slate-800 shadow-2xl'} border rounded-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200`}>
+    <div className={`auth-shell z-50 ${onClose ? 'auth-shell-modal fixed inset-0' : 'auth-shell-page relative min-h-screen'}`}>
+      <div className="auth-aurora" aria-hidden="true" />
+
+      <a className="auth-brand" href="/" aria-label="CloudBuilder home">
+        <span className="auth-brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M16.5 6.5a7 7 0 1 0 0 11M11 9h7M11 12h9M11 15h7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </span>
+        <span>CloudBuilder</span>
+      </a>
+
+      <section className="auth-story" aria-label="CloudBuilder product overview">
+        <div className="auth-story-inner">
+          <span className="auth-eyebrow"><i /> Secure cloud delivery workspace</span>
+          <h1>Build with clarity.<br /><span>Deploy with control.</span></h1>
+          <p>Turn application requirements into reviewable AWS and Azure infrastructure—without losing engineering ownership.</p>
+
+          <div className="auth-proof-grid" aria-label="Platform capabilities">
+            <div><strong>01</strong><span>Visual architecture</span></div>
+            <div><strong>02</strong><span>Policy-aware IaC</span></div>
+            <div><strong>03</strong><span>Human approval</span></div>
+          </div>
+
+          <div className="auth-trust-line">
+            <ShieldCheck className="w-4 h-4" />
+            <span>Encrypted credentials · Tenant isolation · Auditable changes</span>
+          </div>
+        </div>
+      </section>
+
+      <main className="auth-workspace">
+      <div className={`auth-card auth-card-${mode} ${isLight ? 'is-light' : 'is-dark'} border w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200`}>
+      <div className={`auth-card-content auth-transition-${authTransition}`}>
         {/* Header */}
-        <div className={`px-6 pt-6 pb-4 border-b ${isLight ? 'border-slate-100 bg-slate-50/60' : 'border-slate-800 bg-slate-900/60'}`}>
+        <div className={`auth-card-header px-6 pt-6 pb-4 border-b ${isLight ? 'border-slate-100 bg-slate-50/60' : 'border-slate-800 bg-slate-900/60'}`}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
+            <div className="auth-header-icon w-10 h-10 rounded-xl flex items-center justify-center">
               {mode === 'forgot_password' || mode === 'reset_password' ? (
                 <KeyRound className="w-5 h-5" />
               ) : (
@@ -313,48 +366,56 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className={`text-lg font-bold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>CloudBuilder</h2>
-                <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border ${
-                  isLight ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : 'bg-cyan-950 text-cyan-400 border-cyan-800/60'
-                }`}>
+                <h2 className={`text-lg font-bold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                  {mode === 'signin'
+                    ? 'Welcome back'
+                    : mode === 'signup'
+                    ? 'Create your workspace'
+                    : mode === 'forgot_password' || mode === 'reset_password'
+                    ? 'Recover access'
+                    : mode === 'mfa'
+                    ? 'Verify your identity'
+                    : 'Confirm your account'}
+                </h2>
+                <span className="auth-secure-badge px-1.5 py-0.5 text-[10px] font-semibold rounded border">
                   Secure sign-in
                 </span>
               </div>
               <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                {mode === 'forgot_password' || mode === 'reset_password'
-                  ? 'Password Recovery'
-                  : 'Cloud Architecture Design & Governance'}
+                {mode === 'signin'
+                  ? 'Continue to your cloud architecture workspace'
+                  : mode === 'signup'
+                  ? 'Set up your team and start building'
+                  : mode === 'forgot_password' || mode === 'reset_password'
+                  ? 'Reset your password securely'
+                  : 'Complete the secure sign-in process'}
               </p>
             </div>
           </div>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="auth-card-body p-6 space-y-4">
           {/* Mode toggle (shown only in signin and signup modes) */}
           {mode === 'signin' || mode === 'signup' ? (
-            <div className={`grid grid-cols-2 gap-1 p-1 rounded-xl border ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+            <div className="auth-tabs grid grid-cols-2 gap-1 p-1 rounded-xl border">
               <button
                 type="button"
-                onClick={() => { setMode('signin'); setError(null); setInfoMessage(null); }}
-                className={`py-2 rounded-lg text-xs font-semibold transition-colors ${
+                onClick={() => switchPrimaryMode('signin')}
+                className={`auth-tab py-2 rounded-lg text-xs font-semibold ${
                   mode === 'signin'
-                    ? 'bg-cyan-600 text-white shadow-sm'
-                    : isLight
-                      ? 'text-slate-600 hover:text-slate-900'
-                      : 'text-slate-400 hover:text-slate-200'
+                    ? 'is-active'
+                    : ''
                 }`}
               >
                 Sign In
               </button>
               <button
                 type="button"
-                onClick={() => { setMode('signup'); setError(null); setInfoMessage(null); }}
-                className={`py-2 rounded-lg text-xs font-semibold transition-colors ${
+                onClick={() => switchPrimaryMode('signup')}
+                className={`auth-tab py-2 rounded-lg text-xs font-semibold ${
                   mode === 'signup'
-                    ? 'bg-cyan-600 text-white shadow-sm'
-                    : isLight
-                      ? 'text-slate-600 hover:text-slate-900'
-                      : 'text-slate-400 hover:text-slate-200'
+                    ? 'is-active'
+                    : ''
                 }`}
               >
                 Create Account
@@ -734,7 +795,7 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 active:from-cyan-700 active:to-blue-700 text-white font-semibold text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/20 disabled:opacity-50 mt-4"
+              className="auth-submit w-full py-2.5 px-4 rounded-xl font-semibold text-xs flex items-center justify-center gap-2 disabled:opacity-50 mt-4"
             >
               {loading ? (
                 <>
@@ -779,7 +840,10 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
             </button>
           )}
         </div>
+        </div>
       </div>
+      <p className="auth-legal">Protected workspace · By continuing, you agree to your organization&apos;s access policies.</p>
+      </main>
     </div>
   );
 }

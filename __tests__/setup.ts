@@ -4,7 +4,7 @@
 
 // Set test environment variables before any module import
 // NODE_ENV is read-only in strict TS; set via env in jest config
-process.env['DATABASE_URL'] = 'postgresql://test:test@localhost:5432/cloudcraft_test';
+process.env['DATABASE_URL'] = 'postgresql://test:test@localhost:5432/cloudbuilder_test';
 
 // Access limits a developer may have in their own .env (who can sign in, who can use Deploy and the AI Generator) must not change what the
 // tests see. Set to empty rather than deleted: dotenv, loaded later, only fills variables that are not defined. Tests of these limits set

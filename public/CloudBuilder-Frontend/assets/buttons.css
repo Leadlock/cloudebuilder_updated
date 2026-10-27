@@ -1,0 +1,13 @@
+/* Static adaptation of VengeanceUI AnimatedButton; retains CloudBuilder colors. */
+@property --button-mask{syntax:'<percentage>';inherits:false;initial-value:100%}
+html body .vng-button{position:relative;isolation:isolate;overflow:hidden;border-radius:8px;--button-shine:rgba(15,10,10,.55);transition:scale .25s cubic-bezier(.2,.8,.2,1),background-color .2s,box-shadow .2s!important;animation:none!important}
+html[data-theme="dark"] .vng-button{--button-shine:rgba(245,239,237,.75)}
+html body .vng-button:hover{scale:1.01;transform:none!important}
+html body .vng-button:active{scale:.97}
+html body .vng-button>.animated-button-label{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;gap:inherit;min-width:0;width:100%;font:inherit;line-height:inherit;-webkit-mask-image:linear-gradient(-75deg,#fff calc(var(--button-mask) + 20%),rgba(255,255,255,.15) calc(var(--button-mask) + 30%),#fff calc(var(--button-mask) + 100%));mask-image:linear-gradient(-75deg,#fff calc(var(--button-mask) + 20%),rgba(255,255,255,.15) calc(var(--button-mask) + 30%),#fff calc(var(--button-mask) + 100%));animation:cc-button-text 3.2s linear infinite!important}
+html body .vng-button.vng-button::after{content:"";display:block!important;position:absolute;inset:0;z-index:2;padding:1px;pointer-events:none;border-radius:inherit;background:linear-gradient(-75deg,transparent 30%,var(--button-shine) 50%,transparent 70%);background-size:200% 100%;-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;filter:none;transform:none;animation:cc-button-border 3.2s linear infinite!important}
+html body .vng-button:focus-visible{outline:3px solid #2292A4;outline-offset:4px}
+html body .vng-button:disabled,html body .vng-button[aria-disabled="true"]{opacity:.5;pointer-events:none}
+@keyframes cc-button-text{0%{--button-mask:100%}42%,100%{--button-mask:-100%}}
+@keyframes cc-button-border{0%{background-position:100% 0;opacity:0}21%{opacity:1}42%,100%{background-position:0% 0;opacity:0}}
+@media(prefers-reduced-motion:reduce){html body .vng-button{transition:none!important}html body .vng-button:hover,html body .vng-button:active{scale:1}html body .vng-button>.animated-button-label{animation:none!important;mask:none;-webkit-mask:none}html body .vng-button.vng-button::after{animation:none!important;display:none!important}}

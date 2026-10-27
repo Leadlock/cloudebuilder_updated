@@ -86,7 +86,7 @@ export default function TopBar() {
 
   return (
     <header className={clsx(
-      "h-12 border-b flex items-center justify-between px-2.5 sm:px-4 gap-2 sm:gap-3 shrink-0 select-none relative z-40 transition-colors",
+      "cloudbuilder-topbar h-12 border-b flex items-center justify-between px-2.5 sm:px-4 gap-2 sm:gap-3 shrink-0 select-none relative z-40 transition-colors",
       isLight ? "bg-white border-slate-200 text-slate-900 shadow-sm" : "bg-[#18181a] border-white/[0.08] text-slate-100"
     )}>
       {/* Left / Middle Scrollable Section */}

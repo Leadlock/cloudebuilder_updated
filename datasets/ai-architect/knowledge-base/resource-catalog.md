@@ -1,6 +1,6 @@
 # Resource catalog
 
-Every resource type the CloudCraft canvas, validator and Terraform generator understand. Use only these types and only the settings listed. Settings not listed do not exist and are rejected.
+Every resource type the CloudBuilder canvas, validator and Terraform generator understand. Use only these types and only the settings listed. Settings not listed do not exist and are rejected.
 
 ## aws_vpc — VPC
 Provider: aws; category: networking.

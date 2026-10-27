@@ -1,7 +1,7 @@
-# CloudCraft architect — fine-tuning dataset & knowledge base
+# CloudBuilder architect — fine-tuning dataset & knowledge base
 
 Data for fine-tuning `gpt-4o-mini` to turn a plain-English requirement into a complete AWS, Azure or
-multi-cloud architecture that CloudCraft can lay out, assess and export to Terraform without edits.
+multi-cloud architecture that CloudBuilder can lay out, assess and export to Terraform without edits.
 
 | File | Purpose |
 |---|---|
@@ -94,7 +94,7 @@ Confirm your account can fine-tune `gpt-4o-mini` and check current pricing first
    curl https://api.openai.com/v1/files -H "Authorization: Bearer $OPENAI_API_KEY" -F purpose=fine-tune -F file=@datasets/ai-architect/validation.jsonl
    ```
 2. Create the job with base model `gpt-4o-mini-2024-07-18`, the training file, the validation file, and a suffix such as
-   `cloudcraft-architect`. Start with **3 epochs** and the default batch size / learning-rate multiplier; watch validation
+   `cloudbuilder-architect`. Start with **3 epochs** and the default batch size / learning-rate multiplier; watch validation
    loss and stop early if it rises. Training size is roughly 1.3M tokens per epoch (estimate at 4 chars/token; the manifest has the number).
 3. Score the result on prompts it never saw:
    ```bash

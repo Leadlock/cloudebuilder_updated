@@ -12,7 +12,7 @@
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
-process.env['DATABASE_URL'] = 'postgresql://test:test@localhost:5432/cloudcraft_test';
+process.env['DATABASE_URL'] = 'postgresql://test:test@localhost:5432/cloudbuilder_test';
 
 // ─── DB Mock ──────────────────────────────────────────────────────────────────
 

@@ -3,22 +3,22 @@ version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: cloudcraft_postgres
+    container_name: cloudbuilder_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: cloudcraft_dev
-      POSTGRES_USER: cloudcraft
-      POSTGRES_PASSWORD: cloudcraft
+      POSTGRES_DB: cloudbuilder_dev
+      POSTGRES_USER: cloudbuilder
+      POSTGRES_PASSWORD: cloudbuilder
     ports:
       - '5432:5432'
     volumes:
-      - cloudcraft_pgdata:/var/lib/postgresql/data
+      - cloudbuilder_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U cloudbuilder -d cloudcraft_dev']
+      test: ['CMD-SHELL', 'pg_isready -U cloudbuilder -d cloudbuilder_dev']
       interval: 10s
       timeout: 5s
       retries: 5
 
 volumes:
-  cloudcraft_pgdata:
+  cloudbuilder_pgdata:
     driver: local

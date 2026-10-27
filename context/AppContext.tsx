@@ -977,7 +977,7 @@ export const initialState: AppState = {
   autoSaveStatus: 'saved',
   lastSavedTime: 'Just now',
   saveConflict: null,
-  theme: 'dark',
+  theme: 'light',
   displayCurrency: 'USD',
   canvasKey: 0,
   apiLoaded: false,

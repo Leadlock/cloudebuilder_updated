@@ -683,7 +683,7 @@ model OrgPolicy {
   updatedBy  String
 }
 
-// Random passwords CloudCraft generated for a cloud account's deployments (database / admin passwords), encrypted with the credential key and
+// Random passwords CloudBuilder generated for a cloud account's deployments (database / admin passwords), encrypted with the credential key and
 // bound to this row. id is "<cloudAccountId>:<name>". Never returned by an API except to an owner/admin who asks for it.
 model DeploymentSecret {
   id             String @id
@@ -740,7 +740,7 @@ model TerraformAccess {
   updatedAt   String
 }
 
-// A deployment of a whole project run from inside CloudCraft (lib/deploy/project): one row per release. `dataJson` holds the release record
+// A deployment of a whole project run from inside CloudBuilder (lib/deploy/project): one row per release. `dataJson` holds the release record
 // (steps, the project's settings, the compose file, the ids of what was created): never a credential and never a secret value.
 model ProjectRelease {
   id            String  @id @default(uuid())

@@ -14,7 +14,7 @@
   "taskRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/cloudbuilderTaskRole",
   "containerDefinitions": [
     {
-      "name": "cloudcraft-web",
+      "name": "cloudbuilder-web",
       "image": "YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/cloudbuilder-app:latest",
       "essential": true,
       "portMappings": [

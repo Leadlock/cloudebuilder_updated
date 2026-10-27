@@ -19,7 +19,7 @@ Applies to: aws_s3.
 ## AWS-S3-003 — S3 server access logging is disabled
 Provider: aws; service: Amazon S3; severity: LOW; pillar: security (SEC 4 — Detect and investigate security events).
 Server access logging is not enabled for the bucket.
-Why it matters: Security Hub S3.9 (medium). Rated LOW here because CloudTrail data events can provide equivalent object-level audit evidence; CloudCraft cannot see whether they are enabled.
+Why it matters: Security Hub S3.9 (medium). Rated LOW here because CloudTrail data events can provide equivalent object-level audit evidence; CloudBuilder cannot see whether they are enabled.
 Recommendation: Enable server access logging to a dedicated, access-restricted log bucket, or enable CloudTrail S3 data events.
 Applies to: aws_s3.
 
@@ -54,14 +54,14 @@ Applies to: aws_rds.
 ## AWS-RDS-002 — RDS storage encryption is disabled
 Provider: aws; service: Amazon RDS; severity: HIGH; pillar: security (SEC 8 — Protect data at rest).
 Storage encryption is off, so the DB instance storage, automated backups, read replicas and snapshots are not encrypted.
-Why it matters: Security Hub RDS.3 is rated medium; CloudCraft rates it HIGH because a relational database is the primary store of application data and encryption cannot be enabled in place later.
+Why it matters: Security Hub RDS.3 is rated medium; CloudBuilder rates it HIGH because a relational database is the primary store of application data and encryption cannot be enabled in place later.
 Recommendation: Enable storage encryption (optionally with a customer managed KMS key).
 Applies to: aws_rds.
 
 ## AWS-RDS-003 — RDS IAM database authentication is disabled
 Provider: aws; service: Amazon RDS; severity: LOW; pillar: security (SEC 2 — Manage authentication).
 The instance accepts only native database credentials.
-Why it matters: Security Hub RDS.10 (medium). Rated LOW because native credentials stored in Secrets Manager with rotation are an accepted alternative CloudCraft cannot observe.
+Why it matters: Security Hub RDS.10 (medium). Rated LOW because native credentials stored in Secrets Manager with rotation are an accepted alternative CloudBuilder cannot observe.
 Recommendation: Enable IAM database authentication for application roles, or store native credentials in Secrets Manager with rotation.
 Applies to: aws_rds.
 
@@ -75,7 +75,7 @@ Applies to: aws_rds.
 ## AWS-RDS-005 — RDS automatic minor version upgrade is disabled
 Provider: aws; service: Amazon RDS; severity: MEDIUM; pillar: security (SEC 6 — Protect compute resources (patching)).
 Minor engine versions (which include security patches) will not be applied automatically.
-Why it matters: Security Hub RDS.13 (rated high by the standard). Rated MEDIUM because patching may be handled by a documented manual process CloudCraft cannot observe.
+Why it matters: Security Hub RDS.13 (rated high by the standard). Rated MEDIUM because patching may be handled by a documented manual process CloudBuilder cannot observe.
 Recommendation: Enable automatic minor version upgrades during the maintenance window.
 Applies to: aws_rds.
 
@@ -110,7 +110,7 @@ Applies to: aws_rds.
 ## AWS-EC2-001 — EC2 instance is assigned a public IP address
 Provider: aws; service: Amazon EC2; severity: MEDIUM; pillar: security (SEC 5 — Protect network resources).
 The instance receives a public IPv4 address at launch.
-Why it matters: Security Hub EC2.9 is rated high; CloudCraft rates it MEDIUM because inbound reachability also depends on security group rules evaluated separately (AWS-SG-001/002). Raised to HIGH if the diagram links the instance directly to an internet entry point.
+Why it matters: Security Hub EC2.9 is rated high; CloudBuilder rates it MEDIUM because inbound reachability also depends on security group rules evaluated separately (AWS-SG-001/002). Raised to HIGH if the diagram links the instance directly to an internet entry point.
 Recommendation: Place instances in private subnets behind a load balancer; use NAT for egress and SSM Session Manager for administration.
 Applies to: aws_ec2.
 
@@ -124,7 +124,7 @@ Applies to: aws_ec2.
 ## AWS-EC2-003 — EC2 instance does not require IMDSv2
 Provider: aws; service: Amazon EC2; severity: HIGH; pillar: security (SEC 6 — Protect compute resources).
 The instance metadata service accepts IMDSv1 requests (metadata HttpTokens is "optional").
-Why it matters: Security Hub EC2.8 (high) requires IMDSv2 (HttpTokens = required). An instance whose metadata option is not specified or not discovered is INSUFFICIENT DATA — CloudCraft never assumes IMDSv2 is enforced.
+Why it matters: Security Hub EC2.8 (high) requires IMDSv2 (HttpTokens = required). An instance whose metadata option is not specified or not discovered is INSUFFICIENT DATA — CloudBuilder never assumes IMDSv2 is enforced.
 Recommendation: Require IMDSv2 on all instances and launch templates.
 Applies to: aws_ec2.
 
@@ -313,7 +313,7 @@ Applies to: aws_elasticache.
 ## AWS-DDB-001 — DynamoDB encryption at rest
 Provider: aws; service: Amazon DynamoDB; severity: INFORMATIONAL; pillar: security (SEC 8 — Protect data at rest).
 DynamoDB encrypts all tables at rest; the configuration selects the key type.
-Why it matters: DynamoDB encryption at rest cannot be disabled. "Server-side encryption = off" in CloudCraft means the AWS owned key is used; "on" means an AWS managed KMS key. The previous rule that reported "encryption disabled" was incorrect and has been replaced by this evidence check.
+Why it matters: DynamoDB encryption at rest cannot be disabled. "Server-side encryption = off" in CloudBuilder means the AWS owned key is used; "on" means an AWS managed KMS key. The previous rule that reported "encryption disabled" was incorrect and has been replaced by this evidence check.
 Recommendation: Use a customer managed KMS key when you need key-level access control and CloudTrail evidence of key use.
 Applies to: aws_dynamodb.
 
@@ -425,7 +425,7 @@ Applies to: aws_cloudfront.
 ## AWS-WAF-002 — AWS WAF web ACL has CloudWatch metrics or request sampling disabled
 Provider: aws; service: AWS WAF; severity: LOW; pillar: security (SEC 4 — Detect and investigate security events).
 Without CloudWatch metrics and sampled requests there is no view of what the web ACL allows, blocks or counts.
-Why it matters: A web ACL that cannot be observed cannot be tuned, and a rule that is blocking real customers goes unnoticed. Full request logging (a logging configuration to Kinesis, S3 or CloudWatch Logs) is not modelled by CloudCraft, so this checks the visibility settings it does model.
+Why it matters: A web ACL that cannot be observed cannot be tuned, and a rule that is blocking real customers goes unnoticed. Full request logging (a logging configuration to Kinesis, S3 or CloudWatch Logs) is not modelled by CloudBuilder, so this checks the visibility settings it does model.
 Recommendation: Enable CloudWatch metrics and sampled requests on the web ACL and every rule, and add a WAF logging configuration.
 Applies to: aws_waf.
 
@@ -481,28 +481,28 @@ Applies to: aws_cloudwatch, aws_ecs.
 ## AWS-ACCT-001 — CloudTrail multi-Region trail — account-level control
 Provider: aws; service: AWS CloudTrail; severity: HIGH; pillar: security (SEC 4 — Detect and investigate security events).
 CloudTrail multi-Region trail is an AWS account/Region setting that is not part of an architecture diagram.
-Why it matters: Account-level controls are not part of an architecture diagram and CloudCraft never assumes them: a control is NOT EVALUATED until the account has been checked (read-only API calls through a connected AWS account). A reading is dated, only used for seven days, and a control the account would not let CloudCraft read stays NOT EVALUATED with the reason.
+Why it matters: Account-level controls are not part of an architecture diagram and CloudBuilder never assumes them: a control is NOT EVALUATED until the account has been checked (read-only API calls through a connected AWS account). A reading is dated, only used for seven days, and a control the account would not let CloudBuilder read stays NOT EVALUATED with the reason.
 Recommendation: Enable an organization or multi-Region CloudTrail trail with log file validation, delivered to a protected S3 bucket.
 Applies to the whole architecture.
 
 ## AWS-ACCT-002 — GuardDuty threat detection — account-level control
 Provider: aws; service: Amazon GuardDuty; severity: HIGH; pillar: security (SEC 4 — Detect and investigate security events).
 GuardDuty threat detection is an AWS account/Region setting that is not part of an architecture diagram.
-Why it matters: Account-level controls are not part of an architecture diagram and CloudCraft never assumes them: a control is NOT EVALUATED until the account has been checked (read-only API calls through a connected AWS account). A reading is dated, only used for seven days, and a control the account would not let CloudCraft read stays NOT EVALUATED with the reason.
+Why it matters: Account-level controls are not part of an architecture diagram and CloudBuilder never assumes them: a control is NOT EVALUATED until the account has been checked (read-only API calls through a connected AWS account). A reading is dated, only used for seven days, and a control the account would not let CloudBuilder read stays NOT EVALUATED with the reason.
 Recommendation: Enable GuardDuty in all Regions used by the workload (delegated administrator in AWS Organizations).
 Applies to the whole architecture.
 
 ## AWS-ACCT-003 — Root user MFA — account-level control
 Provider: aws; service: AWS IAM; severity: CRITICAL; pillar: security (SEC 2 — Manage authentication).
 Root user MFA is an AWS account/Region setting that is not part of an architecture diagram.
-Why it matters: Account-level controls are not part of an architecture diagram and CloudCraft never assumes them: a control is NOT EVALUATED until the account has been checked (read-only API calls through a connected AWS account). A reading is dated, only used for seven days, and a control the account would not let CloudCraft read stays NOT EVALUATED with the reason.
+Why it matters: Account-level controls are not part of an architecture diagram and CloudBuilder never assumes them: a control is NOT EVALUATED until the account has been checked (read-only API calls through a connected AWS account). A reading is dated, only used for seven days, and a control the account would not let CloudBuilder read stays NOT EVALUATED with the reason.
 Recommendation: Enable (hardware) MFA on the root user and avoid root usage.
 Applies to the whole architecture.
 
 ## AWS-ACCT-004 — AWS Config recording — account-level control
 Provider: aws; service: AWS Config; severity: MEDIUM; pillar: security (SEC 4 — Detect and investigate security events).
 AWS Config recording is an AWS account/Region setting that is not part of an architecture diagram.
-Why it matters: Account-level controls are not part of an architecture diagram and CloudCraft never assumes them: a control is NOT EVALUATED until the account has been checked (read-only API calls through a connected AWS account). A reading is dated, only used for seven days, and a control the account would not let CloudCraft read stays NOT EVALUATED with the reason.
+Why it matters: Account-level controls are not part of an architecture diagram and CloudBuilder never assumes them: a control is NOT EVALUATED until the account has been checked (read-only API calls through a connected AWS account). A reading is dated, only used for seven days, and a control the account would not let CloudBuilder read stays NOT EVALUATED with the reason.
 Recommendation: Enable AWS Config recording for all resources in each Region used.
 Applies to the whole architecture.
 
@@ -551,7 +551,7 @@ Applies to: azure_storage.
 ## AZ-SQL-001 — Azure SQL logical server allows public network access
 Provider: azure; service: Azure SQL Database; severity: HIGH; pillar: security (SE:06 — Network controls).
 Public network access is enabled on the logical server.
-Why it matters: MCSB NS-2; Azure Policy "Public network access on Azure SQL Database should be disabled" (1b8ca024…). Rated HIGH (not CRITICAL) because the server firewall still applies; it becomes CRITICAL in practice when broad firewall rules exist, which CloudCraft does not model.
+Why it matters: MCSB NS-2; Azure Policy "Public network access on Azure SQL Database should be disabled" (1b8ca024…). Rated HIGH (not CRITICAL) because the server firewall still applies; it becomes CRITICAL in practice when broad firewall rules exist, which CloudBuilder does not model.
 Recommendation: Disable public network access and connect through a private endpoint.
 Applies to: azure_sql.
 
@@ -614,7 +614,7 @@ Applies to: azure_cosmos_db.
 ## AZ-COS-010 — Cosmos DB service-managed failover is disabled
 Provider: azure; service: Azure Cosmos DB; severity: LOW; pillar: reliability (RE:05 — Redundancy).
 Automatic (service-managed) failover is disabled.
-Why it matters: Azure Well-Architected Reliability guidance for Cosmos DB. Only effective when the account has more than one region, which CloudCraft does not model — hence LOW.
+Why it matters: Azure Well-Architected Reliability guidance for Cosmos DB. Only effective when the account has more than one region, which CloudBuilder does not model — hence LOW.
 Recommendation: Add a secondary region and enable service-managed failover.
 Applies to: azure_cosmos_db.
 
@@ -711,7 +711,7 @@ Applies to: azure_vmss.
 
 ## AZ-VM-010 — Azure Backup protection is not modelled for the VM
 Provider: azure; service: Azure Virtual Machines; severity: MEDIUM; pillar: reliability (RE:09 — Business continuity and disaster recovery).
-CloudCraft does not model Recovery Services vaults or backup policies.
+CloudBuilder does not model Recovery Services vaults or backup policies.
 Why it matters: MCSB BR-1; Azure Policy "Azure Backup should be enabled for Virtual Machines" (013e242c…). Reported NOT EVALUATED — backup is never assumed.
 Recommendation: Protect the VM with Azure Backup (Recovery Services vault + policy).
 Applies to: azure_vm.
@@ -733,7 +733,7 @@ Applies to: azure_vm.
 ## AZ-ARCH-010 — Virtual machines are not behind a load balancer or scale set
 Provider: azure; service: Azure Virtual Machines; severity: MEDIUM; pillar: reliability (RE:05 — Redundancy).
 VMs exist without an Azure Load Balancer, Application Gateway, Front Door or VM Scale Set in the architecture.
-Why it matters: Azure Well-Architected Reliability (redundancy). The previous rule looked for resource types that do not exist in CloudCraft and fired even when a load balancer was present; it has been corrected.
+Why it matters: Azure Well-Architected Reliability (redundancy). The previous rule looked for resource types that do not exist in CloudBuilder and fired even when a load balancer was present; it has been corrected.
 Recommendation: Run the tier on a zone-redundant VM Scale Set behind a Standard Load Balancer or Application Gateway.
 Applies to the whole architecture.
 
@@ -823,7 +823,7 @@ Applies to: azure_aks.
 
 ## AZ-AKS-002 — AKS API server is publicly reachable without authorized IP ranges
 Provider: azure; service: Azure Kubernetes Service; severity: MEDIUM; pillar: security (SE:06 — Network controls).
-The cluster is not private and CloudCraft has no authorized IP range configuration for the API server.
+The cluster is not private and CloudBuilder has no authorized IP range configuration for the API server.
 Why it matters: MCSB NS-2; Azure Policy "Authorized IP ranges should be defined on Kubernetes Services" (0e246bcf…).
 Recommendation: Use a private cluster, or restrict API server access with authorized IP ranges.
 Applies to: azure_aks.
@@ -879,7 +879,7 @@ Applies to: azure_bastion.
 
 ## AZ-ARCH-020 — Azure Monitor diagnostic settings and alert rules not modelled
 Provider: azure; service: Azure Monitor; severity: MEDIUM; pillar: operational_excellence (OE:07 — Monitoring system).
-CloudCraft models the Log Analytics workspace (the Azure Monitor resource) but not the diagnostic settings that send each resource's logs to it, nor alert rules.
+CloudBuilder models the Log Analytics workspace (the Azure Monitor resource) but not the diagnostic settings that send each resource's logs to it, nor alert rules.
 Why it matters: Whether each resource really sends logs to the workspace, and whether alerts exist, cannot be seen in the design, so this control is NOT EVALUATED with a clear data requirement. Whether a workspace is in the design at all is checked by AZ-MON-001.
 Recommendation: Send platform metrics and resource logs to a Log Analytics workspace via diagnostic settings and define alert rules.
 Applies to the whole architecture.
@@ -894,21 +894,21 @@ Applies to the whole architecture.
 ## AZ-ACCT-001 — Microsoft Defender for Cloud plans — subscription/tenant-level control
 Provider: azure; service: Microsoft Defender for Cloud; severity: HIGH; pillar: security (SE:10 — Monitoring and threat detection).
 Microsoft Defender for Cloud plans is configured at the subscription or tenant level, outside an architecture diagram.
-Why it matters: Reported NOT EVALUATED at design time. CloudCraft never assumes subscription or tenant controls are enabled.
+Why it matters: Reported NOT EVALUATED at design time. CloudBuilder never assumes subscription or tenant controls are enabled.
 Recommendation: Enable the Defender for Cloud plans relevant to the workload (Servers, SQL, Storage, Containers, Key Vault).
 Applies to the whole architecture.
 
 ## AZ-ACCT-002 — Activity log export and diagnostic settings — subscription/tenant-level control
 Provider: azure; service: Azure Monitor; severity: MEDIUM; pillar: security (SE:10 — Monitoring and threat detection).
 Activity log export and diagnostic settings is configured at the subscription or tenant level, outside an architecture diagram.
-Why it matters: Reported NOT EVALUATED at design time. CloudCraft never assumes subscription or tenant controls are enabled.
+Why it matters: Reported NOT EVALUATED at design time. CloudBuilder never assumes subscription or tenant controls are enabled.
 Recommendation: Export the subscription Activity Log and resource logs to a Log Analytics workspace with defined retention.
 Applies to the whole architecture.
 
 ## AZ-ACCT-003 — Multifactor authentication / Conditional Access — subscription/tenant-level control
 Provider: azure; service: Microsoft Entra ID; severity: HIGH; pillar: security (SE:05 — Identity and access management).
 Multifactor authentication / Conditional Access is configured at the subscription or tenant level, outside an architecture diagram.
-Why it matters: Reported NOT EVALUATED at design time. CloudCraft never assumes subscription or tenant controls are enabled.
+Why it matters: Reported NOT EVALUATED at design time. CloudBuilder never assumes subscription or tenant controls are enabled.
 Recommendation: Require MFA through Conditional Access for all users, and phishing-resistant MFA for privileged roles.
 Applies to the whole architecture.
 
@@ -986,7 +986,7 @@ Applies to: azure_mysql.
 Provider: azure; service: Azure Private Link; severity: HIGH; pillar: security (SE:06 — Network controls).
 Public network access is off, but the design has no Private Endpoint giving the application a private path to the service.
 Why it matters: MCSB NS-2. Turning the public endpoint off is the right security default, but it only works together with a Private Endpoint in the application network and a private DNS zone. Without one the service is unreachable, so the application fails at runtime however secure the design looks.
-Recommendation: Add a Private Endpoint in a subnet of the application network and connect it to the service (CloudCraft creates the private DNS zone and link).
+Recommendation: Add a Private Endpoint in a subnet of the application network and connect it to the service (CloudBuilder creates the private DNS zone and link).
 Applies to: azure_sql, azure_storage, azure_key_vault, azure_redis, azure_cosmos_db, azure_acr, azure_event_hubs, azure_event_grid, azure_service_bus.
 
 ## AZ-PE-002 — Private Endpoint is not connected to a service or not placed in a subnet
@@ -1006,7 +1006,7 @@ Applies to: azure_service_bus.
 ## AZ-SB-002 — Service Bus allows shared access keys
 Provider: azure; service: Azure Service Bus; severity: LOW; pillar: security (SE:05 — Identity and access management).
 Shared access signature keys can send and receive. They do not expire and are hard to scope.
-Why it matters: MCSB IM-1 / IM-3: prefer Microsoft Entra ID (managed identities) over keys. LOW because turning keys off needs a role assignment for each application, which CloudCraft does not generate.
+Why it matters: MCSB IM-1 / IM-3: prefer Microsoft Entra ID (managed identities) over keys. LOW because turning keys off needs a role assignment for each application, which CloudBuilder does not generate.
 Recommendation: Disable shared access keys and give each application a managed identity with the Azure Service Bus Data Sender / Receiver role.
 Applies to: azure_service_bus.
 
@@ -1069,7 +1069,7 @@ Applies to: azure_event_hubs.
 ## AZ-EH-002 — Event Hubs allows shared access keys
 Provider: azure; service: Azure Event Hubs; severity: LOW; pillar: security (SE:05 — Identity and access management).
 Shared access signature keys can send and receive. They do not expire and are hard to scope.
-Why it matters: MCSB IM-1 / IM-3: prefer Microsoft Entra ID (managed identities). LOW because turning keys off needs a role assignment for each application, which CloudCraft does not generate.
+Why it matters: MCSB IM-1 / IM-3: prefer Microsoft Entra ID (managed identities). LOW because turning keys off needs a role assignment for each application, which CloudBuilder does not generate.
 Recommendation: Disable shared access keys and give each application a managed identity with the Azure Event Hubs Data Sender / Receiver role.
 Applies to: azure_event_hubs.
 
@@ -1097,7 +1097,7 @@ Applies to: azure_event_grid.
 ## AZ-EG-002 — Event Grid topic allows access keys
 Provider: azure; service: Azure Event Grid; severity: LOW; pillar: security (SE:05 — Identity and access management).
 Access keys can publish to the topic. They do not expire and are hard to scope.
-Why it matters: MCSB IM-1 / IM-3: prefer Microsoft Entra ID. LOW because turning keys off needs a role assignment for each publisher, which CloudCraft does not generate.
+Why it matters: MCSB IM-1 / IM-3: prefer Microsoft Entra ID. LOW because turning keys off needs a role assignment for each publisher, which CloudBuilder does not generate.
 Recommendation: Disable access keys and give publishers the Event Grid Data Sender role.
 Applies to: azure_event_grid.
 

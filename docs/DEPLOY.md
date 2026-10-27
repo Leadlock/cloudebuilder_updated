@@ -9,7 +9,7 @@ scripts/deploy.sh --status     # what is running there, and the backups it keeps
 scripts/deploy.sh --rollback   # puts the newest backup back
 ```
 
-Settings (environment): `DEPLOY_HOST` (default `root@72.61.244.75`) and `DEPLOY_DIR` (default `/root/CloudCraft`).
+Settings (environment): `DEPLOY_HOST` (default `root@72.61.244.75`) and `DEPLOY_DIR` (default `/root/CloudBuilder`).
 Needs `ssh` and `rsync` here, and `rsync`, `python3`, `npm` and `pm2` on the server. `gh` (GitHub CLI, logged in) lets it check CI.
 
 ## What it refuses to do
@@ -24,8 +24,8 @@ In production CloudBuilder will not start unless `RESTRICTED_FEATURES_ALLOWED_EM
 ## What it does
 1. **Checks the server** (folder, `.env`, free disk, tools, processes) and **backs up** the running version: the source (as `/root/cloudbuilder-backups/<time>.tgz`, only root can read it) and a copy of the build. The newest 5 source backups and 2 builds are kept.
 2. **Copies** the tracked files (compared by content, nothing is deleted on the server).
-3. **Installs** only when `package-lock.json` changed, **builds**, **restarts only** `cloudcraft-web`, `cloudcraft-discovery` and `cloudcraft-tf-apply` (never the other apps on the server), then waits for the site to answer on port 3100 and for the processes to stay up without restarting.
-4. If anything fails it **goes back to the backup by itself**, restarts, and says so. The commit that is running is in `/root/CloudCraft/.deployed-commit`.
+3. **Installs** only when `package-lock.json` changed, **builds**, **restarts only** `cloudbuilder-web`, `cloudbuilder-discovery` and `cloudbuilder-tf-apply` (never the other apps on the server), then waits for the site to answer on port 3100 and for the processes to stay up without restarting.
+4. If anything fails it **goes back to the backup by itself**, restarts, and says so. The commit that is running is in `/root/CloudBuilder/.deployed-commit`.
 
 ## After a deploy
 Open the site. Sign in as someone who must **not** have access to Deploy, AI Generator and Cloud Accounts and check they see "Not accessible".

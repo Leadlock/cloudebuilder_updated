@@ -11,7 +11,7 @@ This is the checklist for the first real run. Everything below the cloud (the st
 - You are on the restricted-features list and an owner/admin; Terraform access is approved for your organization (same as the Deploy tab).
 
 ## 1. Switch it on (on the machine that runs CloudBuilder)
-1. Put `CLOUDBUILDER_PROJECT_RELEASES=1` in `.env` and restart the web server **and** the worker (`npm run worker:terraform-apply`, or `pm2 restart cloudcraft-web cloudcraft-tf-apply --update-env`).
+1. Put `CLOUDBUILDER_PROJECT_RELEASES=1` in `.env` and restart the web server **and** the worker (`npm run worker:terraform-apply`, or `pm2 restart cloudbuilder-web cloudbuilder-tf-apply --update-env`).
 2. The database must have the two new tables: `npm run db:migrate` (or `prisma db migrate`). Migrations: `add_project_releases`, `add_project_sources`.
 3. Behind nginx: `client_max_body_size 6m;` so a zip of up to 5 MB can be uploaded.
 
@@ -35,7 +35,7 @@ sample apps (tick "Include a sample app" on each part) so there is something to 
 | publish / start | the message | the VM agent is not ready yet (wait, Retry) |
 | verify | the message | the address is closed to your network (the range in "who can connect"), or the services are still starting |
 
-Server side, the worker log (`pm2 logs cloudcraft-tf-apply`) has one line per step (`[project-release …]`) and the audit trail records every request (`action: release`).
+Server side, the worker log (`pm2 logs cloudbuilder-tf-apply`) has one line per step (`[project-release …]`) and the audit trail records every request (`action: release`).
 
 ## 5. Then try
 - **A second release** (change the image tag): it should plan with no changes to the VM, build, publish and restart without replacing the VM; database data (if ticked) survives.

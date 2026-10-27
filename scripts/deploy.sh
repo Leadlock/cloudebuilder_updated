@@ -7,7 +7,7 @@
 #   scripts/deploy.sh --status        show what is running there and the backups it keeps
 #
 # Options: --yes (no question), --allow-unpushed (deploy a commit that is not on origin/main), --ignore-ci (deploy although CI is not green)
-# Settings (environment): DEPLOY_HOST (default root@72.61.244.75), DEPLOY_DIR (default /root/CloudCraft)
+# Settings (environment): DEPLOY_HOST (default root@72.61.244.75), DEPLOY_DIR (default /root/CloudBuilder)
 #
 # What it does: checks your copy is clean and equal to origin/main and CI is green; backs up the running version on the server; copies the new
 # source (never .env, never node_modules); installs, builds, restarts only the CloudBuilder processes and checks they are healthy and stay up;
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 HOST="${DEPLOY_HOST:-root@72.61.244.75}"
-DIR="${DEPLOY_DIR:-/root/CloudCraft}"
+DIR="${DEPLOY_DIR:-/root/CloudBuilder}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 REMOTE_SH="$HERE/deploy/remote.sh"

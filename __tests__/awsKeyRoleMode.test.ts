@@ -52,14 +52,14 @@ const keyRoleNoExt = { accessKeyId: KEY_ID, secretAccessKey: SECRET, roleArn: RO
 const keyOnly = { accessKeyId: KEY_ID, secretAccessKey: SECRET, region: 'us-east-1' };
 const roleOnly = { roleArn: ROLE, externalId: 'ext-123', region: 'us-east-1' };
 const USER_ARN = 'arn:aws:iam::123456789012:user/cloudbuilder';
-const ASSUMED_ARN = 'arn:aws:sts::123456789012:assumed-role/CloudBuilderRole/cloudcraft-discovery';
+const ASSUMED_ARN = 'arn:aws:sts::123456789012:assumed-role/CloudBuilderRole/cloudbuilder-discovery';
 
 /** STS as AWS answers: AssumeRole gives temporary credentials; GetCallerIdentity says who is calling (the user, or the assumed role). */
 function stsAnswers(who: { key?: string; assumed?: string } = {}) {
   mockStsSend.mockImplementation(async (cmd: { input?: { RoleArn?: string } }) => {
     if (cmd.input?.RoleArn) return { Credentials: { AccessKeyId: 'ASIATEMPORARY00000000', SecretAccessKey: 'temp-secret', SessionToken: 'TEMP-SESSION-TOKEN' } };
     return stsConstructed.at(-1)?.credentials?.sessionToken
-      ? { Account: '123456789012', Arn: who.assumed ?? ASSUMED_ARN, UserId: 'AROAEXAMPLE:cloudcraft-discovery' }
+      ? { Account: '123456789012', Arn: who.assumed ?? ASSUMED_ARN, UserId: 'AROAEXAMPLE:cloudbuilder-discovery' }
       : { Account: '123456789012', Arn: who.key ?? USER_ARN, UserId: 'AIDAEXAMPLE' };
   });
 }

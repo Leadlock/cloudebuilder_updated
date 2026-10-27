@@ -585,7 +585,7 @@ describe('Production Infrastructure Discovery & Import', () => {
         projectId: 'proj-1',
         resources,
         connections,
-        projectName: 'cloudcraft_test',
+        projectName: 'cloudbuilder_test',
       });
 
       const mainTf = result.files.find((f) => f.filename === 'main.tf');

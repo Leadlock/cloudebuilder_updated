@@ -447,7 +447,7 @@ export default function ProjectReleasePanel({ projectId, environment, stack, isL
           {release.log.length > 0 && <pre className={clsx('rounded-lg p-3 text-[11px] leading-relaxed max-h-40 overflow-auto font-mono', isLight ? 'bg-slate-900 text-slate-100' : 'bg-slate-950 text-slate-200 border border-slate-800')}>{release.log.slice(-12).join('\n')}</pre>}
 
           {(release.status === 'approved' || release.status === 'running') && workerAlive === false && (
-            <p role="alert" className="text-xs text-rose-500">The background worker that runs releases is not running, so nothing is happening. Start it on the server (<code>npm run worker:terraform-apply</code>, or restart <code>cloudcraft-tf-apply</code> in pm2); the release then continues.</p>
+            <p role="alert" className="text-xs text-rose-500">The background worker that runs releases is not running, so nothing is happening. Start it on the server (<code>npm run worker:terraform-apply</code>, or restart <code>cloudbuilder-tf-apply</code> in pm2); the release then continues.</p>
           )}
           {release.status === 'destroyed' && <p className="text-xs text-amber-600">Everything this release created was removed. Plan a new deployment to create it again.</p>}
           <div className="flex flex-wrap gap-2">
