@@ -964,13 +964,15 @@
   <link rel="stylesheet" href="/CloudBuilder-Frontend/assets/theme.css">
   <link rel="stylesheet" href="/CloudBuilder-Frontend/assets/buttons.css">
   <script src="/CloudBuilder-Frontend/assets/buttons.js" defer></script>
+  <link rel="stylesheet" href="/CloudBuilder-Frontend/assets/auth-modal.css">
+  <script src="/CloudBuilder-Frontend/assets/auth-modal.js" defer></script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
   <header class="topbar cc-site-header" data-page="home"><div class="cc-header-inner">
     <a class="cc-brand" href="./" aria-label="CloudBuilder home"><span class="cc-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M16.5 6.5a7 7 0 1 0 0 11M11 9h7M11 12h9M11 15h7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>CloudBuilder</a>
-    <nav class="cc-links" id="site-navigation" aria-label="Main navigation"><span class="cc-indicator cc-initial" aria-hidden="true"></span><a href="#solutions">Solutions</a><a href="#workflow">How it works</a><a href="#scope">Catalogue</a><a href="#teams">Team leverage</a><a class="cc-mobile-auth" href="/app">Log in</a><a class="cc-mobile-auth" href="/app">Sign up</a></nav>
-    <div class="cc-header-actions"><a class="cc-header-button" href="/app">Log in</a><a class="cc-header-button cc-primary" href="/app">Sign up</a><button class="cc-theme-toggle" type="button" aria-label="Switch to dark mode" aria-pressed="false" title="Switch to dark mode"><svg class="cc-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13Z"/></svg><svg class="cc-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg></button><button class="cc-menu" type="button" aria-label="Toggle navigation" aria-expanded="false" aria-controls="site-navigation">☰</button></div>
+    <nav class="cc-links" id="site-navigation" aria-label="Main navigation"><span class="cc-indicator cc-initial" aria-hidden="true"></span><a href="#solutions">Solutions</a><a href="#workflow">How it works</a><a href="#scope">Catalogue</a><a href="#teams">Team leverage</a><a class="cc-mobile-auth" href="#login" data-auth-modal="signin">Log in</a><a class="cc-mobile-auth" href="#signup" data-auth-modal="signup">Sign up</a></nav>
+    <div class="cc-header-actions"><button class="cc-header-button" type="button" data-auth-modal="signin">Log in</button><button class="cc-header-button cc-primary" type="button" data-auth-modal="signup">Sign up</button><button class="cc-theme-toggle" type="button" aria-label="Switch to dark mode" aria-pressed="false" title="Switch to dark mode"><svg class="cc-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13Z"/></svg><svg class="cc-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg></button><button class="cc-menu" type="button" aria-label="Toggle navigation" aria-expanded="false" aria-controls="site-navigation">☰</button></div>
   </div></header>
   <main id="main">
     <section class="hero"><div class="hero-aurora" aria-hidden="true"></div>
@@ -1096,6 +1098,103 @@
     </div></section>
   </main>
   <footer><div class="shell footer"><a class="brand" href="#"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none"><path d="M16.5 6.5a7 7 0 1 0 0 11" stroke="#06132f" stroke-width="3" stroke-linecap="round"/><path d="M11 9h7M11 12h9M11 15h7" stroke="#06132f" stroke-width="1.7" stroke-linecap="round"/></svg></span>CloudBuilder</a><div>© 2026 CloudBuilder. AWS and Azure deployment engineering.</div><div class="footer-links"><a href="#scope">Catalogue</a><a href="#teams">Team leverage</a><a href="#contact">Contact</a></div></div></footer>
+  <!-- CloudBuilder Auth Modal Popup -->
+  <div class="cb-auth-backdrop" id="cb-auth-modal" role="dialog" aria-modal="true" aria-labelledby="cb-modal-title">
+    <div class="cb-auth-card">
+      <div class="cb-auth-glow" aria-hidden="true"></div>
+      
+      <div class="cb-auth-header">
+        <div class="cb-auth-header-left">
+          <span class="cb-auth-brand-badge" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M16.5 6.5a7 7 0 1 0 0 11M11 9h7M11 12h9M11 15h7" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <div class="cb-auth-titles">
+            <h3 id="cb-modal-title">Welcome Back</h3>
+            <p id="cb-modal-subtitle">Sign in to access your cloud workspace</p>
+          </div>
+        </div>
+        <button class="cb-auth-close" id="cb-modal-close" type="button" aria-label="Close modal">×</button>
+      </div>
+
+      <div class="cb-auth-tabs" id="cb-auth-tabs">
+        <button class="cb-auth-tab is-active" id="cb-tab-signin" type="button">Sign In</button>
+        <button class="cb-auth-tab" id="cb-tab-signup" type="button">Create Account</button>
+      </div>
+
+      <div class="cb-auth-alert" id="cb-auth-alert">
+        <span id="cb-alert-message"></span>
+      </div>
+
+      <form class="cb-auth-form" id="cb-auth-form" novalidate>
+        <div class="cb-field" id="cb-field-name" style="display: none;">
+          <label for="cb-input-name">Full Name</label>
+          <div class="cb-input-wrap">
+            <input class="cb-input" id="cb-input-name" type="text" autocomplete="name" placeholder="Alex Morgan">
+          </div>
+        </div>
+
+        <div class="cb-field" id="cb-field-org" style="display: none;">
+          <label for="cb-input-org">Organization / Team</label>
+          <div class="cb-input-wrap">
+            <input class="cb-input" id="cb-input-org" type="text" autocomplete="organization" placeholder="Acme Engineering">
+          </div>
+        </div>
+
+        <div class="cb-field" id="cb-field-email">
+          <label for="cb-input-email">Work Email</label>
+          <div class="cb-input-wrap">
+            <input class="cb-input" id="cb-input-email" type="email" autocomplete="email" placeholder="alex@company.com" required>
+          </div>
+        </div>
+
+        <div class="cb-field" id="cb-field-password">
+          <label for="cb-input-password">Password</label>
+          <div class="cb-input-wrap">
+            <input class="cb-input" id="cb-input-password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+            <button class="cb-pw-toggle" type="button" aria-label="Show password">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="cb-field" id="cb-field-mfa" style="display: none;">
+          <label for="cb-input-mfa">6-Digit Authenticator Code</label>
+          <div class="cb-input-wrap">
+            <input class="cb-input" id="cb-input-mfa" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="123456">
+          </div>
+        </div>
+
+        <div class="cb-auth-extra" id="cb-auth-extra">
+          <button class="cb-forgot-link" id="cb-forgot-link" type="button">Forgot password?</button>
+        </div>
+
+        <div style="display: none; text-align: right;" id="cb-back-to-signin">
+          <button class="cb-forgot-link" type="button">← Back to Sign In</button>
+        </div>
+
+        <button class="cb-auth-submit" id="cb-auth-submit" type="submit">
+          <span class="cb-spinner" id="cb-submit-spinner" style="display: none;"></span>
+          <span id="cb-submit-text">Sign In →</span>
+        </button>
+      </form>
+
+      <div class="cb-auth-footer">
+        <a class="cb-demo-link" href="/app">Explore interactive workspace demo →</a>
+        <div class="cb-auth-security">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          <span>Encrypted auth</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="/CloudBuilder-Frontend/assets/entrance.js?v=2"></script>
 </body>
 </html>

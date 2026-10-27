@@ -484,7 +484,44 @@ button.bg-cyan-600:active {
   isolation: isolate;
 }
 .auth-shell-page { position: relative !important; inset: auto !important; }
-.auth-shell-modal { position: fixed !important; inset: 0 !important; }
+.auth-shell-modal {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9999 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: rgba(3, 10, 26, 0.78) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  padding: 16px !important;
+  height: 100% !important;
+  overflow-y: auto !important;
+}
+
+.auth-shell-modal .auth-story,
+.auth-shell-modal .auth-brand,
+.auth-shell-modal .auth-aurora {
+  display: none !important;
+}
+
+.auth-shell-modal .auth-workspace {
+  width: min(100%, 460px) !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: transparent !important;
+}
+
+.auth-shell-modal .auth-card {
+  width: 100% !important;
+  max-width: 460px !important;
+  border-radius: 20px !important;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+}
 
 .auth-aurora {
   position: fixed;

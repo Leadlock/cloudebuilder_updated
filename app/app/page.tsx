@@ -116,11 +116,28 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (!state.currentUser) {
     return (
-      <div className={`flex h-screen items-center justify-center ${isLight ? 'bg-slate-50' : 'bg-gray-950'}`}>
+      <div className={`relative w-full h-screen overflow-hidden ${isLight ? 'bg-slate-50' : 'bg-gray-950'}`}>
+        <div className="w-full h-full pointer-events-none select-none opacity-40 filter blur-[2px]">
+          {children}
+        </div>
         <LoginModal
           isOpen
           onSuccess={(user) => {
             dispatch({ type: 'SET_USER', user });
+            dispatch({ type: 'SET_LOGIN_MODAL', open: false });
+          }}
+          onClose={() => {
+            dispatch({
+              type: 'SET_USER',
+              user: {
+                id: 'demo-user',
+                email: 'guest@cloudbuilder.io',
+                name: 'Guest Explorer',
+                orgId: 'demo-org',
+                role: 'viewer',
+                restrictedFeatures: true,
+              },
+            });
             dispatch({ type: 'SET_LOGIN_MODAL', open: false });
           }}
         />

@@ -1,22 +1,36 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Lock, Mail, User as UserIcon, Building2, AlertCircle, Loader2, KeyRound, ArrowLeft, RefreshCw, CheckCircle2, Copy, Check, Smartphone, QrCode, Eye, EyeOff } from 'lucide-react';
+import { ShieldCheck, Lock, Mail, User as UserIcon, Building2, AlertCircle, Loader2, KeyRound, ArrowLeft, RefreshCw, CheckCircle2, Copy, Check, Smartphone, QrCode, Eye, EyeOff, X } from 'lucide-react';
 import QRCode from 'qrcode';
 import type { AuthUser } from '@/lib/api/authService';
 import { useApp } from '@/context/AppContext';
 
 interface LoginModalProps {
   isOpen: boolean;
+  initialMode?: 'signin' | 'signup';
   onSuccess: (user: AuthUser) => void;
   onClose?: () => void;
 }
 
-export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalProps) {
+export default function LoginModal({ isOpen, initialMode = 'signin', onSuccess, onClose }: LoginModalProps) {
   const { state } = useApp();
   const isLight = state.theme === 'light';
 
-  const [mode, setMode] = useState<'signin' | 'signup' | 'confirm' | 'mfa' | 'forgot_password' | 'reset_password'>('signin');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'confirm' | 'mfa' | 'forgot_password' | 'reset_password'>(initialMode);
+
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
+
+  useEffect(() => {
+    if (!onClose || !isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -353,8 +367,15 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
     setTimeout(() => setCopiedSecret(false), 2000);
   }
 
+  if (!isOpen) return null;
+
   return (
-    <div className={`auth-shell z-50 ${onClose ? 'auth-shell-modal fixed inset-0' : 'auth-shell-page relative min-h-screen'}`}>
+    <div
+      onClick={(e) => {
+        if (onClose && e.target === e.currentTarget) onClose();
+      }}
+      className={`auth-shell z-50 ${onClose ? 'auth-shell-modal fixed inset-0' : 'auth-shell-page relative min-h-screen'}`}
+    >
       <div className="auth-aurora" aria-hidden="true" />
 
       <a className="auth-brand" href="/" aria-label="CloudBuilder home">
@@ -385,46 +406,67 @@ export default function LoginModal({ isOpen, onSuccess, onClose }: LoginModalPro
         </div>
       </section>
 
-      <main className="auth-workspace">
+      <main
+        className="auth-workspace"
+        onClick={(e) => {
+          if (onClose && e.target === e.currentTarget) onClose();
+        }}
+      >
       <div className={`auth-card auth-card-${mode} ${isLight ? 'is-light' : 'is-dark'} border w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200`}>
       <div className={`auth-card-content auth-transition-${authTransition}`}>
         {/* Header */}
         <div className={`auth-card-header px-6 pt-6 pb-4 border-b ${isLight ? 'border-slate-100 bg-slate-50/60' : 'border-slate-800 bg-slate-900/60'}`}>
-          <div className="flex items-center gap-3">
-            <div className="auth-header-icon w-10 h-10 rounded-xl flex items-center justify-center">
-              {mode === 'forgot_password' || mode === 'reset_password' ? (
-                <KeyRound className="w-5 h-5" />
-              ) : (
-                <Lock className="w-5 h-5" />
-              )}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className={`text-lg font-bold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                  {mode === 'signin'
-                    ? 'Welcome back'
-                    : mode === 'signup'
-                    ? 'Create your workspace'
-                    : mode === 'forgot_password' || mode === 'reset_password'
-                    ? 'Recover access'
-                    : mode === 'mfa'
-                    ? 'Verify your identity'
-                    : 'Confirm your account'}
-                </h2>
-                <span className="auth-secure-badge px-1.5 py-0.5 text-[10px] font-semibold rounded border">
-                  Secure sign-in
-                </span>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="auth-header-icon w-10 h-10 rounded-xl flex items-center justify-center">
+                {mode === 'forgot_password' || mode === 'reset_password' ? (
+                  <KeyRound className="w-5 h-5" />
+                ) : (
+                  <Lock className="w-5 h-5" />
+                )}
               </div>
-              <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                {mode === 'signin'
-                  ? 'Continue to your cloud architecture workspace'
-                  : mode === 'signup'
-                  ? 'Set up your team and start building'
-                  : mode === 'forgot_password' || mode === 'reset_password'
-                  ? 'Reset your password securely'
-                  : 'Complete the secure sign-in process'}
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className={`text-lg font-bold tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    {mode === 'signin'
+                      ? 'Welcome back'
+                      : mode === 'signup'
+                      ? 'Create your workspace'
+                      : mode === 'forgot_password' || mode === 'reset_password'
+                      ? 'Recover access'
+                      : mode === 'mfa'
+                      ? 'Verify your identity'
+                      : 'Confirm your account'}
+                  </h2>
+                  <span className="auth-secure-badge px-1.5 py-0.5 text-[10px] font-semibold rounded border">
+                    Secure sign-in
+                  </span>
+                </div>
+                <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                  {mode === 'signin'
+                    ? 'Continue to your cloud architecture workspace'
+                    : mode === 'signup'
+                    ? 'Set up your team and start building'
+                    : mode === 'forgot_password' || mode === 'reset_password'
+                    ? 'Reset your password securely'
+                    : 'Complete the secure sign-in process'}
+                </p>
+              </div>
             </div>
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className={`p-1.5 rounded-lg transition-colors -mr-1 ${
+                  isLight
+                    ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
 
