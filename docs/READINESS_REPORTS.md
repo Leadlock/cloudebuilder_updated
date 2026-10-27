@@ -28,6 +28,14 @@ Per project: control answers (owner, status, note, reviewer), findings (owner, t
 
 `GET` view · `PUT controls/{controlId}` · `PUT findings/{controlId}` · `GET|POST evidence`, `GET|PUT|DELETE evidence/{id}` · `POST signoff` · `PUT scope` (SOC 2, owner/admin) · `GET report?format=` draft, `POST report` issues the next version. Every call checks the caller belongs to the project's organization.
 
+## The SOC 2 readiness report's structure
+
+The Word and PDF reports follow the same CPA-ready structure: 1 Executive Summary; 2 Scope, Objectives and Limitations (system boundary, criteria assessed, limitations, significant changes, limitations register); 3 Methodology and Scoring (steps, scoring scale, evidence confidence, independence); 4 Results by Control Domain (by category and by criterion); 5 Control-Level Design Assessment; 6 Findings and Remediation (with prior-period follow-up); 7 Management Response and Remediation Plan; 8 Readiness for CPA Review (16 consistency checks, items the CPA will request, questions); 9 Sign-off. Appendices: A Control Matrix, B Control Assessment Worksheet, C Walkthrough Workpaper, D Evidence Index (full SHA-256), E Finding Template, F Gap Register and Remediation Tracker, G **System Configuration**, H Draft System Description and Management Assertion, I Complementary Controls Register, J Subservice Organisation Review, K Bridge Letter Template, L Management Representation Letter Template, M Control Library, N Operating over time.
+
+- **Appendix G (System Configuration)** lists every resource's security-relevant settings that the assessment examined: observed value, expected value, result, and whether the value came from the design, the cloud account or a live check, with the value the account holds when it differs from the design. It is taken from the assessment's own evidence, so it cannot say what the checks did not see, and settings that could hold a secret are redacted before assessment.
+- **Consistency checks (8.1)** are computed: criteria and carve-outs agree, the saved architecture agrees with the cloud account, mapping, evidence completeness, counts, criteria covered, distinct SHA-256 fingerprints, and terminology. Checks that only apply to a Type 2 examination show "Not applicable". Checks that need information CloudBuilder does not hold yet (scan provider, provider reports, complementary controls) show "Note".
+- **Not recorded in CloudBuilder yet** (marked `[to be recorded]` for the team to complete): significant changes, prior-period findings, walkthroughs, population sources, limitation owners and resolved dates, complementary-control statuses, and provider report reviews. The letters (K, L) are drafts for management and the provider to sign; CloudBuilder never signs.
+
 ## Toward a real SOC 2 report
 
 CloudBuilder cannot issue a SOC 2 report: only a licensed CPA firm can, after its own examination. What it does is make that engagement shorter.

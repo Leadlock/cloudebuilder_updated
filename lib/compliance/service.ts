@@ -13,6 +13,7 @@ import { readinessRepository, evidenceControls } from '@/lib/repositories/readin
 import { findingReviewRepository } from '@/lib/repositories/findingReviewRepository';
 import { gatherPlatformFacts } from './facts';
 import { buildReadinessReport, type ReadinessReport, type ReportInput, type SystemFacts } from './report';
+import { configRows } from './configuration';
 import { analyzePeriod } from './snapshots';
 import type { Soc2Category } from './soc2/criteria';
 import type { EvidenceRef, FrameworkId } from './types';
@@ -88,6 +89,7 @@ export async function loadReportInput(args: { orgId: string; projectId: string; 
       asOf, generatedAt: new Date(), version, ...(scope ? { categories: scope.categories, exclusions: scope.exclusions } : {}),
       records, evidence: refs, evaluations: assessment.evaluations, ...(facts ? { facts } : {}), findingRecords, signoffs,
       accountRead: assessment.evaluations.some((e) => e.provenance !== 'DESIGN_TIME'), preparedBy: args.preparedBy,
+      configuration: configRows(nodes, assessment.evaluations),
       ...(args.framework === 'soc2' ? { period: analyzePeriod('soc2', snapshots, new Date(asOf.getTime() - 365 * 86_400_000), asOf) } : {}),
     },
   };

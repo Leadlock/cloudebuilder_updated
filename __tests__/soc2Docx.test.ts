@@ -29,17 +29,50 @@ describe('the SOC 2 Word report', () => {
     expect(out.text).toMatch(/It is not a SOC 2 report, it gives no opinion/);
     expect(out.text).toMatch(/Security, Availability/);
   });
-  it('has the sections in a reader\'s order: summary, scope, areas, controls, findings, limitations, CPA checklist, sign-off, then the appendices', () => {
+  it('follows the structure of the CPA-ready template: nine sections, then Appendices A to N, each in order', () => {
     const at = (s: string) => out.text.indexOf(s);
-    const order = ['1. Summary', 'How to read this report', '2. Scope and limits', '3. Results by area', '4. Controls, one by one', '5. Findings and management response', '6. Limitations', '7. Ready for the CPA firm?', '8. Sign-off', 'Appendix A. Control matrix', 'Appendix B. Evidence index', 'Appendix C. Draft system description', 'Appendix D. Draft management assertion', 'Appendix E. Complementary controls and subservice organizations', 'Appendix F. How scores are decided'];
+    const order = ['1. Executive Summary', 'Results at a glance', 'Principal findings', '2. Scope, Objectives and Limitations', '2.1 Objective', '2.2 System boundary', '2.3 Criteria assessed', '2.4 Limitations', '2.5 Significant changes during the period', '2.6 Limitations register',
+      '3. Methodology and Scoring', '3.1 Steps performed for each control', '3.2 Scoring scale', '3.3 Evidence confidence', '3.4 Independence', '4. Results by Control Domain', '5. Control-Level Design Assessment', '5.2 Privacy criteria control detail',
+      '6. Findings and Remediation', '6.2 Prior-period findings follow-up', '7. Management Response and Remediation Plan', '8. Readiness for CPA Review', '8.1 Consistency checks before the CPA firm begins', '8.2 Items the CPA firm will request', '8.3 Questions for the CPA firm', '9. Sign-off',
+      'Appendix A. Control Matrix', 'Appendix B. Control Assessment Worksheet', 'Appendix C. Walkthrough Workpaper', 'Appendix D. Evidence Index', 'Appendix E. Finding Template', 'Appendix F. Gap Register and Remediation Tracker', 'F.1 Gap register', 'F.2 Remediation tracker', 'Appendix G. System Configuration',
+      'Appendix H. Draft System Description Outline and Draft Management Assertion', 'H.1 System description outline', 'H.2 Draft management assertion', 'Appendix I. Complementary Controls Register', 'I.1 Complementary user entity controls (CUECs)', 'I.2 Complementary subservice organisation controls (CSOCs)',
+      'Appendix J. Subservice Organisation Review', 'J.1 Provider summary', 'J.2 Complementary controls relied on, and gaps', 'J.3 Review conclusion', 'Appendix K. Bridge Letter Template', 'Appendix L. Management Representation Letter Template', 'Appendix M. Control Library (Type 1 starting set)', 'Appendix N. Operating over time (Type 2 preparation)'];
+    const missing = order.filter((s) => at(s) < 0);
+    expect(missing).toEqual([]);
     const positions = order.map(at);
-    expect(positions.every((p) => p >= 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
   });
   it('states the verdict and the counts the data holds', () => {
     expect(out.text).toContain(report.readiness);
-    expect(out.text).toContain(`${report.summary.coveragePct}% of the controls in scope have been assessed`);
+    expect(out.text).toContain(`${report.summary.coveragePct}% of the ${report.summary.total - report.summary.notApplicable} controls in scope have been assessed`);
+    expect(out.text).toMatch(/Overall design readiness/);
     expect(out.text).toMatch(/Not assessed/);
+  });
+  it('shows results by category with the average, the not-assessed count and the open findings', () => {
+    expect(out.text).toMatch(/Criteria in scope/);
+    expect(out.text).toMatch(/Open findings/);
+    expect(out.text).toMatch(/Security \(Common Criteria\)/);
+  });
+  it('runs the consistency checks and shows a result for each', () => {
+    for (const c of ['Criteria agree', 'Architecture agrees', 'Counts agree', 'Evidence fingerprints', 'Terminology', 'Tests fit controls']) expect(out.text).toContain(c);
+    expect(out.text).toMatch(/Not applicable/);
+  });
+  it('lists the configuration of the resources, with the source of each value and where the account differs', () => {
+    expect(out.text).toContain('Storage encryption');
+    expect(out.text).toContain('orders-db');
+    expect(out.text).toMatch(/Discovered/);
+    expect(out.text).toContain('1 day');
+    expect(out.text).toMatch(/Values that could hold a secret are never shown/);
+  });
+  it('gives each evidence file its own full SHA-256', () => {
+    const hashes = out.text.match(/\b[0-9a-f]{64}\b/g) ?? [];
+    expect(hashes.length).toBeGreaterThan(5);
+    expect(new Set(hashes).size).toBe(hashes.length);
+  });
+  it('includes the letter templates, unsigned and marked for management', () => {
+    expect(out.text).toMatch(/Bridge letter for \[gap start date\]/);
+    expect(out.text).toMatch(/In connection with your examination of the description of Northwind Analytics Platform/);
+    expect(out.text).toMatch(/CloudBuilder does not\./);
   });
   it('lists every control in scope, with its owner role, and names the sources behind a score', () => {
     for (const d of report.defs) expect(out.text).toContain(d.id);
@@ -60,7 +93,7 @@ describe('the SOC 2 Word report', () => {
   it('shows who signed and who has not', () => {
     expect(out.text).toMatch(/Prepared by \(Priya Nair \(Security lead\)\)/);
     expect(out.text).toContain('Not signed');
-    expect(out.text).toMatch(/Reviewed by someone independent of the controls/);
+    expect(out.text).toMatch(/The report is reviewed by someone independent of the controls/);
   });
   it('never claims assurance: no "certified", "attested" or "SOC 2 compliant" anywhere', () => {
     expect(out.text).not.toMatch(FORBIDDEN_CLAIMS);
@@ -70,7 +103,7 @@ describe('the SOC 2 Word report', () => {
     expect(again.text).toBe(out.text);
   });
   it('shows how the controls operated over time, as preparation and not as a Type 2 result', () => {
-    expect(out.text).toContain('Appendix G. Operating over time (Type 2 preparation)');
+    expect(out.text).toContain('Appendix N. Operating over time (Type 2 preparation)');
     expect(out.text).toMatch(/snapshots were taken between 2026-07-28 and 2026-10-26/);
     expect(out.text).toMatch(/It is preparation, not a Type 2 result/);
     expect(out.text).toContain('Gaps in the record');

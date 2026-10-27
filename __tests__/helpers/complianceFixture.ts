@@ -1,4 +1,6 @@
 /** A realistic sample of the readiness report's input, for the renderer tests and for looking at the output by eye. */
+import { createHash } from 'crypto';
+import type { ConfigRow } from '@/lib/compliance/configuration';
 import type { Evaluation } from '@/lib/engines/assessment/types';
 import { buildReadinessReport, type ReadinessReport, type ReportInput } from '@/lib/compliance/report';
 import type { ControlRecord, EvidenceRef, FrameworkId } from '@/lib/compliance/types';
@@ -8,6 +10,17 @@ import { analyzePeriod, type SnapshotRecord } from '@/lib/compliance/snapshots';
 export const AS_OF = new Date('2026-10-26T00:00:00Z');
 const ev = (ruleId: string, status: Evaluation['status'], extra: Partial<Evaluation> = {}): Evaluation => ({ ruleId, status, observation: `Observed for ${ruleId}.`, severity: 'MEDIUM', provenance: 'DESIGN_TIME', ...extra } as Evaluation);
 const rec = (controlId: string, over: Partial<ControlRecord> = {}): ControlRecord => ({ controlId, status: 'implemented', owner: 'Priya Nair', note: '', naReason: '', reviewer: '', ...over });
+
+const cfg = (resource: string, type: string, provider: 'AWS' | 'Azure', region: string, setting: string, observed: string, expected: string, result: ConfigRow['result'], source: ConfigRow['source'], extra: Partial<ConfigRow> = {}): ConfigRow => ({ resourceId: `${resource}-id`, resource, type, provider, region, setting, observed, expected, result, source, ...extra });
+export const FIXTURE_CONFIG: ConfigRow[] = [
+  cfg('orders-db', 'RDS instance', 'AWS', 'eu-west-1', 'Storage encryption', 'Disabled', 'Enabled', 'Fail', 'Discovered', { readAt: '2026-10-22T08:00:00Z' }),
+  cfg('orders-db', 'RDS instance', 'AWS', 'eu-west-1', 'Multi-AZ', 'Enabled', 'Enabled', 'Pass', 'Discovered', { readAt: '2026-10-22T08:00:00Z' }),
+  cfg('orders-db', 'RDS instance', 'AWS', 'eu-west-1', 'Backup retention', '7 days', '7 days or more', 'Pass', 'Design', { accountValue: '1 day' }),
+  cfg('uploads', 'S3 bucket', 'AWS', 'eu-west-1', 'Public access', 'Blocked', 'Blocked', 'Pass', 'Live', { readAt: '2026-10-25T08:00:00Z' }),
+  cfg('uploads', 'S3 bucket', 'AWS', 'eu-west-1', 'Versioning', 'Not set', 'Enabled', 'Unclear', 'Design'),
+  cfg('web-sg', 'Security group', 'AWS', 'eu-west-1', 'SSH from the internet', 'Closed', 'Closed', 'Pass', 'Discovered', { readAt: '2026-10-22T08:00:00Z' }),
+  cfg('reports-store', 'Storage account', 'Azure', 'westeurope', 'Secure transfer', 'Required', 'Required', 'Pass', 'Design'),
+];
 
 /** Weekly snapshots over the quarter before AS_OF, with a few controls that dipped and a two-week hole in September. */
 function fixturePeriod(framework: FrameworkId, ids: string[]) {
@@ -26,7 +39,7 @@ export function fixtureInput(framework: FrameworkId = 'soc2'): ReportInput {
     if (n % 11 === 10) { records[d.id] = rec(d.id, { status: 'planned', owner: 'Sam Okafor' }); return; }   // missing
     if (n % 13 === 12) { records[d.id] = rec(d.id, { status: 'not_applicable', naReason: 'The company has no office; the cloud provider holds the hardware.' }); return; }
     records[d.id] = rec(d.id, n % 5 === 0 ? { reviewer: 'Dana Li', reviewedAt: '2026-10-01' } : {});
-    if (n % 3 !== 0) evidence.push({ id: `raw-${n}`, title: `Evidence for ${d.id}`, kind: n % 4 === 0 ? 'link' : 'file', origin: n % 2 === 0 ? 'system' : 'manual', collectedAt: n % 9 === 0 ? '2025-01-15' : '2026-10-05', fileName: n % 4 === 0 ? undefined : `${d.id.toLowerCase()}.pdf`, sha256: 'ab12cd34ef567890'.repeat(4), controls: [d.id] });
+    if (n % 3 !== 0) evidence.push({ id: `raw-${n}`, title: `Evidence for ${d.id}`, kind: n % 4 === 0 ? 'link' : 'file', origin: n % 2 === 0 ? 'system' : 'manual', collectedAt: n % 9 === 0 ? '2025-01-15' : '2026-10-05', fileName: n % 4 === 0 ? undefined : `${d.id.toLowerCase()}.pdf`, sha256: createHash('sha256').update(`evidence file ${n}`).digest('hex'), controls: [d.id] });
   });
   return {
     framework, company: 'Northwind Data Ltd', preparedBy: 'Priya Nair (Security lead)', asOf: AS_OF, generatedAt: new Date('2026-10-26T09:30:00Z'), version: 2,
@@ -39,6 +52,7 @@ export function fixtureInput(framework: FrameworkId = 'soc2'): ReportInput {
     signoffs: [{ role: 'preparer', name: 'Priya Nair', email: 'priya@northwind.example', signedAt: '2026-10-26T09:45:00Z' }],
     accountRead: true,
     period: fixturePeriod(framework, defs.map((d) => d.id)),
+    configuration: FIXTURE_CONFIG,
   };
 }
 
