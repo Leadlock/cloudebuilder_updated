@@ -124,6 +124,10 @@
       "model": "RateLimitBucket",
       "namespace": "public"
     },
+    "readinessAuditorAccess": {
+      "model": "ReadinessAuditorAccess",
+      "namespace": "public"
+    },
     "readinessControl": {
       "model": "ReadinessControl",
       "namespace": "public"
@@ -146,6 +150,10 @@
     },
     "readinessSignoff": {
       "model": "ReadinessSignoff",
+      "namespace": "public"
+    },
+    "readinessSnapshot": {
+      "model": "ReadinessSnapshot",
       "namespace": "public"
     },
     "revokedSession": {
@@ -3740,6 +3748,21 @@
                   "namespace": "public"
                 }
               },
+              "readinessAuditors": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "projectId"
+                  ]
+                },
+                "to": {
+                  "model": "ReadinessAuditorAccess",
+                  "namespace": "public"
+                }
+              },
               "readinessControls": {
                 "cardinality": "1:N",
                 "on": {
@@ -3827,6 +3850,21 @@
                 },
                 "to": {
                   "model": "ReadinessSignoff",
+                  "namespace": "public"
+                }
+              },
+              "readinessSnapshots": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "projectId"
+                  ]
+                },
+                "to": {
+                  "model": "ReadinessSnapshot",
                   "namespace": "public"
                 }
               },
@@ -4239,6 +4277,163 @@
               },
               "namespaceId": "public",
               "table": "rateLimitBucket"
+            }
+          },
+          "ReadinessAuditorAccess": {
+            "fields": {
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdBy": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "email": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "expiresAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "framework": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "lastUsedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "name": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "projectId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "revokedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "tokenHash": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "tokenPrefix": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "useCount": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/float8@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "project": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "projectId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Project",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "createdBy": {
+                  "column": "createdBy"
+                },
+                "email": {
+                  "column": "email"
+                },
+                "expiresAt": {
+                  "column": "expiresAt"
+                },
+                "framework": {
+                  "column": "framework"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "lastUsedAt": {
+                  "column": "lastUsedAt"
+                },
+                "name": {
+                  "column": "name"
+                },
+                "projectId": {
+                  "column": "projectId"
+                },
+                "revokedAt": {
+                  "column": "revokedAt"
+                },
+                "tokenHash": {
+                  "column": "tokenHash"
+                },
+                "tokenPrefix": {
+                  "column": "tokenPrefix"
+                },
+                "useCount": {
+                  "column": "useCount"
+                }
+              },
+              "namespaceId": "public",
+              "table": "readinessAuditorAccess"
             }
           },
           "ReadinessControl": {
@@ -5081,6 +5276,123 @@
               },
               "namespaceId": "public",
               "table": "readinessSignoff"
+            }
+          },
+          "ReadinessSnapshot": {
+            "fields": {
+              "controlsJson": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "factsJson": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "framework": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "projectId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "readiness": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "summaryJson": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "takenAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "trigger": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "project": {
+                "cardinality": "N:1",
+                "on": {
+                  "localFields": [
+                    "projectId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Project",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "controlsJson": {
+                  "column": "controlsJson"
+                },
+                "factsJson": {
+                  "column": "factsJson"
+                },
+                "framework": {
+                  "column": "framework"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "projectId": {
+                  "column": "projectId"
+                },
+                "readiness": {
+                  "column": "readiness"
+                },
+                "summaryJson": {
+                  "column": "summaryJson"
+                },
+                "takenAt": {
+                  "column": "takenAt"
+                },
+                "trigger": {
+                  "column": "trigger"
+                }
+              },
+              "namespaceId": "public",
+              "table": "readinessSnapshot"
             }
           },
           "RevokedSession": {
@@ -9564,6 +9876,129 @@
               },
               "uniques": []
             },
+            "readinessAuditorAccess": {
+              "columns": {
+                "createdAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "createdBy": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "email": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "expiresAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "framework": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "lastUsedAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "name": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "projectId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "revokedAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
+                "tokenHash": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "tokenPrefix": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "useCount": {
+                  "codecId": "pg/float8@1",
+                  "default": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "nativeType": "float8",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "projectId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "readinessAuditorAccess"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "project"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "projectId",
+                    "framework"
+                  ],
+                  "name": "readinessAuditorAccess_projectId_framework_idx_b5cffbad",
+                  "prefix": "readinessAuditorAccess_projectId_framework_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "projectId"
+                  ],
+                  "name": "readinessAuditorAccess_projectId_idx_a96e4d92",
+                  "prefix": "readinessAuditorAccess_projectId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": [
+                {
+                  "columns": [
+                    "tokenHash"
+                  ]
+                }
+              ]
+            },
             "readinessControl": {
               "columns": {
                 "controlId": {
@@ -10173,6 +10608,100 @@
                   ],
                   "name": "readinessSignoff_projectId_idx_a96e4d92",
                   "prefix": "readinessSignoff_projectId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
+            "readinessSnapshot": {
+              "columns": {
+                "controlsJson": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "factsJson": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "framework": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "projectId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "readiness": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "summaryJson": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "takenAt": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "trigger": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "projectId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "readinessSnapshot"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "project"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "projectId",
+                    "framework",
+                    "takenAt"
+                  ],
+                  "name": "readinessSnapshot_projectId_framework_takenAt_idx_eb088961",
+                  "prefix": "readinessSnapshot_projectId_framework_takenAt_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "projectId"
+                  ],
+                  "name": "readinessSnapshot_projectId_idx_a96e4d92",
+                  "prefix": "readinessSnapshot_projectId_idx",
                   "unique": false
                 }
               ],
@@ -11405,10 +11934,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "3aaa06d161686128ac112d46e2d67aba9a42fd6fa35e53401eafc3314366eddd"
+    "storageHash": "afc22488d844c97bf2fb3e1cb982272e97bcc89e2b82ddf32b202f557d5a3845"
   },
   "execution": {
-    "executionHash": "5b241ac3ecc4717de7f61b249386849cbebb20f2d16bb79241c0dae89e55ec3a",
+    "executionHash": "89381c4cf1a1e265e03fa7c145dfcf12906e5412ce064686e138faed826f19a5",
     "mutations": {
       "defaults": [
         {
@@ -11716,6 +12245,17 @@
           "ref": {
             "column": "id",
             "namespace": "public",
+            "table": "readinessAuditorAccess"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
             "table": "readinessControl"
           }
         },
@@ -11772,6 +12312,17 @@
             "column": "id",
             "namespace": "public",
             "table": "readinessSignoff"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "readinessSnapshot"
           }
         },
         {

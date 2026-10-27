@@ -18,6 +18,12 @@ export interface EvidenceItem {
   url: string | null; fileName: string | null; sizeBytes: number | null; sha256: string | null; uploadedBy: string; createdAt: string; controls: string[];
 }
 
+export interface SnapshotsView {
+  period: { snapshotCount: number; first: string | null; last: string | null; spanDays: number; longestGapDays: number; gaps: Array<{ from: string; to: string; days: number }>; continuousControls: number; assessedControls: number; sentence: string };
+  snapshots: Array<{ id: string; takenAt: string; trigger: string; readiness: string; scored: number; operating: number; failing: number }>;
+}
+export interface AuditorAccessItem { id: string; name: string; email: string; tokenPrefix: string; createdBy: string; createdAt: string; expiresAt: string; revokedAt: string | null; lastUsedAt: string | null; useCount: number }
+
 export interface NewEvidence { kind: 'file' | 'link' | 'note'; title: string; description: string; origin: 'system' | 'manual'; collectedAt: string; validUntil?: string; url?: string; controls: string[]; file?: File }
 
 const base = (projectId: string, framework: FrameworkId) => `/api/projects/${projectId}/readiness/${framework}`;
@@ -67,6 +73,13 @@ export const apiReadinessService = {
   linkEvidence: (projectId: string, framework: FrameworkId, id: string, controls: string[]) => send<{ saved: boolean }>(`${base(projectId, framework)}/evidence/${id}`, { method: 'PUT', json: { controls } }),
   removeEvidence: (projectId: string, framework: FrameworkId, id: string) => send<{ removed: boolean }>(`${base(projectId, framework)}/evidence/${id}`, { method: 'DELETE' }),
   downloadEvidence: async (projectId: string, framework: FrameworkId, id: string) => fileOf(await fetch(`${base(projectId, framework)}/evidence/${id}`, { credentials: 'include' }), 'evidence'),
+
+  snapshots: (projectId: string, framework: FrameworkId) => send<SnapshotsView>(`${base(projectId, framework)}/snapshots`),
+  takeSnapshot: (projectId: string, framework: FrameworkId) => send<{ id: string }>(`${base(projectId, framework)}/snapshots`, { method: 'POST', json: {} }),
+  downloadPackage: async (projectId: string, framework: FrameworkId) => fileOf(await fetch(`${base(projectId, framework)}/package`, { credentials: 'include' }), 'auditor-package.zip'),
+  auditorAccess: (projectId: string, framework: FrameworkId) => send<{ access: AuditorAccessItem[] }>(`${base(projectId, framework)}/auditor-access`).then((r) => r.access),
+  createAuditorAccess: (projectId: string, framework: FrameworkId, input: { name: string; email: string; days: number }) => send<{ link: string; access: AuditorAccessItem }>(`${base(projectId, framework)}/auditor-access`, { method: 'POST', json: input }),
+  revokeAuditorAccess: (projectId: string, framework: FrameworkId, id: string) => send<{ revoked: boolean }>(`${base(projectId, framework)}/auditor-access/${id}`, { method: 'DELETE' }),
 
   /** A draft of the report as it stands (not recorded as a version). */
   draft: async (projectId: string, framework: FrameworkId, env = 'production', format?: 'pdf' | 'docx') =>

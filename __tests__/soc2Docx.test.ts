@@ -69,4 +69,11 @@ describe('the SOC 2 Word report', () => {
     const again = await textOf(await renderSoc2Docx(fixtureReport('soc2')));
     expect(again.text).toBe(out.text);
   });
+  it('shows how the controls operated over time, as preparation and not as a Type 2 result', () => {
+    expect(out.text).toContain('Appendix G. Operating over time (Type 2 preparation)');
+    expect(out.text).toMatch(/snapshots were taken between 2026-07-28 and 2026-10-26/);
+    expect(out.text).toMatch(/It is preparation, not a Type 2 result/);
+    expect(out.text).toContain('Gaps in the record');
+    expect(out.text).toContain('Controls that did not operate in every snapshot');
+  });
 });

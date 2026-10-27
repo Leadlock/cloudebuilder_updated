@@ -100,6 +100,8 @@ model Project {
   readinessSignoffs   ReadinessSignoff[]
   readinessReports   ReadinessReport[]
   readinessSettings   ReadinessSetting[]
+  readinessSnapshots  ReadinessSnapshot[]
+  readinessAuditors   ReadinessAuditorAccess[]
 
   @@index([orgId])
 }
@@ -959,6 +961,45 @@ model ReadinessSetting {
   settingsJson String
   updatedBy    String
   updatedAt    String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, framework])
+}
+
+// A dated record of where every control stood (SOC 2 Type 2 needs evidence that controls kept operating over a period, not just on one day).
+// Taken on a schedule by the worker, on demand, and whenever a report version is issued. controlsJson is compact: [controlId, score|null, confidence, failing check ids, evidence count].
+model ReadinessSnapshot {
+  id           String @id @default(uuid())
+  projectId    String
+  framework    String
+  takenAt      String
+  trigger      String // scheduled | manual | issue
+  readiness    String
+  summaryJson  String
+  controlsJson String
+  factsJson    String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, framework, takenAt])
+}
+
+// A read-only, time-limited way for an auditor to look at one framework of one project. Only the SHA-256 of the token is stored.
+model ReadinessAuditorAccess {
+  id          String  @id @default(uuid())
+  projectId   String
+  framework   String
+  name        String
+  email       String
+  tokenPrefix String
+  tokenHash   String  @unique
+  createdBy   String
+  createdAt   String
+  expiresAt   String
+  revokedAt   String?
+  lastUsedAt  String?
+  useCount    Float   @default(0)
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 

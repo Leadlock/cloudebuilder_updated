@@ -9,6 +9,7 @@ import { deriveFindings, deriveLimitations, evaluateControls, readinessOf, summa
 import { defsFor, FRAMEWORK_LABEL } from './frameworks';
 import type { PlatformFacts } from './signals';
 import type { ControlRecord, ControlResult, EvidenceRef, Finding, FindingRecord, FrameworkId, Limitation, Readiness, Signoff } from './types';
+import type { PeriodAnalysis } from './snapshots';
 import type { Soc2Category } from './soc2/criteria';
 import { SOC2_CATEGORY_LABEL } from './soc2/criteria';
 
@@ -44,6 +45,8 @@ export interface ReportInput {
   accountRead: boolean;
   preparedBy: string;
   history?: Array<{ version: string; date: string; by: string; change: string }>;
+  /** What the snapshots over the period show (SOC 2 Type 2 preparation). */
+  period?: PeriodAnalysis;
 }
 
 export interface EvidenceIndexRow extends EvidenceRef { ref: string; controls: string[] }
@@ -74,6 +77,7 @@ export interface ReadinessReport {
   preparedBy: string;
   history: Array<{ version: string; date: string; by: string; change: string }>;
   cpaChecks: CpaCheck[];
+  period?: PeriodAnalysis;
 }
 
 const ALL: Soc2Category[] = ['security', 'availability', 'confidentiality'];
@@ -109,6 +113,7 @@ export function buildReadinessReport(i: ReportInput): ReadinessReport {
     categories, exclusions, defs, results, summary, findings, limitations, readiness, signoffs, evidenceIndex: index, accountRead: i.accountRead, preparedBy: i.preparedBy,
     history: i.history ?? [{ version: `v${i.version}`, date: i.generatedAt.toISOString().slice(0, 10), by: i.preparedBy, change: i.version === 1 ? 'First version' : 'Regenerated' }],
     cpaChecks: [],
+    ...(i.period ? { period: i.period } : {}),
   };
   report.cpaChecks = cpaChecks(report);
   return report;

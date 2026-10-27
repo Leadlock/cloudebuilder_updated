@@ -8,6 +8,7 @@ import {
 } from 'docx';
 import { SCORE_LABEL, SCORE_MEANING, type ControlResult, type Score } from './types';
 import { SOC2_CATEGORY_LABEL, SOC2_CATEGORY_RANGE, SOC2_CRITERIA, SOC2_CRITERIA_BY_ID } from './soc2/criteria';
+import { periodRows, periodSentence } from './snapshots';
 import type { CpaCheck, ReadinessReport } from './report';
 import { EVIDENCE_WINDOW_DAYS } from './scoring';
 
@@ -295,6 +296,24 @@ function appendices(r: ReadinessReport): Array<Paragraph | Table> {
   ]);
 }
 
+
+function periodAppendix(r: ReadinessReport): Array<Paragraph | Table> {
+  const a = r.period;
+  const out: Array<Paragraph | Table> = [
+    h1('Appendix G. Operating over time (Type 2 preparation)'),
+    p('A Type 1 report is about one date. A Type 2 report asks whether controls kept operating across a period. CloudBuilder takes dated snapshots of every control on a schedule, and this section shows what they say. It is preparation, not a Type 2 result: the CPA firm does its own testing of the period.'),
+  ];
+  if (!a) return [...out, p('No snapshots are available.', { color: GREY, italics: true })];
+  const { rows, more } = periodRows(a, (id) => r.defs.find((d) => d.id === id)?.title ?? id);
+  return [
+    ...out, note(periodSentence(a)),
+    ...(a.gaps.length ? [h3('Gaps in the record'), ...table(W_PORTRAIT, [{ header: 'From', width: 2 }, { header: 'To', width: 2 }, { header: 'Days', width: 1 }], a.gaps.slice(0, 20).map((g) => [g.from, g.to, String(g.days)]))] : []),
+    h3('Controls that did not operate in every snapshot'),
+    ...table(W_PORTRAIT, [{ header: 'Control', width: 1 }, { header: 'Title', width: 4 }, { header: 'Operating', width: 1.3 }, { header: 'Failing', width: 1 }, { header: 'Lowest', width: 1 }, { header: 'Latest', width: 1 }], rows, { empty: 'Every assessed control operated in every snapshot.' }),
+    ...(more ? [p(`${more} more are not shown.`, { color: GREY, size: 19 })] : []),
+  ];
+}
+
 const fmtHeader = (r: ReadinessReport) => new Header({ children: [new Paragraph({ spacing: { after: 0 }, border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: LINE, space: 4 } }, children: [t('SOC 2 Type 1 readiness report', { color: GREY, size: 17 }), t(`      ${r.company}`, { color: GREY, size: 17 })] })] });
 const fmtFooter = (r: ReadinessReport) => new Footer({ children: [new Paragraph({ alignment: AlignmentType.LEFT, spacing: { after: 0 }, children: [
   t(`CloudBuilder  |  ${r.reportId}  |  ${r.version}  |  Confidential: for management and the CPA firm  |  Page `, { color: GREY, size: 16 }),
@@ -318,6 +337,7 @@ export async function renderSoc2Docx(r: ReadinessReport): Promise<Buffer> {
       body([...findingsSection(r), ...limitationsSection(r)], landscape),
       body(cpaSection(r), portrait),
       body(appendices(r), landscape),
+      body(periodAppendix(r), portrait),
     ],
   });
   return Packer.toBuffer(doc);

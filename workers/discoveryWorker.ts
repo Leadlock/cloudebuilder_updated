@@ -16,6 +16,7 @@
 import '../lib/config/legacyEnv';
 import type { Job } from 'pg-boss';
 import { getQueue, stopQueue } from '../lib/jobs/queue';
+import { READINESS_SNAPSHOT_QUEUE, ensureReadinessSnapshotQueue, processReadinessSnapshotJob } from '../lib/jobs/readinessSnapshotJob';
 import { DISCOVERY_QUEUE, ensureDiscoveryQueue, processDiscoveryJob, type DiscoveryJobData } from '../lib/jobs/discoveryJob';
 
 async function main(): Promise<void> {
@@ -28,7 +29,10 @@ async function main(): Promise<void> {
     await processDiscoveryJob(job.data);
   });
 
-  console.info('[discoveryWorker] Started. Waiting for cloud-discovery jobs...');
+  await ensureReadinessSnapshotQueue();
+  await boss.work(READINESS_SNAPSHOT_QUEUE, async () => { await processReadinessSnapshotJob(); });
+
+  console.info('[discoveryWorker] Started. Waiting for cloud-discovery jobs and the daily readiness snapshot...');
 }
 
 async function shutdown(signal: string): Promise<void> {

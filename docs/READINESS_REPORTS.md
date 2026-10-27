@@ -28,6 +28,16 @@ Per project: control answers (owner, status, note, reviewer), findings (owner, t
 
 `GET` view · `PUT controls/{controlId}` · `PUT findings/{controlId}` · `GET|POST evidence`, `GET|PUT|DELETE evidence/{id}` · `POST signoff` · `PUT scope` (SOC 2, owner/admin) · `GET report?format=` draft, `POST report` issues the next version. Every call checks the caller belongs to the project's organization.
 
+## Toward a real SOC 2 report
+
+CloudBuilder cannot issue a SOC 2 report: only a licensed CPA firm can, after its own examination. What it does is make that engagement shorter.
+
+- **Evidence over time (Type 2 preparation).** Every night at 03:30 UTC the worker (`cloudcraft-discovery`, which already owns the job queue) takes a dated snapshot of every control for each project that uses the reports, and one is taken whenever you issue a version or press "Take a snapshot now". Appendix G of the SOC 2 report shows what the snapshots say for the last year: how many, any gap longer than 7 days, and which controls operated (score 3 or more, no failing check) in every one. It is preparation, not a Type 2 result.
+- **Auditor package.** One zip: the report (Word and PDF for SOC 2), `controls.csv`, `findings.csv`, every evidence file, `evidence-index.csv` (each file's fingerprint re-checked when the package is built, with MISMATCH or FILE MISSING flagged), `signoffs.csv`, `snapshots.csv`, and `manifest.json` with the SHA-256 of every file.
+- **Read-only auditor access.** An owner or admin makes a link for a named auditor, 1 to 90 days, at most ten active per framework. The link is `/auditor#<token>`: the token sits after the `#`, so it is never sent in a URL, never written to an access log and never passed on in a Referer header; the page sends it as a header. Only its SHA-256 is stored, and the link is shown once. It reaches only that framework's report, controls, findings and the evidence linked to it, and the package. It has no write routes. Every refusal (missing, malformed, unknown, expired, revoked) returns the same 401. Revoke it at any time.
+
+API additions: `GET|POST .../snapshots`, `GET .../package`, `GET|POST .../auditor-access`, `DELETE .../auditor-access/{id}`; for the auditor: `GET /api/auditor/view`, `GET /api/auditor/evidence/{id}`, `GET /api/auditor/package` with `Authorization: Bearer ca_...`. Tables: `readinessSnapshot`, `readinessAuditorAccess` (migration `add_readiness_snapshots_and_auditor_access`).
+
 ## Developing
 
 `lib/compliance/`: `scoring.ts`, `model.ts` (pure), `soc2/` (criteria and control catalog), `frameworks.ts`, `report.ts` (report as data), `renderSoc2Docx.ts`, `renderControlPdf.ts`, `service.ts` (assembles a project's input), `rules.ts` (independence and validation rules), `facts.ts` (platform facts). Tables are `readiness*` (migration `add_readiness_records`). `npx tsc` needs `NODE_OPTIONS=--max-old-space-size=8192` now that the contract is larger.

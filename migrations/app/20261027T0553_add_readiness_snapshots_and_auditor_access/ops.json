@@ -1,0 +1,362 @@
+[
+  {
+    "id": "table.readinessAuditorAccess",
+    "label": "Create table \"readinessAuditorAccess\"",
+    "summary": "Creates table \"readinessAuditorAccess\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "readinessAuditorAccess"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"readinessAuditorAccess\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessAuditorAccess\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"readinessAuditorAccess\"",
+        "sql": "CREATE TABLE \"public\".\"readinessAuditorAccess\" (\n  \"createdAt\" text NOT NULL,\n  \"createdBy\" text NOT NULL,\n  \"email\" text NOT NULL,\n  \"expiresAt\" text NOT NULL,\n  \"framework\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"lastUsedAt\" text,\n  \"name\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"revokedAt\" text,\n  \"tokenHash\" text NOT NULL,\n  \"tokenPrefix\" text NOT NULL,\n  \"useCount\" float8 DEFAULT 0 NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"readinessAuditorAccess\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessAuditorAccess\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.readinessSnapshot",
+    "label": "Create table \"readinessSnapshot\"",
+    "summary": "Creates table \"readinessSnapshot\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "readinessSnapshot"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"readinessSnapshot\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSnapshot\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"readinessSnapshot\"",
+        "sql": "CREATE TABLE \"public\".\"readinessSnapshot\" (\n  \"controlsJson\" text NOT NULL,\n  \"factsJson\" text NOT NULL,\n  \"framework\" text NOT NULL,\n  \"id\" text NOT NULL,\n  \"projectId\" text NOT NULL,\n  \"readiness\" text NOT NULL,\n  \"summaryJson\" text NOT NULL,\n  \"takenAt\" text NOT NULL,\n  \"trigger\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"readinessSnapshot\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSnapshot\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.readinessAuditorAccess.readinessAuditorAccess_tokenHash_key",
+    "label": "Add unique constraint on \"readinessAuditorAccess\" (tokenHash)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "readinessAuditorAccess_tokenHash_key",
+        "table": "readinessAuditorAccess"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"readinessAuditorAccess_tokenHash_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessAuditorAccess_tokenHash_key",
+          "public",
+          "\"public\".\"readinessAuditorAccess\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"readinessAuditorAccess_tokenHash_key\"",
+        "sql": "ALTER TABLE \"public\".\"readinessAuditorAccess\" ADD CONSTRAINT \"readinessAuditorAccess_tokenHash_key\" UNIQUE (\"tokenHash\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"readinessAuditorAccess_tokenHash_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessAuditorAccess_tokenHash_key",
+          "public",
+          "\"public\".\"readinessAuditorAccess\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.readinessAuditorAccess.readinessAuditorAccess_projectId_framework_idx_b5cffbad",
+    "label": "Create index \"readinessAuditorAccess_projectId_framework_idx_b5cffbad\" on \"readinessAuditorAccess\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "readinessAuditorAccess_projectId_framework_idx_b5cffbad",
+        "table": "readinessAuditorAccess"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"readinessAuditorAccess_projectId_framework_idx_b5cffbad\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessAuditorAccess_projectId_framework_idx_b5cffbad\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"readinessAuditorAccess_projectId_framework_idx_b5cffbad\"",
+        "sql": "CREATE INDEX \"readinessAuditorAccess_projectId_framework_idx_b5cffbad\" ON \"public\".\"readinessAuditorAccess\" (\"projectId\", \"framework\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"readinessAuditorAccess_projectId_framework_idx_b5cffbad\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessAuditorAccess_projectId_framework_idx_b5cffbad\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.readinessAuditorAccess.readinessAuditorAccess_projectId_idx_a96e4d92",
+    "label": "Create index \"readinessAuditorAccess_projectId_idx_a96e4d92\" on \"readinessAuditorAccess\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "readinessAuditorAccess_projectId_idx_a96e4d92",
+        "table": "readinessAuditorAccess"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"readinessAuditorAccess_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessAuditorAccess_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"readinessAuditorAccess_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"readinessAuditorAccess_projectId_idx_a96e4d92\" ON \"public\".\"readinessAuditorAccess\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"readinessAuditorAccess_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessAuditorAccess_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.readinessSnapshot.readinessSnapshot_projectId_framework_takenAt_idx_eb088961",
+    "label": "Create index \"readinessSnapshot_projectId_framework_takenAt_idx_eb088961\" on \"readinessSnapshot\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "readinessSnapshot_projectId_framework_takenAt_idx_eb088961",
+        "table": "readinessSnapshot"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"readinessSnapshot_projectId_framework_takenAt_idx_eb088961\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSnapshot_projectId_framework_takenAt_idx_eb088961\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"readinessSnapshot_projectId_framework_takenAt_idx_eb088961\"",
+        "sql": "CREATE INDEX \"readinessSnapshot_projectId_framework_takenAt_idx_eb088961\" ON \"public\".\"readinessSnapshot\" (\"projectId\", \"framework\", \"takenAt\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"readinessSnapshot_projectId_framework_takenAt_idx_eb088961\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSnapshot_projectId_framework_takenAt_idx_eb088961\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.readinessSnapshot.readinessSnapshot_projectId_idx_a96e4d92",
+    "label": "Create index \"readinessSnapshot_projectId_idx_a96e4d92\" on \"readinessSnapshot\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "readinessSnapshot_projectId_idx_a96e4d92",
+        "table": "readinessSnapshot"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"readinessSnapshot_projectId_idx_a96e4d92\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSnapshot_projectId_idx_a96e4d92\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"readinessSnapshot_projectId_idx_a96e4d92\"",
+        "sql": "CREATE INDEX \"readinessSnapshot_projectId_idx_a96e4d92\" ON \"public\".\"readinessSnapshot\" (\"projectId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"readinessSnapshot_projectId_idx_a96e4d92\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"readinessSnapshot_projectId_idx_a96e4d92\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.readinessAuditorAccess.readinessAuditorAccess_projectId_fkey",
+    "label": "Add foreign key \"readinessAuditorAccess_projectId_fkey\" on \"readinessAuditorAccess\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "readinessAuditorAccess_projectId_fkey",
+        "table": "readinessAuditorAccess"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"readinessAuditorAccess_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessAuditorAccess_projectId_fkey",
+          "public",
+          "\"public\".\"readinessAuditorAccess\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"readinessAuditorAccess_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"readinessAuditorAccess\"\nADD CONSTRAINT \"readinessAuditorAccess_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"readinessAuditorAccess_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessAuditorAccess_projectId_fkey",
+          "public",
+          "\"public\".\"readinessAuditorAccess\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.readinessSnapshot.readinessSnapshot_projectId_fkey",
+    "label": "Add foreign key \"readinessSnapshot_projectId_fkey\" on \"readinessSnapshot\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "readinessSnapshot_projectId_fkey",
+        "table": "readinessSnapshot"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"readinessSnapshot_projectId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessSnapshot_projectId_fkey",
+          "public",
+          "\"public\".\"readinessSnapshot\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"readinessSnapshot_projectId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"readinessSnapshot\"\nADD CONSTRAINT \"readinessSnapshot_projectId_fkey\"\nFOREIGN KEY (\"projectId\")\nREFERENCES \"public\".\"project\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"readinessSnapshot_projectId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "readinessSnapshot_projectId_fkey",
+          "public",
+          "\"public\".\"readinessSnapshot\""
+        ]
+      }
+    ]
+  }
+]

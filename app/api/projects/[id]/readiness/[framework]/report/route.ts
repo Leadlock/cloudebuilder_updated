@@ -16,6 +16,7 @@ import { renderSoc2Docx } from '@/lib/compliance/renderSoc2Docx';
 import { renderControlPdf } from '@/lib/compliance/renderControlPdf';
 import { renderSoc2Pdf } from '@/lib/compliance/renderSoc2Pdf';
 import { readinessRepository } from '@/lib/repositories/readinessRepository';
+import { takeSnapshot } from '@/lib/compliance/snapshotService';
 import type { FrameworkId } from '@/lib/compliance/types';
 
 export const dynamic = 'force-dynamic';
@@ -39,6 +40,8 @@ async function produce(req: NextRequest, p: { id: string; framework: string }, f
       summaryJson: JSON.stringify({ controls: report.results.length, assessed: report.summary.coveragePct, findings: report.findings.length }),
     });
   }
+  // Issuing a version is a point worth having in the history. A failed snapshot never stops the report.
+  if (issue) await takeSnapshot({ orgId: caller.orgId, projectId: caller.projectId, framework: caller.framework, trigger: 'issue', env: caller.env }).catch(() => undefined);
   const base = `cloudbuilder-${caller.framework}-readiness-${report.version}-${report.reportId}${issue ? '' : '-DRAFT'}`.toLowerCase();
   if (fmt === 'json') return ok({ report });
   const bytes = fmt === 'docx' ? await renderSoc2Docx(report) : caller.framework === 'soc2' ? await renderSoc2Pdf(report) : await renderControlPdf(report);

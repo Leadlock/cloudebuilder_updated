@@ -15,6 +15,8 @@ const build = jest.fn();
 jest.mock('@/lib/compliance/routeGuard', () => ({ guardReadiness: (...a: unknown[]) => guard(...a) }));
 jest.mock('@/lib/repositories/readinessRepository', () => ({ readinessRepository: R, evidenceControls: () => [], controlKey: (f: string, c: string) => `${f}:${c}` }));
 jest.mock('@/lib/compliance/service', () => ({ buildProjectReport: (...a: unknown[]) => build(...a), loadScope: async () => ({ categories: ['security'], exclusions: {} }) }));
+const snap = jest.fn();
+jest.mock('@/lib/compliance/snapshotService', () => ({ takeSnapshot: (...a: unknown[]) => snap(...a) }));
 jest.mock('@/lib/repositories/orgRepository', () => ({ orgRepository: { findUser: async () => ({ name: 'Dana Li' }) } }));
 
 import * as controlRoute from '@/app/api/projects/[id]/readiness/[framework]/controls/[controlId]/route';
@@ -36,6 +38,7 @@ const upload = (name: string, bytes: Buffer, fields: Record<string, string> = {}
 
 beforeEach(() => {
   jest.clearAllMocks();
+  snap.mockResolvedValue({ ok: true });
   guard.mockResolvedValue(caller());
   R.controls.mockResolvedValue({}); R.findings.mockResolvedValue({}); R.signoffs.mockResolvedValue([]); R.clearSignoffs.mockResolvedValue(undefined);
   R.addEvidence.mockImplementation(async (_p: string, e: Record<string, unknown>) => ({ id: 'e1', projectId: 'p1', ...e, controlsJson: '[]', createdAt: 't', deletedAt: null, deletedBy: null, sizeBytes: 3, sha256: 'x' }));
@@ -152,5 +155,6 @@ describe('scope and reports', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-disposition')).not.toContain('draft');
     expect(R.recordReport).toHaveBeenCalledWith('p1', 'soc2', expect.objectContaining({ version: 2, reportId: expect.stringMatching(/^S2-/) }));
+    expect(snap).toHaveBeenCalledWith(expect.objectContaining({ trigger: 'issue', framework: 'soc2' }));
   });
 });

@@ -13,6 +13,7 @@ import { readinessRepository, evidenceControls } from '@/lib/repositories/readin
 import { findingReviewRepository } from '@/lib/repositories/findingReviewRepository';
 import { gatherPlatformFacts } from './facts';
 import { buildReadinessReport, type ReadinessReport, type ReportInput, type SystemFacts } from './report';
+import { analyzePeriod } from './snapshots';
 import type { Soc2Category } from './soc2/criteria';
 import type { EvidenceRef, FrameworkId } from './types';
 
@@ -59,7 +60,7 @@ export async function loadReportInput(args: { orgId: string; projectId: string; 
   if ('error' in ctx) return { ok: false, reason: ctx.error === 'project_not_found' ? 'project_not_found' : 'no_architecture' };
   const asOf = args.asOf ?? new Date();
   const { nodes, edges } = toCanvas(ctx.arch.resources, ctx.arch.connections);
-  const [questionnaire, accountEvidence, reviews, records, evidence, findingRecords, signoffs, scope, facts, org, version] = await Promise.all([
+  const [questionnaire, accountEvidence, reviews, records, evidence, findingRecords, signoffs, scope, facts, org, version, snapshots] = await Promise.all([
     loadQuestionnaire(args.projectId),
     loadAccountEvidence(args.projectId),
     findingReviewRepository.activeReviews(args.projectId).catch(() => []),
@@ -71,6 +72,8 @@ export async function loadReportInput(args: { orgId: string; projectId: string; 
     gatherPlatformFacts(args.orgId, args.projectId, asOf),
     orgRepository.findOrg(args.orgId).catch(() => null),
     args.version ?? readinessRepository.nextVersion(args.projectId, args.framework),
+    // The year before the report date: what a Type 2 examination would look back over.
+    args.framework === 'soc2' ? readinessRepository.snapshots(args.projectId, args.framework, new Date(asOf.getTime() - 365 * 86_400_000).toISOString()).catch(() => []) : Promise.resolve([]),
   ]);
   const assessment = runAssessment({ nodes, edges, reviews, evaluatedAt: asOf.toISOString(), questionnaire, accountEvidence });
   const refs: Array<EvidenceRef & { controls: string[] }> = evidence.map((e) => ({
@@ -85,6 +88,7 @@ export async function loadReportInput(args: { orgId: string; projectId: string; 
       asOf, generatedAt: new Date(), version, ...(scope ? { categories: scope.categories, exclusions: scope.exclusions } : {}),
       records, evidence: refs, evaluations: assessment.evaluations, ...(facts ? { facts } : {}), findingRecords, signoffs,
       accountRead: assessment.evaluations.some((e) => e.provenance !== 'DESIGN_TIME'), preparedBy: args.preparedBy,
+      ...(args.framework === 'soc2' ? { period: analyzePeriod('soc2', snapshots, new Date(asOf.getTime() - 365 * 86_400_000), asOf) } : {}),
     },
   };
 }

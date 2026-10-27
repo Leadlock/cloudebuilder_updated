@@ -7,6 +7,7 @@ import { summarize } from './model';
 import { SOC2_CATEGORY_LABEL, SOC2_CATEGORY_RANGE, SOC2_CRITERIA_BY_ID } from './soc2/criteria';
 import { SCORE_LABEL, SCORE_MEANING, type Score } from './types';
 import { EVIDENCE_WINDOW_DAYS } from './scoring';
+import { periodRows, periodSentence } from './snapshots';
 import type { ReadinessReport } from './report';
 
 const TBD = '[to be completed by management]';
@@ -115,6 +116,20 @@ function appendices(p: Page, r: ReadinessReport) {
   p.text(`Evidence counts as current if it is dated within ${EVIDENCE_WINDOW_DAYS} days before the report date and has not expired. A failing check keeps a control at 2 or below, whatever the owner says. A control reaches 4 only when someone other than its owner has reviewed it inside the window. A control nobody has answered for is not scored; it is listed as a limitation and keeps the report from being called ready.`, { size: 9, color: K.muted, after: 6 });
 }
 
+
+function periodAppendix(p: Page, r: ReadinessReport) {
+  p.h1('Appendix G. Operating over time (Type 2 preparation)');
+  p.text('A Type 1 report is about one date. A Type 2 report asks whether controls kept operating across a period. CloudBuilder takes dated snapshots of every control on a schedule, and this section shows what they say. It is preparation, not a Type 2 result: the CPA firm does its own testing of the period.', { color: K.muted, after: 6 });
+  if (!r.period) { p.text('No snapshots are available.', { color: K.muted }); return; }
+  const a = r.period;
+  p.box(periodSentence(a));
+  if (a.gaps.length) { p.h2('Gaps in the record', 70); p.table([{ h: 'From', w: 2 }, { h: 'To', w: 2 }, { h: 'Days', w: 1, align: 'right' }], a.gaps.slice(0, 20).map((g) => [g.from, g.to, String(g.days)])); }
+  const { rows, more } = periodRows(a, (id) => r.defs.find((d) => d.id === id)?.title ?? id);
+  p.h2('Controls that did not operate in every snapshot', 90);
+  p.table([{ h: 'Control', w: 0.9 }, { h: 'Title', w: 4 }, { h: 'Operating', w: 1.3 }, { h: 'Failing', w: 1, align: 'right' }, { h: 'Lowest', w: 1, align: 'right' }, { h: 'Latest', w: 1, align: 'right' }], rows, { size: 8, empty: 'Every assessed control operated in every snapshot.' });
+  if (more) p.text(`${more} more are not shown.`, { color: K.muted, size: 8.5 });
+}
+
 export async function renderSoc2Pdf(r: ReadinessReport): Promise<Buffer> {
   const PDFDocument = (await import('pdfkit')).default;
   const doc: Doc = new PDFDocument({ size: 'A4', margins: { top: P.top, bottom: P.bottom - 20, left: P.m, right: P.m }, bufferPages: true, info: { Title: `SOC 2 Type 1 readiness report: ${r.company}`, Author: 'CloudBuilder', Subject: `${r.system.name} as of ${r.asOf}`, Keywords: r.reportId } });
@@ -134,7 +149,7 @@ export async function renderSoc2Pdf(r: ReadinessReport): Promise<Buffer> {
   p.h1('Limitations');
   p.text('Everything that was not provided, could not be checked, or limits a conclusion. A limitation stays open until the missing information is provided.', { color: K.muted, after: 6 });
   p.table([{ h: 'ID', w: 0.8 }, { h: 'What is missing or limited', w: 5 }, { h: 'Effect on the report', w: 4 }], r.limitations.map((l) => [l.id, l.item, l.effect]), { size: 8, empty: 'No limitations recorded.' });
-  cpa(p, r); appendices(p, r);
+  cpa(p, r); appendices(p, r); periodAppendix(p, r);
   addFooters(doc, r);
   doc.end();
   return done;

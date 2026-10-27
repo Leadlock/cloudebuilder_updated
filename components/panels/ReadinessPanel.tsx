@@ -14,6 +14,7 @@ import { SOC2_CATEGORY_LABEL, SOC2_CATEGORY_RANGE, type Soc2Category } from '@/l
 import ControlsList from './readiness/ControlsList';
 import FindingsList from './readiness/FindingsList';
 import EvidenceVault from './readiness/EvidenceVault';
+import OverTimeAndAuditors from './readiness/OverTimeAndAuditors';
 import { pill, readinessTone, theme } from './readiness/ui';
 
 const FRAMEWORKS: Array<{ id: FrameworkId; label: string; file: string }> = [
@@ -21,7 +22,7 @@ const FRAMEWORKS: Array<{ id: FrameworkId; label: string; file: string }> = [
   { id: 'aws-waf', label: 'AWS Well-Architected', file: 'PDF' },
   { id: 'azure-waf', label: 'Azure Well-Architected', file: 'PDF' },
 ];
-type Tab = 'controls' | 'findings' | 'evidence' | 'signoff';
+type Tab = 'controls' | 'findings' | 'evidence' | 'signoff' | 'auditor';
 
 export default function ReadinessPanel() {
   const { state } = useApp();
@@ -125,11 +126,13 @@ export default function ReadinessPanel() {
             {tabBtn('findings', `Findings (${r.findings.length})`)}
             {tabBtn('evidence', `Evidence (${evidence.length})`)}
             {tabBtn('signoff', 'Sign-off and limits')}
+            {tabBtn('auditor', 'Over time and auditors')}
           </div>
 
           {tab === 'controls' && <ControlsList view={view} projectId={projectId} framework={framework} isLight={isLight} evidence={evidence} onChanged={load} onAttach={(k) => { setPreset(k); setTab('evidence'); }} />}
           {tab === 'findings' && <FindingsList view={view} projectId={projectId} framework={framework} isLight={isLight} onChanged={load} />}
           {tab === 'evidence' && <EvidenceVault view={view} projectId={projectId} framework={framework} isLight={isLight} evidence={evidence} presetControl={preset} onChanged={load} />}
+          {tab === 'auditor' && <OverTimeAndAuditors view={view} projectId={projectId} framework={framework} isLight={isLight} />}
           {tab === 'signoff' && (
             <div className="space-y-4">
               <section className={t.card}>

@@ -4,10 +4,12 @@
  *
  * Every read and write is scoped by projectId; the routes check that the project belongs to the caller's organization before they get here.
  */
-import { randomUUID } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { db } from '@/src/prisma/db';
 import { encrypt, decrypt } from '@/lib/crypto/credentials';
 import { controlKey, evidenceControls } from '@/lib/compliance/evidenceInput';
+import { AUDITOR_TOKEN_PREFIX, hashAuditorToken, looksLikeAuditorToken } from '@/lib/compliance/auditorToken';
+import type { SnapshotControl, SnapshotRecord, SnapshotTrigger } from '@/lib/compliance/snapshots';
 import type { ControlRecord, ControlStatus, FindingRecord, FindingStatus, FrameworkId, Signoff } from '@/lib/compliance/types';
 
 const now = () => new Date().toISOString();
@@ -33,6 +35,10 @@ const REPORT_COLS = ['id', 'projectId', 'framework', 'version', 'reportId', 'rea
 
 interface SignoffRow { id: string; projectId: string; framework: string; role: string; name: string; email: string; signedAt: string; reportHash: string | null }
 const SIGNOFF_COLS = ['id', 'projectId', 'framework', 'role', 'name', 'email', 'signedAt', 'reportHash'] as const;
+
+
+export interface AuditorAccessRow { id: string; projectId: string; framework: string; name: string; email: string; tokenPrefix: string; createdBy: string; createdAt: string; expiresAt: string; revokedAt: string | null; lastUsedAt: string | null; useCount: number }
+const AUDITOR_COLS = ['id', 'projectId', 'framework', 'name', 'email', 'tokenPrefix', 'createdBy', 'createdAt', 'expiresAt', 'revokedAt', 'lastUsedAt', 'useCount'] as const;
 
 class ReadinessRepository {
   // ── control answers ───────────────────────────────────────────────────────
@@ -143,6 +149,62 @@ class ReadinessRepository {
     const row: ReportVersionRow = { id: randomUUID(), projectId, framework, generatedAt: now(), ...r };
     await db.orm.public.ReadinessReport.create(row);
     return row;
+  }
+
+
+  // ── snapshots (evidence over time) ─────────────────────────────────────────
+  async addSnapshot(projectId: string, framework: FrameworkId, s: { trigger: SnapshotTrigger; readiness: string; summary: object; controls: SnapshotControl[]; facts: object | null; takenAt?: string }): Promise<string> {
+    const id = randomUUID();
+    await db.orm.public.ReadinessSnapshot.create({ id, projectId, framework, takenAt: s.takenAt ?? now(), trigger: s.trigger, readiness: s.readiness, summaryJson: JSON.stringify(s.summary), controlsJson: JSON.stringify(s.controls.map((c) => [c.id, c.score, c.confidence, c.failing, c.evidence])), factsJson: JSON.stringify(s.facts ?? {}) });
+    return id;
+  }
+
+  async snapshots(projectId: string, framework: FrameworkId, sinceIso?: string): Promise<SnapshotRecord[]> {
+    const rows = await db.orm.public.ReadinessSnapshot.where({ projectId, framework }).select('id', 'takenAt', 'trigger', 'readiness', 'controlsJson').all() as Array<{ id: string; takenAt: string; trigger: string; readiness: string; controlsJson: string }>;
+    return rows.filter((r) => !sinceIso || r.takenAt >= sinceIso).sort((a, b) => a.takenAt.localeCompare(b.takenAt)).map((r) => {
+      let controls: SnapshotControl[] = [];
+      try { controls = (JSON.parse(r.controlsJson) as Array<[string, number | null, string, string[], number]>).map(([id, score, confidence, failing, evidence]) => ({ id, score, confidence, failing, evidence })); } catch { /* a damaged row counts as an empty snapshot */ }
+      return { id: r.id, takenAt: r.takenAt, trigger: r.trigger as SnapshotTrigger, readiness: r.readiness, controls };
+    });
+  }
+
+  /** Projects (and the frameworks) that have any readiness activity: these are the ones the scheduled snapshot covers. */
+  async activeProjects(): Promise<Array<{ projectId: string; frameworks: FrameworkId[] }>> {
+    const out = new Map<string, Set<FrameworkId>>();
+    const note = (projectId: string, fw: FrameworkId) => { if (!out.has(projectId)) out.set(projectId, new Set()); out.get(projectId)!.add(fw); };
+    for (const r of await db.orm.public.ReadinessControl.select('projectId', 'framework').all() as Array<{ projectId: string; framework: FrameworkId }>) note(r.projectId, r.framework);
+    for (const r of await db.orm.public.ReadinessEvidence.select('projectId').all() as Array<{ projectId: string }>) note(r.projectId, 'soc2');
+    return [...out.entries()].map(([projectId, f]) => ({ projectId, frameworks: [...f] }));
+  }
+
+  // ── auditor access ─────────────────────────────────────────────────────────
+  /** The token is returned once; only its hash is stored. */
+  async createAuditorAccess(projectId: string, framework: FrameworkId, a: { name: string; email: string; expiresAt: string; createdBy: string }): Promise<{ row: AuditorAccessRow; token: string }> {
+    const token = `${AUDITOR_TOKEN_PREFIX}${randomBytes(32).toString('base64url')}`;
+    const row: AuditorAccessRow = { id: randomUUID(), projectId, framework, name: a.name, email: a.email, tokenPrefix: token.slice(0, 9), createdBy: a.createdBy, createdAt: now(), expiresAt: a.expiresAt, revokedAt: null, lastUsedAt: null, useCount: 0 };
+    await db.orm.public.ReadinessAuditorAccess.create({ ...row, tokenHash: hashAuditorToken(token) });
+    return { row, token };
+  }
+
+  async auditorAccesses(projectId: string, framework: FrameworkId): Promise<AuditorAccessRow[]> {
+    const rows = await db.orm.public.ReadinessAuditorAccess.where({ projectId, framework }).select(...AUDITOR_COLS).all() as AuditorAccessRow[];
+    return rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async revokeAuditorAccess(projectId: string, id: string): Promise<boolean> {
+    const row = await db.orm.public.ReadinessAuditorAccess.where({ id, projectId }).select(...AUDITOR_COLS).first() as AuditorAccessRow | null;
+    if (!row || row.revokedAt) return false;
+    await db.orm.public.ReadinessAuditorAccess.where({ id, projectId }).update({ revokedAt: now() });
+    return true;
+  }
+
+  async findAuditorAccess(token: string): Promise<AuditorAccessRow | null> {
+    if (!looksLikeAuditorToken(token)) return null;
+    return ((await db.orm.public.ReadinessAuditorAccess.where({ tokenHash: hashAuditorToken(token) }).select(...AUDITOR_COLS).first()) as AuditorAccessRow | null) ?? null;
+  }
+
+  async touchAuditorAccess(row: AuditorAccessRow): Promise<void> {
+    await db.orm.public.ReadinessAuditorAccess.where({ id: row.id }).update({ lastUsedAt: now(), useCount: row.useCount + 1 });
   }
 
   // ── scope ─────────────────────────────────────────────────────────────────

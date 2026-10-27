@@ -103,4 +103,37 @@ describe('readiness records on real Postgres', () => {
     expect(await r.settings(pA, 'soc2')).toEqual({ categories: ['security', 'availability'] });
     expect(await r.settings(pB, 'soc2')).toEqual({});
   });
+
+  maybe('snapshots are stored compactly, read back in order, and scoped to a project', async () => {
+    const { readinessRepository: r } = await import('@/lib/repositories/readinessRepository');
+    await r.addSnapshot(pA, 'soc2', { trigger: 'scheduled', readiness: 'Not ready', summary: { total: 2 }, controls: [{ id: 'CTL-01', score: 3, confidence: 'High', failing: [], evidence: 2 }, { id: 'CTL-02', score: null, confidence: 'Low', failing: ['AWS-X-1'], evidence: 0 }], facts: { members: 3 }, takenAt: '2026-10-01T03:30:00.000Z' });
+    await r.addSnapshot(pA, 'soc2', { trigger: 'manual', readiness: 'Ready with conditions', summary: {}, controls: [{ id: 'CTL-01', score: 4, confidence: 'High', failing: [], evidence: 2 }], facts: null, takenAt: '2026-10-02T03:30:00.000Z' });
+    await r.addSnapshot(pB, 'soc2', { trigger: 'scheduled', readiness: 'Incomplete', summary: {}, controls: [], facts: null });
+    const s = await r.snapshots(pA, 'soc2');
+    expect(s.map((x) => x.takenAt)).toEqual(['2026-10-01T03:30:00.000Z', '2026-10-02T03:30:00.000Z']);
+    expect(s[0]!.controls[1]).toEqual({ id: 'CTL-02', score: null, confidence: 'Low', failing: ['AWS-X-1'], evidence: 0 });
+    expect((await r.snapshots(pA, 'soc2', '2026-10-02T00:00:00.000Z')).length).toBe(1);
+    expect((await r.snapshots(pA, 'aws-waf')).length).toBe(0);
+    expect((await r.activeProjects()).some((x) => x.projectId === pA && x.frameworks.includes('soc2'))).toBe(true);
+  });
+
+  maybe('an auditor link is stored as a hash, found by its token, counted, and revoked', async () => {
+    const { readinessRepository: r } = await import('@/lib/repositories/readinessRepository');
+    const { hashAuditorToken, auditorAccessUsable } = await import('@/lib/compliance/auditorToken');
+    const { row, token } = await r.createAuditorAccess(pA, 'soc2', { name: 'Dana', email: 'd@cpa.example', expiresAt: new Date(Date.now() + 86_400_000).toISOString(), createdBy: 'a@x.com' });
+    const stored = (await admin.query(`SELECT "tokenHash","tokenPrefix" FROM "readinessAuditorAccess" WHERE "id" = $1`, [row.id])).rows[0];
+    expect(stored.tokenHash).toBe(hashAuditorToken(token));
+    expect(JSON.stringify(stored)).not.toContain(token);
+    const found = await r.findAuditorAccess(token);
+    expect(found).toMatchObject({ id: row.id, projectId: pA, framework: 'soc2', name: 'Dana' });
+    expect(auditorAccessUsable(found!)).toBe(true);
+    await r.touchAuditorAccess(found!); await r.touchAuditorAccess({ ...found!, useCount: 1 });
+    expect((await r.auditorAccesses(pA, 'soc2'))[0]).toMatchObject({ useCount: 2 });
+    expect(await r.findAuditorAccess(`ca_${'Z'.repeat(43)}`)).toBeNull();
+    expect(await r.findAuditorAccess('not a token')).toBeNull();
+    expect((await r.auditorAccesses(pB, 'soc2')).length).toBe(0);
+    expect(await r.revokeAuditorAccess(pB, row.id)).toBe(false);
+    expect(await r.revokeAuditorAccess(pA, row.id)).toBe(true);
+    expect(auditorAccessUsable((await r.findAuditorAccess(token))!)).toBe(false);
+  });
 });

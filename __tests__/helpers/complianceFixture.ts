@@ -3,10 +3,19 @@ import type { Evaluation } from '@/lib/engines/assessment/types';
 import { buildReadinessReport, type ReadinessReport, type ReportInput } from '@/lib/compliance/report';
 import type { ControlRecord, EvidenceRef, FrameworkId } from '@/lib/compliance/types';
 import { soc2Defs, awsDefs, azureDefs } from '@/lib/compliance/frameworks';
+import { analyzePeriod, type SnapshotRecord } from '@/lib/compliance/snapshots';
 
 export const AS_OF = new Date('2026-10-26T00:00:00Z');
 const ev = (ruleId: string, status: Evaluation['status'], extra: Partial<Evaluation> = {}): Evaluation => ({ ruleId, status, observation: `Observed for ${ruleId}.`, severity: 'MEDIUM', provenance: 'DESIGN_TIME', ...extra } as Evaluation);
 const rec = (controlId: string, over: Partial<ControlRecord> = {}): ControlRecord => ({ controlId, status: 'implemented', owner: 'Priya Nair', note: '', naReason: '', reviewer: '', ...over });
+
+/** Weekly snapshots over the quarter before AS_OF, with a few controls that dipped and a two-week hole in September. */
+function fixturePeriod(framework: FrameworkId, ids: string[]) {
+  const days = ['2026-08-03', '2026-08-10', '2026-08-17', '2026-08-24', '2026-08-31', '2026-09-28', '2026-10-05', '2026-10-12', '2026-10-19'];
+  const snaps: SnapshotRecord[] = days.map((d, k) => ({ id: d, takenAt: `${d}T06:00:00.000Z`, trigger: 'scheduled', readiness: 'Not ready',
+    controls: ids.map((id, n) => ({ id, score: n % 7 === 6 ? null : n % 5 === 0 && k % 4 === 3 ? 2 : n % 9 === 8 ? 1 : 3, confidence: 'Medium', failing: n % 11 === 3 && k > 5 ? ['AWS-RDS-002'] : [], evidence: 1 })) }));
+  return analyzePeriod(framework, snaps, new Date('2026-07-28T00:00:00Z'), new Date('2026-10-26T23:59:59Z'));
+}
 
 export function fixtureInput(framework: FrameworkId = 'soc2'): ReportInput {
   const defs = framework === 'soc2' ? soc2Defs() : framework === 'aws-waf' ? awsDefs() : azureDefs();
@@ -29,6 +38,7 @@ export function fixtureInput(framework: FrameworkId = 'soc2'): ReportInput {
     findingRecords: { 'CTL-23': { controlId: 'CTL-23', owner: 'Sam Okafor', targetDate: '2026-11-30', status: 'in_progress', managementResponse: 'Encryption will be switched on during the November maintenance window.', acceptedBy: '', retestedBy: '' } },
     signoffs: [{ role: 'preparer', name: 'Priya Nair', email: 'priya@northwind.example', signedAt: '2026-10-26T09:45:00Z' }],
     accountRead: true,
+    period: fixturePeriod(framework, defs.map((d) => d.id)),
   };
 }
 
