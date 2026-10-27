@@ -4,7 +4,7 @@ import { CloudProvider, ResourceCategory, ResourceDefinition } from '@/types';
 import { CloudServiceIcon, AwsIcon, AzureIcon } from '@/components/icons/cloud/CloudServiceIcon';
 import { useApp } from '@/context/AppContext';
 import clsx from 'clsx';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Search, ChevronDown, ChevronRight, Layers, GripVertical, Sparkles, ChevronLeft, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 const categoryLabels: Record<ResourceCategory, { title: string; order: number }> = {
@@ -32,6 +32,57 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
   const [activeCategory, setActiveCategory] = useState<string | 'all'>('all');
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
   const [isPaletteCollapsed, setIsPaletteCollapsed] = useState(false);
+
+  // Resizable palette width state
+  const [paletteWidth, setPaletteWidth] = useState<number>(260);
+  const [isResizing, setIsResizing] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const widthRef = useRef(paletteWidth);
+  useEffect(() => { widthRef.current = paletteWidth; }, [paletteWidth]);
+
+  // Load persisted width on mount
+  useEffect(() => {
+    try {
+      const savedWidth = localStorage.getItem('cloudbuilder_palette_width');
+      if (savedWidth) {
+        const num = parseInt(savedWidth, 10);
+        if (num >= 200 && num <= 500) {
+          setPaletteWidth(num);
+        }
+      }
+    } catch {}
+  }, []);
+
+  // Resizing mouse drag listeners
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const newWidth = Math.max(200, Math.min(500, e.clientX - rect.left));
+      setPaletteWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      try {
+        localStorage.setItem('cloudbuilder_palette_width', widthRef.current.toString());
+      } catch {}
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
 
   const resources = useMemo(() => {
     return getResourcesByProvider(provider);
@@ -107,9 +158,12 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
 
   return (
     <div
+      ref={containerRef}
+      style={{ width: `${paletteWidth}px` }}
       className={clsx(
-        'w-64 border-r flex flex-col shrink-0 select-none z-10 transition-all duration-200',
-        isLight ? 'bg-white border-slate-200' : 'bg-[#161618] border-white/[0.08]'
+        'relative border-r flex flex-col shrink-0 select-none z-10',
+        isLight ? 'bg-white border-slate-200' : 'bg-[#161618] border-white/[0.08]',
+        !isResizing && 'transition-[width] duration-150 ease-out'
       )}
     >
       {/* Header & Search */}
@@ -355,6 +409,32 @@ export default function ResourcePalette({ provider, onAddResource }: ResourcePal
           <Sparkles className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400 shrink-0" />
           <span className="truncate">Drag services onto canvas</span>
         </div>
+      </div>
+
+      {/* Resizable Drag Handle on Right Border */}
+      <div
+        onMouseDown={(e) => {
+          e.preventDefault();
+          setIsResizing(true);
+        }}
+        onDoubleClick={() => {
+          setPaletteWidth(260);
+          try {
+            localStorage.setItem('cloudbuilder_palette_width', '260');
+          } catch {}
+        }}
+        className={clsx(
+          'absolute top-0 -right-1 w-2.5 h-full cursor-col-resize z-30 flex items-center justify-center transition-colors group/resizer',
+          isResizing ? 'bg-[#0078d4]' : 'hover:bg-[#0078d4]/50'
+        )}
+        title="Drag to resize palette (double-click to reset)"
+      >
+        <div
+          className={clsx(
+            'w-1 h-8 rounded-full transition-all',
+            isResizing ? 'bg-white' : 'bg-transparent group-hover/resizer:bg-[#0078d4]'
+          )}
+        />
       </div>
     </div>
   );

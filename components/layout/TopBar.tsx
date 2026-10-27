@@ -2,7 +2,7 @@
 import { RESTRICTED_FEATURE_LABEL } from '@/lib/auth/restrictedFeatures';
 import { useState, useRef, useEffect } from 'react';
 import { useApp, useActiveProject } from '@/context/AppContext';
-import { Bell, Globe, Coins, ShieldCheck, UserCheck, LogOut, User, FileCheck, Menu, Sun, Moon, ChevronDown } from 'lucide-react';
+import { Bell, Globe, Coins, ShieldCheck, UserCheck, LogOut, User, FileCheck, Menu, Sun, Moon, ChevronDown, Compass } from 'lucide-react';
 import clsx from 'clsx';
 import { AppView, Environment } from '@/types';
 import { cloudRegionService } from '@/lib/cloud/regions/CloudRegionService';
@@ -194,23 +194,17 @@ export default function TopBar() {
           </div>
         </div>
 
-        {/* Env switcher (only when project is active) */}
+        {/* Environment (Production) */}
         {activeProject && (
-          <div className="hidden sm:flex items-center gap-1 shrink-0">
-            {(['development', 'staging', 'production'] as Environment[]).map((env) => (
-              <button
-                key={env}
-                onClick={() => dispatch({ type: 'SET_ENVIRONMENT', env })}
-                className={clsx(
-                  'px-2 py-0.5 rounded text-[10px] font-medium border capitalize transition-colors',
-                  activeEnvironment === env
-                    ? (isLight ? ENV_COLORS_LIGHT[env] : ENV_COLORS[env])
-                    : (isLight ? 'border-transparent text-slate-500 hover:text-slate-800' : 'border-transparent text-gray-600 hover:text-gray-400')
-                )}
-              >
-                {env === 'development' ? 'Dev' : env === 'staging' ? 'Staging' : 'Prod'}
-              </button>
-            ))}
+          <div className="hidden sm:flex items-center shrink-0">
+            <span
+              className={clsx(
+                'px-2.5 py-0.5 rounded text-[10px] font-semibold border transition-colors',
+                isLight ? ENV_COLORS_LIGHT.production : ENV_COLORS.production
+              )}
+            >
+              Production
+            </span>
           </div>
         )}
 
@@ -247,6 +241,23 @@ export default function TopBar() {
 
       {/* Right Fixed Section (Theme Toggle + User Profile Dropdown) */}
       <div className="flex items-center gap-2 shrink-0">
+        {/* Workflow Tour Button */}
+        <button
+          type="button"
+          onClick={() => dispatch({ type: 'SET_TOUR_MODAL', open: true })}
+          className={clsx(
+            "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-xs font-semibold shrink-0 focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 active:scale-[0.98]",
+            isLight
+              ? "bg-slate-100 hover:bg-slate-200/80 border-slate-300 text-slate-800 shadow-xs"
+              : "bg-[#242426] hover:bg-[#2c2c2e] border-white/[0.12] text-slate-200"
+          )}
+          title="Workflow Walkthrough & Guide"
+          aria-label="Workflow Walkthrough"
+        >
+          <Compass className="w-3.5 h-3.5 text-blue-500" />
+          <span className="hidden md:inline text-[11px] font-bold">Tour</span>
+        </button>
+
         {/* Dark / Night Mode Toggle */}
         <button
           type="button"

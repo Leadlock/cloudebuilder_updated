@@ -29,6 +29,8 @@ import TeamPanel from '@/components/panels/TeamPanel';
 import PolicyPanel from '@/components/panels/PolicyPanel';
 import OperatorAccessPanel from '@/components/panels/OperatorAccessPanel';
 import LoginModal from '@/components/auth/LoginModal';
+import WorkflowStepNavigator from '@/components/layout/WorkflowStepNavigator';
+import WorkflowOnboardingModal from '@/components/modals/WorkflowOnboardingModal';
 import { useApp } from '@/context/AppContext';
 import { AppView } from '@/types';
 
@@ -127,8 +129,17 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 export default function Home() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const isLight = state.theme === 'light';
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && state.currentUser) {
+      const tourSeen = localStorage.getItem('cloudbuilder_workflow_tour_completed');
+      if (!tourSeen) {
+        dispatch({ type: 'SET_TOUR_MODAL', open: true });
+      }
+    }
+  }, [state.currentUser, dispatch]);
 
   return (
     <AuthGate>
@@ -136,11 +147,16 @@ export default function Home() {
         <Sidebar />
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
           <TopBar />
+          <WorkflowStepNavigator />
           <main className="flex flex-1 min-h-0 overflow-hidden">
             <MainContent />
           </main>
         </div>
       </div>
+      <WorkflowOnboardingModal
+        isOpen={state.isTourOpen}
+        onClose={() => dispatch({ type: 'SET_TOUR_MODAL', open: false })}
+      />
     </AuthGate>
   );
 }

@@ -68,7 +68,7 @@ export function hclSafeId(id: string): string {
   return id.replace(/[^A-Za-z0-9_-]/g, '_') || 'id';
 }
 
-const SAFE_TYPE = /^[a-z0-9_]+$/;
+const SAFE_TYPE = /^[a-zA-Z0-9_]+$/;
 const SAFE_REGION = /^[a-z0-9-]{2,40}$/;
 
 export interface SanitizedHclInput {

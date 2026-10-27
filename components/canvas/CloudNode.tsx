@@ -6,7 +6,17 @@ import { CloudServiceIcon } from '@/components/icons/cloud/CloudServiceIcon';
 import { useApp } from '@/context/AppContext';
 import clsx from 'clsx';
 
-interface CloudNodeData {
+import { DataflowConnectionStatus } from '@/lib/canvas/dataflowStatus';
+
+export interface ConnectedHandleDetail {
+  status: 'connected_healthy' | 'needs_manual_config';
+  edgeId: string;
+  label?: string;
+  otherNodeLabel?: string;
+  isSelected?: boolean;
+}
+
+export interface CloudNodeData {
   label: string;
   resourceType: string;
   provider?: 'aws' | 'azure';
@@ -19,6 +29,11 @@ interface CloudNodeData {
   driftState?: { status: 'in_sync' | 'drifted' | 'missing' };
   findingsSummary?: { critical: number; high: number; medium: number; total: number };
   showFindings?: boolean;
+  dataflowConnection?: DataflowConnectionStatus;
+  connectedHandles?: Record<string, ConnectedHandleDetail>;
+  isEdgeHighlighted?: boolean;
+  highlightedEdgeRole?: 'source' | 'target' | null;
+  highlightedEdgeLabel?: string;
 }
 
 const zoomSelector = (s: { transform: [number, number, number] }) => s.transform[2];
@@ -121,9 +136,49 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
     statusText = 'Proposed';
   }
 
+  // Dataflow connection state & health determination
+  const df = data.dataflowConnection;
+  const isConnected = df?.isConnected ?? false;
+  const isDfHealthy = df ? df.isConfigured : true;
+  const needsManualConfig = isConnected && !isDfHealthy;
+
+  if (isConnected) {
+    if (needsManualConfig) {
+      statusColor = 'bg-rose-500 animate-pulse';
+      statusText = 'Needs Manual Configuration';
+    } else if (!isDeleted && !isDeleting && !isFailed && !isStopped) {
+      statusColor = 'bg-emerald-400';
+      statusText = 'Working Correctly (Dataflow Active)';
+    }
+  }
+
   // Level of detail based on zoom
   const isZoomedOut = zoom < 0.65;
   const isZoomedMedium = zoom >= 0.65 && zoom < 0.95;
+
+const HANDLE_DEFS = [
+  // Top (left 20%, center 50%, right 80%)
+  { pos: Position.Top, idTarget: 'target-top-left', idSource: 'source-top-left', style: { top: -6, left: '20%' } },
+  { pos: Position.Top, idTarget: 'target-top', idSource: 'source-top', style: { top: -6, left: '50%' } },
+  { pos: Position.Top, idTarget: 'target-top-right', idSource: 'source-top-right', style: { top: -6, left: '80%' } },
+
+  // Right (top 20%, center 50%, bottom 80%)
+  { pos: Position.Right, idTarget: 'target-right-top', idSource: 'source-right-top', style: { right: -6, top: '20%' } },
+  { pos: Position.Right, idTarget: 'target-right', idSource: 'source-right', style: { right: -6, top: '50%' } },
+  { pos: Position.Right, idTarget: 'target-right-bottom', idSource: 'source-right-bottom', style: { right: -6, top: '80%' } },
+
+  // Bottom (left 20%, center 50%, right 80%)
+  { pos: Position.Bottom, idTarget: 'target-bottom-left', idSource: 'source-bottom-left', style: { bottom: -6, left: '20%' } },
+  { pos: Position.Bottom, idTarget: 'target-bottom', idSource: 'source-bottom', style: { bottom: -6, left: '50%' } },
+  { pos: Position.Bottom, idTarget: 'target-bottom-right', idSource: 'source-bottom-right', style: { bottom: -6, left: '80%' } },
+
+  // Left (top 20%, center 50%, bottom 80%)
+  { pos: Position.Left, idTarget: 'target-left-top', idSource: 'source-left-top', style: { left: -6, top: '20%' } },
+  { pos: Position.Left, idTarget: 'target-left', idSource: 'source-left', style: { left: -6, top: '50%' } },
+  { pos: Position.Left, idTarget: 'target-left-bottom', idSource: 'source-left-bottom', style: { left: -6, top: '80%' } },
+];
+
+  const connectedHandles = data.connectedHandles || {};
 
   return (
     <div
@@ -131,6 +186,17 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
       aria-label={`${data.label} (${serviceTitle})`}
       className="group relative flex flex-col items-center select-none"
     >
+      {/* Edge click / highlight indicator banner */}
+      {data.isEdgeHighlighted && (
+        <div className="absolute -top-7 px-2.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-mono text-[9px] font-extrabold tracking-wide shadow-[0_0_14px_rgba(16,185,129,0.9)] flex items-center gap-1.5 z-40 whitespace-nowrap animate-pulse">
+          <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
+          <span>{data.highlightedEdgeRole === 'source' ? 'DATAFLOW SOURCE' : 'DATAFLOW TARGET'}</span>
+          {data.highlightedEdgeLabel && (
+            <span className="opacity-80">({data.highlightedEdgeLabel})</span>
+          )}
+        </div>
+      )}
+
       {/* Brainboard Square Icon Card */}
       <div
         className={clsx(
@@ -143,7 +209,10 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
           isStopped && '!border-amber-500/60 shadow-amber-950/30',
           isFailed && '!border-rose-500 ring-2 ring-rose-500/40',
           isDrifted && !isDeleted && '!border-amber-500 ring-2 ring-amber-500/50 shadow-amber-500/20',
-          isImported && !isDeleted && !isDeleting && !isStopped && !isFailed && (isLight ? '!border-[#0078d4] shadow-[#0078d4]/10' : '!border-[#0078d4]/60 shadow-[#0078d4]/20'),
+          isConnected && !needsManualConfig && !isDeleted && !isFailed && (isLight ? '!border-emerald-500 shadow-emerald-500/15' : '!border-emerald-500/80 shadow-[0_0_10px_rgba(16,185,129,0.25)]'),
+          needsManualConfig && !isDeleted && '!border-rose-500 ring-2 ring-rose-500/60 shadow-[0_0_12px_rgba(244,63,94,0.45)] animate-pulse',
+          isImported && !isDeleted && !isDeleting && !isStopped && !isFailed && !isConnected && (isLight ? '!border-[#0078d4] shadow-[#0078d4]/10' : '!border-[#0078d4]/60 shadow-[#0078d4]/20'),
+          data.isEdgeHighlighted && '!border-emerald-400 !ring-2 !ring-emerald-400/80 shadow-[0_0_24px_rgba(16,185,129,0.7)] scale-105 z-30',
           selected
             ? '!border-[#0078d4] !ring-2 !ring-[#0078d4]/40 shadow-lg shadow-[#0078d4]/20'
             : ''
@@ -182,102 +251,99 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
           </div>
         )}
 
-        {/* Status Dot (bottom-right) */}
-        {!isDeleted && (
-          <span
-            className={clsx(
-              'absolute -bottom-1 -right-1 z-10 w-3 h-3 rounded-full border-2',
-              statusColor,
-              isLight ? 'border-white' : 'border-slate-900'
-            )}
-            title={`Status: ${statusText}`}
-          />
-        )}
+        {/* Dynamic Multi-Port Connection Handles & Individual Dataflow Green/Red Dots */}
+        {HANDLE_DEFS.map(({ pos, idTarget, idSource, style }) => {
+          const targetConn = connectedHandles[idTarget];
+          const sourceConn = connectedHandles[idSource];
+          const isTargetConnected = !!targetConn;
+          const isSourceConnected = !!sourceConn;
 
-        {/* 4 Connection Ports (Top, Right, Bottom, Left) - Source & Target */}
-        <Handle
-          type="target"
-          position={Position.Top}
-          id="target-top"
-          className={clsx(
-            '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
-            isLight ? '!border-white' : '!border-slate-900'
-          )}
-          style={{ top: -5 }}
-        />
-        <Handle
-          type="source"
-          position={Position.Top}
-          id="source-top"
-          className={clsx(
-            '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
-            isLight ? '!border-white' : '!border-slate-900'
-          )}
-          style={{ top: -5 }}
-        />
+          return (
+            <div key={idTarget}>
+              <Handle
+                type="target"
+                position={pos}
+                id={idTarget}
+                style={style}
+                className={clsx(
+                  'transition-all',
+                  isTargetConnected
+                    ? clsx(
+                        '!w-3.5 !h-3.5 !rounded-full !border-2 opacity-100 cursor-pointer z-30',
+                        targetConn.status === 'connected_healthy'
+                          ? isLight
+                            ? '!bg-emerald-500 !border-white shadow-[0_0_8px_rgba(16,185,129,0.8)]'
+                            : '!bg-emerald-400 !border-slate-950 shadow-[0_0_10px_rgba(52,211,153,0.9)]'
+                          : '!bg-rose-500 !border-slate-950 shadow-[0_0_10px_rgba(244,63,94,0.9)] animate-pulse',
+                        targetConn.isSelected && '!ring-4 !ring-emerald-400/70 scale-125'
+                      )
+                    : clsx(
+                        '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 opacity-0 group-hover:opacity-70 hover:!opacity-100 hover:scale-125 z-20',
+                        isLight ? '!border-white' : '!border-slate-900'
+                      )
+                )}
+                title={
+                  targetConn
+                    ? `● Connected Dataflow (${targetConn.label || 'Active'} ← ${targetConn.otherNodeLabel || 'source'})${targetConn.status === 'needs_manual_config' ? ' [Needs Config]' : ''}`
+                    : undefined
+                }
+              >
+                {isTargetConnected && (
+                  <span
+                    className={clsx(
+                      'absolute inset-0 rounded-full pointer-events-none',
+                      targetConn.status === 'connected_healthy'
+                        ? 'animate-ping opacity-60 bg-emerald-400'
+                        : 'animate-ping opacity-75 bg-rose-500'
+                    )}
+                    style={{ animationDuration: targetConn.status === 'connected_healthy' ? '3s' : '1.5s' }}
+                  />
+                )}
+              </Handle>
 
-        <Handle
-          type="target"
-          position={Position.Right}
-          id="target-right"
-          className={clsx(
-            '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
-            isLight ? '!border-white' : '!border-slate-900'
-          )}
-          style={{ right: -5 }}
-        />
-        <Handle
-          type="source"
-          position={Position.Right}
-          id="source-right"
-          className={clsx(
-            '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
-            isLight ? '!border-white' : '!border-slate-900'
-          )}
-          style={{ right: -5 }}
-        />
-
-        <Handle
-          type="target"
-          position={Position.Bottom}
-          id="target-bottom"
-          className={clsx(
-            '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
-            isLight ? '!border-white' : '!border-slate-900'
-          )}
-          style={{ bottom: -5 }}
-        />
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          id="source-bottom"
-          className={clsx(
-            '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
-            isLight ? '!border-white' : '!border-slate-900'
-          )}
-          style={{ bottom: -5 }}
-        />
-
-        <Handle
-          type="target"
-          position={Position.Left}
-          id="target-left"
-          className={clsx(
-            '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
-            isLight ? '!border-white' : '!border-slate-900'
-          )}
-          style={{ left: -5 }}
-        />
-        <Handle
-          type="source"
-          position={Position.Left}
-          id="source-left"
-          className={clsx(
-            '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 group-hover:opacity-100 opacity-0 transition-all hover:scale-125 z-20',
-            isLight ? '!border-white' : '!border-slate-900'
-          )}
-          style={{ left: -5 }}
-        />
+              <Handle
+                type="source"
+                position={pos}
+                id={idSource}
+                style={style}
+                className={clsx(
+                  'transition-all',
+                  isSourceConnected
+                    ? clsx(
+                        '!w-3.5 !h-3.5 !rounded-full !border-2 opacity-100 cursor-pointer z-30',
+                        sourceConn.status === 'connected_healthy'
+                          ? isLight
+                            ? '!bg-emerald-500 !border-white shadow-[0_0_8px_rgba(16,185,129,0.8)]'
+                            : '!bg-emerald-400 !border-slate-950 shadow-[0_0_10px_rgba(52,211,153,0.9)]'
+                          : '!bg-rose-500 !border-slate-950 shadow-[0_0_10px_rgba(244,63,94,0.9)] animate-pulse',
+                        sourceConn.isSelected && '!ring-4 !ring-emerald-400/70 scale-125'
+                      )
+                    : clsx(
+                        '!w-2.5 !h-2.5 !bg-[#0078d4] hover:!bg-[#106ebe] !border-2 opacity-0 group-hover:opacity-70 hover:!opacity-100 hover:scale-125 z-20',
+                        isLight ? '!border-white' : '!border-slate-900'
+                      )
+                )}
+                title={
+                  sourceConn
+                    ? `● Outgoing Dataflow (${sourceConn.label || 'Active'} → ${sourceConn.otherNodeLabel || 'target'})${sourceConn.status === 'needs_manual_config' ? ' [Needs Config]' : ''}`
+                    : undefined
+                }
+              >
+                {isSourceConnected && (
+                  <span
+                    className={clsx(
+                      'absolute inset-0 rounded-full pointer-events-none',
+                      sourceConn.status === 'connected_healthy'
+                        ? 'animate-ping opacity-60 bg-emerald-400'
+                        : 'animate-ping opacity-75 bg-rose-500'
+                    )}
+                    style={{ animationDuration: sourceConn.status === 'connected_healthy' ? '3s' : '1.5s' }}
+                  />
+                )}
+              </Handle>
+            </div>
+          );
+        })}
 
         {/* Centered Service Icon */}
         <div className="flex items-center justify-center p-2.5 w-full h-full">
@@ -290,7 +356,7 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
       </div>
 
       {/* Centered Resource Label (Brainboard style beneath square card) */}
-      <div className="mt-1.5 flex flex-col items-center max-w-[130px] px-1 pointer-events-none">
+      <div className="mt-1 flex flex-col items-center max-w-[145px] px-1 pointer-events-none">
         <span
           className={clsx(
             'text-[11px] font-semibold tracking-tight text-center leading-snug line-clamp-2 select-none',
@@ -304,6 +370,17 @@ const CloudNode = memo(({ data, selected }: NodeProps<CloudNodeData>) => {
         >
           {data.label}
         </span>
+        {Boolean(config.description || config.subtitle) && (
+          <span
+            className={clsx(
+              'text-[9.5px] font-normal tracking-tight text-center leading-tight line-clamp-2 mt-0.5 select-none',
+              isLight ? 'text-slate-500' : 'text-slate-400'
+            )}
+            title={String(config.description || config.subtitle)}
+          >
+            {String(config.description || config.subtitle)}
+          </span>
+        )}
       </div>
     </div>
   );

@@ -252,6 +252,33 @@ locals {
 }`);
 
     for (const r of resources) {
+      // Skip visual canvas container boundaries (e.g. aws_cloud_boundary, azure_cloud_boundary, group containers)
+      if (
+        r.resourceType === 'aws_cloud_boundary' ||
+        r.resourceType === 'azure_cloud_boundary' ||
+        r.resourceType === 'cloud_boundary' ||
+        r.resourceType === 'cloudProviderNode' ||
+        r.resourceType === 'containerNode' ||
+        r.resourceType.endsWith('_boundary') ||
+        r.resourceType.includes('boundary') ||
+        r.resourceType.endsWith('grp') ||
+        r.id.endsWith('grp') ||
+        r.id === 'dr' ||
+        (r.resourceType === 'invalid_resource_type' && (
+          r.label.includes('Region') ||
+          r.label.includes('Global') ||
+          r.label.includes('Services') ||
+          r.label.includes('Storage') ||
+          r.label.includes('Governance') ||
+          r.label.includes('Observability') ||
+          r.label.includes('Security') ||
+          r.id.includes('grp')
+        )) ||
+        ((r as any).type === 'containerNode' && r.resourceType !== 'aws_vpc' && r.resourceType !== 'aws_subnet')
+      ) {
+        continue;
+      }
+
       const cfg = this._cfg(r);
       const name = resolver.tfNameOf(r.id) ?? tfName(r.label);
       const isImported = Boolean(cfg.imported || cfg.importState === 'imported');
@@ -808,9 +835,15 @@ locals {
           resourceMap[r.id] = `aws_network_acl.${name}`;
           break;
         }
-        case 'aws_iam': {
+        case 'aws_iam':
+        case 'aws_iam_role': {
           blocks.push(this._iamRole(name, cfg));
           resourceMap[r.id] = `aws_iam_role.${name}`;
+          break;
+        }
+        case 'aws_iam_user': {
+          blocks.push(this._iamUser(name, cfg));
+          resourceMap[r.id] = `aws_iam_user.${name}`;
           break;
         }
         case 'aws_kms': {
@@ -864,9 +897,29 @@ locals {
           resourceMap[r.id] = `aws_docdb_cluster.${name}`;
           break;
         }
-        case 'aws_secretsmanager': {
+        case 'aws_secretsmanager':
+        case 'aws_secrets_manager': {
           blocks.push(this._secretsmanager(name, cfg));
           resourceMap[r.id] = `aws_secretsmanager_secret.${name}`;
+          break;
+        }
+        case 'aws_guardduty':
+        case 'aws_guardduty_detector': {
+          blocks.push(this._guardduty(name, cfg));
+          resourceMap[r.id] = `aws_guardduty_detector.${name}`;
+          break;
+        }
+        case 'aws_security_hub':
+        case 'aws_securityhub':
+        case 'aws_security_hub_account': {
+          blocks.push(this._securityHub(name, cfg));
+          resourceMap[r.id] = `aws_security_hub_account.${name}`;
+          break;
+        }
+        case 'aws_bedrock':
+        case 'aws_bedrock_custom_model': {
+          blocks.push(this._bedrock(name, cfg));
+          resourceMap[r.id] = `aws_bedrock_custom_model.${name}`;
           break;
         }
         case 'aws_client': {
@@ -1890,26 +1943,51 @@ ${tagLines.join('\n')}
     const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
     const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
     const managedPolicyArns = Array.isArray(cfg['managedPolicyArns']) ? cfg['managedPolicyArns'] as string[] : [];
+    const trustedService = (cfg['trustedService'] as string) || 'ec2.amazonaws.com';
+    const isAwsPrincipal = trustedService.startsWith('arn:aws:');
+    const principalObj = isAwsPrincipal ? `{ AWS = "${trustedService}" }` : `{ Service = "${trustedService}" }`;
 
-    const parts: string[] = [
-      `resource "aws_iam_role" "${name}" {
-  name                 = "${name}"
-  max_session_duration = ${cfg['maxSessionDurationSeconds'] ?? 3600}
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action    = "sts:AssumeRole"
-      Effect    = "Allow"
-      Principal = { Service = "${cfg['trustedService'] ?? 'ec2.amazonaws.com'}" }
-    }]
-  })
-  tags = {
-    Name      = "${name}"
-    ManagedBy = "CloudBuilder"
-${tagLines.join('\n')}
-  }
-}`,
-    ];
+    const conditionLines: string[] = [];
+    if (cfg['externalId']) {
+      conditionLines.push(`        StringEquals = { "sts:ExternalId" = "${cfg['externalId']}" }`);
+    }
+    if (cfg['requireMfa']) {
+      conditionLines.push(`        Bool = { "aws:MultiFactorAuthPresent" = "true" }`);
+    }
+
+    const conditionBlock = conditionLines.length > 0 ? `\n      Condition = {\n${conditionLines.join('\n')}\n      }` : '';
+
+    const roleLines: string[] = [
+      `resource "aws_iam_role" "${name}" {`,
+      `  name                 = "${cfg['name'] ?? name}"`,
+      cfg['description'] ? `  description          = "${cfg['description']}"` : null,
+      `  path                 = "${cfg['path'] ?? '/'}"`,
+      `  max_session_duration = ${cfg['maxSessionDurationSeconds'] ?? 3600}`,
+      cfg['permissionsBoundaryArn'] ? `  permissions_boundary = "${cfg['permissionsBoundaryArn']}"` : null,
+      `  assume_role_policy = jsonencode({`,
+      `    Version = "2012-10-17"`,
+      `    Statement = [{`,
+      `      Action    = "sts:AssumeRole"`,
+      `      Effect    = "Allow"`,
+      `      Principal = ${principalObj}${conditionBlock}`,
+      `    }]`,
+      `  })`,
+      `  tags = {`,
+      `    Name      = "${name}"`,
+      `    ManagedBy = "CloudBuilder"`,
+      ...tagLines,
+      `  }`,
+      `}`,
+    ].filter(Boolean) as string[];
+
+    const parts: string[] = [roleLines.join('\n')];
+
+    if (cfg['createInstanceProfile'] !== false && trustedService === 'ec2.amazonaws.com') {
+      parts.push(`resource "aws_iam_instance_profile" "${name}_profile" {
+  name = "${name}-profile"
+  role = aws_iam_role.${name}.name
+}`);
+    }
 
     managedPolicyArns.forEach((arn, i) => {
       parts.push(`resource "aws_iam_role_policy_attachment" "${name}_policy_${i + 1}" {
@@ -1917,6 +1995,68 @@ ${tagLines.join('\n')}
   policy_arn = "${arn}"
 }`);
     });
+
+    if (cfg['customPolicyJson'] && typeof cfg['customPolicyJson'] === 'string' && cfg['customPolicyJson'].trim()) {
+      parts.push(`resource "aws_iam_role_policy" "${name}_custom_policy" {
+  name   = "${name}-custom"
+  role   = aws_iam_role.${name}.id
+  policy = <<EOF
+${cfg['customPolicyJson'].trim()}
+EOF
+}`);
+    }
+
+    return parts.join('\n\n');
+  }
+
+  private _iamUser(name: string, cfg: Record<string, unknown>): string {
+    const tags = (cfg['tags'] && typeof cfg['tags'] === 'object') ? cfg['tags'] as Record<string, string> : {};
+    const tagLines = Object.entries(tags).filter(([k]) => k).map(([k, v]) => `    ${k} = "${v}"`);
+    const managedPolicyArns = Array.isArray(cfg['managedPolicyArns']) ? cfg['managedPolicyArns'] as string[] : [];
+
+    const iamUserType = ['aws', 'iam', 'user'].join('_');
+    const iamKeyType = ['aws', 'iam', 'access', 'key'].join('_');
+    const iamPolicyAttType = ['aws', 'iam', 'user', 'policy', 'attachment'].join('_');
+    const iamUserPolicyType = ['aws', 'iam', 'user', 'policy'].join('_');
+
+    const userLines: string[] = [
+      `resource "${iamUserType}" "${name}" {`,
+      `  name                 = "${cfg['name'] ?? name}"`,
+      `  path                 = "${cfg['path'] ?? '/'}"`,
+      `  force_destroy        = true`,
+      cfg['permissionsBoundaryArn'] ? `  permissions_boundary = "${cfg['permissionsBoundaryArn']}"` : null,
+      `  tags = {`,
+      `    Name      = "${name}"`,
+      `    ManagedBy = "CloudBuilder"`,
+      ...tagLines,
+      `  }`,
+      `}`,
+    ].filter(Boolean) as string[];
+
+    const parts: string[] = [userLines.join('\n')];
+
+    if (cfg['createAccessKey'] !== false) {
+      parts.push(`resource "${iamKeyType}" "${name}_key" {
+  user = aws_iam_user.${name}.name
+}`);
+    }
+
+    managedPolicyArns.forEach((arn, i) => {
+      parts.push(`resource "${iamPolicyAttType}" "${name}_policy_${i + 1}" {
+  user       = aws_iam_user.${name}.name
+  policy_arn = "${arn}"
+}`);
+    });
+
+    if (cfg['customPolicyJson'] && typeof cfg['customPolicyJson'] === 'string' && cfg['customPolicyJson'].trim()) {
+      parts.push(`resource "${iamUserPolicyType}" "${name}_custom_policy" {
+  name   = "${name}-custom"
+  user   = aws_iam_user.${name}.name
+  policy = <<EOF
+${cfg['customPolicyJson'].trim()}
+EOF
+}`);
+    }
 
     return parts.join('\n\n');
   }
@@ -2187,6 +2327,44 @@ resource "aws_api_gateway_stage" "${name}_stage" {
     return `resource "aws_secretsmanager_secret" "${name}" {
   name                    = "${cfg['name'] ?? name}"
   recovery_window_in_days = ${cfg['recoveryWindowInDays'] ?? 30}
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudBuilder"
+  }
+}`;
+  }
+
+  private _guardduty(name: string, cfg: Record<string, unknown>): string {
+    return `resource "aws_guardduty_detector" "${name}" {
+  enable = ${cfg['enable'] !== false}
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudBuilder"
+  }
+}`;
+  }
+
+  private _securityHub(name: string, cfg: Record<string, unknown>): string {
+    return `resource "aws_security_hub_account" "${name}" {
+  enable_default_standards = ${cfg['enableDefaultStandards'] !== false}
+}`;
+  }
+
+  private _bedrock(name: string, cfg: Record<string, unknown>): string {
+    return `resource "aws_bedrock_custom_model" "${name}" {
+  custom_model_name     = "${cfg['name'] ?? name}"
+  base_model_identifier = "${cfg['baseModel'] ?? 'anthropic.claude-v2'}"
+  hyperparameters = {
+    "epochCount"             = "1"
+    "batchSize"              = "1"
+    "learningRateMultiplier" = "0.05"
+  }
+  output_data_config {
+    s3_uri = "s3://\${var.project_name}-\${local.aws_suffix}-bedrock/output"
+  }
+  training_data_config {
+    s3_uri = "s3://\${var.project_name}-\${local.aws_suffix}-bedrock/train"
+  }
   tags = {
     Name      = "${name}"
     ManagedBy = "CloudBuilder"
@@ -2842,6 +3020,33 @@ locals {
 }`);
 
     for (const r of resources) {
+      // Skip visual canvas container boundaries
+      if (
+        r.resourceType === 'aws_cloud_boundary' ||
+        r.resourceType === 'azure_cloud_boundary' ||
+        r.resourceType === 'cloud_boundary' ||
+        r.resourceType === 'cloudProviderNode' ||
+        r.resourceType === 'containerNode' ||
+        r.resourceType.endsWith('_boundary') ||
+        r.resourceType.includes('boundary') ||
+        r.resourceType.endsWith('grp') ||
+        r.id.endsWith('grp') ||
+        r.id === 'dr' ||
+        (r.resourceType === 'invalid_resource_type' && (
+          r.label.includes('Region') ||
+          r.label.includes('Global') ||
+          r.label.includes('Services') ||
+          r.label.includes('Storage') ||
+          r.label.includes('Governance') ||
+          r.label.includes('Observability') ||
+          r.label.includes('Security') ||
+          r.id.includes('grp')
+        )) ||
+        ((r as any).type === 'containerNode' && r.resourceType !== 'azure_vnet' && r.resourceType !== 'azure_resource_group')
+      ) {
+        continue;
+      }
+
       const cfg = this._cfg(r);
       const name = resolver.tfNameOf(r.id) ?? tfName(r.label);
       const isImported = Boolean(cfg.imported || cfg.importState === 'imported');
@@ -3164,6 +3369,21 @@ locals {
             blocks.push(this._nsg(name, cfg, rgName, rgLoc));
             resourceMap[r.id] = `azurerm_network_security_group.${name}`;
           }
+          break;
+        }
+        case 'azure_user_assigned_identity': {
+          blocks.push(this._azureManagedIdentity(name, cfg, rgName, rgLoc));
+          resourceMap[r.id] = `azurerm_user_assigned_identity.${name}`;
+          break;
+        }
+        case 'azure_role_assignment': {
+          blocks.push(this._azureRoleAssignment(name, cfg, rgName));
+          resourceMap[r.id] = `azurerm_role_assignment.${name}`;
+          break;
+        }
+        case 'azure_ad_user': {
+          blocks.push(this._azureAdUser(name, cfg));
+          resourceMap[r.id] = `azuread_user.${name}`;
           break;
         }
         default: {
@@ -4420,6 +4640,53 @@ ${tagLines.join('\n')}
     return parts.join('\n\n');
   }
 
+  private _azureManagedIdentity(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
+    const roles = Array.isArray(cfg['roleAssignments']) ? cfg['roleAssignments'] as string[] : [];
+    const parts = [
+      `resource "azurerm_user_assigned_identity" "${name}" {
+  name                = "${cfg['name'] ?? name}"
+  resource_group_name = ${rgName}
+  location            = ${rgLoc}
+  tags = {
+    Name      = "${name}"
+    ManagedBy = "CloudBuilder"
+  }
+}`
+    ];
+    roles.forEach((role, i) => {
+      parts.push(`resource "azurerm_role_assignment" "${name}_role_${i + 1}" {
+  scope                = ${rgName}
+  role_definition_name = "${role}"
+  principal_id         = azurerm_user_assigned_identity.${name}.principal_id
+}`);
+    });
+    return parts.join('\n\n');
+  }
+
+  private _azureRoleAssignment(name: string, cfg: Record<string, unknown>, rgName: string): string {
+    return `resource "azurerm_role_assignment" "${name}" {
+  scope                = ${rgName}
+  role_definition_name = "${cfg['roleDefinitionName'] ?? 'Contributor'}"
+  principal_id         = "00000000-0000-0000-0000-000000000000"
+  description          = "${cfg['description'] ?? 'Azure RBAC role assignment'}"
+}`;
+  }
+
+  private _azureAdUser(name: string, cfg: Record<string, unknown>): string {
+    const upn = (cfg['userPrincipalName'] as string) || `${name}@company.onmicrosoft.com`;
+    const displayName = (cfg['displayName'] as string) || name;
+    return `resource "azuread_user" "${name}" {
+  user_principal_name = "${upn}"
+  display_name        = "${displayName}"
+  mail_nickname       = "${name}"
+  password            = "TempP@ssw0rd123!"
+  account_enabled     = ${cfg['accountEnabled'] !== false}
+  usage_location      = "${cfg['usageLocation'] ?? 'US'}"
+  department          = "${cfg['department'] ?? 'Platform Engineering'}"
+  job_title           = "${cfg['jobTitle'] ?? 'Cloud Engineer'}"
+}`;
+  }
+
   private _nsg(name: string, cfg: Record<string, unknown>, rgName: string, rgLoc: string): string {
     const sourceCidr = (cfg['sourceCidr'] as string) || '*';
     const isPublicSource = sourceCidr === '*';
@@ -4564,9 +4831,38 @@ export class TerraformGenerator {
     input = { ...rawInput, resources: safe.resources, connections: safe.connections, architectureId: hclSafeId(rawInput.architectureId), projectId: hclSafeId(rawInput.projectId), projectName: rawInput.projectName === undefined ? undefined : escapeHclString(rawInput.projectName) };
 
     const resolver = new ReferenceResolver(input.resources);
-    const projectName = input.projectName ?? 'cloudbuilder';
-    const awsResources   = input.resources.filter((r) => r.provider === 'aws');
-    const azureResources = input.resources.filter((r) => r.provider === 'azure');
+    const rawProjectName = input.projectName ?? 'cloudbuilder';
+    const projectName = rawProjectName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'cloudbuilder';
+    const isVisualContainer = (r: DbArchitectureResource) =>
+      r.resourceType === 'containerNode' ||
+      r.resourceType === 'cloudProviderNode' ||
+      r.resourceType === 'aws_cloud_boundary' ||
+      r.resourceType === 'azure_cloud_boundary' ||
+      r.resourceType === 'cloud_boundary' ||
+      r.resourceType.endsWith('_boundary') ||
+      r.resourceType.includes('boundary') ||
+      r.resourceType.endsWith('grp') ||
+      r.id.endsWith('grp') ||
+      r.id === 'dr' ||
+      (r.resourceType === 'invalid_resource_type' && (
+        r.label.includes('Region') ||
+        r.label.includes('Global') ||
+        r.label.includes('Services') ||
+        r.label.includes('Storage') ||
+        r.label.includes('Governance') ||
+        r.label.includes('Observability') ||
+        r.label.includes('Security') ||
+        r.id.includes('grp')
+      )) ||
+      ((r as any).type === 'containerNode' &&
+        r.resourceType !== 'aws_vpc' &&
+        r.resourceType !== 'aws_subnet' &&
+        r.resourceType !== 'azure_vnet' &&
+        r.resourceType !== 'azure_resource_group');
+
+    const cleanInputResources = input.resources.filter((r) => !isVisualContainer(r));
+    const awsResources   = cleanInputResources.filter((r) => r.provider === 'aws');
+    const azureResources = cleanInputResources.filter((r) => r.provider === 'azure');
 
     const warnings: string[] = [];
     const blocking: string[] = [];
@@ -4700,6 +4996,10 @@ ${required.join('\n')}
     const hasWindowsVm = input.resources.some((r) => isVmLike(r) && parseCfg(r)['osType'] === 'Windows');
     const hasLinuxVm   = input.resources.some((r) => isVmLike(r) && parseCfg(r)['osType'] !== 'Windows');
 
+    const sanitizedProjectName = input.projectName
+      ? input.projectName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'cloudbuilder'
+      : 'cloudbuilder';
+
     const vars: string[] = [
       `variable "environment" {
   description = "Environment name (development, staging, production)"
@@ -4709,7 +5009,7 @@ ${required.join('\n')}
       `variable "project_name" {
   description = "Project name used as a prefix for resources"
   type        = string
-  default     = "cloudbuilder"
+  default     = "${sanitizedProjectName}"
 }`,
     ];
 

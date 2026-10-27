@@ -1,169 +1,159 @@
-# CloudBuilder — Visual Cloud Infrastructure Builder
+# CloudBuilder — Visual Cloud Architecture & Terraform Engineering Platform
 
-A production-quality SaaS web app for visually designing AWS and Azure infrastructure, generating Terraform, running security scans, and estimating costs.
+**CloudBuilder** is a production-grade visual cloud architecture and Infrastructure-as-Code (IaC) engineering platform. It bridges the gap between high-level architectural diagramming and real-world, secure, and production-ready cloud deployments for **AWS** and **Azure**.
 
-## Features
+---
 
-- 🖱️ **Visual Drag-and-Drop Canvas** — Powered by React Flow. Drag AWS/Azure resources onto a canvas, connect them, and build real infrastructure diagrams.
-- ☁️ **Multi-Cloud** — Supports AWS (9 resource types) and Azure (8 resource types) with realistic configurations.
-- ⚙️ **Properties Panel** — Click any resource to configure it with a live form.
-- 🔒 **Security Scan** — Automatically scans for misconfigurations (open SSH, unencrypted S3, public RDS, etc.) with severity ratings and recommendations.
-- 💰 **Cost Estimate** — Live per-resource monthly cost estimates based on configuration.
-- 📄 **Terraform Generation** — Converts the visual architecture into production-ready Terraform HCL.
-- 🚀 **Deployment Workflow** — Step-by-step: Validate → Security Scan → Cost Check → Terraform Plan → Deploy.
-- 📊 **Dashboard** — Project overview with security scores, resource counts, and cost estimates.
-- 💾 **Project Save/Load** — Automatic in-memory save; projects persist across view changes.
+## 🌟 Key Features & Capabilities
 
-## Tech Stack
+### 1. 🖱️ Intelligent Visual Canvas (React Flow)
+- **Interactive Drag-and-Drop Designer**: Place compute, networking, database, storage, security, and AI components onto an infinite canvas.
+- **Visual Grouping & Hierarchies**: Supports nested containment (Cloud Provider Boundary, VPCs, Subnets, and Visual Service Groups) without polluting generated Terraform with artificial resources.
+- **Smart Dataflow Connectivity**:
+  - **Live Connection Status**: Dataflow lines display real-time status indicators (🟢 green for verified configuration, 🔴 red when manual configuration or routing is required).
+  - **Multi-Port Edge Routing**: Automatic directional handle separation prevents overlapping wires.
+  - **Click-to-Highlight Tracing**: Click any dataflow line to visually highlight connected source and target resources.
+- **2D Architecture Auto-Layout**: Optimized grid and boundary distribution designed to lay out complex, enterprise architectures (such as multi-AZ deployments with disaster recovery regions) cleanly.
 
-- **Framework**: Next.js 15 (App Router)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS v4
-- **Canvas**: React Flow
-- **Icons**: Lucide React
+### 2. ⚡ Production-Ready Terraform Generation Engine
+- **Relationship-Aware HCL Generation**: Generates clean, idiomatic, multi-file Terraform code (`main.tf`, `variables.tf`, `outputs.tf`, `providers.tf`, `terraform.tfvars`).
+- **Extensive Cloud Catalog**:
+  - **AWS**: VPC, Multi-AZ Subnets, Internet & NAT Gateways, Route Tables, Application & Network Load Balancers (ALB/NLB), EC2, ECS, EKS, Lambda, RDS (Primary, Standby, Read Replicas), DynamoDB, DocumentDB, S3 (with lifecycle, encryption & public access blocks), CloudFront, Route53, WAF, KMS, IAM Roles & Policies, SQS, SNS, EventBridge, CloudWatch, **AWS Secrets Manager**, **Amazon GuardDuty**, **AWS Security Hub**, and **Amazon Bedrock AI**.
+  - **Azure**: Resource Groups, Virtual Networks (VNet), Subnets, Network Security Groups (NSG), Virtual Machines, App Services, AKS, Azure SQL, CosmosDB, Storage Accounts, Key Vault, Application Gateway, and Azure Container Apps.
+- **Dynamic Project Names & Variables**: Automatically slugifies project names and passes them through `variables.tf` and `terraform.tfvars`.
+- **HCL Safety & Guardrails**: Sanitizes all strings, escaping injections, and passes plans through strict guardrails (`ALLOWED_TERRAFORM_RESOURCE_TYPES`, region whitelisting, and public exposure checks).
+- **Auto-Sync Generation**: Automatically updates Terraform code in real-time as canvas nodes and wires change.
 
-## Getting Started
+### 3. 🛡️ Terraform Deployment Advisory & AI Remediation
+- **Context-Aware Advisory Center**: Scans architectures for cloud anti-patterns (e.g. internet-facing ALBs with only 1 public subnet, private subnets lacking NAT Gateways, or unsupported resource configurations).
+- **1-Click Manual Remediation**: Provides exact step-by-step guidance and a 1-click instant canvas fix button.
+- **Fix with AI**:
+  - Dynamic parameter modal prompting for required inputs (e.g. CIDR blocks, Availability Zones, or target service mappings).
+  - Executes instant remediation directly onto canvas resources.
+- **Fix All with AI**: One-click batch remediation engine that resolves all detected architecture warnings across the diagram.
+- **Synchronous Real-Time Updates**: Applying a fix immediately re-analyzes the architecture and clears resolved warnings with zero UI delay.
+
+### 4. 🔒 Cloud Security & Compliance Scanning
+- **Automated Policy Checks**: Detects open SSH/RDP ports (`0.0.0.0/0`), unencrypted storage, public databases, missing TLS certificates, and wildcard IAM administrative permissions.
+- **IAM Automation Modal**: Automatically derives and links least-privilege IAM roles and access policies for compute resources connecting to databases or storage.
+
+### 5. 💰 Real-Time Cost Estimation
+- **Granular Cost Calculation**: Calculates monthly baseline and bandwidth costs per resource based on machine sizes, database engines, and storage volumes.
+- **Multi-Currency Support**: View estimates in USD, EUR, GBP, INR, and other supported global currencies.
+
+### 6. 📁 Architecture Import & State Migration
+- **Terraform State & Canvas Import**: Import existing Terraform state files or CloudBuilder JSON diagrams; layout algorithms automatically reconstruct the architecture on canvas.
+
+---
+
+## 🛠️ Technology Stack
+
+| Layer | Technologies |
+|---|---|
+| **Framework** | Next.js 15 (App Router, Server Actions) |
+| **Language** | TypeScript (Strict mode) |
+| **Styling** | Vanilla CSS & Tailwind CSS v4 |
+| **Canvas & Graph** | React Flow, Custom SVGs, SVG marker dataflow paths |
+| **Icons** | Lucide React, Custom Cloud Provider SVG Icon Suite |
+| **Database & ORM** | PostgreSQL, Prisma 8 (Prisma Next) |
+| **Testing** | Jest, React Testing Library, ts-node |
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
 
-- Node.js 18+
-- npm 9+
+- **Node.js**: v18.18+ or v20+
+- **npm**: v9+
+- **Docker** (optional, for local PostgreSQL database)
 
-### Installation
+### Installation & Local Setup
 
-```bash
-# Navigate to the project
-cd cloudbuilder
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/ajinkya-petabyte/cloudcraft.git
+   cd cloudcraft
+   ```
 
-# Install dependencies (already done if scaffolded)
-npm install
+2. **Install dependencies**:
+   ```bash
+   npm install
+   ```
 
-# Start a local PostgreSQL database (see docker-compose.yml)
-docker compose up -d
+3. **Configure Environment Variables**:
+   Create a `.env` file in the root directory (refer to `.env.example`):
+   ```env
+   DATABASE_URL="postgresql://postgres:postgres@localhost:5432/cloudbuilder"
+   ENCRYPTION_KEY="your-32-byte-hex-encryption-key"
+   PORT=3000
+   ```
 
-# Copy .env.example to .env and fill in DATABASE_URL / ENCRYPTION_KEY, then
-# create the schema in the fresh database
-npm run db:migrate   # or: npx prisma db init   (first-time / empty database)
+4. **Start Database (Optional Docker Compose)**:
+   ```bash
+   docker compose up -d
+   npm run db:migrate
+   ```
 
-# Start the development server
-npm run dev
-```
+5. **Run the Development Server**:
+   ```bash
+   npm run dev
+   ```
 
-If `db:migrate` fails with a `MARKER_MISMATCH` or `PATH_UNREACHABLE` error, the
-local database's schema state has drifted from `src/prisma/contract.prisma`
-(usually a stale Docker volume from a previous checkout). Since this is a
-disposable local dev database, the fastest fix is:
+6. Open your browser and navigate to [http://localhost:3000](http://localhost:3000).
 
-```bash
-npm run db:reset
-```
+---
 
-which recreates the Postgres container from scratch and reapplies the current
-contract.
+## 🧪 Testing & Quality Assurance
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-### Build for Production
-
-```bash
-npm run build
-npm start
-```
-
-### Background Workers (required for discovery and Terraform apply)
-
-Two operations run as durable jobs on [pg-boss](https://github.com/timgit/pg-boss)
-rather than inside the web server's request handler — the API route only
-enqueues the job (persisted in the same Postgres database via
-`DATABASE_URL`) and returns immediately. Separate, long-running worker
-processes actually execute them:
+CloudBuilder maintains a comprehensive test suite verifying canvas layouts, edge routing, Terraform generation safety, and warning analyzers.
 
 ```bash
-npm run worker:discovery        # cloud account discovery
-npm run worker:terraform-apply  # terraform apply (infrastructure deployment)
+# Run unit and integration tests
+npm test
+
+# Run specific test suites
+npx jest __tests__/terraformWarningAnalyzer.test.ts
+npx jest __tests__/planGuardrails.test.ts
+npx jest __tests__/prismLayoutOptimization.test.ts
+npx jest __tests__/edgeRoutingSeparation.test.ts
+
+# Verify TypeScript type safety
+npx tsc --noEmit
 ```
 
-Both must be running (each as its own process — not part of the Next.js
-server) for the corresponding operation to ever leave the "pending" state.
-They need the same `DATABASE_URL` and `ENCRYPTION_KEY` environment
-variables as the main app; the apply worker additionally needs the
-`terraform` CLI on PATH (see `.env.example`). See `lib/jobs/queue.ts`,
-`lib/jobs/discoveryJob.ts`, and `lib/jobs/terraformApplyJob.ts` for how the
-queues and jobs are defined, and `workers/discoveryWorker.ts` /
-`workers/terraformApplyWorker.ts` for the worker entrypoints.
+---
 
-Terraform plan generation (`POST /api/projects/:id/terraform/plan`) is
-NOT a background job — it's read-only against the target cloud account,
-so it runs synchronously and returns a plan summary + hash directly. Only
-`POST /api/projects/:id/terraform/apply` (confirming and running that
-exact plan) is durable/asynchronous, since it genuinely mutates
-infrastructure and can take a long time. See
-`lib/terraform/execution/TerraformExecutionService.ts` for the full gate
-list (admin-only, approved review + hash match, mandatory remote state
-backend, all destroy actions blocked).
-
-## Project Structure
+## 📂 Project Structure
 
 ```
-cloudbuilder/
-├── app/               # Next.js App Router
-│   ├── page.tsx       # Root page (shell)
-│   └── layout.tsx     # Root layout with AppProvider
+cloudcraft/
+├── app/                             # Next.js App Router (Layouts, API routes, Shell)
+│   ├── api/                         # Backend API endpoints (Projects, Terraform, Deploy)
+│   ├── layout.tsx                   # App root provider wrapper
+│   └── page.tsx                     # Main application shell
 ├── components/
-│   ├── canvas/        # InfraCanvas, CloudNode, ResourcePalette, PropertiesPanel
-│   ├── dashboard/     # Dashboard with project cards
-│   ├── layout/        # Sidebar, TopBar
-│   └── panels/        # TerraformPanel, SecurityPanel, CostPanel, DeployPanel
+│   ├── canvas/                      # React Flow canvas, CloudNode, ContainerNode, Toolbars
+│   ├── dashboard/                   # Project overview, metrics, and template browser
+│   ├── layout/                      # TopBar, Sidebar, App Header navigation
+│   ├── panels/                      # TerraformPanel, TerraformFixModal, SecurityPanel, CostPanel
+│   └── wizard/                      # Architecture initialization wizard
 ├── context/
-│   └── AppContext.tsx  # Global state (projects, active view, canvas sync)
+│   └── AppContext.tsx               # Global reactive application state
 ├── lib/
-│   ├── resources/
-│   │   ├── aws.ts     # AWS resource definitions + security rules
-│   │   ├── azure.ts   # Azure resource definitions + security rules
-│   │   └── index.ts   # Aggregated exports
-│   ├── analysis.ts    # Security scanning, cost calculation, Terraform generation
-│   └── mockData.ts    # Sample projects with pre-built architectures
-└── types/
-    └── index.ts       # All TypeScript interfaces
+│   ├── canvas/                      # Auto-layout algorithms, dataflow line status computations
+│   ├── cloud/                       # State and template file import parsers
+│   ├── engines/
+│   │   ├── relationship/            # Visual relation and network connectivity engine
+│   │   └── terraform/               # Production Terraform HCL generator & safety analyzers
+│   ├── resources/                   # Multi-cloud resource catalog definitions & pricing
+│   └── terraform/                   # Warning analyzer, remediation actions, guardrails
+├── __tests__/                       # Automated Jest test suites
+└── types/                           # Central TypeScript definitions and models
 ```
 
-## Adding New Resources
+---
 
-To add a new resource type, add an entry to [`lib/resources/aws.ts`](lib/resources/aws.ts) or [`lib/resources/azure.ts`](lib/resources/azure.ts):
+## 📄 License
 
-```typescript
-{
-  type: 'aws_lambda',           // Unique resource type key
-  label: 'Lambda Function',     // Display name
-  provider: 'aws',
-  category: 'compute',
-  icon: 'λ',                    // Short icon label (2-4 chars)
-  color: '#F59E0B',             // Node color
-  bgColor: '#FEF3C7',           // Node background
-  borderColor: '#D97706',
-  monthlyBaseCost: 0,
-  defaultConfig: { functionName: 'my-function', runtime: 'nodejs18.x' },
-  configSchema: [
-    { key: 'functionName', label: 'Function Name', type: 'text', defaultValue: 'my-function', required: true },
-    { key: 'runtime', label: 'Runtime', type: 'select', defaultValue: 'nodejs18.x', options: [...] },
-  ],
-  securityRules: [
-    {
-      id: 'lambda-env-secrets',
-      severity: 'high',
-      check: (config) => config.hasPlaintextSecrets ? 'Secrets in env vars' : null,
-      message: 'Lambda has secrets in environment variables',
-      recommendation: 'Use AWS Secrets Manager or Parameter Store',
-    },
-  ],
-}
-```
-
-That's it — the resource will automatically appear in the palette, properties panel, security scanner, cost estimator, and Terraform generator.
-
-## Notes
-
-- Projects, versions, and org/team data are persisted in PostgreSQL via Prisma — not in-memory. Refresh does not reset your data.
-- Cloud account credentials (for live infrastructure import) are encrypted at rest with `ENCRYPTION_KEY` (AES-256-GCM); see `.env.example`.
-- Cost estimates and Terraform generation call real API routes backed by the engines in `lib/engines/`; if the API is unreachable, panels fall back to a deterministic offline estimate and say so in the UI — this is never silently presented as live data.
-- AWS on-demand pricing is a static, hand-maintained reference table, not a live pricing API call; Azure pricing is fetched live from the Azure Retail Prices API. Neither reflects negotiated discounts, Reserved Instances, or Savings Plans.
+This project is licensed under the MIT License.

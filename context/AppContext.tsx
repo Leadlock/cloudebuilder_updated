@@ -56,6 +56,8 @@ export interface AppState {
   isLoginModalOpen: boolean;
   /** True once the initial /api/auth/session check has resolved (success or failure) */
   sessionChecked: boolean;
+  /** Whether the interactive workflow walkthrough modal is open */
+  isTourOpen: boolean;
 }
 
 type Action =
@@ -86,6 +88,7 @@ type Action =
   | { type: 'APPLY_COST_OPTIMIZATION'; optimizationId: string; nodeId?: string }
   | { type: 'SET_USER'; user: AuthUser | null }
   | { type: 'SET_LOGIN_MODAL'; open: boolean }
+  | { type: 'SET_TOUR_MODAL'; open: boolean }
   | { type: 'SET_SESSION_CHECKED' }
   | { type: 'INIT_BLANK_ARCHITECTURE'; provider?: CloudProvider; providerMode?: ProviderMode; scaleProfile?: ScaleProfile; nodes?: CanvasNode[]; edges?: CanvasEdge[] }
   | { type: 'SET_SCALE_PROFILE'; scaleProfile: ScaleProfile; adaptScale?: boolean }
@@ -283,6 +286,8 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case 'SET_LOGIN_MODAL':
       return { ...state, isLoginModalOpen: action.open };
+    case 'SET_TOUR_MODAL':
+      return { ...state, isTourOpen: action.open };
     case 'SET_SESSION_CHECKED':
       return { ...state, sessionChecked: true };
 
@@ -984,6 +989,7 @@ export const initialState: AppState = {
   currentUser: null,
   isLoginModalOpen: false,
   sessionChecked: false,
+  isTourOpen: false,
 };
 
 // ─── Context ──────────────────────────────────────────────────────────────────

@@ -34,6 +34,10 @@ export function getResourcesByProvider(provider: CloudProvider): ResourceDefinit
 }
 
 export function getResourceDefinition(type: string): ResourceDefinition | undefined {
+  if (type === 'aws_secrets_manager') return allCatalogResources.find((r) => r.type === 'aws_secretsmanager');
+  if (type === 'aws_guardduty') return allCatalogResources.find((r) => r.type === 'aws_guardduty_detector');
+  if (type === 'aws_security_hub') return allCatalogResources.find((r) => r.type === 'aws_security_hub_account');
+  if (type === 'aws_bedrock') return allCatalogResources.find((r) => r.type === 'aws_bedrock_custom_model');
   return allCatalogResources.find((r) => r.type === type);
 }
 

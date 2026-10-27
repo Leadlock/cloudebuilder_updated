@@ -272,3 +272,40 @@ export function AzureAppServiceIcon({ size = 24, className = '' }: IconProps) {
     </svg>
   );
 }
+
+// ─── Azure Entra ID User ──────────────────────────────────────────────────────
+export function AzureEntraUserIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#0078D4" fillOpacity="0.15" />
+      <circle cx="24" cy="17" r="6.5" fill="#0078D4" />
+      <path d="M13 33c0-4.8 5-8 11-8s11 3.2 11 8v2H13v-2z" fill="#0078D4" />
+      <polygon points="24,6 29,12 24,18 19,12" fill="#50E6FF" fillOpacity="0.8" />
+    </svg>
+  );
+}
+
+// ─── Azure Managed Identity ───────────────────────────────────────────────────
+export function AzureManagedIdentityIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#0078D4" fillOpacity="0.15" />
+      <rect x="10" y="10" width="28" height="28" rx="4" stroke="#0078D4" strokeWidth="2.5" fill="#0078D4" fillOpacity="0.15" />
+      <circle cx="24" cy="20" r="5" fill="#0078D4" />
+      <path d="M16 32c0-3.5 3.5-5.5 8-5.5s8 2 8 5.5" stroke="#0078D4" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+      <circle cx="34" cy="14" r="3.5" fill="#10B981" />
+    </svg>
+  );
+}
+
+// ─── Azure Role Assignment (RBAC) ─────────────────────────────────────────────
+export function AzureRbacIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#0078D4" fillOpacity="0.15" />
+      <path d="M24 8l13 5v11c0 8.5-5.5 14-13 16-7.5-2-13-7.5-13-16V13l13-5z" fill="#0078D4" />
+      <path d="M24 16v12m-4-6h8" stroke="#FFF" strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+

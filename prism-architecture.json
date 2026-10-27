@@ -1,0 +1,532 @@
+{
+  "format": "cloudbuilder.canvas.v1",
+  "name": "PRISM — AWS Production Architecture + Osaka DR",
+  "provider": "aws",
+  "description": "Multi-AZ AWS production architecture in ap-south-1 with Osaka DR cross-region replication, Edge CDN/WAF, and AI/Security governance suite",
+  "nodes": [
+    {
+      "id": "s3grp",
+      "type": "containerNode",
+      "resourceType": "containerNode",
+      "provider": "aws",
+      "label": "S3 Storage (Regional)",
+      "position": { "x": 260, "y": 140 },
+      "width": 500,
+      "height": 450
+    },
+    {
+      "id": "loggrp",
+      "type": "containerNode",
+      "resourceType": "containerNode",
+      "provider": "aws",
+      "label": "Logging Services",
+      "position": { "x": 260, "y": 660 },
+      "width": 500,
+      "height": 250
+    },
+    {
+      "id": "dr",
+      "type": "containerNode",
+      "resourceType": "containerNode",
+      "provider": "aws",
+      "label": "AWS Region: ap-northeast-3 (Osaka) — DR",
+      "position": { "x": 200, "y": 980 },
+      "width": 700,
+      "height": 260
+    },
+    {
+      "id": "edgegrp",
+      "type": "containerNode",
+      "resourceType": "containerNode",
+      "provider": "aws",
+      "label": "Edge (Global)",
+      "position": { "x": 980, "y": 100 },
+      "width": 740,
+      "height": 180
+    },
+    {
+      "id": "vpc",
+      "type": "containerNode",
+      "resourceType": "aws_vpc",
+      "provider": "aws",
+      "label": "VPC 10.0.0.0/16 (ap-south-1)",
+      "position": { "x": 950, "y": 340 },
+      "width": 1700,
+      "height": 1320,
+      "config": {
+        "name": "VPC 10.0.0.0/16 (ap-south-1)",
+        "cidrBlock": "10.0.0.0/16",
+        "region": "ap-south-1"
+      }
+    },
+    {
+      "id": "pub1",
+      "type": "containerNode",
+      "resourceType": "aws_subnet",
+      "provider": "aws",
+      "label": "Public Subnet AZ-1",
+      "position": { "x": 1000, "y": 570 },
+      "width": 720,
+      "height": 240,
+      "groupId": "vpc",
+      "config": {
+        "name": "Public Subnet AZ-1",
+        "cidrBlock": "10.0.1.0/24",
+        "mapPublicIpOnLaunch": true
+      }
+    },
+    {
+      "id": "pub2",
+      "type": "containerNode",
+      "resourceType": "aws_subnet",
+      "provider": "aws",
+      "label": "Public Subnet AZ-2",
+      "position": { "x": 1860, "y": 570 },
+      "width": 720,
+      "height": 240,
+      "groupId": "vpc",
+      "config": {
+        "name": "Public Subnet AZ-2",
+        "cidrBlock": "10.0.2.0/24",
+        "mapPublicIpOnLaunch": true
+      }
+    },
+    {
+      "id": "priv1",
+      "type": "containerNode",
+      "resourceType": "aws_subnet",
+      "provider": "aws",
+      "label": "Private Subnet AZ-1",
+      "position": { "x": 1000, "y": 940 },
+      "width": 720,
+      "height": 250,
+      "groupId": "vpc",
+      "config": {
+        "name": "Private Subnet AZ-1",
+        "cidrBlock": "10.0.10.0/24"
+      }
+    },
+    {
+      "id": "priv2",
+      "type": "containerNode",
+      "resourceType": "aws_subnet",
+      "provider": "aws",
+      "label": "Private Subnet AZ-2",
+      "position": { "x": 1860, "y": 940 },
+      "width": 720,
+      "height": 250,
+      "groupId": "vpc",
+      "config": {
+        "name": "Private Subnet AZ-2",
+        "cidrBlock": "10.0.20.0/24"
+      }
+    },
+    {
+      "id": "dbgrp",
+      "type": "containerNode",
+      "resourceType": "aws_subnet",
+      "provider": "aws",
+      "label": "Database Subnet Group",
+      "position": { "x": 1000, "y": 1320 },
+      "width": 1580,
+      "height": 260,
+      "groupId": "vpc",
+      "config": {
+        "name": "Database Subnet Group",
+        "cidrBlock": "10.0.30.0/23"
+      }
+    },
+    {
+      "id": "secgrp",
+      "type": "containerNode",
+      "resourceType": "containerNode",
+      "provider": "aws",
+      "label": "AI, Security, Observability & Governance",
+      "position": { "x": 2810, "y": 120 },
+      "width": 1140,
+      "height": 1160
+    },
+
+    {
+      "id": "users",
+      "type": "cloudNode",
+      "resourceType": "aws_client",
+      "provider": "aws",
+      "label": "Users",
+      "position": { "x": 80, "y": 160 },
+      "config": { "description": "End users" }
+    },
+    {
+      "id": "s3front",
+      "type": "cloudNode",
+      "resourceType": "aws_s3",
+      "provider": "aws",
+      "label": "Amazon S3",
+      "position": { "x": 300, "y": 220 },
+      "groupId": "s3grp",
+      "config": { "description": "Frontend Bucket — static site" }
+    },
+    {
+      "id": "s3upload",
+      "type": "cloudNode",
+      "resourceType": "aws_s3",
+      "provider": "aws",
+      "label": "Amazon S3",
+      "position": { "x": 550, "y": 220 },
+      "groupId": "s3grp",
+      "config": { "description": "Uploads Bucket — user files" }
+    },
+    {
+      "id": "s3config",
+      "type": "cloudNode",
+      "resourceType": "aws_s3",
+      "provider": "aws",
+      "label": "Amazon S3",
+      "position": { "x": 300, "y": 420 },
+      "groupId": "s3grp",
+      "config": { "description": "Config Bucket — config snapshots" }
+    },
+    {
+      "id": "s3ctrail",
+      "type": "cloudNode",
+      "resourceType": "aws_s3",
+      "provider": "aws",
+      "label": "Amazon S3",
+      "position": { "x": 550, "y": 420 },
+      "groupId": "s3grp",
+      "config": { "description": "CloudTrail Logs Bucket — audit trail" }
+    },
+    {
+      "id": "configsvc",
+      "type": "cloudNode",
+      "resourceType": "aws_config",
+      "provider": "aws",
+      "label": "AWS Config",
+      "position": { "x": 300, "y": 740 },
+      "groupId": "loggrp",
+      "config": { "description": "Compliance recorder" }
+    },
+    {
+      "id": "ctrailsvc",
+      "type": "cloudNode",
+      "resourceType": "aws_cloudtrail",
+      "provider": "aws",
+      "label": "AWS CloudTrail",
+      "position": { "x": 550, "y": 740 },
+      "groupId": "loggrp",
+      "config": { "description": "API activity logging" }
+    },
+    {
+      "id": "cf",
+      "type": "cloudNode",
+      "resourceType": "aws_cloudfront",
+      "provider": "aws",
+      "label": "BigRock",
+      "position": { "x": 1050, "y": 165 },
+      "groupId": "edgegrp",
+      "config": { "description": "CDN" }
+    },
+    {
+      "id": "waf",
+      "type": "cloudNode",
+      "resourceType": "aws_waf",
+      "provider": "aws",
+      "label": "Cloudflare",
+      "position": { "x": 1440, "y": 165 },
+      "groupId": "edgegrp",
+      "config": { "description": "WAF / L7 protection" }
+    },
+    {
+      "id": "igw",
+      "type": "cloudNode",
+      "resourceType": "aws_igw",
+      "provider": "aws",
+      "label": "Internet Gateway",
+      "position": { "x": 1180, "y": 420 },
+      "groupId": "vpc",
+      "config": { "name": "igw-main", "description": "Internet Gateway" }
+    },
+    {
+      "id": "alb",
+      "type": "cloudNode",
+      "resourceType": "aws_alb",
+      "provider": "aws",
+      "label": "Elastic Load Balancing",
+      "position": { "x": 1760, "y": 420 },
+      "groupId": "vpc",
+      "config": { "name": "alb-main", "description": "Application Load Balancer" }
+    },
+    {
+      "id": "nat1",
+      "type": "cloudNode",
+      "resourceType": "aws_nat",
+      "provider": "aws",
+      "label": "NAT Gateway",
+      "position": { "x": 1330, "y": 660 },
+      "groupId": "pub1",
+      "config": { "name": "nat-az1", "description": "AZ-1" }
+    },
+    {
+      "id": "nat2",
+      "type": "cloudNode",
+      "resourceType": "aws_nat",
+      "provider": "aws",
+      "label": "NAT Gateway",
+      "position": { "x": 2190, "y": 660 },
+      "groupId": "pub2",
+      "config": { "name": "nat-az2", "description": "AZ-2" }
+    },
+    {
+      "id": "ec2a",
+      "type": "cloudNode",
+      "resourceType": "aws_ec2",
+      "provider": "aws",
+      "label": "Amazon EC2",
+      "position": { "x": 1080, "y": 1030 },
+      "groupId": "priv1",
+      "config": { "name": "ec2-app-az1", "instanceType": "t3.medium", "os": "Amazon Linux 2", "description": "Backend API — AZ-1" }
+    },
+    {
+      "id": "ebsa",
+      "type": "cloudNode",
+      "resourceType": "aws_ebs",
+      "provider": "aws",
+      "label": "Amazon EBS",
+      "position": { "x": 1520, "y": 1030 },
+      "groupId": "priv1",
+      "config": { "name": "ebs-vol-az1", "size": 100, "volumeType": "gp3", "description": "Encrypted volume — AZ-1" }
+    },
+    {
+      "id": "ec2b",
+      "type": "cloudNode",
+      "resourceType": "aws_ec2",
+      "provider": "aws",
+      "label": "Amazon EC2",
+      "position": { "x": 1940, "y": 1030 },
+      "groupId": "priv2",
+      "config": { "name": "ec2-app-az2", "instanceType": "t3.medium", "os": "Amazon Linux 2", "description": "Backend API — AZ-2" }
+    },
+    {
+      "id": "ebsb",
+      "type": "cloudNode",
+      "resourceType": "aws_ebs",
+      "provider": "aws",
+      "label": "Amazon EBS",
+      "position": { "x": 2380, "y": 1030 },
+      "groupId": "priv2",
+      "config": { "name": "ebs-vol-az2", "size": 100, "volumeType": "gp3", "description": "Encrypted volume — AZ-2" }
+    },
+    {
+      "id": "rdsp",
+      "type": "cloudNode",
+      "resourceType": "aws_rds",
+      "provider": "aws",
+      "label": "Amazon RDS",
+      "position": { "x": 1130, "y": 1410 },
+      "groupId": "dbgrp",
+      "config": { "name": "rds-primary", "engine": "postgres", "instanceClass": "db.r6g.xlarge", "description": "PostgreSQL Primary" }
+    },
+    {
+      "id": "rdss",
+      "type": "cloudNode",
+      "resourceType": "aws_rds",
+      "provider": "aws",
+      "label": "Amazon RDS",
+      "position": { "x": 1690, "y": 1410 },
+      "groupId": "dbgrp",
+      "config": { "name": "rds-standby", "engine": "postgres", "instanceClass": "db.r6g.xlarge", "description": "PostgreSQL Standby" }
+    },
+    {
+      "id": "rdsr",
+      "type": "cloudNode",
+      "resourceType": "aws_rds",
+      "provider": "aws",
+      "label": "Amazon RDS",
+      "position": { "x": 2250, "y": 1410 },
+      "groupId": "dbgrp",
+      "config": { "name": "rds-replica", "engine": "postgres", "instanceClass": "db.r6g.xlarge", "description": "Read Replica" }
+    },
+    {
+      "id": "bedrock",
+      "type": "cloudNode",
+      "resourceType": "aws_bedrock_custom_model",
+      "provider": "aws",
+      "label": "Amazon Bedrock",
+      "position": { "x": 2780, "y": 230 },
+      "groupId": "secgrp",
+      "config": { "description": "AI analysis" }
+    },
+    {
+      "id": "secrets",
+      "type": "cloudNode",
+      "resourceType": "aws_secretsmanager",
+      "provider": "aws",
+      "label": "AWS Secrets Manager",
+      "position": { "x": 3120, "y": 230 },
+      "groupId": "secgrp",
+      "config": { "description": "Credentials" }
+    },
+    {
+      "id": "kms",
+      "type": "cloudNode",
+      "resourceType": "aws_kms",
+      "provider": "aws",
+      "label": "AWS KMS",
+      "position": { "x": 3460, "y": 230 },
+      "groupId": "secgrp",
+      "config": { "description": "RDS/S3/EBS keys" }
+    },
+    {
+      "id": "iam_ec2",
+      "type": "cloudNode",
+      "resourceType": "aws_iam",
+      "provider": "aws",
+      "label": "AWS IAM Role",
+      "position": { "x": 2780, "y": 480 },
+      "groupId": "secgrp",
+      "config": { "description": "EC2 App Profile" }
+    },
+    {
+      "id": "iam_crr",
+      "type": "cloudNode",
+      "resourceType": "aws_iam",
+      "provider": "aws",
+      "label": "AWS IAM Role",
+      "position": { "x": 3120, "y": 480 },
+      "groupId": "secgrp",
+      "config": { "description": "S3 CRR (Osaka)" }
+    },
+    {
+      "id": "iam_config",
+      "type": "cloudNode",
+      "resourceType": "aws_iam",
+      "provider": "aws",
+      "label": "AWS IAM Role",
+      "position": { "x": 3460, "y": 480 },
+      "groupId": "secgrp",
+      "config": { "description": "Config Recorder" }
+    },
+    {
+      "id": "iam_rds",
+      "type": "cloudNode",
+      "resourceType": "aws_iam",
+      "provider": "aws",
+      "label": "AWS IAM Role",
+      "position": { "x": 2780, "y": 730 },
+      "groupId": "secgrp",
+      "config": { "description": "RDS Monitoring" }
+    },
+    {
+      "id": "guard",
+      "type": "cloudNode",
+      "resourceType": "aws_guardduty_detector",
+      "provider": "aws",
+      "label": "Amazon GuardDuty",
+      "position": { "x": 3120, "y": 730 },
+      "groupId": "secgrp",
+      "config": { "description": "Threat detection" }
+    },
+    {
+      "id": "shub",
+      "type": "cloudNode",
+      "resourceType": "aws_security_hub_account",
+      "provider": "aws",
+      "label": "AWS Security Hub",
+      "position": { "x": 3460, "y": 730 },
+      "groupId": "secgrp",
+      "config": { "description": "Aggregated findings" }
+    },
+    {
+      "id": "cw",
+      "type": "cloudNode",
+      "resourceType": "aws_cloudwatch",
+      "provider": "aws",
+      "label": "Amazon CloudWatch",
+      "position": { "x": 2780, "y": 960 },
+      "groupId": "secgrp",
+      "config": { "description": "Logs/metrics/alarms" }
+    },
+    {
+      "id": "sns",
+      "type": "cloudNode",
+      "resourceType": "aws_sns",
+      "provider": "aws",
+      "label": "Amazon SNS",
+      "position": { "x": 3120, "y": 960 },
+      "groupId": "secgrp",
+      "config": { "description": "Ops notifications" }
+    },
+    {
+      "id": "s3frontcrr",
+      "type": "cloudNode",
+      "resourceType": "aws_s3",
+      "provider": "aws",
+      "label": "Amazon S3",
+      "position": { "x": 240, "y": 1070 },
+      "groupId": "dr",
+      "config": { "description": "Frontend — CRR copy" }
+    },
+    {
+      "id": "s3uploadcrr",
+      "type": "cloudNode",
+      "resourceType": "aws_s3",
+      "provider": "aws",
+      "label": "Amazon S3",
+      "position": { "x": 460, "y": 1070 },
+      "groupId": "dr",
+      "config": { "description": "Uploads — CRR copy" }
+    },
+    {
+      "id": "s3ctrailcrr",
+      "type": "cloudNode",
+      "resourceType": "aws_s3",
+      "provider": "aws",
+      "label": "Amazon S3",
+      "position": { "x": 680, "y": 1070 },
+      "groupId": "dr",
+      "config": { "description": "CloudTrail Logs — CRR copy" }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "users", "target": "s3front", "edgeType": "network", "label": "HTTPS (static)" },
+    { "id": "e2", "source": "users", "target": "cf", "edgeType": "network", "label": "HTTPS (API)" },
+    { "id": "e3", "source": "cf", "target": "waf", "edgeType": "network", "label": "Protected" },
+    { "id": "e4", "source": "waf", "target": "alb", "edgeType": "network", "label": "Routes to" },
+    { "id": "e-igw-nat1", "source": "igw", "target": "nat1", "edgeType": "network", "label": "Inbound" },
+    { "id": "e-alb-ec2a", "source": "alb", "target": "ec2a", "edgeType": "network", "label": "Forward (AZ-1)" },
+    { "id": "e-alb-ec2b", "source": "alb", "target": "ec2b", "edgeType": "network", "label": "Forward (AZ-2)" },
+    { "id": "e7", "source": "ec2a", "target": "ebsa", "edgeType": "data", "label": "attached" },
+    { "id": "e8", "source": "ec2b", "target": "ebsb", "edgeType": "data", "label": "attached" },
+    { "id": "e15", "source": "ec2a", "target": "nat1", "edgeType": "network", "label": "Outbound internet" },
+    { "id": "e16", "source": "ec2b", "target": "nat2", "edgeType": "network", "label": "Outbound internet" },
+    { "id": "e9", "source": "ec2a", "target": "rdsp", "edgeType": "data", "label": "DB access" },
+    { "id": "e10", "source": "ec2b", "target": "rdsp", "edgeType": "data", "label": "DB access" },
+    { "id": "e10b", "source": "ec2b", "target": "rdsr", "edgeType": "data", "label": "DB access" },
+    { "id": "e11", "source": "rdsp", "target": "rdss", "edgeType": "data", "label": "Multi-AZ sync" },
+    { "id": "e12", "source": "rdsp", "target": "rdsr", "edgeType": "data", "label": "Replication" },
+
+    { "id": "e-iam-ec2a", "source": "iam_ec2", "target": "ec2a", "edgeType": "network", "label": "Instance Profile (AZ-1)" },
+    { "id": "e-iam-ec2b", "source": "iam_ec2", "target": "ec2b", "edgeType": "network", "label": "Instance Profile (AZ-2)" },
+    { "id": "e-iam-bedrock", "source": "iam_ec2", "target": "bedrock", "edgeType": "data", "label": "InvokeModel" },
+    { "id": "e-iam-secrets", "source": "iam_ec2", "target": "secrets", "edgeType": "data", "label": "GetSecretValue" },
+    { "id": "e-iam-kms", "source": "iam_ec2", "target": "kms", "edgeType": "data", "label": "Decrypt Key" },
+    { "id": "e-iam-cw", "source": "iam_ec2", "target": "cw", "edgeType": "data", "label": "PutLogEvents" },
+
+    { "id": "e-iam-crr-s3", "source": "iam_crr", "target": "s3upload", "edgeType": "data", "label": "Source Read" },
+    { "id": "e-iam-crr-dr", "source": "iam_crr", "target": "s3uploadcrr", "edgeType": "data", "label": "ReplicateObject (Osaka)" },
+
+    { "id": "e-iam-cfg-svc", "source": "iam_config", "target": "configsvc", "edgeType": "network", "label": "Assumed by Config" },
+    { "id": "e-iam-cfg-s3", "source": "iam_config", "target": "s3config", "edgeType": "data", "label": "PutObject snapshots" },
+
+    { "id": "e-iam-rds", "source": "iam_rds", "target": "rdsp", "edgeType": "data", "label": "OS Monitoring" },
+    { "id": "e-iam-rds-cw", "source": "iam_rds", "target": "cw", "edgeType": "data", "label": "Streams DB metrics" },
+
+    { "id": "e19", "source": "guard", "target": "shub", "edgeType": "data", "label": "Findings" },
+    { "id": "e20", "source": "cw", "target": "sns", "edgeType": "network", "label": "Alarms" },
+    { "id": "e21", "source": "ctrailsvc", "target": "s3ctrail", "edgeType": "data", "label": "Writes logs to" },
+    { "id": "e22", "source": "configsvc", "target": "s3config", "edgeType": "data", "label": "Writes snapshots to" },
+    { "id": "e23", "source": "s3front", "target": "s3frontcrr", "edgeType": "data", "label": "CRR" },
+    { "id": "e24", "source": "s3upload", "target": "s3uploadcrr", "edgeType": "data", "label": "CRR" },
+    { "id": "e25", "source": "s3ctrail", "target": "s3ctrailcrr", "edgeType": "data", "label": "CRR" }
+  ]
+}

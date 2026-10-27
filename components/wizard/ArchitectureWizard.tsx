@@ -243,7 +243,7 @@ export default function ArchitectureWizard() {
                 <div>
                   <label className={clsx("text-sm mb-2 block font-medium", isLight ? "text-slate-700" : "text-gray-400")}>Environment</label>
                   <div className="flex gap-3">
-                    {(['development', 'staging', 'production'] as Environment[]).map((e) => (
+                    {(['production'] as Environment[]).map((e) => (
                       <button key={e} onClick={() => set('environment', e)}
                         className={clsx('flex-1 py-2.5 rounded-lg border text-sm font-semibold capitalize transition-all',
                           opts.environment === e 

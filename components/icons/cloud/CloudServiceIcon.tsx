@@ -12,6 +12,7 @@ import {
   AwsEcsIcon,
   AwsEksIcon,
   AwsIamIcon,
+  AwsIamUserIcon,
   AwsKmsIcon,
   AwsCloudwatchIcon,
   AwsIgwIcon,
@@ -49,6 +50,9 @@ import {
   AzureNsgIcon,
   AzureNicIcon,
   AzureAppServiceIcon,
+  AzureEntraUserIcon,
+  AzureManagedIdentityIcon,
+  AzureRbacIcon,
   AzureRedisIcon,
   AzurePostgresIcon,
   AzureFrontDoorIcon,
@@ -140,6 +144,18 @@ export function CloudServiceIcon({
   if (type.includes('eks') || (type.includes('k8s') && type.startsWith('aws_'))) {
     return <AwsEksIcon size={size} className={className} />;
   }
+  if (type.includes('iam_user') || type === 'aws_iam_user') {
+    return <AwsIamUserIcon size={size} className={className} />;
+  }
+  if (type.includes('ad_user') || type.includes('entra') || type === 'azure_ad_user') {
+    return <AzureEntraUserIcon size={size} className={className} />;
+  }
+  if (type.includes('managed_identity') || type.includes('user_assigned_identity') || type.includes('msi')) {
+    return <AzureManagedIdentityIcon size={size} className={className} />;
+  }
+  if (type.includes('role_assignment') || type.includes('rbac')) {
+    return <AzureRbacIcon size={size} className={className} />;
+  }
   if (type.includes('iam') || type.includes('role')) {
     return <AwsIamIcon size={size} className={className} />;
   }
@@ -172,11 +188,60 @@ export function CloudServiceIcon({
   if (type.includes('route53') || type.includes('r53') || type.includes('dns')) {
     return <AwsRouteTableIcon size={size} className={className} />;
   }
-  if (type.includes('waf')) {
-    return provider === 'azure' || type.startsWith('azure_') ? (
-      <AzureNsgIcon size={size} className={className} />
-    ) : (
-      <AwsSgIcon size={size} className={className} />
+  if (type.includes('bedrock') || type.includes('ai')) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+        <rect width="48" height="48" rx="8" fill="#059669" fillOpacity="0.16" />
+        <path d="M24 10l9 5.2v10.4L24 31l-9-5.4V15.2L24 10z" stroke="#059669" strokeWidth="2.5" fill="#10B981" fillOpacity="0.3" />
+        <circle cx="24" cy="20.5" r="4" fill="#059669" />
+        <path d="M19 33l5 5 5-5" stroke="#059669" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (type.includes('guardduty') || type.includes('guard')) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+        <rect width="48" height="48" rx="8" fill="#E11D48" fillOpacity="0.16" />
+        <path d="M24 8l14 6v10c0 9-6 16-14 18-8-2-14-9-14-18V14l14-6z" stroke="#E11D48" strokeWidth="2.5" fill="#F43F5E" fillOpacity="0.25" />
+        <circle cx="24" cy="23" r="5" fill="#E11D48" />
+        <circle cx="24" cy="23" r="2" fill="#FFF" />
+      </svg>
+    );
+  }
+  if (type.includes('security_hub') || type.includes('shub')) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+        <rect width="48" height="48" rx="8" fill="#DC2626" fillOpacity="0.16" />
+        <path d="M24 8l13 7v10c0 8.5-5.5 15.5-13 17.5-7.5-2-13-9-13-17.5V15l13-7z" stroke="#DC2626" strokeWidth="2.5" />
+        <path d="M18 24h12M24 18v12" stroke="#DC2626" strokeWidth="2.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (type.includes('cloudtrail') || type.includes('trail')) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+        <rect width="48" height="48" rx="8" fill="#DB2777" fillOpacity="0.16" />
+        <path d="M12 36c4-12 10-18 24-22M12 28c3-8 8-12 18-14" stroke="#DB2777" strokeWidth="2.5" strokeLinecap="round" />
+        <circle cx="36" cy="14" r="4" fill="#DB2777" />
+      </svg>
+    );
+  }
+  if (type.includes('config')) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+        <rect width="48" height="48" rx="8" fill="#9333EA" fillOpacity="0.16" />
+        <rect x="12" y="12" width="24" height="24" rx="4" stroke="#9333EA" strokeWidth="2.5" />
+        <path d="M18 20h12M18 26h8M18 32h5" stroke="#9333EA" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (type.includes('waf') || type.includes('cloudflare')) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+        <rect width="48" height="48" rx="8" fill="#F97316" fillOpacity="0.16" />
+        <path d="M24 9l12 5.5v9c0 8-5 14-12 16.5-7-2.5-12-8.5-12-16.5v-9L24 9z" stroke="#F97316" strokeWidth="2.5" fill="#FB923C" fillOpacity="0.25" />
+        <path d="M18 24l4 4 8-8" stroke="#F97316" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
     );
   }
   if (type.includes('elasticache') || (type.includes('cache') && !type.includes('azure_') && provider !== 'azure')) {

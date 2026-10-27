@@ -23,7 +23,7 @@ import {
 import clsx from 'clsx';
 
 export default function ReviewWorkflowPanel() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const isLight = state.theme === 'light';
   const activeProject = useActiveProject();
   const [reviews, setReviews] = useState<ArchitectureReview[]>([]);
@@ -236,17 +236,27 @@ export default function ReviewWorkflowPanel() {
           </p>
         </div>
 
-        <button
-          onClick={fetchReviews}
-          disabled={loading}
-          className={clsx(
-            "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border",
-            isLight ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-100 shadow-sm" : "bg-slate-800 border-transparent hover:bg-slate-700 text-slate-300"
-          )}
-        >
-          <RotateCcw className={clsx('w-3.5 h-3.5', loading && 'animate-spin')} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchReviews}
+            disabled={loading}
+            className={clsx(
+              "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border",
+              isLight ? "bg-white border-slate-200 text-slate-700 hover:bg-slate-100 shadow-sm" : "bg-slate-800 border-transparent hover:bg-slate-700 text-slate-300"
+            )}
+          >
+            <RotateCcw className={clsx('w-3.5 h-3.5', loading && 'animate-spin')} />
+            Refresh
+          </button>
+          <button
+            id="btn-review-next-stacks"
+            onClick={() => dispatch({ type: 'SET_VIEW', view: 'stacks' })}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-all shadow-sm active:scale-98"
+            title="Proceed to logical next phase: Stacks (DAG) Orchestration"
+          >
+            <span>Next: Stacks (DAG) →</span>
+          </button>
+        </div>
       </div>
 
       {msg && (
@@ -403,6 +413,17 @@ export default function ReviewWorkflowPanel() {
                     Request Changes
                   </button>
                 </>
+              )}
+
+              {latestReview?.status === 'approved' && (
+                <button
+                  id="btn-approved-proceed-to-stacks"
+                  onClick={() => dispatch({ type: 'SET_VIEW', view: 'stacks' })}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-all flex items-center gap-2 shadow-md shadow-blue-500/25 active:scale-98"
+                >
+                  <ShieldCheck className="w-4 h-4 text-emerald-300" />
+                  <span>Approved! Proceed to Next Step: Stacks (DAG) →</span>
+                </button>
               )}
             </div>
 

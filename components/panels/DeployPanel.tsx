@@ -8,7 +8,7 @@ import type { WaAssessment } from '@/lib/engines/wellArchitected/types';
 import TerraformExecutionPanel from './TerraformExecutionPanel';
 
 export default function DeployPanel() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const isLight = state.theme === 'light';
   const activeProject = useActiveProject();
   const [waAssessment, setWaAssessment] = useState<WaAssessment | null>(null);
@@ -75,6 +75,14 @@ export default function DeployPanel() {
               </p>
             </div>
           </div>
+          <button
+            id="btn-deploy-next-drift"
+            onClick={() => dispatch({ type: 'SET_VIEW', view: 'drift' })}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-sm transition-all active:scale-95 shrink-0"
+            title="Proceed to logical next phase: Live Drift & Reconcile"
+          >
+            <span>Next: Drift & Reconcile →</span>
+          </button>
         </div>
 
         {/* Well-Architected Pre-flight gate */}

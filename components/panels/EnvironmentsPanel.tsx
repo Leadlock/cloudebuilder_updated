@@ -25,7 +25,7 @@ export default function EnvironmentsPanel() {
 
   if (!activeProject) return null;
 
-  const environments: Environment[] = ['development', 'staging', 'production'];
+  const environments: Environment[] = ['production'];
 
   async function handlePromote(from: Environment, to: Environment) {
     if (!activeProject || promoting || cloning) return;
