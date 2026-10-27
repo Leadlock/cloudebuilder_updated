@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   Users,
   RotateCcw,
+  Key,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { ProviderMode } from '@/types';
@@ -48,6 +49,8 @@ interface CanvasToolbarProps {
   lastSavedTime?: string | null;
   onSaveNow?: () => void;
   isDraft?: boolean;
+  onOpenIamModal?: () => void;
+  missingIamRolesCount?: number;
 }
 
 export default function CanvasToolbar({
@@ -74,8 +77,10 @@ export default function CanvasToolbar({
   lastSavedTime,
   onSaveNow,
   isDraft = false,
+  onOpenIamModal,
+  missingIamRolesCount,
 }: CanvasToolbarProps) {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const isLight = state.theme === 'light';
   return (
     <div
@@ -131,6 +136,33 @@ export default function CanvasToolbar({
         >
           <Wrench className={clsx('w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400', isFixing && 'animate-spin')} />
           <span className="hidden md:inline">{isFixing ? 'Fixing...' : 'Auto-Fix'}</span>
+        </button>
+      )}
+
+      {/* IAM Roles & Publish Readiness */}
+      {onOpenIamModal && (
+        <button
+          id="btn-open-iam-modal"
+          onClick={onOpenIamModal}
+          title="Resolve Mandatory IAM Roles & Resource Connections before Publishing"
+          className={clsx(
+            'shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all',
+            missingIamRolesCount && missingIamRolesCount > 0
+              ? isLight
+                ? 'bg-purple-50 hover:bg-purple-100 text-purple-900 border-purple-300 shadow-xs'
+                : 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border-purple-500/40 shadow-xs'
+              : isLight
+              ? 'text-slate-700 hover:text-slate-900 hover:bg-slate-100 border-transparent'
+              : 'text-slate-300 hover:text-white hover:bg-slate-800 border-transparent'
+          )}
+        >
+          <Key className="w-3.5 h-3.5 text-purple-500" />
+          <span className="hidden lg:inline">Publish Readiness (IAM)</span>
+          {missingIamRolesCount && missingIamRolesCount > 0 ? (
+            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-purple-600 text-white animate-pulse">
+              {missingIamRolesCount}
+            </span>
+          ) : null}
         </button>
       )}
 
@@ -415,6 +447,17 @@ export default function CanvasToolbar({
                 <span>{isDraft ? "Save Project" : "Save"}</span>
               </button>
             )}
+
+            <div className={clsx('shrink-0 w-[1px] h-4 mx-1', isLight ? 'bg-slate-200' : 'bg-slate-700')} />
+            <button
+              type="button"
+              id="btn-canvas-next-review"
+              onClick={() => dispatch({ type: 'SET_VIEW', view: 'review' })}
+              className="px-3 py-1.5 text-xs font-bold rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white transition-all shadow-sm flex items-center gap-1.5 shrink-0 active:scale-98"
+              title="Proceed to Step 2: Architecture Review & Security Scanning"
+            >
+              <span>Review Architecture →</span>
+            </button>
           </div>
         </>
       )}

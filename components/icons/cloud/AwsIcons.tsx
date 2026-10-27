@@ -225,6 +225,19 @@ export function AwsIamIcon({ size = 24, className = '' }: IconProps) {
   );
 }
 
+// ─── AWS IAM User ─────────────────────────────────────────────────────────────
+export function AwsIamUserIcon({ size = 24, className = '' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}>
+      <rect width="48" height="48" rx="8" fill="#DD344C" fillOpacity="0.18" />
+      <circle cx="20" cy="18" r="6.5" fill="#DD344C" />
+      <path d="M10 33c0-4.8 4.5-8 10-8s10 3.2 10 8v2H10v-2z" fill="#DD344C" />
+      <circle cx="34" cy="30" r="5.5" fill="#F59E0B" stroke="#FFF" strokeWidth="1.5" />
+      <path d="M37 34l5 5m-2-3l2 2" stroke="#F59E0B" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 // ─── AWS KMS ──────────────────────────────────────────────────────────────────
 export function AwsKmsIcon({ size = 24, className = '' }: IconProps) {
   return (

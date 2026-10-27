@@ -30,6 +30,8 @@ import TeamPanel from '@/components/panels/TeamPanel';
 import PolicyPanel from '@/components/panels/PolicyPanel';
 import OperatorAccessPanel from '@/components/panels/OperatorAccessPanel';
 import LoginModal from '@/components/auth/LoginModal';
+import WorkflowStepNavigator from '@/components/layout/WorkflowStepNavigator';
+import WorkflowOnboardingModal from '@/components/modals/WorkflowOnboardingModal';
 import { useApp } from '@/context/AppContext';
 import { AppView } from '@/types';
 
@@ -87,8 +89,9 @@ function MainContent() {
         return (
           <div
             key={viewKey}
+            data-app-view={viewKey}
             className={clsx(
-              'w-full h-full flex flex-col min-h-0 min-w-0 overflow-hidden',
+              'cloudbuilder-view w-full h-full flex flex-col min-h-0 min-w-0 overflow-hidden',
               isActive ? 'block' : 'hidden'
             )}
           >
@@ -129,20 +132,34 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 export default function Home() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const isLight = state.theme === 'light';
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && state.currentUser) {
+      const tourSeen = localStorage.getItem('cloudbuilder_workflow_tour_completed');
+      if (!tourSeen) {
+        dispatch({ type: 'SET_TOUR_MODAL', open: true });
+      }
+    }
+  }, [state.currentUser, dispatch]);
 
   return (
     <AuthGate>
-      <div className={`flex h-screen overflow-hidden ${isLight ? 'bg-slate-50 text-slate-900' : 'bg-gray-950 text-white'}`}>
+      <div className={`cloudbuilder-app flex h-screen overflow-hidden ${isLight ? 'is-light bg-slate-50 text-slate-900' : 'is-dark bg-gray-950 text-white'}`}>
         <Sidebar />
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
           <TopBar />
+          <WorkflowStepNavigator />
           <main className="flex flex-1 min-h-0 overflow-hidden">
             <MainContent />
           </main>
         </div>
       </div>
+      <WorkflowOnboardingModal
+        isOpen={state.isTourOpen}
+        onClose={() => dispatch({ type: 'SET_TOUR_MODAL', open: false })}
+      />
     </AuthGate>
   );
 }

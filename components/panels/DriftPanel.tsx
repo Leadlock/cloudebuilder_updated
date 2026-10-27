@@ -138,6 +138,14 @@ export default function DriftPanel() {
             <RefreshCw className={clsx('w-3.5 h-3.5', loading && 'animate-spin')} />
             {loading ? 'Scanning Cloud State…' : 'Run Drift Scan'}
           </button>
+          <button
+            id="btn-drift-return-canvas"
+            onClick={() => dispatch({ type: 'SET_VIEW', view: 'canvas' })}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-md transition-all active:scale-95"
+            title="Complete continuous lifecycle loop and return to Visual Builder"
+          >
+            <span>Return to Visual Builder ↻</span>
+          </button>
         </div>
       </div>
 

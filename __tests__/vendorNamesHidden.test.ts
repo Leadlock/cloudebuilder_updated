@@ -76,6 +76,8 @@ function shownText(file: string): string[] {
     const t = line.trim();
     if (t === '' || t.startsWith('//') || t.startsWith('*') || t.startsWith('/*') || t.startsWith('import ')) return false;
     if (/console\.(log|warn|error|info|debug)\(/.test(t)) return false;
+    // Matching a resource type id (for example choosing an icon for aws_bedrock_agent) is not text a person sees.
+    if (/^(if|else if) \(.*\btype\.includes\(/.test(t) || /^return .*\btype\.includes\(/.test(t)) return false;
     return true;
   }).filter((line) => {
     // Only text inside quotes or JSX text counts, not names such as CognitoService or cognitoErr.

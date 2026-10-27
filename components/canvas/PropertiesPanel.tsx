@@ -1,9 +1,9 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CanvasNode, ConfigField } from '@/types';
 import { getResourceDefinition } from '@/lib/resources';
 import { CloudServiceIcon } from '@/components/icons/cloud/CloudServiceIcon';
-import { X, Settings, Network, Info, CheckCircle2, AlertTriangle, Layers, ShieldCheck, ShieldAlert, ExternalLink, Copy, Check } from 'lucide-react';
+import { X, Settings, Network, Info, CheckCircle2, AlertTriangle, Layers, ShieldCheck, ShieldAlert, ExternalLink, Copy, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import { apiWellArchitectedService } from '@/lib/services/ApiWellArchitectedService';
 import { useApp, useActiveProject } from '@/context/AppContext';
@@ -315,6 +315,34 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
   const [wafFindings, setWafFindings] = useState<WaFinding[]>([]);
   const [loadingWaf, setLoadingWaf] = useState(false);
 
+  // Tabs scroll navigation state
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = () => {
+    if (tabsRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = tabsRef.current;
+      setCanScrollLeft(scrollLeft > 2);
+      setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 2);
+    }
+  };
+
+  useEffect(() => {
+    checkScroll();
+    const handleResize = () => checkScroll();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [node?.id, wafFindings.length]);
+
+  const scrollTabs = (direction: 'left' | 'right') => {
+    if (tabsRef.current) {
+      const amount = direction === 'left' ? -120 : 120;
+      tabsRef.current.scrollBy({ left: amount, behavior: 'smooth' });
+      setTimeout(checkScroll, 250);
+    }
+  };
+
   useEffect(() => {
     if (!node || !activeProject) return;
     let isCancelled = false;
@@ -384,7 +412,7 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
 
   return (
     <div className={clsx(
-      'w-full sm:w-80 sm:relative fixed inset-y-0 right-0 z-40 sm:z-20 border-l flex flex-col shrink-0 select-none shadow-2xl animate-in slide-in-from-right duration-150',
+      'w-full sm:w-88 md:w-96 sm:relative fixed inset-y-0 right-0 z-40 sm:z-20 border-l flex flex-col shrink-0 select-none shadow-2xl animate-in slide-in-from-right duration-150',
       isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#18181a] border-white/8 text-white'
     )}>
       {/* Header */}
@@ -447,73 +475,118 @@ export default function PropertiesPanel({ node, onClose, onUpdate }: PropertiesP
 
       <PolicyWarnings node={node} />
 
-      {/* Tabs */}
+      {/* Tabs with navigation scroll arrows */}
       <div className={clsx(
-        'flex items-center px-4 border-b text-xs',
-        isLight ? 'border-slate-200 bg-slate-50/50' : 'border-white/8 bg-[#141416]/50'
+        'relative flex items-center border-b text-xs select-none',
+        isLight ? 'border-slate-200 bg-slate-50/70' : 'border-white/8 bg-[#141416]/70'
       )}>
-        <button
-          onClick={() => setActiveTab('config')}
-          className={clsx(
-            'py-2.5 px-3 border-b-2 font-medium transition-colors flex items-center gap-1.5',
-            activeTab === 'config'
-              ? (isLight ? 'border-[#0078d4] text-[#0078d4] font-semibold' : 'border-[#50e6ff] text-[#50e6ff] font-semibold')
-              : (isLight ? 'border-transparent text-slate-500 hover:text-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200')
-          )}
-        >
-          <Settings className="w-3.5 h-3.5" />
-          <span>Config</span>
-        </button>
+        {/* Left scroll arrow button */}
+        {canScrollLeft && (
+          <button
+            type="button"
+            onClick={() => scrollTabs('left')}
+            title="Scroll tabs left"
+            aria-label="Scroll tabs left"
+            className={clsx(
+              'px-2 py-2.5 flex items-center justify-center shrink-0 border-r transition-all z-10 cursor-pointer shadow-xs',
+              isLight
+                ? 'text-slate-700 hover:text-blue-600 hover:bg-slate-200/80 border-slate-200'
+                : 'text-slate-300 hover:text-cyan-400 hover:bg-white/10 border-white/10'
+            )}
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('placement')}
-          className={clsx(
-            'py-2.5 px-3 border-b-2 font-medium transition-colors flex items-center gap-1.5',
-            activeTab === 'placement'
-              ? (isLight ? 'border-blue-600 text-blue-600 font-semibold' : 'border-cyan-400 text-cyan-400 font-semibold')
-              : (isLight ? 'border-transparent text-slate-500 hover:text-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200')
-          )}
+        {/* Scrollable Tab Container */}
+        <div
+          ref={tabsRef}
+          onScroll={checkScroll}
+          className="flex-1 flex items-center overflow-x-auto no-scrollbar scroll-smooth px-2 gap-0.5"
         >
-          <Network className="w-3.5 h-3.5" />
-          <span>Topology</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('config')}
+            className={clsx(
+              'py-2.5 px-3 border-b-2 font-medium transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer',
+              activeTab === 'config'
+                ? (isLight ? 'border-[#0078d4] text-[#0078d4] font-semibold' : 'border-[#50e6ff] text-[#50e6ff] font-semibold')
+                : (isLight ? 'border-transparent text-slate-500 hover:text-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200')
+            )}
+          >
+            <Settings className="w-3.5 h-3.5" />
+            <span>Config</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('info')}
-          className={clsx(
-            'py-2.5 px-3 border-b-2 font-medium transition-colors flex items-center gap-1.5',
-            activeTab === 'info'
-              ? (isLight ? 'border-blue-600 text-blue-600 font-semibold' : 'border-cyan-400 text-cyan-400 font-semibold')
-              : (isLight ? 'border-transparent text-slate-500 hover:text-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200')
-          )}
-        >
-          <Info className="w-3.5 h-3.5" />
-          <span>Summary</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('placement')}
+            className={clsx(
+              'py-2.5 px-3 border-b-2 font-medium transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer',
+              activeTab === 'placement'
+                ? (isLight ? 'border-blue-600 text-blue-600 font-semibold' : 'border-cyan-400 text-cyan-400 font-semibold')
+                : (isLight ? 'border-transparent text-slate-500 hover:text-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200')
+            )}
+          >
+            <Network className="w-3.5 h-3.5" />
+            <span>Topology</span>
+          </button>
 
+          <button
+            type="button"
+            onClick={() => setActiveTab('info')}
+            className={clsx(
+              'py-2.5 px-3 border-b-2 font-medium transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer',
+              activeTab === 'info'
+                ? (isLight ? 'border-blue-600 text-blue-600 font-semibold' : 'border-cyan-400 text-cyan-400 font-semibold')
+                : (isLight ? 'border-transparent text-slate-500 hover:text-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200')
+            )}
+          >
+            <Info className="w-3.5 h-3.5" />
+            <span>Summary</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('waf')}
+            className={clsx(
+              'py-2.5 px-3 border-b-2 font-medium transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer',
+              activeTab === 'waf'
+                ? (isLight ? 'border-blue-600 text-blue-600 font-semibold' : 'border-cyan-400 text-cyan-400 font-semibold')
+                : (isLight ? 'border-transparent text-slate-500 hover:text-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200')
+            )}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>WAF</span>
+            {wafFindings.length > 0 && (
+              <span
+                className={clsx(
+                  'px-1.5 py-0.2 rounded-full text-[9px] font-bold leading-none',
+                  wafFindings.some((f) => f.severity === 'critical')
+                    ? 'bg-rose-500 text-white'
+                    : 'bg-amber-500 text-slate-950'
+                )}
+              >
+                {wafFindings.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Right scroll arrow button */}
         <button
-          onClick={() => setActiveTab('waf')}
+          type="button"
+          onClick={() => scrollTabs('right')}
+          title="Scroll tabs right"
+          aria-label="Scroll tabs right"
           className={clsx(
-            'py-2.5 px-3 border-b-2 font-medium transition-colors flex items-center gap-1.5',
-            activeTab === 'waf'
-              ? (isLight ? 'border-blue-600 text-blue-600 font-semibold' : 'border-cyan-400 text-cyan-400 font-semibold')
-              : (isLight ? 'border-transparent text-slate-500 hover:text-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200')
+            'px-2 py-2.5 flex items-center justify-center shrink-0 border-l transition-all z-10 cursor-pointer shadow-xs',
+            canScrollRight
+              ? (isLight ? 'text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border-slate-200' : 'text-cyan-300 hover:text-white bg-cyan-950/80 hover:bg-cyan-900 border-white/10')
+              : (isLight ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100 border-slate-200' : 'text-slate-500 hover:text-white hover:bg-white/10 border-white/10')
           )}
         >
-          <ShieldCheck className="w-3.5 h-3.5" />
-          <span>WAF</span>
-          {wafFindings.length > 0 && (
-            <span
-              className={clsx(
-                'px-1.5 py-0.2 rounded-full text-[9px] font-bold leading-none',
-                wafFindings.some((f) => f.severity === 'critical')
-                  ? 'bg-rose-500 text-white'
-                  : 'bg-amber-500 text-slate-950'
-              )}
-            >
-              {wafFindings.length}
-            </span>
-          )}
+          <ChevronRight className="w-4 h-4" />
         </button>
       </div>
 

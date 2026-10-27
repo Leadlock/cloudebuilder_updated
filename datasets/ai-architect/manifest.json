@@ -163,13 +163,13 @@
     "unencrypted-database+drop-certificate": 1
   },
   "tokensEstimate": {
-    "train": 3210239,
-    "validation": 391819,
+    "train": 3264804,
+    "validation": 398270,
     "perEpochTrainNote": "Estimated at 4 characters per token; billing uses the real tokenizer.",
-    "systemPrompt": 831
+    "systemPrompt": 872
   },
   "designsWithDeploymentPlaceholders": 537,
-  "catalogTypes": 62,
+  "catalogTypes": 66,
   "generation": {
     "candidatesEvaluated": 836,
     "rejectedByGates": 0,

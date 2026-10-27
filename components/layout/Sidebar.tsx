@@ -59,7 +59,6 @@ const NAV_GROUPS = [
     label: 'Manage',
     items: [
       { id: 'accounts',   label: 'Cloud Accounts',    icon: Link2,           requiresProject: false },
-      { id: 'environments', label: 'Environments',   icon: GitBranch,       requiresProject: true },
       { id: 'history',    label: 'History',           icon: History,         requiresProject: true },
       { id: 'policy',     label: 'Policy',            icon: ClipboardList,   requiresProject: false },
       { id: 'team',       label: 'Team',              icon: Users,           requiresProject: false, adminOnly: true },
@@ -112,9 +111,14 @@ export default function Sidebar() {
       } catch {}
     };
 
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
     return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
@@ -396,7 +400,7 @@ export default function Sidebar() {
           width: sidebarCollapsed ? '56px' : `${sidebarWidth}px`,
         }}
         className={clsx(
-          'hidden lg:flex flex-col shrink-0 h-screen select-none relative group/sidebar transition-colors',
+          'cloudbuilder-sidebar hidden lg:flex flex-col shrink-0 h-screen select-none relative group/sidebar transition-colors',
           isLight ? 'bg-white border-r border-slate-200' : 'bg-[#161618] border-r border-white/[0.08]',
           !isResizing && 'transition-[width] duration-200 ease-out'
         )}
@@ -410,15 +414,24 @@ export default function Sidebar() {
               e.preventDefault();
               setIsResizing(true);
             }}
+            onDoubleClick={() => {
+              setSidebarWidth(240);
+              try {
+                localStorage.setItem('cloudbuilder_sidebar_width', '240');
+              } catch {}
+            }}
             className={clsx(
-              'absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-500/50 transition-colors z-20 flex items-center justify-center',
-              isResizing ? 'bg-blue-500 shadow-md' : 'bg-transparent'
+              'absolute top-0 -right-1 w-2.5 h-full cursor-col-resize z-30 flex items-center justify-center transition-colors group/resizer',
+              isResizing ? 'bg-[#0078d4]' : 'hover:bg-[#0078d4]/50'
             )}
-            title="Drag to resize sidebar width"
+            title="Drag to resize sidebar (double-click to reset)"
           >
-            <div className="opacity-0 group-hover/sidebar:opacity-100 transition-opacity">
-              <GripVertical className="w-3 h-3 text-gray-500 -ml-1" />
-            </div>
+            <div
+              className={clsx(
+                'w-1 h-8 rounded-full transition-all',
+                isResizing ? 'bg-white' : 'bg-transparent group-hover/resizer:bg-[#0078d4]'
+              )}
+            />
           </div>
         )}
       </aside>
@@ -432,7 +445,7 @@ export default function Sidebar() {
             onClick={() => dispatch({ type: 'SET_MOBILE_SIDEBAR', open: false })}
           />
           {/* Slide-over Drawer */}
-          <div className={clsx("relative w-72 max-w-[85vw] border-r h-full flex flex-col shadow-2xl z-10 animate-in slide-in-from-left duration-200", isLight ? "bg-white border-slate-200" : "bg-[#161618] border-white/[0.08]")}>
+          <div className={clsx("cloudbuilder-sidebar relative w-72 max-w-[85vw] border-r h-full flex flex-col shadow-2xl z-10 animate-in slide-in-from-left duration-200", isLight ? "bg-white border-slate-200" : "bg-[#161618] border-white/[0.08]")}>
             {navContent(true)}
           </div>
         </div>

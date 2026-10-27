@@ -20,6 +20,7 @@ import { useApp, useActiveProject } from '@/context/AppContext';
 import { CanvasNode, CanvasEdge, RelationshipType } from '@/types';
 import { getResourceDefinition } from '@/lib/resources';
 import { relationshipEngine } from '@/lib/engines/relationship/RelationshipEngine';
+import { evaluateResourceDataflowStatus, DataflowConnectionStatus, isDataflowOrConnectionEdge } from '@/lib/canvas/dataflowStatus';
 import CloudNode from './CloudNode';
 import ContainerNode from './ContainerNode';
 import AzBoundaryNode from './AzBoundaryNode';
@@ -46,6 +47,8 @@ import ConnectionInspector from './ConnectionInspector';
 import CanvasToolbar from './CanvasToolbar';
 import AddResourceModal from './AddResourceModal';
 import CanvasStartModal from './CanvasStartModal';
+import IamCompletionModal from './IamCompletionModal';
+import { analyzeCanvasIamDependencies } from '@/lib/engines/iam/iamDependencyAnalyzer';
 import AiPromptPanel from '../panels/AiPromptPanel';
 import CompliancePanel from '../panels/CompliancePanel';
 import GitOpsPanel from '../panels/GitOpsPanel';
@@ -55,7 +58,7 @@ import { architectureAutoFixEngine } from '@/lib/engines/autofix/ArchitectureAut
 import { scaleAdvisorEngine } from '@/lib/engines/ai/ScaleAdvisorEngine';
 import { toCanonicalGraph, validateCanonicalArchitecture } from '@/lib/domain/canonicalArchitecture';
 import { CloudProvider, ProviderMode, ScaleProfile, Region, providerModeToCloudProvider, cloudProviderToProviderMode, isNodeCompatibleWithProviderMode, inferNodeProvider } from '@/types';
-import { AlertTriangle, Check, X, Sparkles, Bot, ShieldCheck, GitMerge, Download, Loader2, Wrench, Search, Plus, Trash2, Workflow, Undo2, Redo2, Grid3X3, SlidersHorizontal } from 'lucide-react';
+import { AlertTriangle, Check, X, Sparkles, Bot, ShieldCheck, GitMerge, Download, Loader2, Wrench, Search, Plus, Trash2, Workflow, Undo2, Redo2, Grid3X3, SlidersHorizontal, Key, ArrowRight } from 'lucide-react';
 import DrawioExportDialog from './DrawioExportDialog';
 import clsx from 'clsx';
 
@@ -92,7 +95,8 @@ function toReactFlowNodes(
   activeDragTargetId: string | null = null,
   isValidDrop = true,
   findingsMap?: Map<string, { critical: number; high: number; medium: number; total: number }>,
-  showFindings = false
+  showFindings = false,
+  canvasEdges: CanvasEdge[] = []
 ): Node[] {
   let workingNodes = [...canvasNodes];
 
@@ -185,14 +189,16 @@ function toReactFlowNodes(
   const initialReactFlowNodes: Node[] = sorted.map((n) => {
     const def = getResourceDefinition(n.resourceType);
     const isBoundary = n.resourceType === 'cloud_provider_boundary' || n.resourceType === 'aws_cloud_boundary' || n.resourceType === 'azure_cloud_boundary';
-    const isContainer = def?.isContainer === true || isBoundary;
+    const isCustomContainerNode = n.type === 'containerNode' || n.resourceType === 'containerNode' || n.resourceType === 'groupNode';
+    const isContainer = def?.isContainer === true || isBoundary || isCustomContainerNode;
     const isVpc = n.resourceType === 'aws_vpc' || n.resourceType === 'azure_vnet' || n.resourceType === 'azure_resource_group';
     const isSubnet = n.resourceType === 'aws_subnet' || n.resourceType === 'azure_subnet';
 
-    const width = n.width || def?.defaultWidth || (isBoundary ? 980 : isVpc ? 840 : isSubnet ? 380 : 80);
-    const height = n.height || def?.defaultHeight || (isBoundary ? 620 : isVpc ? 520 : isSubnet ? 200 : 88);
+    const width = n.width || def?.defaultWidth || (isBoundary ? 980 : isVpc ? 840 : isSubnet ? 380 : isCustomContainerNode ? 420 : 80);
+    const height = n.height || def?.defaultHeight || (isBoundary ? 620 : isVpc ? 520 : isSubnet ? 200 : isCustomContainerNode ? 260 : 88);
 
     const nodeType = isBoundary ? 'cloudProviderNode' : isContainer ? 'containerNode' : 'cloudNode';
+    const dataflowConnection = evaluateResourceDataflowStatus(n, workingNodes, canvasEdges);
 
     return {
       id: n.id,
@@ -213,9 +219,10 @@ function toReactFlowNodes(
         findingsSummary: findingsMap?.get(n.id),
         showFindings,
         region: (n.config?.region as string) || (n.provider === 'azure' ? 'eastus' : 'us-east-1'),
+        dataflowConnection,
       },
       selected: n.selected,
-      zIndex: isBoundary ? -3 : isVpc ? -2 : isSubnet ? -1 : 1,
+      zIndex: isBoundary ? -3 : isVpc ? -2 : isCustomContainerNode ? -1.5 : isSubnet ? -1 : 1,
     };
   });
 
@@ -264,6 +271,49 @@ function recalculateContainerBounds(allNodes: Node[]): Node[] {
     }
   }
 
+  // 1.5. Custom Containers around direct children (e.g. Storage, Logging, DR, Security)
+  const customContainers = updated.filter(
+    (n) =>
+      (n.type === 'containerNode' || n.data.resourceType === 'containerNode' || n.data.resourceType === 'groupNode') &&
+      !n.data.resourceType?.includes('subnet') &&
+      !n.data.resourceType?.includes('vpc') &&
+      !n.data.resourceType?.includes('vnet') &&
+      !n.data.resourceType?.includes('boundary')
+  );
+
+  for (const cc of customContainers) {
+    const children = updated.filter((n) => n.data.groupId === cc.id);
+    if (children.length > 0) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const c of children) {
+        const cw = c.data.width || 180;
+        const ch = c.data.height || 100;
+        minX = Math.min(minX, c.position.x);
+        minY = Math.min(minY, c.position.y);
+        maxX = Math.max(maxX, c.position.x + cw);
+        maxY = Math.max(maxY, c.position.y + ch);
+      }
+      const padX = 40;
+      const padTop = 85;
+      const padBottom = 40;
+
+      const newX = minX - padX;
+      const newY = minY - padTop;
+      const finalW = Math.max(380, (maxX - newX) + padX);
+      const finalH = Math.max(220, (maxY - newY) + padBottom);
+
+      updated = updated.map((n) =>
+        n.id === cc.id
+          ? {
+              ...n,
+              position: { x: newX, y: newY },
+              data: { ...n.data, width: finalW, height: finalH, childCount: children.length },
+            }
+          : n
+      );
+    }
+  }
+
   // 2. VPC / VNets around subnets and direct children
   const vpcs = updated.filter(
     (n) =>
@@ -293,10 +343,10 @@ function recalculateContainerBounds(allNodes: Node[]): Node[] {
       const padTop = 75; // Guarantees 75px clear margin below VPC header
       const padBottom = 45;
 
-      const newX = Math.min(vpc.position.x, minX - padX);
-      const newY = Math.min(vpc.position.y, minY - padTop);
-      const finalW = Math.max(vpc.data.width || 840, (maxX - newX) + padX);
-      const finalH = Math.max(vpc.data.height || 520, (maxY - newY) + padBottom);
+      const newX = minX - padX;
+      const newY = minY - padTop;
+      const finalW = Math.max(840, (maxX - newX) + padX);
+      const finalH = Math.max(520, (maxY - newY) + padBottom);
 
       updated = updated.map((n) =>
         n.id === vpc.id
@@ -340,10 +390,10 @@ function recalculateContainerBounds(allNodes: Node[]): Node[] {
       const padTop = 85; // Guarantees 85px clear margin below Cloud Provider header
       const padBottom = 55;
 
-      const newX = Math.min(b.position.x, minX - padX);
-      const newY = Math.min(b.position.y, minY - padTop);
-      const finalW = Math.max(b.data.width || 1050, (maxX - newX) + padX);
-      const finalH = Math.max(b.data.height || 650, (maxY - newY) + padBottom);
+      const newX = Math.max(20, minX - padX);
+      const newY = Math.max(20, minY - padTop);
+      const finalW = Math.max(1050, (maxX - newX) + padX);
+      const finalH = Math.max(650, (maxY - newY) + padBottom);
 
       updated = updated.map((n) =>
         n.id === b.id
@@ -365,13 +415,13 @@ function recalculateContainerBounds(allNodes: Node[]): Node[] {
   return updated;
 }
 
-function toReactFlowEdges(canvasEdges: CanvasEdge[], canvasNodes?: CanvasNode[]): Edge[] {
+export function toReactFlowEdges(canvasEdges: CanvasEdge[], canvasNodes?: CanvasNode[]): Edge[] {
   const nodeMap = canvasNodes ? new Map(canvasNodes.map((n) => [n.id, n])) : null;
   const seenEdgeKeys = new Set<string>();
-  const result: Edge[] = [];
+  const validEdges: { edge: CanvasEdge; relType: string; dedupKey: string; type: string; color: string; needsManualConfig?: boolean }[] = [];
 
+  // Pass 1: Filter and classify valid edges
   for (const e of canvasEdges) {
-    // Exclude orphaned edges if canvasNodes is known
     if (nodeMap && (!nodeMap.has(e.source) || !nodeMap.has(e.target))) {
       continue;
     }
@@ -380,8 +430,7 @@ function toReactFlowEdges(canvasEdges: CanvasEdge[], canvasNodes?: CanvasNode[])
     const relUpper = relRaw.toUpperCase();
     const lbl = (e.label || '').toLowerCase();
 
-    // Containment is purely visual container nesting (VPC/VNet -> Subnet -> Leaf resources),
-    // and must never be drawn as a cluttering network arrow.
+    // Visual containment exclusion
     if (
       relUpper === 'CONTAINS' ||
       relUpper === 'CONTAINMENT' ||
@@ -398,13 +447,18 @@ function toReactFlowEdges(canvasEdges: CanvasEdge[], canvasNodes?: CanvasNode[])
       continue;
     }
 
-    // Deduplication check
     const relType = relUpper || 'NETWORK_FLOW';
     const dedupKey = `${e.source}:${relType}:${e.target}`;
     if (seenEdgeKeys.has(dedupKey)) {
       continue;
     }
     seenEdgeKeys.add(dedupKey);
+
+    const srcNode = nodeMap?.get(e.source);
+    const tgtNode = nodeMap?.get(e.target);
+    const srcStatus = srcNode ? evaluateResourceDataflowStatus(srcNode, canvasNodes, canvasEdges) : undefined;
+    const tgtStatus = tgtNode ? evaluateResourceDataflowStatus(tgtNode, canvasNodes, canvasEdges) : undefined;
+    const needsManualConfig = Boolean((srcStatus?.isConnected && !srcStatus?.isConfigured) || (tgtStatus?.isConnected && !tgtStatus?.isConfigured));
 
     let type = 'traffic';
     let color = '#38BDF8';
@@ -417,13 +471,13 @@ function toReactFlowEdges(canvasEdges: CanvasEdge[], canvasNodes?: CanvasNode[])
       color = '#818CF8';
     } else if (relType === 'CONNECTS_TO' || relType === 'DATABASE_CONNECTION') {
       type = 'connectsTo';
-      color = '#10B981';
+      color = needsManualConfig ? '#F43F5E' : '#10B981';
     } else if (relType === 'STORES_IN') {
       type = 'storesIn';
       color = '#14B8A6';
     } else if (relType === 'DATA_FLOW') {
       type = 'dataFlow';
-      color = '#06B6D4';
+      color = needsManualConfig ? '#F43F5E' : '#10B981';
     } else if (relType === 'RESOLVES_TO') {
       type = 'resolvesTo';
       color = '#38BDF8';
@@ -446,28 +500,503 @@ function toReactFlowEdges(canvasEdges: CanvasEdge[], canvasNodes?: CanvasNode[])
       color = '#F59E0B';
     }
 
-    const isAssociation = type === 'association';
+    validEdges.push({ edge: e, relType, dedupKey, type, color, needsManualConfig });
+  }
 
-    // Smart Handle selection to avoid looping lines
+  // Pass 2: Multi-port Handle Allocation to prevent line overlap on nodes
+  // Tracks slots used per node side: `${nodeId}::${side}` -> list of used slot keys
+  const nodeSideSlots = new Map<string, string[]>();
+  const getNextAvailableSlot = (nodeId: string, side: string, preferred: string, isSource: boolean): string => {
+    const key = `${nodeId}::${side}`;
+    const used = nodeSideSlots.get(key) || [];
+
+    const isHorizontal = side === 'left' || side === 'right';
+    const allSlots = isHorizontal ? ['top', 'center', 'bottom'] : ['left', 'center', 'right'];
+
+    let candidateSlots: string[];
+    if (preferred === allSlots[0]) {
+      candidateSlots = [allSlots[0], allSlots[1], allSlots[2]];
+    } else if (preferred === allSlots[2]) {
+      candidateSlots = [allSlots[2], allSlots[1], allSlots[0]];
+    } else {
+      candidateSlots = isSource ? [allSlots[1], allSlots[2], allSlots[0]] : [allSlots[1], allSlots[0], allSlots[2]];
+    }
+
+    for (const slot of candidateSlots) {
+      if (!used.includes(slot)) {
+        used.push(slot);
+        nodeSideSlots.set(key, used);
+        return slot;
+      }
+    }
+
+    const chosen = candidateSlots[used.length % candidateSlots.length];
+    used.push(chosen);
+    nodeSideSlots.set(key, used);
+    return chosen;
+  };
+
+  interface EdgeLayoutPlan {
+    edge: CanvasEdge;
+    relType: string;
+    dedupKey: string;
+    type: string;
+    color: string;
+    needsManualConfig?: boolean;
+    sourceHandle?: string;
+    targetHandle?: string;
+    centerX?: number;
+    centerY?: number;
+    pathOffset?: number;
+    midX: number;
+    midY: number;
+    srcSide: string;
+    tgtSide: string;
+  }
+
+  const plannedEdges: EdgeLayoutPlan[] = [];
+
+  for (const item of validEdges) {
+    const { edge: e, relType, dedupKey, type, color } = item;
     let sourceHandle: string | undefined = undefined;
     let targetHandle: string | undefined = undefined;
+    let srcSide = 'right';
+    let tgtSide = 'left';
+    let midX = 0;
+    let midY = 0;
+
     if (nodeMap) {
       const srcNode = nodeMap.get(e.source);
       const tgtNode = nodeMap.get(e.target);
       if (srcNode && tgtNode) {
-        const dx = tgtNode.position.x - srcNode.position.x;
-        const dy = tgtNode.position.y - srcNode.position.y;
-        if (Math.abs(dx) >= Math.abs(dy)) {
-          sourceHandle = dx >= 0 ? 'source-right' : 'source-bottom';
-          targetHandle = dx >= 0 ? 'target-left' : 'target-top';
+        const srcX = srcNode.position.x;
+        const srcY = srcNode.position.y;
+        const tgtX = tgtNode.position.x;
+        const tgtY = tgtNode.position.y;
+        const dx = tgtX - srcX;
+        const dy = tgtY - srcY;
+        midX = (srcX + tgtX) / 2 + 32;
+        midY = (srcY + tgtY) / 2 + 32;
+
+        const vpcNode = canvasNodes?.find(
+          (n) => n.resourceType === 'aws_vpc' || n.resourceType === 'azure_vnet' || n.resourceType === 'azure_resource_group'
+        );
+        const vpcX = vpcNode?.position.x ?? 540;
+        const vpcW = vpcNode?.width ?? 1020;
+        const vpcRightX = vpcX + vpcW;
+        const vpcMidX = vpcX + vpcW / 2;
+
+        const isCrossFlank = (srcX > vpcRightX - 80 && tgtX < vpcX + 80) || (srcX < vpcX + 80 && tgtX > vpcRightX - 80);
+        const isSecToVpc = srcX > vpcRightX - 80 && tgtX >= vpcX - 50 && tgtX <= vpcRightX;
+
+        if (isCrossFlank) {
+          // Cross-flank connections (Right Flank <-> Storage/DR/Logging) MUST NOT cut across VPC subnets.
+          // They route via the Top Sky Highway or Bottom Highway.
+          if (tgtY < 750 && srcY < 750) {
+            // Top Sky Highway (Y = 30..90, above all VPC subnets)
+            srcSide = 'top';
+            tgtSide = 'top';
+            const srcSlot = getNextAvailableSlot(e.source, 'top', 'center', true);
+            const tgtSlot = getNextAvailableSlot(e.target, 'top', 'center', false);
+            sourceHandle = srcSlot === 'center' ? 'source-top' : `source-top-${srcSlot}`;
+            targetHandle = tgtSlot === 'center' ? 'target-top' : `target-top-${tgtSlot}`;
+          } else {
+            // Bottom Highway (Y = 1000+, below all VPC subnets)
+            srcSide = 'bottom';
+            tgtSide = 'bottom';
+            const srcSlot = getNextAvailableSlot(e.source, 'bottom', 'center', true);
+            const tgtSlot = getNextAvailableSlot(e.target, 'bottom', 'center', false);
+            sourceHandle = srcSlot === 'center' ? 'source-bottom' : `source-bottom-${srcSlot}`;
+            targetHandle = tgtSlot === 'center' ? 'target-bottom' : `target-bottom-${tgtSlot}`;
+          }
+        } else if (isSecToVpc) {
+          // Security Flank -> VPC Workloads
+          if (tgtX >= vpcMidX - 60) {
+            // Target is in AZ-2 (ec2b, ebsb, nat2, rdsr)
+            // Route down strictly in Right Vertical Highway Gap outside VPC,
+            // then enter horizontally from the right directly at the target's Y level!
+            srcSide = 'left';
+            tgtSide = 'right';
+            const srcSlot = getNextAvailableSlot(e.source, 'left', dy < -30 ? 'top' : dy > 30 ? 'bottom' : 'center', true);
+            const tgtSlot = getNextAvailableSlot(e.target, 'right', 'center', false);
+            sourceHandle = srcSlot === 'center' ? 'source-left' : `source-left-${srcSlot}`;
+            targetHandle = tgtSlot === 'center' ? 'target-right' : `target-right-${tgtSlot}`;
+          } else {
+            // Target is in AZ-1 (ec2a, rdsp, nat1)
+            srcSide = 'left';
+            tgtSide = dy < 0 ? 'bottom' : 'top';
+            const srcSlot = getNextAvailableSlot(e.source, 'left', 'center', true);
+            const tgtSlot = getNextAvailableSlot(e.target, tgtSide, 'right', false);
+            sourceHandle = srcSlot === 'center' ? 'source-left' : `source-left-${srcSlot}`;
+            targetHandle = tgtSlot === 'center' ? `target-${tgtSide}` : `target-${tgtSide}-${tgtSlot}`;
+          }
+        } else if (Math.abs(dx) >= Math.abs(dy)) {
+          srcSide = dx >= 0 ? 'right' : 'left';
+          tgtSide = dx >= 0 ? 'left' : 'right';
+
+          const preferredSrcSlot = dy < -30 ? 'top' : dy > 30 ? 'bottom' : 'center';
+          const preferredTgtSlot = dy < -30 ? 'bottom' : dy > 30 ? 'top' : 'center';
+
+          const srcSlot = getNextAvailableSlot(e.source, srcSide, preferredSrcSlot, true);
+          const tgtSlot = getNextAvailableSlot(e.target, tgtSide, preferredTgtSlot, false);
+
+          sourceHandle = srcSlot === 'center' ? `source-${srcSide}` : `source-${srcSide}-${srcSlot}`;
+          targetHandle = tgtSlot === 'center' ? `target-${tgtSide}` : `target-${tgtSide}-${tgtSlot}`;
         } else {
-          sourceHandle = dy >= 0 ? 'source-bottom' : 'source-right';
-          targetHandle = dy >= 0 ? 'target-top' : 'target-left';
+          srcSide = dy >= 0 ? 'bottom' : 'top';
+          tgtSide = dy >= 0 ? 'top' : 'bottom';
+
+          const preferredSrcSlot = dx < -30 ? 'left' : dx > 30 ? 'right' : 'center';
+          const preferredTgtSlot = dx < -30 ? 'right' : dx > 30 ? 'left' : 'center';
+
+          const srcSlot = getNextAvailableSlot(e.source, srcSide, preferredSrcSlot, true);
+          const tgtSlot = getNextAvailableSlot(e.target, tgtSide, preferredTgtSlot, false);
+
+          sourceHandle = srcSlot === 'center' ? `source-${srcSide}` : `source-${srcSide}-${srcSlot}`;
+          targetHandle = tgtSlot === 'center' ? `target-${tgtSide}` : `target-${tgtSide}-${tgtSlot}`;
         }
       }
     }
 
-    const deterministicId = e.id && e.id.includes(':') ? e.id : dedupKey;
+    plannedEdges.push({
+      edge: e,
+      relType,
+      dedupKey,
+      type,
+      color,
+      needsManualConfig: item.needsManualConfig,
+      sourceHandle,
+      targetHandle,
+      midX,
+      midY,
+      srcSide,
+      tgtSide,
+    });
+  }
+
+  // Pass 3: Channel corridor routing and line separation
+  const vpcNode = canvasNodes?.find(
+    (n) => n.resourceType === 'aws_vpc' || n.resourceType === 'azure_vnet' || n.resourceType === 'azure_resource_group'
+  );
+  const vpcX = vpcNode?.position.x ?? 540;
+  const vpcW = vpcNode?.width ?? 1020;
+  const vpcRightX = vpcX + vpcW;
+  const vpcMidX = vpcX + vpcW / 2;
+
+  const pubSubnet = canvasNodes?.find(
+    (n) => (n.resourceType === 'aws_subnet' || n.resourceType === 'azure_subnet') && (n.label || '').toLowerCase().includes('public')
+  );
+  const privSubnet = canvasNodes?.find(
+    (n) => (n.resourceType === 'aws_subnet' || n.resourceType === 'azure_subnet') && (n.label || '').toLowerCase().includes('private')
+  );
+  const dbSubnet = canvasNodes?.find(
+    (n) => (n.resourceType === 'aws_subnet' || n.resourceType === 'azure_subnet') && ((n.label || '').toLowerCase().includes('db') || (n.label || '').toLowerCase().includes('database'))
+  );
+
+  const rightHighwayX = vpcRightX + 45;
+  const leftHighwayX = Math.max(80, vpcX - 55);
+  const tier12Y = pubSubnet && privSubnet ? (pubSubnet.position.y + (pubSubnet.height || 180) + privSubnet.position.y) / 2 : 750;
+  const tier23Y = privSubnet && dbSubnet ? (privSubnet.position.y + (privSubnet.height || 180) + dbSubnet.position.y) / 2 : 1100;
+
+  const topSkyHighwayEdges: EdgeLayoutPlan[] = [];
+  const bottomHighwayEdges: EdgeLayoutPlan[] = [];
+  const rightGapEdges: EdgeLayoutPlan[] = [];
+  const otherPlannedEdges: EdgeLayoutPlan[] = [];
+
+  for (const plan of plannedEdges) {
+    const srcNode = nodeMap?.get(plan.edge.source);
+    const tgtNode = nodeMap?.get(plan.edge.target);
+    if (!srcNode || !tgtNode) {
+      otherPlannedEdges.push(plan);
+      continue;
+    }
+    const srcX = srcNode.position.x;
+    const tgtX = tgtNode.position.x;
+    const srcY = srcNode.position.y;
+    const tgtY = tgtNode.position.y;
+
+    const isCrossFlank = (srcX > vpcRightX - 80 && tgtX < vpcX + 80) || (srcX < vpcX + 80 && tgtX > vpcRightX - 80);
+    const isSecToVpc = srcX > vpcRightX - 80 && tgtX >= vpcX - 50 && tgtX <= vpcRightX;
+
+    if (isCrossFlank) {
+      if (tgtY < 750 && srcY < 750) {
+        topSkyHighwayEdges.push(plan);
+      } else {
+        bottomHighwayEdges.push(plan);
+      }
+    } else if (isSecToVpc && tgtX >= vpcMidX - 60) {
+      rightGapEdges.push(plan);
+    } else if (isSecToVpc && tgtX < vpcMidX - 60) {
+      // Sec to AZ-1: route through Tier Gap
+      if (tgtY >= (privSubnet ? privSubnet.position.y + 120 : 770)) {
+        plan.centerY = tier23Y;
+      } else {
+        plan.centerY = tier12Y;
+      }
+      plan.centerX = rightHighwayX;
+      otherPlannedEdges.push(plan);
+    } else {
+      otherPlannedEdges.push(plan);
+    }
+  }
+
+  // 1. Assign lanes in Top Sky Highway (Y = 40..90, above VPC)
+  topSkyHighwayEdges.forEach((plan, idx) => {
+    const srcNode = nodeMap?.get(plan.edge.source)!;
+    const tgtNode = nodeMap?.get(plan.edge.target)!;
+    const minY = Math.min(srcNode.position.y, tgtNode.position.y);
+    const targetHighwayY = 45 + idx * 24;
+    plan.pathOffset = Math.max(20, minY - targetHighwayY);
+  });
+
+  // 2. Assign lanes in Bottom Highway (below VPC)
+  bottomHighwayEdges.forEach((plan, idx) => {
+    const srcNode = nodeMap?.get(plan.edge.source)!;
+    const tgtNode = nodeMap?.get(plan.edge.target)!;
+    const maxY = Math.max(srcNode.position.y, tgtNode.position.y);
+    const targetHighwayY = (vpcNode ? vpcNode.position.y + (vpcNode.height || 1200) + 60 : 1000) + idx * 26;
+    plan.pathOffset = Math.max(20, targetHighwayY - maxY);
+  });
+
+  // 3. Assign lanes in Right Vertical Highway Gap
+  rightGapEdges.forEach((plan, idx) => {
+    const laneOffset = (idx % 2 === 1 ? -1 : 1) * Math.ceil(idx / 2) * 28;
+    plan.centerX = rightHighwayX + laneOffset;
+    plan.pathOffset = 20;
+  });
+
+  // 4. Standard vertical and horizontal corridor bucketing for internal edges
+  const vCorridors = new Map<number, EdgeLayoutPlan[]>();
+  const hCorridors = new Map<number, EdgeLayoutPlan[]>();
+
+  for (const plan of otherPlannedEdges) {
+    if (plan.srcSide === 'left' || plan.srcSide === 'right') {
+      const bucketX = Math.round(plan.midX / 60) * 60;
+      const list = vCorridors.get(bucketX) || [];
+      list.push(plan);
+      vCorridors.set(bucketX, list);
+    } else {
+      const bucketY = Math.round(plan.midY / 50) * 50;
+      const list = hCorridors.get(bucketY) || [];
+      list.push(plan);
+      hCorridors.set(bucketY, list);
+    }
+  }
+
+  for (const [, list] of vCorridors.entries()) {
+    if (list.length === 1) {
+      const plan = list[0];
+      const srcNode = nodeMap?.get(plan.edge.source);
+      const tgtNode = nodeMap?.get(plan.edge.target);
+      if (plan.centerX === undefined && srcNode && tgtNode && Math.abs(tgtNode.position.x - srcNode.position.x) > 800) {
+        plan.centerX = leftHighwayX;
+        plan.pathOffset = 24;
+      }
+      continue;
+    }
+
+    list.forEach((plan, idx) => {
+      const laneOffset = (idx % 2 === 1 ? -1 : 1) * Math.ceil(idx / 2) * 28;
+      const srcNode = nodeMap?.get(plan.edge.source);
+      const tgtNode = nodeMap?.get(plan.edge.target);
+      if (plan.centerX === undefined) {
+        if (srcNode && tgtNode && Math.abs(tgtNode.position.x - srcNode.position.x) > 800) {
+          plan.centerX = leftHighwayX + laneOffset;
+        } else {
+          plan.centerX = plan.midX + laneOffset;
+        }
+      } else {
+        plan.centerX += laneOffset;
+      }
+      plan.pathOffset = 18 + (idx * 6);
+    });
+  }
+
+  // Obstacle avoidance: Ensure vertical highway segments never intersect intermediate nodes
+  for (const plan of plannedEdges) {
+    if (plan.centerX === undefined) continue;
+    const srcNode = nodeMap?.get(plan.edge.source);
+    const tgtNode = nodeMap?.get(plan.edge.target);
+    const minY = Math.min(srcNode?.position.y ?? 0, tgtNode?.position.y ?? 0);
+    const maxY = Math.max(srcNode?.position.y ?? 0, tgtNode?.position.y ?? 0);
+
+    for (const otherNode of (canvasNodes || [])) {
+      if (otherNode.id === plan.edge.source || otherNode.id === plan.edge.target) continue;
+      if (otherNode.type === 'containerNode' || otherNode.resourceType === 'aws_vpc' || otherNode.resourceType === 'aws_subnet') continue;
+      const nodeX = otherNode.position.x;
+      const nodeW = otherNode.width || 80;
+      const nodeY = otherNode.position.y;
+      const nodeH = otherNode.height || 88;
+      if (maxY >= nodeY && minY <= nodeY + nodeH) {
+        if (plan.centerX >= nodeX - 16 && plan.centerX <= nodeX + nodeW + 16) {
+          plan.centerX = plan.centerX < nodeX + nodeW / 2 ? nodeX - 32 : nodeX + nodeW + 32;
+        }
+      }
+    }
+  }
+
+  for (const [, list] of hCorridors.entries()) {
+    if (list.length === 1) continue;
+    list.forEach((plan, idx) => {
+      const laneOffset = (idx % 2 === 1 ? -1 : 1) * Math.ceil(idx / 2) * 28;
+      plan.centerY = (plan.centerY ?? plan.midY) + laneOffset;
+      plan.pathOffset = 18 + (idx * 6);
+    });
+  }
+
+  // Pass 4: Global Badge Collision Avoidance & Distance
+  interface Rect {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  }
+
+  const nodeBoxes: Rect[] = [];
+  if (canvasNodes) {
+    for (const n of canvasNodes) {
+      const isSubnet = n.resourceType === 'aws_subnet' || n.resourceType === 'azure_subnet';
+      const isVpc = n.resourceType === 'aws_vpc' || n.resourceType === 'azure_vnet' || n.resourceType === 'azure_resource_group';
+      const isCustomContainer = (n.type === 'containerNode' || n.resourceType === 'containerNode' || n.resourceType === 'groupNode') && !isVpc && !isSubnet;
+
+      if (isSubnet) {
+        // Shield Subnet header area and title badges from being covered by edge badges
+        nodeBoxes.push({
+          x1: n.position.x - 10,
+          y1: n.position.y - 12,
+          x2: n.position.x + (n.width || 460) + 10,
+          y2: n.position.y + 68,
+        });
+        continue;
+      }
+
+      if (isVpc || isCustomContainer) {
+        // Shield VPC and Custom Container headers
+        nodeBoxes.push({
+          x1: n.position.x - 10,
+          y1: n.position.y - 12,
+          x2: n.position.x + (n.width || 560) + 10,
+          y2: n.position.y + 60,
+        });
+        continue;
+      }
+
+      if (
+        n.resourceType === 'cloud_provider_boundary' ||
+        n.resourceType === 'aws_cloud_boundary' ||
+        n.resourceType === 'azure_cloud_boundary'
+      ) {
+        continue;
+      }
+
+      // Leaf workload node
+      nodeBoxes.push({
+        x1: n.position.x - 12,
+        y1: n.position.y - 12,
+        x2: n.position.x + 85,
+        y2: n.position.y + 115,
+      });
+    }
+  }
+
+  const placedBadgeBoxes: Rect[] = [];
+
+  const rectsOverlap = (r1: Rect, r2: Rect): boolean => {
+    return !(r1.x2 <= r2.x1 || r1.x1 >= r2.x2 || r1.y2 <= r2.y1 || r1.y1 >= r2.y2);
+  };
+
+  const candidateOffsets: [number, number][] = [
+    [0, 0],
+    [50, 0],
+    [-50, 0],
+    [100, 0],
+    [-100, 0],
+    [150, 0],
+    [-150, 0],
+    [0, -28],
+    [0, 28],
+    [50, -28],
+    [-50, -28],
+    [50, 28],
+    [-50, 28],
+    [100, -28],
+    [-100, -28],
+    [100, 28],
+    [-100, 28],
+    [0, -56],
+    [0, 56],
+    [200, 0],
+    [-200, 0],
+    [-250, 0],
+    [250, 0],
+  ];
+
+  const result: Edge[] = [];
+
+  for (const plan of plannedEdges) {
+    const { edge: e, relType, dedupKey, type, color, sourceHandle, targetHandle, centerX, centerY, pathOffset, midX, midY, srcSide } = plan;
+    const isAssociation = type === 'association';
+    const deterministicId = e.id || dedupKey;
+
+    let labelOffsetX = 0;
+    let labelOffsetY = 0;
+
+    if (e.label) {
+      const textLen = String(e.label).length;
+      const bw = Math.max(50, textLen * 6.6 + 20);
+      const bh = 22;
+
+      const srcNode = nodeMap?.get(e.source);
+      const tgtNode = nodeMap?.get(e.target);
+      let baseX = midX;
+      let baseY = midY;
+
+      if (sourceHandle?.includes('top') && targetHandle?.includes('top')) {
+        // Top Sky Highway: position badge cleanly along top corridor
+        const minY = srcNode && tgtNode ? Math.min(srcNode.position.y, tgtNode.position.y) : midY;
+        baseY = minY - (pathOffset ?? 30);
+        baseX = midX;
+      } else if (sourceHandle?.includes('bottom') && targetHandle?.includes('bottom')) {
+        // Bottom Highway: position badge cleanly along bottom corridor
+        const maxY = srcNode && tgtNode ? Math.max(srcNode.position.y, tgtNode.position.y) : midY;
+        baseY = maxY + (pathOffset ?? 30);
+        baseX = midX;
+      } else if (centerX !== undefined) {
+        baseX = centerX;
+        baseY = midY;
+      } else if (centerY !== undefined) {
+        baseX = midX;
+        baseY = centerY;
+      } else if (srcSide === 'left' || srcSide === 'right') {
+        baseX = midX;
+        baseY = midY;
+      } else {
+        baseX = midX;
+        baseY = midY;
+      }
+
+      let chosenOffset: [number, number] = [0, 0];
+      for (const [ox, oy] of candidateOffsets) {
+        const testBox: Rect = {
+          x1: baseX + ox - bw / 2 - 12,
+          y1: baseY + oy - bh / 2 - 8,
+          x2: baseX + ox + bw / 2 + 12,
+          y2: baseY + oy + bh / 2 + 8,
+        };
+
+        const collidesWithNode = nodeBoxes.some((nb) => rectsOverlap(testBox, nb));
+        const collidesWithBadge = placedBadgeBoxes.some((pb) => rectsOverlap(testBox, pb));
+
+        if (!collidesWithNode && !collidesWithBadge) {
+          chosenOffset = [ox, oy];
+          placedBadgeBoxes.push(testBox);
+          break;
+        }
+      }
+
+      labelOffsetX = chosenOffset[0];
+      labelOffsetY = chosenOffset[1];
+    }
 
     result.push({
       id: deterministicId,
@@ -477,6 +1006,7 @@ function toReactFlowEdges(canvasEdges: CanvasEdge[], canvasNodes?: CanvasNode[])
       targetHandle,
       label: e.label,
       type,
+      zIndex: 0,
       animated: !isAssociation && type !== 'unknownRelationship',
       data: {
         relationshipType: e.relationshipType,
@@ -486,7 +1016,13 @@ function toReactFlowEdges(canvasEdges: CanvasEdge[], canvasNodes?: CanvasNode[])
         direction: e.direction,
         inferred: e.inferred,
         validationStatus: e.validationStatus,
+        needsManualConfig: plan.needsManualConfig,
         reason: e.reason,
+        labelOffsetX,
+        labelOffsetY,
+        centerX,
+        centerY,
+        pathOffset,
       },
       style: { stroke: color, strokeWidth: type === 'crossCloud' ? 2.5 : 2 },
       markerEnd: {
@@ -517,6 +1053,8 @@ export default function InfraCanvas() {
 
   // Quick Add Resource modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  // IAM Completion & Publish Readiness modal
+  const [isIamModalOpen, setIsIamModalOpen] = useState(false);
 
   // AI Prompt / Compliance / GitOps overlay panels
   const [showAiPrompt, setShowAiPrompt] = useState(false);
@@ -553,7 +1091,7 @@ export default function InfraCanvas() {
   const undoStack = useRef<{ nodes: Node[]; edges: Edge[] }[]>([]);
   const redoStack = useRef<{ nodes: Node[]; edges: Edge[] }[]>([]);
 
-  const initialNodes = activeProject ? toReactFlowNodes(activeProject.nodes) : [];
+  const initialNodes = activeProject ? toReactFlowNodes(activeProject.nodes, null, true, undefined, false, activeProject.edges) : [];
   const initialEdges = activeProject ? toReactFlowEdges(activeProject.edges, activeProject.nodes) : [];
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -567,6 +1105,30 @@ export default function InfraCanvas() {
   // Provider filter for multi-cloud canvas
   const [canvasFilter, setCanvasFilter] = useState<'all' | 'aws' | 'azure'>('all');
   const [canvasSearchQuery, setCanvasSearchQuery] = useState('');
+
+  // IAM Dependency and Publish Readiness Report
+  const iamReport = useMemo(() => {
+    const rawNodes: CanvasNode[] = nodes.map((n) => ({
+      id: n.id,
+      type: (n.type as any) || 'cloudNode',
+      resourceType: (n.data?.resourceType || n.type || 'aws_ec2') as string,
+      provider: (n.data?.provider || 'aws') as any,
+      label: n.data?.label || n.id,
+      position: n.position,
+      config: n.data?.config || {},
+      groupId: (n as any).parentNode || n.data?.groupId,
+      width: (n as any).width || n.data?.width,
+      height: (n as any).height || n.data?.height,
+    }));
+    const rawEdges: CanvasEdge[] = edges.map((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      label: typeof e.label === 'string' ? e.label : undefined,
+      edgeType: (e.data?.edgeType || 'network') as any,
+    }));
+    return analyzeCanvasIamDependencies(rawNodes, rawEdges);
+  }, [nodes, edges]);
 
   // Well-Architected findings overlay state
   const [showFindings, setShowFindings] = useState(false);
@@ -767,6 +1329,9 @@ export default function InfraCanvas() {
     );
   }, [showFindings, findingsMap, setNodes]);
 
+  // Note: dataflowConnection health status across nodes is dynamically derived in dataflowStatusMap & visibleNodes
+  // below to avoid any infinite setState cascades or React maximum update depth exceeded errors.
+
   useEffect(() => {
     latestNodesRef.current = nodes;
   }, [nodes]);
@@ -797,7 +1362,7 @@ export default function InfraCanvas() {
       prevProjectRef.current = activeProject.id;
       prevEnvRef.current = state.activeEnvironment;
       prevCanvasKey.current = state.canvasKey;
-      const envNodes = toReactFlowNodes(activeProject.nodes);
+      const envNodes = toReactFlowNodes(activeProject.nodes, null, true, findingsMap, showFindings, activeProject.edges);
       const envEdges = toReactFlowEdges(activeProject.edges, activeProject.nodes);
       setNodes(envNodes);
       setEdges(envEdges);
@@ -913,7 +1478,7 @@ export default function InfraCanvas() {
 
       const laidOut = autoLayoutArchitecture(fixResult.nodes, fixResult.edges);
 
-      const rfNodes = toReactFlowNodes(laidOut.nodes);
+      const rfNodes = toReactFlowNodes(laidOut.nodes, null, true, findingsMap, showFindings, laidOut.edges);
       const rfEdges = toReactFlowEdges(laidOut.edges, laidOut.nodes);
       setNodes(rfNodes);
       setEdges(rfEdges);
@@ -923,6 +1488,8 @@ export default function InfraCanvas() {
         nodes: laidOut.nodes,
         edges: laidOut.edges,
       });
+
+      setTimeout(() => reactFlowInstance.current?.fitView({ padding: 0.15, duration: 400 }), 60);
 
       const fixCount = fixResult.changesApplied.length;
       setBannerMessage({
@@ -949,9 +1516,10 @@ export default function InfraCanvas() {
     const mergedEdges = [...activeProject.edges, ...newEdges];
     const laidOut = autoLayoutArchitecture(mergedNodes, mergedEdges);
 
-    setNodes(toReactFlowNodes(laidOut.nodes));
+    setNodes(toReactFlowNodes(laidOut.nodes, null, true, findingsMap, showFindings, laidOut.edges));
     setEdges(toReactFlowEdges(laidOut.edges, laidOut.nodes));
     dispatch({ type: 'UPDATE_CANVAS', nodes: laidOut.nodes, edges: laidOut.edges });
+    setTimeout(() => reactFlowInstance.current?.fitView({ padding: 0.15, duration: 400 }), 60);
 
     const added = `AI added ${newNodes.length} resource${newNodes.length === 1 ? '' : 's'} to the architecture`;
     // Something the user needs to know (a service CloudBuilder can't model, values still to fill in) stays up longer.
@@ -1235,7 +1803,8 @@ export default function InfraCanvas() {
     const containerNodes = nodes.filter((n) => {
       const def = getResourceDefinition(n.data.resourceType);
       const isBoundary = n.data.resourceType === 'cloud_provider_boundary' || n.data.resourceType === 'aws_cloud_boundary' || n.data.resourceType === 'azure_cloud_boundary';
-      return def?.isContainer === true || isBoundary;
+      const isCustom = n.type === 'containerNode' || n.data.resourceType === 'containerNode' || n.data.resourceType === 'groupNode';
+      return def?.isContainer === true || isBoundary || isCustom;
     });
 
     const checkAllowed = (container: Node, def?: ReturnType<typeof getResourceDefinition>) => {
@@ -1269,6 +1838,28 @@ export default function InfraCanvas() {
         const subDef = getResourceDefinition(sub.data.resourceType);
         const isAllowed = checkAllowed(sub, subDef);
         return { container: sub, isAllowed };
+      }
+    }
+
+    // 1.5. Check Custom Containers (e.g. Storage, Logging, DR, Edge, Security)
+    const customContainers = containerNodes.filter(
+      (n) =>
+        (n.type === 'containerNode' || n.data.resourceType === 'containerNode' || n.data.resourceType === 'groupNode') &&
+        !n.data.resourceType?.includes('subnet') &&
+        !n.data.resourceType?.includes('vpc') &&
+        !n.data.resourceType?.includes('vnet') &&
+        !n.data.resourceType?.includes('boundary')
+    );
+    for (const cc of customContainers) {
+      const width = cc.data.width || 380;
+      const height = cc.data.height || 220;
+      if (
+        pos.x >= cc.position.x &&
+        pos.x <= cc.position.x + width &&
+        pos.y >= cc.position.y &&
+        pos.y <= cc.position.y + height
+      ) {
+        return { container: cc, isAllowed: true };
       }
     }
 
@@ -1570,13 +2161,13 @@ export default function InfraCanvas() {
     const canvasEdges = getCanvasEdges();
     const laid = autoLayoutArchitecture(canvasNodes, canvasEdges);
 
-    const rfNodes = toReactFlowNodes(laid.nodes);
+    const rfNodes = toReactFlowNodes(laid.nodes, null, true, findingsMap, showFindings, laid.edges);
     const rfEdges = toReactFlowEdges(laid.edges, laid.nodes);
 
     setNodes(rfNodes);
     setEdges(rfEdges);
     syncToStore(rfNodes, rfEdges);
-    setTimeout(() => reactFlowInstance.current?.fitView({ padding: 0.15 }), 60);
+    setTimeout(() => reactFlowInstance.current?.fitView({ padding: 0.15, duration: 400 }), 60);
   }, [nodes, edges, setNodes, setEdges, syncToStore, pushHistory, getCanvasNodes, getCanvasEdges]);
 
   // ── Toolbar Controls ─────────────────────────────────────────────────────────
@@ -1741,26 +2332,174 @@ export default function InfraCanvas() {
       }).length
     : 0;
 
-  const visibleNodes = nodes.map((n) => {
-    let dim = false;
+  // Memoized dataflow connection status map evaluated purely synchronously during render.
+  // Avoids calling setNodes in useEffect which caused React maximum update depth exceeded errors.
+  const dataflowStatusMap = useMemo(() => {
+    if (!nodes.length) return new Map<string, DataflowConnectionStatus>();
 
-    if (canvasFilter !== 'all' && activeProject?.provider === 'multi') {
-      const existing = activeProject.nodes.find((cn) => cn.id === n.id);
-      const nodeProvider = existing ? inferNodeProvider(existing) : 'aws';
-      if (nodeProvider !== canvasFilter) dim = true;
+    const rawNodes: CanvasNode[] = nodes.map((n) => {
+      const existing = activeProject?.nodes.find((cn) => cn.id === n.id);
+      return {
+        id: n.id,
+        type: n.type ?? 'cloudNode',
+        resourceType: n.data.resourceType,
+        provider: (existing?.provider ?? (activeProject?.provider === 'multi' ? 'aws' : activeProject?.provider ?? 'aws')) as 'aws' | 'azure',
+        label: n.data.label,
+        position: n.position,
+        config: n.data.config ?? existing?.config ?? {},
+        selected: n.selected,
+        groupId: n.data.groupId ?? existing?.groupId,
+        width: n.data.width ?? existing?.width,
+        height: n.data.height ?? existing?.height,
+      };
+    });
+
+    const rawEdges: CanvasEdge[] = edges.map((e) => {
+      const existing = activeProject?.edges.find((ce) => ce.id === e.id);
+      const data = (e.data || {}) as Record<string, unknown>;
+      return {
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        label: typeof e.label === 'string' ? e.label : undefined,
+        edgeType: (e.type as CanvasEdge['edgeType']) || existing?.edgeType || 'network',
+        relationshipType: (data.relationshipType as RelationshipType) || existing?.relationshipType,
+        protocol: (data.protocol as string) || existing?.protocol,
+        port: (data.port as string | number) || existing?.port,
+      };
+    });
+
+    const statusMap = new Map<string, DataflowConnectionStatus>();
+    for (const rawNode of rawNodes) {
+      statusMap.set(rawNode.id, evaluateResourceDataflowStatus(rawNode, rawNodes, rawEdges));
+    }
+    return statusMap;
+  }, [nodes, edges, activeProject]);
+
+  const selectedEdge = edges.find((e) => e.id === selectedEdgeId) ?? null;
+  const selectedCanvasEdge: CanvasEdge | null =
+    activeProject?.edges.find((e) => e.id === selectedEdgeId) ??
+    (selectedEdge
+      ? ({
+          id: selectedEdge.id,
+          source: selectedEdge.source,
+          target: selectedEdge.target,
+          label: typeof selectedEdge.label === 'string' ? selectedEdge.label : undefined,
+          edgeType: (selectedEdge.data?.edgeType || 'network') as any,
+          ...selectedEdge.data,
+        } as CanvasEdge)
+      : null);
+
+  // Map of connected handles per node to render green/red dots on EACH connected line
+  const nodeConnectedHandlesMap = useMemo(() => {
+    const map = new Map<string, Record<string, {
+      status: 'connected_healthy' | 'needs_manual_config';
+      edgeId: string;
+      label?: string;
+      otherNodeLabel?: string;
+      isSelected?: boolean;
+    }>>();
+
+    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+
+    for (const e of edges) {
+      if (!isDataflowOrConnectionEdge(e)) continue;
+
+      const srcNode = nodeMap.get(e.source);
+      const tgtNode = nodeMap.get(e.target);
+      if (!srcNode || !tgtNode) continue;
+
+      const srcStatus = dataflowStatusMap.get(e.source);
+      const tgtStatus = dataflowStatusMap.get(e.target);
+
+      const isEdgeHealthy = !(
+        (srcStatus?.isConnected && !srcStatus?.isConfigured) ||
+        (tgtStatus?.isConnected && !tgtStatus?.isConfigured) ||
+        e.data?.needsManualConfig === true ||
+        (e as any).validationStatus === 'invalid'
+      );
+      const edgeStatus = isEdgeHealthy ? 'connected_healthy' : 'needs_manual_config';
+      const isSelected = selectedEdgeId === e.id;
+
+      // 1. Source handle
+      const srcHandleId = (e.sourceHandle as string) || 'source-right';
+      const srcHandles = map.get(e.source) || {};
+      srcHandles[srcHandleId] = {
+        status: edgeStatus,
+        edgeId: e.id,
+        label: typeof e.label === 'string' ? e.label : undefined,
+        otherNodeLabel: tgtNode.data?.label,
+        isSelected,
+      };
+      map.set(e.source, srcHandles);
+
+      // 2. Target handle
+      const tgtHandleId = (e.targetHandle as string) || 'target-left';
+      const tgtHandles = map.get(e.target) || {};
+      tgtHandles[tgtHandleId] = {
+        status: edgeStatus,
+        edgeId: e.id,
+        label: typeof e.label === 'string' ? e.label : undefined,
+        otherNodeLabel: srcNode.data?.label,
+        isSelected,
+      };
+      map.set(e.target, tgtHandles);
     }
 
-    if (!dim && normalizedSearch) {
-      const label = (n.data?.label as string | undefined)?.toLowerCase() ?? '';
-      const resourceType = (n.data?.resourceType as string | undefined)?.toLowerCase() ?? '';
-      if (!label.includes(normalizedSearch) && !resourceType.includes(normalizedSearch)) dim = true;
-    }
+    return map;
+  }, [nodes, edges, dataflowStatusMap, selectedEdgeId]);
 
-    if (dim) {
-      return { ...n, style: { ...n.style, opacity: 0.15, pointerEvents: 'none' as const } };
-    }
-    return n;
-  });
+  const visibleNodes = useMemo(() => {
+    return nodes.map((n) => {
+      let dim = false;
+
+      if (canvasFilter !== 'all' && activeProject?.provider === 'multi') {
+        const existing = activeProject.nodes.find((cn) => cn.id === n.id);
+        const nodeProvider = existing ? inferNodeProvider(existing) : 'aws';
+        if (nodeProvider !== canvasFilter) dim = true;
+      }
+
+      if (!dim && normalizedSearch) {
+        const label = (n.data?.label as string | undefined)?.toLowerCase() ?? '';
+        const resourceType = (n.data?.resourceType as string | undefined)?.toLowerCase() ?? '';
+        if (!label.includes(normalizedSearch) && !resourceType.includes(normalizedSearch)) dim = true;
+      }
+
+      const df = dataflowStatusMap.get(n.id) ?? n.data?.dataflowConnection;
+      const connectedHandles = nodeConnectedHandlesMap.get(n.id) || {};
+
+      const isConnectedToSelectedEdge = selectedEdge ? (n.id === selectedEdge.source || n.id === selectedEdge.target) : false;
+      const highlightedEdgeRole = selectedEdge ? (n.id === selectedEdge.source ? 'source' : n.id === selectedEdge.target ? 'target' : null) : null;
+
+      if (selectedEdge && !isConnectedToSelectedEdge) {
+        dim = true;
+      }
+
+      const nodeWithDf = {
+        ...n,
+        data: {
+          ...n.data,
+          dataflowConnection: df,
+          connectedHandles,
+          isEdgeHighlighted: isConnectedToSelectedEdge,
+          highlightedEdgeRole,
+          highlightedEdgeLabel: selectedEdge ? (typeof selectedEdge.label === 'string' ? selectedEdge.label : undefined) : undefined,
+        },
+      };
+
+      if (dim) {
+        return {
+          ...nodeWithDf,
+          style: {
+            ...nodeWithDf.style,
+            opacity: selectedEdge ? 0.35 : 0.15,
+            pointerEvents: selectedEdge ? ('auto' as const) : ('none' as const),
+          },
+        };
+      }
+      return nodeWithDf;
+    });
+  }, [nodes, activeProject, canvasFilter, normalizedSearch, dataflowStatusMap, nodeConnectedHandlesMap, selectedEdge]);
 
   // ── Availability Zone visual grouping ───────────────────────────────────────
   // Purely a rendering overlay computed from each subnet's existing
@@ -1824,14 +2563,37 @@ export default function InfraCanvas() {
     return boundaries;
   }, [nodes]);
 
-  // visibleNodes is rebuilt every render, so give React Flow a new array only when its contents could have changed.
+  // visibleNodes is rebuilt only when its dependencies change, so give React Flow a new array only when its contents could have changed.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const renderedNodes = useMemo(() => [...visibleNodes, ...azBoundaryNodes], [nodes, canvasFilter, normalizedSearch, activeProject, azBoundaryNodes]);
+  const renderedNodes = useMemo(() => [...visibleNodes, ...azBoundaryNodes], [visibleNodes, azBoundaryNodes]);
+
+  const renderedEdges = useMemo(() => {
+    return edges.map((e) => {
+      const srcStatus = dataflowStatusMap.get(e.source);
+      const tgtStatus = dataflowStatusMap.get(e.target);
+      const needsManualConfig = Boolean(
+        (srcStatus?.isConnected && !srcStatus?.isConfigured) ||
+        (tgtStatus?.isConnected && !tgtStatus?.isConfigured)
+      );
+      const isSelected = selectedEdgeId === e.id;
+      const isDimmed = Boolean(selectedEdgeId && selectedEdgeId !== e.id);
+
+      return {
+        ...e,
+        selected: isSelected,
+        data: {
+          ...e.data,
+          needsManualConfig,
+          isHighlighted: isSelected,
+          isDimmed,
+        },
+      };
+    });
+  }, [edges, dataflowStatusMap, selectedEdgeId]);
 
   const selectedNode = activeProject?.nodes.find((n) => n.id === selectedNodeId) ?? null;
-  const selectedEdge = activeProject?.edges.find((e) => e.id === selectedEdgeId) ?? null;
-  const selectedEdgeSourceNode = selectedEdge ? (activeProject?.nodes.find((n) => n.id === selectedEdge.source) ?? null) : null;
-  const selectedEdgeTargetNode = selectedEdge ? (activeProject?.nodes.find((n) => n.id === selectedEdge.target) ?? null) : null;
+  const selectedEdgeSourceNode = selectedCanvasEdge ? (activeProject?.nodes.find((n) => n.id === selectedCanvasEdge.source) ?? null) : null;
+  const selectedEdgeTargetNode = selectedCanvasEdge ? (activeProject?.nodes.find((n) => n.id === selectedCanvasEdge.target) ?? null) : null;
   const hasSelected = nodes.some((n) => n.selected) || !!selectedNodeId;
 
   if (!activeProject) {
@@ -1900,6 +2662,8 @@ export default function InfraCanvas() {
           lastSavedTime={state.lastSavedTime}
           onSaveNow={handleSaveClick}
           isDraft={!state.activeProjectId || state.activeProjectId === 'draft-project'}
+          onOpenIamModal={() => setIsIamModalOpen(true)}
+          missingIamRolesCount={iamReport.totalMissing}
         />
 
         {/* Resource search — filters/dims canvas nodes by label or resource type */}
@@ -1928,6 +2692,33 @@ export default function InfraCanvas() {
             </span>
           )}
         </div>
+
+        {/* Missing IAM Role Dependency Callout Banner */}
+        {iamReport.hasMissingRequirements && (
+          <div className="absolute top-16 right-4 z-20 flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div
+              className={clsx(
+                'flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-medium shadow-xl border backdrop-blur-md',
+                isLight
+                  ? 'bg-purple-50/95 border-purple-300 text-purple-950'
+                  : 'bg-purple-950/90 border-purple-500/50 text-purple-100 shadow-2xl'
+              )}
+            >
+              <Key className="w-4 h-4 text-purple-500 shrink-0 animate-bounce" />
+              <span>
+                <strong>{iamReport.totalMissing} Missing IAM Roles:</strong> Required before publishing
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsIamModalOpen(true)}
+                className="ml-1 px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white font-bold text-[11px] shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>Complete Roles</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Brainboard Left Floating Toolbars */}
         <div className="absolute top-28 left-4 z-20 flex flex-col gap-2.5">
@@ -2170,7 +2961,7 @@ export default function InfraCanvas() {
         {/* React Flow Core */}
         <ReactFlow
           nodes={renderedNodes}
-          edges={edges}
+          edges={renderedEdges}
           onNodesChange={onNodesChangeWrapped}
           onEdgesChange={onEdgesChangeWrapped}
           onConnect={onConnect}
@@ -2236,14 +3027,14 @@ export default function InfraCanvas() {
       )}
 
       {/* Connection Inspector (Right) */}
-      {selectedEdge && (
+      {selectedCanvasEdge && (
         <ConnectionInspector
-          edge={selectedEdge}
+          edge={selectedCanvasEdge}
           sourceNode={selectedEdgeSourceNode}
           targetNode={selectedEdgeTargetNode}
           onClose={() => setSelectedEdgeId(null)}
           onDelete={() => {
-            const newEdges = edges.filter((e) => e.id !== selectedEdge.id);
+            const newEdges = edges.filter((e) => e.id !== selectedCanvasEdge.id);
             pushHistory(nodes, edges);
             setEdges(newEdges);
             setSelectedEdgeId(null);
@@ -2258,6 +3049,45 @@ export default function InfraCanvas() {
         provider={activeProject.provider}
         onClose={() => setIsAddModalOpen(false)}
         onSelectResource={handleQuickAdd}
+      />
+
+      {/* Pre-Publish IAM Role & Resource Dependency Completion Modal */}
+      <IamCompletionModal
+        isOpen={isIamModalOpen}
+        onClose={() => setIsIamModalOpen(false)}
+        nodes={nodes.map((n) => ({
+          id: n.id,
+          type: (n.type as any) || 'cloudNode',
+          resourceType: (n.data?.resourceType || n.type || 'aws_ec2') as string,
+          provider: (n.data?.provider || 'aws') as any,
+          label: n.data?.label || n.id,
+          position: n.position,
+          config: n.data?.config || {},
+          groupId: (n as any).parentNode || n.data?.groupId,
+          width: (n as any).width || n.data?.width,
+          height: (n as any).height || n.data?.height,
+        }))}
+        edges={edges.map((e) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          label: typeof e.label === 'string' ? e.label : undefined,
+          edgeType: (e.data?.edgeType || 'network') as any,
+        }))}
+        onApply={(newCanvasNodes, newCanvasEdges) => {
+          pushHistory(nodes, edges);
+          const rfNodes = toReactFlowNodes(newCanvasNodes, activeDragTargetId, isValidDropTarget, findingsMap, showFindings, newCanvasEdges);
+          const rfEdges = toReactFlowEdges(newCanvasEdges, newCanvasNodes);
+          setNodes(rfNodes);
+          setEdges(rfEdges);
+          dispatch({ type: 'UPDATE_CANVAS', nodes: newCanvasNodes, edges: newCanvasEdges });
+          dispatch({ type: 'SAVE_NOW' });
+          setBannerMessage({
+            text: '✓ IAM roles and resource permission connections configured & applied to canvas!',
+            type: 'success',
+          });
+          setTimeout(() => setBannerMessage(null), 4000);
+        }}
       />
 
       {/* Invalid Connection Alert Modal */}

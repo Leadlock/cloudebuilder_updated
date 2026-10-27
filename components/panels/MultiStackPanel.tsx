@@ -18,7 +18,7 @@ const LAYER_ICONS: Record<string, React.ElementType> = {
 };
 
 export default function MultiStackPanel() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const isLight = state.theme === 'light';
 
   const activeProject = state.projects.find((p) => p.id === state.activeProjectId) ?? state.draftProject;
@@ -146,6 +146,14 @@ export default function MultiStackPanel() {
           >
             <Play className="w-3.5 h-3.5" />
             Apply Pipeline
+          </button>
+          <button
+            id="btn-stacks-next-deploy"
+            onClick={() => dispatch({ type: 'SET_VIEW', view: 'deploy' })}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-md transition-all active:scale-95"
+            title="Proceed to logical next phase: Terraform & Cloud Deployment"
+          >
+            <span>Next: Terraform & Deploy →</span>
           </button>
         </div>
       </div>

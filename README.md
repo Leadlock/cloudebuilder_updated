@@ -164,6 +164,7 @@ Add an entry to `lib/resources/aws.ts` or `lib/resources/azure.ts` (type key, la
 
 ## More documentation
 
+- [docs/PLATFORM_OVERVIEW.md](docs/PLATFORM_OVERVIEW.md): a longer feature tour of the canvas, Terraform generation and advisory (from the `testing` branch; some version numbers in it are older)
 - [docs/READINESS_REPORTS.md](docs/READINESS_REPORTS.md): SOC 2 readiness, control reports, evidence, auditor access
 - [docs/DEPLOY.md](docs/DEPLOY.md): deploying and rolling back
 - [docs/SERVER_SECURITY.md](docs/SERVER_SECURITY.md): hardening the server

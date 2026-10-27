@@ -1,6 +1,6 @@
 'use client';
 import { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import { Handle, Position, NodeProps, NodeResizer } from 'reactflow';
 import clsx from 'clsx';
 import { MapPin, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
@@ -49,9 +49,7 @@ export const CloudProviderBoundary = memo(({ data, selected }: NodeProps<CloudPr
   const height = data.height || 560;
 
   const displayRegion = formatRegionName(data.region);
-  const titleText = data.label && !data.label.startsWith('Amazon Web Services')
-    ? data.label
-    : 'REST API for AWS Document DB';
+  const titleText = data.label || (isAws ? 'AWS Cloud Infrastructure' : 'Azure Cloud Infrastructure');
 
   return (
     <div
@@ -66,6 +64,22 @@ export const CloudProviderBoundary = memo(({ data, selected }: NodeProps<CloudPr
         selected && 'ring-2 ring-[#0078d4] border-[#0078d4]'
       )}
     >
+      {/* Interactive Resizer Handles when selected */}
+      <NodeResizer
+        isVisible={selected}
+        minWidth={750}
+        minHeight={450}
+        lineClassName={clsx(isAws ? '!border-[#FF9900]' : '!border-[#0078d4]', '!border-dashed')}
+        handleClassName={clsx(
+          '!w-3 !h-3 !border-2 !border-slate-900 !rounded-full shadow-md',
+          isAws ? '!bg-[#FF9900]' : '!bg-[#0078d4]'
+        )}
+        onResize={(_evt, params) => {
+          data.width = params.width;
+          data.height = params.height;
+        }}
+      />
+
       {/* Microsoft Fluent Title Pill Floating on Top Edge */}
       <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
         <div
