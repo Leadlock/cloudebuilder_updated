@@ -87,8 +87,9 @@ function MainContent() {
         return (
           <div
             key={viewKey}
+            data-app-view={viewKey}
             className={clsx(
-              'w-full h-full flex flex-col min-h-0 min-w-0 overflow-hidden',
+              'cloudbuilder-view w-full h-full flex flex-col min-h-0 min-w-0 overflow-hidden',
               isActive ? 'block' : 'hidden'
             )}
           >
@@ -143,7 +144,7 @@ export default function Home() {
 
   return (
     <AuthGate>
-      <div className={`flex h-screen overflow-hidden ${isLight ? 'bg-slate-50 text-slate-900' : 'bg-gray-950 text-white'}`}>
+      <div className={`cloudbuilder-app flex h-screen overflow-hidden ${isLight ? 'is-light bg-slate-50 text-slate-900' : 'is-dark bg-gray-950 text-white'}`}>
         <Sidebar />
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
           <TopBar />

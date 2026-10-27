@@ -8,7 +8,14 @@ import { formatCurrency } from '@/lib/currency/formatter';
 import { Wand2, ChevronRight, ChevronLeft, Check, Cloud, Database, Shield, DollarSign, Globe, Zap } from 'lucide-react';
 import clsx from 'clsx';
 
-const STEPS = ['Provider', 'Template', 'Region', 'Config', 'Review'];
+const STEP_META = [
+  { label: 'Cloud', title: 'Choose your cloud', description: 'Select the platform that will host this workload.' },
+  { label: 'Pattern', title: 'Pick a starting pattern', description: 'Choose the closest architecture. You can change every resource later.' },
+  { label: 'Location', title: 'Set location and stage', description: 'Choose where this workload runs and which environment you are preparing.' },
+  { label: 'Preferences', title: 'Tune the essentials', description: 'Name the project and add only the controls your workload needs.' },
+  { label: 'Confirm', title: 'Review your blueprint', description: 'Check the important decisions before CloudBuilder creates the canvas.' },
+] as const;
+const STEPS = STEP_META.map((item) => item.label);
 
 const appTypes = ['Web Application', 'API Backend', 'Microservices', 'Data Platform', 'E-Commerce', 'SaaS', 'Mobile Backend', 'Machine Learning'];
 const dbTypes = ['None', 'MySQL', 'PostgreSQL', 'MongoDB', 'SQL Server', 'Redis', 'DynamoDB', 'Cosmos DB'];
@@ -17,15 +24,15 @@ function StepIndicator({ step, current, isLight }: { step: number; current: numb
   const done = current > step;
   const active = current === step;
   return (
-    <div className="flex items-center gap-2">
+    <div className={clsx('wizard-step-indicator', active && 'is-active', done && 'is-done')}>
       <div className={clsx(
-        'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors',
+        'wizard-step-number w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors',
         done ? 'bg-emerald-600 text-white' : active ? 'bg-blue-600 text-white' : isLight ? 'bg-slate-200 text-slate-600 font-semibold' : 'bg-gray-700 text-gray-500'
       )}>
         {done ? <Check className="w-3.5 h-3.5" /> : step + 1}
       </div>
       <span className={clsx(
-        'text-xs font-semibold hidden sm:block', 
+        'wizard-step-label text-xs font-semibold', 
         active 
           ? (isLight ? 'text-slate-900' : 'text-white') 
           : done 
@@ -99,33 +106,40 @@ export default function ArchitectureWizard() {
   }
 
   return (
-    <div className={clsx("flex-1 overflow-y-auto px-4 sm:px-6 py-6 pb-36 custom-scrollbar", isLight ? "bg-slate-50 text-slate-900" : "bg-gray-950 text-slate-100")}>
-      <div className="max-w-3xl mx-auto">
+    <div className={clsx("architecture-wizard flex-1 overflow-y-auto px-4 sm:px-6 py-6 pb-36 custom-scrollbar", isLight ? "bg-slate-50 text-slate-900" : "bg-gray-950 text-slate-100")}>
+      <div className="wizard-shell max-w-6xl mx-auto">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-md">
+        <div className="wizard-header">
+          <div className="wizard-header-mark">
             <Wand2 className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className={clsx("font-bold text-xl", isLight ? "text-slate-900" : "text-white")}>Architecture Wizard</h1>
-            <p className={clsx("text-sm", isLight ? "text-slate-500" : "text-gray-400")}>Generate a cloud architecture in minutes</p>
+            <p className="wizard-kicker">Guided architecture</p>
+            <h1>Build the right foundation.</h1>
+            <p>Five focused decisions. One reviewable cloud blueprint.</p>
           </div>
         </div>
 
-        {/* Steps */}
-        <div className="flex items-center gap-1 mb-8">
-          {STEPS.map((_, i) => (
-            <div key={i} className="flex items-center gap-1">
-              <StepIndicator step={i} current={step} isLight={isLight} />
-              {i < STEPS.length - 1 && (
-                <div className={clsx('h-px w-6 mx-1', step > i ? 'bg-emerald-600' : isLight ? 'bg-slate-200' : 'bg-gray-700')} />
-              )}
+        <div className="wizard-layout">
+          {/* Steps */}
+          <aside className="wizard-progress" aria-label="Architecture wizard progress">
+            <div className="wizard-progress-top"><span>Progress</span><strong>{step + 1} / {STEPS.length}</strong></div>
+            <div className="wizard-progress-track"><i style={{ width: `${((step + 1) / STEPS.length) * 100}%` }} /></div>
+            <div className="wizard-step-list">
+              {STEPS.map((_, i) => <StepIndicator key={i} step={i} current={step} isLight={isLight} />)}
             </div>
-          ))}
-        </div>
+            <div className="wizard-help-note"><Shield className="w-4 h-4" /><span>Nothing deploys automatically. You review the generated canvas first.</span></div>
+          </aside>
+
+          <main className="wizard-main">
+            <div className="wizard-current-step">
+              <span>Step {step + 1} of {STEPS.length}</span>
+              <h2>{STEP_META[step].title}</h2>
+              <p>{STEP_META[step].description}</p>
+            </div>
 
         {/* Step content */}
-        <div className={clsx("border rounded-xl p-6 mb-6", isLight ? "bg-white border-slate-200 shadow-sm" : "bg-gray-800 border-gray-700")}>
+        <div className={clsx("wizard-step-body border rounded-xl p-6 mb-6", isLight ? "bg-white border-slate-200 shadow-sm" : "bg-gray-800 border-gray-700")}>
 
           {/* Step 0: Provider */}
           {step === 0 && (
@@ -381,10 +395,10 @@ export default function ArchitectureWizard() {
           )}
         </div>
 
-        {/* Nav Sticky Bar */}
+        {/* Step navigation */}
         <div className={clsx(
-          "sticky bottom-6 z-20 backdrop-blur-xl p-3.5 sm:p-4 rounded-2xl flex items-center justify-between gap-3 border shadow-xl",
-          isLight ? "bg-white/90 border-slate-200" : "bg-slate-900/90 border-slate-700/80 shadow-2xl"
+          "wizard-navigation flex items-center justify-between gap-3",
+          isLight ? "text-slate-900" : "text-slate-100"
         )}>
           <button
             onClick={() => step === 0 ? dispatch({ type: 'SET_VIEW', view: 'dashboard' }) : setStep((s) => s - 1)}
@@ -416,6 +430,8 @@ export default function ArchitectureWizard() {
               )}
             </button>
           )}
+        </div>
+          </main>
         </div>
       </div>
     </div>

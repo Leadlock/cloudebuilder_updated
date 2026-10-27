@@ -399,7 +399,7 @@ export default function Sidebar() {
           width: sidebarCollapsed ? '56px' : `${sidebarWidth}px`,
         }}
         className={clsx(
-          'hidden lg:flex flex-col shrink-0 h-screen select-none relative group/sidebar transition-colors',
+          'cloudbuilder-sidebar hidden lg:flex flex-col shrink-0 h-screen select-none relative group/sidebar transition-colors',
           isLight ? 'bg-white border-r border-slate-200' : 'bg-[#161618] border-r border-white/[0.08]',
           !isResizing && 'transition-[width] duration-200 ease-out'
         )}
@@ -444,7 +444,7 @@ export default function Sidebar() {
             onClick={() => dispatch({ type: 'SET_MOBILE_SIDEBAR', open: false })}
           />
           {/* Slide-over Drawer */}
-          <div className={clsx("relative w-72 max-w-[85vw] border-r h-full flex flex-col shadow-2xl z-10 animate-in slide-in-from-left duration-200", isLight ? "bg-white border-slate-200" : "bg-[#161618] border-white/[0.08]")}>
+          <div className={clsx("cloudbuilder-sidebar relative w-72 max-w-[85vw] border-r h-full flex flex-col shadow-2xl z-10 animate-in slide-in-from-left duration-200", isLight ? "bg-white border-slate-200" : "bg-[#161618] border-white/[0.08]")}>
             {navContent(true)}
           </div>
         </div>

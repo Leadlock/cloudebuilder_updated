@@ -139,7 +139,7 @@ export default function Dashboard() {
 
   return (
     <div className={clsx(
-      "flex-1 overflow-y-auto p-4 sm:p-6 pb-32 custom-scrollbar transition-colors",
+      "cloudbuilder-dashboard flex-1 overflow-y-auto p-4 sm:p-6 pb-32 custom-scrollbar transition-colors",
       isLight ? "bg-slate-50 text-slate-900" : "bg-gray-950 text-white"
     )}>
       {/* Header */}
